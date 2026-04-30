@@ -1,4 +1,5 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { useTheme, ACCENT_COLORS } from "@/store/theme"
 import Icon from "@/components/ui/icon"
 
@@ -17,6 +18,18 @@ export function ThemeSwitcher() {
   const [open, setOpen] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
   const pickerRef = useRef<HTMLInputElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [popupPos, setPopupPos] = useState({ top: 0, right: 0 })
+
+  useEffect(() => {
+    if (open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPopupPos({
+        top: r.bottom + 8,
+        right: window.innerWidth - r.right,
+      })
+    }
+  }, [open])
 
   const currentDot = ACCENT_BG[accentId] || "#ef4444"
 
@@ -50,8 +63,8 @@ export function ThemeSwitcher() {
 
   return (
     <div className="relative">
-      {/* Trigger */}
       <button
+        ref={btnRef}
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors"
         style={{ cursor: "pointer" }}
@@ -64,12 +77,19 @@ export function ThemeSwitcher() {
         />
       </button>
 
-      {open && (
+      {open && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setShowPicker(false) }} />
-          <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl border border-border bg-card p-5 shadow-2xl">
-
-            {/* Тема */}
+          {/* Backdrop — вне custom-cursor-active, курсор виден */}
+          <div
+            className="fixed inset-0 z-[9998]"
+            style={{ cursor: "auto" }}
+            onClick={() => { setOpen(false); setShowPicker(false) }}
+          />
+          {/* Попап тоже вне main — курсор всегда виден */}
+          <div
+            className="fixed z-[9999] w-72 rounded-2xl border border-border bg-card p-5 shadow-2xl"
+            style={{ top: popupPos.top, right: popupPos.right, cursor: "auto" }}
+          >
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-foreground/40">Тема</p>
             <div className="mb-5 flex gap-2">
               {[
@@ -92,7 +112,6 @@ export function ThemeSwitcher() {
               ))}
             </div>
 
-            {/* Акцентный цвет */}
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-foreground/40">Акцентный цвет</p>
             <div className="flex flex-col gap-1.5">
               {ACCENT_COLORS.map(color => {
@@ -102,51 +121,38 @@ export function ThemeSwitcher() {
                     key={color.id}
                     onClick={() => setAccent(color.id)}
                     className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${
-                      isActive
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/30 hover:bg-muted/50"
+                      isActive ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted/50"
                     }`}
                     style={{ cursor: "pointer" }}
                   >
-                    <span
-                      className="h-5 w-5 shrink-0 rounded-full shadow-sm"
-                      style={{ backgroundColor: ACCENT_BG[color.id] }}
-                    />
-                    <span className={`text-sm font-medium ${isActive ? "text-primary" : "text-foreground/70"}`}>
-                      {color.label}
-                    </span>
+                    <span className="h-5 w-5 shrink-0 rounded-full shadow-sm" style={{ backgroundColor: ACCENT_BG[color.id] }} />
+                    <span className={`text-sm font-medium ${isActive ? "text-primary" : "text-foreground/70"}`}>{color.label}</span>
                     {isActive && <Icon name="Check" size={14} className="ml-auto text-primary" />}
                   </button>
                 )
               })}
 
-              {/* Другое — кастомный цвет */}
               <button
-                onClick={() => { setShowPicker(v => !v) }}
+                onClick={() => setShowPicker(v => !v)}
                 className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${
-                  accentId.startsWith("custom:")
-                    ? "border-primary bg-primary/10"
-                    : "border-border hover:border-primary/30 hover:bg-muted/50"
+                  accentId.startsWith("custom:") ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted/50"
                 }`}
                 style={{ cursor: "pointer" }}
               >
                 <span
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-foreground/30 shadow-sm"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-foreground/30"
                   style={{ backgroundColor: accentId.startsWith("custom:") ? currentCustomHex : "transparent" }}
                 >
                   {!accentId.startsWith("custom:") && <Icon name="Plus" size={10} className="text-foreground/40" />}
                 </span>
-                <span className={`text-sm font-medium ${accentId.startsWith("custom:") ? "text-primary" : "text-foreground/70"}`}>
-                  Другое
-                </span>
+                <span className={`text-sm font-medium ${accentId.startsWith("custom:") ? "text-primary" : "text-foreground/70"}`}>Другое</span>
                 {accentId.startsWith("custom:") && <Icon name="Check" size={14} className="ml-auto text-primary" />}
               </button>
 
-              {/* Палитра цветов */}
               {showPicker && (
                 <div className="mt-1 flex items-center gap-3 rounded-xl border border-border bg-muted/30 px-3 py-3">
                   <label
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-border overflow-hidden cursor-pointer hover:border-primary transition-colors"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-border overflow-hidden hover:border-primary transition-colors"
                     style={{ cursor: "pointer" }}
                   >
                     <input
@@ -154,7 +160,7 @@ export function ThemeSwitcher() {
                       type="color"
                       defaultValue={currentCustomHex}
                       onChange={e => handleCustomColor(e.target.value)}
-                      className="h-12 w-12 scale-150 cursor-pointer opacity-0 absolute"
+                      className="h-12 w-12 scale-150 opacity-0 absolute"
                       style={{ cursor: "pointer" }}
                     />
                     <span
@@ -170,7 +176,8 @@ export function ThemeSwitcher() {
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )
