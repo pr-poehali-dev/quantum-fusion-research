@@ -1,92 +1,164 @@
 import { useState, useEffect } from "react"
 import { useCart } from "@/store/cart"
+import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
-  cpu: { label: "Процессор", icon: "Cpu", required: true },
-  gpu: { label: "Видеокарта", icon: "Monitor", required: true },
-  ram: { label: "Оперативная память", icon: "MemoryStick", required: true },
-  storage: { label: "Накопитель", icon: "HardDrive", required: true },
-  psu: { label: "Блок питания", icon: "Zap", required: true },
-  case: { label: "Корпус", icon: "Box", required: false },
+  cpu:     { label: "Процессор",        icon: "Cpu",        required: true  },
+  gpu:     { label: "Видеокарта",       icon: "Monitor",    required: true  },
+  ram:     { label: "Оперативная память",icon: "MemoryStick",required: true  },
+  storage: { label: "Накопитель",       icon: "HardDrive",  required: true  },
+  psu:     { label: "Блок питания",     icon: "Zap",        required: true  },
+  case:    { label: "Корпус",           icon: "Box",        required: false },
 }
 
-interface Component {
+interface CatalogComp {
   id: number
   slot: string
   name: string
   brand?: string
   price: number
   specs: Record<string, string>
-  source: "catalog" | "custom"
 }
 
-interface SelectedComponent {
+interface SelectedComp {
   slot: string
   name: string
   price: number
+  qty: number
+  link?: string
   source: "catalog" | "custom"
   source_id?: number
 }
 
+// Компонент счётчика qty
+function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onChange(Math.max(1, qty - 1))}
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+        style={{ cursor: "pointer" }}
+      >
+        <Icon name="Minus" size={11} />
+      </button>
+      <input
+        type="number"
+        min={1}
+        max={99}
+        value={qty}
+        onChange={e => onChange(Math.max(1, parseInt(e.target.value) || 1))}
+        className="w-11 rounded-lg border border-border bg-background px-1 py-1 text-center text-xs font-medium text-foreground focus:border-primary focus:outline-none"
+        style={{ cursor: "text" }}
+      />
+      <button
+        onClick={() => onChange(qty + 1)}
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+        style={{ cursor: "pointer" }}
+      >
+        <Icon name="Plus" size={11} />
+      </button>
+    </div>
+  )
+}
+
 export default function Configurator() {
-  const [slots, setSlots] = useState<Record<string, Component[]>>({})
-  const [selected, setSelected] = useState<Record<string, SelectedComponent | null>>({})
-  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string }>>({})
+  const [slots, setSlots] = useState<Record<string, CatalogComp[]>>({})
+  const [selected, setSelected] = useState<Record<string, SelectedComp | null>>({})
+  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string }>>({})
   const [mode, setMode] = useState<"catalog" | "custom">("catalog")
   const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [wantAssembly, setWantAssembly] = useState(true)
+
+  // Сохранение / шеринг
+  const [buildName, setBuildName] = useState("Моя сборка")
+  const [isPublic, setIsPublic] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveResult, setSaveResult] = useState<{ token: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [showSavePanel, setShowSavePanel] = useState(false)
+
   const { addItem, count } = useCart()
+  const { isAuthed, sessionId } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   useEffect(() => {
     api.configurator.getSlots().then(data => {
       setSlots(data.slots || {})
       setLoading(false)
     })
+
+    // Загрузка сборки по токену из URL
+    const token = searchParams.get("build")
+    if (token) {
+      api.auth.getBuildByToken(token).then(b => {
+        if (b?.components) {
+          const loaded: Record<string, SelectedComp | null> = {}
+          for (const c of b.components) {
+            if (c.slot) loaded[c.slot] = { ...c, qty: c.qty || 1 }
+          }
+          setSelected(loaded)
+          setBuildName(b.name || "Загруженная сборка")
+        }
+      }).catch(() => {})
+    }
   }, [])
 
-  const partsTotal = Object.values(selected).reduce((sum, c) => sum + (c?.price || 0), 0)
+  const partsTotal = Object.values(selected).reduce((sum, c) => sum + (c ? c.price * c.qty : 0), 0)
   const assemblyFee = wantAssembly ? Math.round(partsTotal * 0.07) : 0
   const total = partsTotal + assemblyFee
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
   const requiredSlots = Object.entries(SLOT_LABELS).filter(([, v]) => v.required).map(([k]) => k)
   const isComplete = requiredSlots.every(slot => selected[slot])
-
-  // Проверяем — все ли выбранные компоненты из нашего каталога
   const allFromCatalog = Object.values(selected).filter(Boolean).every(c => c?.source === "catalog")
   const hasComponents = Object.values(selected).some(Boolean)
 
   const addToCart = () => {
-    const components = Object.values(selected).filter(Boolean) as SelectedComponent[]
-    const names = components.map(c => c.name).join(", ").substring(0, 80)
-    addItem({
-      id: Date.now(),
-      name: `Сборка: ${names}`,
-      price: total,
-      type: "config",
-    })
+    const names = Object.values(selected).filter(Boolean).map(c => c!.name).join(", ").substring(0, 80)
+    addItem({ id: Date.now(), name: `Сборка: ${names}`, price: total, type: "config" })
     navigate("/cart")
   }
 
-  const selectFromCatalog = (slot: string, comp: Component) => {
-    setSelected(s => ({ ...s, [slot]: { slot, name: comp.name, price: comp.price, source: "catalog", source_id: comp.id } }))
+  const selectFromCatalog = (slot: string, comp: CatalogComp) => {
+    setSelected(s => ({ ...s, [slot]: { slot, name: comp.name, price: comp.price, qty: 1, source: "catalog", source_id: comp.id } }))
     setOpenSlot(null)
   }
 
   const applyCustom = (slot: string) => {
-    const input = customInputs[slot]
-    if (!input?.name || !input?.price) return
-    setSelected(s => ({ ...s, [slot]: { slot, name: input.name, price: parseFloat(input.price) || 0, source: "custom" } }))
+    const inp = customInputs[slot]
+    if (!inp?.name || !inp?.price) return
+    setSelected(s => ({ ...s, [slot]: { slot, name: inp.name, price: parseFloat(inp.price) || 0, qty: 1, link: inp.link || undefined, source: "custom" } }))
     setOpenSlot(null)
+  }
+
+  const updateQty = (slot: string, qty: number) => {
+    setSelected(s => s[slot] ? { ...s, [slot]: { ...s[slot]!, qty } } : s)
+  }
+
+  const saveBuild = async () => {
+    if (!isAuthed() || !sessionId) { navigate("/auth"); return }
+    setSaving(true)
+    const components = Object.values(selected).filter(Boolean) as SelectedComp[]
+    const res = await api.auth.saveUserBuild({ name: buildName, components, parts_total: partsTotal, assembly_fee: assemblyFee, total_price: total, is_public: isPublic }, sessionId)
+    setSaving(false)
+    if (res?.share_token) setSaveResult({ token: res.share_token })
+  }
+
+  const copyLink = () => {
+    if (!saveResult) return
+    navigator.clipboard.writeText(`${window.location.origin}/configurator?build=${saveResult.token}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
   }
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
+      {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
@@ -95,91 +167,77 @@ export default function Configurator() {
           </button>
           <nav className="hidden items-center gap-6 md:flex">
             <button onClick={() => navigate("/shop")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Каталог</button>
-            <button onClick={() => navigate("/configurator")} className="text-sm font-medium text-primary" style={{ cursor: "pointer" }}>Конфигуратор</button>
+            <button className="text-sm font-medium text-primary" style={{ cursor: "pointer" }}>Конфигуратор</button>
           </nav>
-          <button
-            onClick={() => navigate("/cart")}
-            className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="ShoppingCart" size={16} />
-            <span>Корзина</span>
-            {count() > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>
-            )}
-          </button>
+          <div className="flex items-center gap-3">
+            {isAuthed()
+              ? <button onClick={() => navigate("/profile")} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-sm text-foreground/70 hover:border-primary transition-colors" style={{ cursor: "pointer" }}><Icon name="User" size={15} /></button>
+              : <button onClick={() => navigate("/auth")} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-sm text-foreground/70 hover:border-primary transition-colors" style={{ cursor: "pointer" }}><Icon name="LogIn" size={15} /><span>Войти</span></button>
+            }
+            <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="ShoppingCart" size={16} />
+              <span>Корзина</span>
+              {count() > 0 && <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>}
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-8">
-          <h1 className="mb-2 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
-          <p className="text-sm text-foreground/60">Соберите конфиг из нашего каталога или укажите своё железо</p>
+        <div className="mb-6">
+          <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
+          <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
         </div>
 
         {/* Mode toggle */}
         <div className="mb-6 flex overflow-hidden rounded-xl border border-border">
-          <button
-            onClick={() => setMode("catalog")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="ShoppingBag" size={16} />
-            Из нашего каталога
+          <button onClick={() => setMode("catalog")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>
+            <Icon name="ShoppingBag" size={16} />Из нашего каталога
           </button>
-          <button
-            onClick={() => setMode("custom")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "custom" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="PenLine" size={16} />
-            Своё железо
+          <button onClick={() => setMode("custom")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "custom" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>
+            <Icon name="PenLine" size={16} />Своё железо
           </button>
         </div>
 
-        {/* Assembly offer banner */}
+        {/* Banner: всё из каталога → предложить сборку */}
         {mode === "custom" && hasComponents && allFromCatalog && (
-          <div className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-center gap-4">
+          <div className="mb-5 flex items-center gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
             <Icon name="Sparkles" size={20} className="text-primary shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-foreground">Все компоненты из нашего каталога!</p>
-              <p className="text-xs text-foreground/60">Мы можем собрать этот ПК за 7% от стоимости железа — {fmt(Math.round(partsTotal * 0.07))}</p>
+              <p className="text-sm font-medium text-foreground">Всё из нашего каталога!</p>
+              <p className="text-xs text-foreground/60">Соберём за вас — 7% от стоимости железа: {fmt(Math.round(partsTotal * 0.07))}</p>
             </div>
-            <button onClick={() => setWantAssembly(true)} className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
-              Добавить сборку
-            </button>
+            <button onClick={() => setWantAssembly(true)} className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground" style={{ cursor: "pointer" }}>Добавить сборку</button>
           </div>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
-          {/* Slots */}
+        <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+
+          {/* ── Slots ── */}
           <div className="space-y-3">
-            {loading ? (
-              [...Array(6)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)
-            ) : (
-              Object.entries(SLOT_LABELS).map(([slot, meta]) => {
+            {loading
+              ? [...Array(6)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-card animate-pulse" />)
+              : Object.entries(SLOT_LABELS).map(([slot, meta]) => {
                 const options = slots[slot] || []
                 const current = selected[slot]
                 const isOpen = openSlot === slot
-                const customInput = customInputs[slot] || { name: "", price: "" }
+                const ci = customInputs[slot] || { name: "", price: "", link: "" }
 
                 return (
-                  <div key={slot} className={`rounded-xl border bg-card transition-all ${current ? "border-primary/40" : "border-border"}`}>
+                  <div key={slot} className={`rounded-xl border bg-card transition-all duration-200 ${current ? "border-primary/40" : "border-border"}`}>
+
+                    {/* Slot header row */}
                     <div className="flex items-center gap-3 p-4">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${current ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${current ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
                         <Icon name={meta.icon as "Cpu"} size={16} />
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">{meta.label}</p>
-                        {current ? (
-                          <p className="text-xs text-foreground/50 truncate">{current.name} — {fmt(current.price)}</p>
-                        ) : (
-                          <p className="text-xs text-foreground/30">{meta.required ? "Обязательный" : "Необязательный"}</p>
-                        )}
+                        {!current && <p className="text-xs text-foreground/30">{meta.required ? "Обязательный" : "Необязательный"}</p>}
                       </div>
                       <div className="flex items-center gap-2">
                         {current && (
-                          <button onClick={() => setSelected(s => ({ ...s, [slot]: null }))} className="text-foreground/30 hover:text-foreground/60" style={{ cursor: "pointer" }}>
+                          <button onClick={() => setSelected(s => ({ ...s, [slot]: null }))} className="text-foreground/25 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
                             <Icon name="X" size={14} />
                           </button>
                         )}
@@ -193,54 +251,96 @@ export default function Configurator() {
                       </div>
                     </div>
 
+                    {/* Selected component: name + link + qty + line total */}
+                    {current && (
+                      <div className="border-t border-border/40 px-4 pb-4 pt-3">
+                        <div className="flex items-start gap-3">
+                          {/* Name + link */}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground leading-tight">{current.name}</p>
+                            {current.link && (
+                              <a href={current.link} target="_blank" rel="noopener noreferrer"
+                                className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                style={{ cursor: "pointer" }}
+                              >
+                                <Icon name="ExternalLink" size={11} />
+                                Ссылка на товар
+                              </a>
+                            )}
+                          </div>
+
+                          {/* Price → qty controls → line total */}
+                          <div className="flex shrink-0 items-center gap-3">
+                            <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
+                            <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
+                            <span className="w-24 text-right text-sm font-bold text-primary">
+                              {fmt(current.price * current.qty)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Picker panel */}
                     {isOpen && (
                       <div className="border-t border-border p-4">
                         {mode === "catalog" ? (
-                          options.length === 0 ? (
-                            <p className="text-xs text-foreground/40 text-center py-4">Нет доступных компонентов</p>
-                          ) : (
-                            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
-                              {options.map(opt => (
-                                <button
-                                  key={opt.id}
-                                  onClick={() => selectFromCatalog(slot, opt)}
-                                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left hover:border-primary transition-colors"
-                                  style={{ cursor: "pointer" }}
-                                >
-                                  <div className="min-w-0 mr-2">
-                                    <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
-                                    {opt.brand && <p className="text-xs text-foreground/40">{opt.brand}</p>}
-                                  </div>
-                                  <p className="shrink-0 text-xs font-bold text-accent">{fmt(opt.price)}</p>
-                                </button>
-                              ))}
-                            </div>
-                          )
+                          options.length === 0
+                            ? <p className="py-3 text-center text-xs text-foreground/40">Нет компонентов в каталоге</p>
+                            : (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {options.map(opt => (
+                                  <button key={opt.id} onClick={() => selectFromCatalog(slot, opt)}
+                                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left hover:border-primary transition-colors"
+                                    style={{ cursor: "pointer" }}
+                                  >
+                                    <div className="min-w-0 mr-2">
+                                      <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
+                                      {opt.brand && <p className="text-xs text-foreground/40">{opt.brand}</p>}
+                                      {Object.keys(opt.specs).length > 0 && (
+                                        <div className="mt-1 flex flex-wrap gap-1">
+                                          {Object.values(opt.specs).slice(0, 2).map((v, i) => (
+                                            <span key={i} className="rounded bg-muted px-1 py-px text-xs text-foreground/50">{v}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p className="shrink-0 text-xs font-bold text-accent">{fmt(opt.price)}</p>
+                                  </button>
+                                ))}
+                              </div>
+                            )
                         ) : (
-                          <div className="flex gap-3">
-                            <input
-                              type="text"
-                              placeholder="Название компонента"
-                              value={customInput.name}
-                              onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...customInput, name: e.target.value } }))}
-                              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                              style={{ cursor: "text" }}
-                            />
-                            <input
-                              type="number"
-                              placeholder="Цена ₽"
-                              value={customInput.price}
-                              onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...customInput, price: e.target.value } }))}
-                              className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                              style={{ cursor: "text" }}
-                            />
-                            <button
-                              onClick={() => applyCustom(slot)}
-                              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                              style={{ cursor: "pointer" }}
-                            >
-                              OK
-                            </button>
+                          /* Custom input */
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <input type="text" placeholder="Название компонента"
+                                value={ci.name}
+                                onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, name: e.target.value } }))}
+                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                                style={{ cursor: "text" }}
+                              />
+                              <input type="number" placeholder="Цена ₽"
+                                value={ci.price}
+                                onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, price: e.target.value } }))}
+                                className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                                style={{ cursor: "text" }}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <input type="url" placeholder="Ссылка на товар (необязательно)"
+                                value={ci.link}
+                                onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, link: e.target.value } }))}
+                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                                style={{ cursor: "text" }}
+                              />
+                              <button onClick={() => applyCustom(slot)}
+                                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                                style={{ cursor: "pointer" }}
+                              >
+                                OK
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -248,21 +348,26 @@ export default function Configurator() {
                   </div>
                 )
               })
-            )}
+            }
           </div>
 
-          {/* Summary */}
-          <div className="lg:sticky lg:top-24 h-fit">
-            <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="mb-4 text-lg font-medium text-foreground">Итого</h2>
+          {/* ── Summary panel ── */}
+          <div className="space-y-4 lg:sticky lg:top-24 h-fit">
+
+            {/* Totals card */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h2 className="mb-4 text-base font-medium text-foreground">Итого</h2>
 
               <div className="mb-4 space-y-2">
                 {Object.entries(SLOT_LABELS).map(([slot, meta]) => {
                   const c = selected[slot]
                   return (
                     <div key={slot} className="flex items-center justify-between text-sm">
-                      <span className="text-foreground/50">{meta.label}</span>
-                      <span className={c ? "text-foreground font-medium" : "text-foreground/20"}>{c ? fmt(c.price) : "—"}</span>
+                      <span className="text-foreground/50 truncate">{meta.label}</span>
+                      <span className={`ml-2 shrink-0 ${c ? "font-medium text-foreground" : "text-foreground/20"}`}>
+                        {c ? fmt(c.price * c.qty) : "—"}
+                        {c && c.qty > 1 && <span className="ml-1 text-xs text-foreground/40">×{c.qty}</span>}
+                      </span>
                     </div>
                   )
                 })}
@@ -270,9 +375,9 @@ export default function Configurator() {
 
               {/* Assembly toggle */}
               <div className="mb-4 border-t border-border pt-4">
-                <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Сборка от PCPRO</p>
+                    <p className="text-sm font-medium text-foreground">Сборка PCPRO</p>
                     <p className="text-xs text-foreground/50">7% от стоимости железа</p>
                   </div>
                   <button
@@ -280,26 +385,18 @@ export default function Configurator() {
                     className={`relative h-6 w-11 rounded-full transition-colors ${wantAssembly ? "bg-primary" : "bg-muted"}`}
                     style={{ cursor: "pointer" }}
                   >
-                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${wantAssembly ? "left-6" : "left-1"}`} />
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${wantAssembly ? "left-6" : "left-1"}`} />
                   </button>
-                </label>
+                </div>
                 {wantAssembly && partsTotal > 0 && (
                   <p className="mt-1 text-right text-xs text-primary">+ {fmt(assemblyFee)}</p>
                 )}
               </div>
 
-              <div className="mb-6 border-t border-border pt-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-foreground/70">Итого:</span>
-                  <span className="text-2xl font-bold text-foreground">{fmt(total)}</span>
-                </div>
+              <div className="mb-5 flex items-center justify-between border-t border-border pt-4">
+                <span className="text-foreground/70">Итого:</span>
+                <span className="text-2xl font-bold text-foreground">{fmt(total)}</span>
               </div>
-
-              {hasComponents && allFromCatalog && mode === "custom" && (
-                <div className="mb-3 rounded-lg bg-primary/10 border border-primary/20 p-3">
-                  <p className="text-xs text-primary font-medium">Всё железо из нашего каталога — мы соберём ПК за вас!</p>
-                </div>
-              )}
 
               <button
                 onClick={addToCart}
@@ -307,10 +404,125 @@ export default function Configurator() {
                 className="w-full rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
                 style={{ cursor: isComplete ? "pointer" : "not-allowed" }}
               >
-                {isComplete ? "Добавить в корзину" : "Выберите обязательные компоненты"}
+                {isComplete ? "Оформить заказ" : "Выберите обязательные компоненты"}
               </button>
-              <p className="mt-3 text-center text-xs text-foreground/40">Менеджер свяжется для подтверждения деталей</p>
+              <p className="mt-2 text-center text-xs text-foreground/40">Менеджер свяжется для подтверждения</p>
             </div>
+
+            {/* Save & Share card */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <button
+                onClick={() => setShowSavePanel(v => !v)}
+                className="flex w-full items-center justify-between"
+                style={{ cursor: "pointer" }}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon name="Save" size={16} className="text-foreground/60" />
+                  <span className="text-sm font-medium text-foreground">Сохранить и поделиться</span>
+                </div>
+                <Icon name={showSavePanel ? "ChevronUp" : "ChevronDown"} size={16} className="text-foreground/40" />
+              </button>
+
+              {showSavePanel && (
+                <div className="mt-4 space-y-3">
+                  {saveResult ? (
+                    /* После сохранения */
+                    <>
+                      <div className="flex items-center gap-2 rounded-lg bg-green-500/10 px-3 py-2.5">
+                        <Icon name="CheckCircle" size={15} className="text-green-400 shrink-0" />
+                        <p className="text-xs text-green-400 font-medium">Сборка сохранена!</p>
+                      </div>
+
+                      <button
+                        onClick={copyLink}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors"
+                        style={{ cursor: "pointer" }}
+                      >
+                        <Icon name={copied ? "Check" : "Link"} size={15} />
+                        {copied ? "Ссылка скопирована!" : "Скопировать ссылку"}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const url = `${window.location.origin}/configurator?build=${saveResult.token}`
+                          const text = `Смотри мою сборку на PCPRO: ${url}`
+                          if (navigator.share) {
+                            navigator.share({ title: buildName, text, url })
+                          } else {
+                            navigator.clipboard.writeText(text)
+                            setCopied(true)
+                            setTimeout(() => setCopied(false), 2500)
+                          }
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 border border-primary/20 py-2.5 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
+                        style={{ cursor: "pointer" }}
+                      >
+                        <Icon name="Share2" size={15} />
+                        Поделиться
+                      </button>
+
+                      <button
+                        onClick={() => { setSaveResult(null) }}
+                        className="w-full text-center text-xs text-foreground/40 hover:text-foreground/70 transition-colors"
+                        style={{ cursor: "pointer" }}
+                      >
+                        Сохранить ещё раз с другим названием
+                      </button>
+                    </>
+                  ) : (
+                    /* Форма сохранения */
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Название сборки</label>
+                        <input
+                          type="text"
+                          value={buildName}
+                          onChange={e => setBuildName(e.target.value)}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                          placeholder="Например: Игровой монстр 2024"
+                          style={{ cursor: "text" }}
+                        />
+                      </div>
+
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground/60">
+                        <input
+                          type="checkbox"
+                          checked={isPublic}
+                          onChange={e => setIsPublic(e.target.checked)}
+                          className="rounded border-border"
+                        />
+                        Показывать в сборках сообщества
+                      </label>
+
+                      <button
+                        onClick={saveBuild}
+                        disabled={saving || !hasComponents}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                        style={{ cursor: hasComponents ? "pointer" : "not-allowed" }}
+                      >
+                        <Icon name="Save" size={15} />
+                        {saving ? "Сохранение..." : isAuthed() ? "Сохранить" : "Войдите для сохранения"}
+                      </button>
+
+                      {!isAuthed() && (
+                        <button
+                          onClick={() => navigate("/auth")}
+                          className="w-full text-center text-xs text-primary hover:underline"
+                          style={{ cursor: "pointer" }}
+                        >
+                          Войти / Зарегистрироваться →
+                        </button>
+                      )}
+
+                      {!hasComponents && (
+                        <p className="text-center text-xs text-foreground/40">Добавьте компоненты для сохранения</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
