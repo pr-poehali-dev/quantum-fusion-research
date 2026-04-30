@@ -3,7 +3,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate } from "react-router-dom"
 
-const ADMIN_PASSWORD = "pcpro2024"
+const ADMIN_PASSWORD = "begraphics2024"
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new: { label: "Новый", color: "text-primary bg-primary/10" },
@@ -78,7 +78,7 @@ interface PCBuild {
 
 export default function Admin() {
   const navigate = useNavigate()
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem("pcpro_admin") === "1")
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
   const [tab, setTab] = useState<"orders" | "products" | "add_product" | "builds" | "add_build">("orders")
 
@@ -140,10 +140,10 @@ export default function Admin() {
   }, [authed, tab])
 
   const login = () => {
-    if (password === ADMIN_PASSWORD) { sessionStorage.setItem("pcpro_admin", "1"); setAuthed(true) }
+    if (password === ADMIN_PASSWORD) { sessionStorage.setItem("begraphics_admin", "1"); setAuthed(true) }
     else alert("Неверный пароль")
   }
-  const logout = () => { sessionStorage.removeItem("pcpro_admin"); setAuthed(false) }
+  const logout = () => { sessionStorage.removeItem("begraphics_admin"); setAuthed(false) }
 
   const updateStatus = async (id: number, status: string) => {
     await api.orders.updateStatus({ id, status })
@@ -238,9 +238,9 @@ export default function Admin() {
       <div className="flex min-h-screen items-center justify-center bg-background px-6" style={{ cursor: "auto" }}>
         <div className="w-full max-w-sm rounded-xl border border-border bg-card p-8">
           <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">P</div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">B</div>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">PCPRO Admin</h1>
+              <h1 className="text-lg font-semibold text-foreground">BeGraphics Admin</h1>
               <p className="text-xs text-foreground/40">Панель управления</p>
             </div>
           </div>
@@ -280,8 +280,8 @@ export default function Admin() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">P</div>
-            <span className="font-semibold text-foreground">Админ панель</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">B</div>
+            <span className="font-semibold text-foreground">BeGraphics Admin</span>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => navigate("/shop")} className="text-xs text-foreground/40 hover:text-foreground/70 transition-colors" style={{ cursor: "pointer" }}>На сайт</button>

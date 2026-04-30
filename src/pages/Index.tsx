@@ -9,6 +9,7 @@ import { MagneticButton } from "@/components/magnetic-button"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 
 export default function Index() {
   const navigate = useNavigate()
@@ -252,9 +253,9 @@ export default function Index() {
           className="flex items-center gap-2 transition-transform hover:scale-105"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground/15 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-foreground/25">
-            <span className="font-sans text-xl font-bold text-foreground">P</span>
+            <span className="font-sans text-xl font-bold text-foreground">B</span>
           </div>
-          <span className="font-sans text-xl font-semibold tracking-tight text-foreground">PCPRO</span>
+          <span className="font-sans text-xl font-semibold tracking-tight text-foreground">BeGraphics</span>
         </button>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -277,6 +278,7 @@ export default function Index() {
         </div>
 
         <div className="flex items-center gap-3">
+          <ThemeSwitcher />
           <MagneticButton variant="secondary" onClick={() => navigate("/shop")}>
             Каталог
           </MagneticButton>

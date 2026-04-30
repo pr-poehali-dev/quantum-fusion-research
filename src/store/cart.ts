@@ -44,6 +44,6 @@ export const useCart = create<CartStore>()(
       total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
       count: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
     }),
-    { name: "pcpro-cart" }
+    { name: "begraphics-cart" }
   )
 )

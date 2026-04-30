@@ -3,6 +3,7 @@ import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useNavigate, useSearchParams } from "react-router-dom"
 
 interface Product {
@@ -122,8 +123,8 @@ export default function Shop() {
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">P</div>
-          <span className="font-semibold text-lg text-foreground">PCPRO</span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
+          <span className="font-semibold text-lg text-foreground">BeGraphics</span>
         </button>
         <nav className="hidden items-center gap-6 md:flex">
           <button onClick={() => setShopTab("catalog")} className={`text-sm font-medium transition-colors ${shopTab === "catalog" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Каталог</button>
@@ -131,7 +132,8 @@ export default function Shop() {
           <button onClick={() => setShopTab("community")} className={`text-sm font-medium transition-colors ${shopTab === "community" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Сборки</button>
           <button onClick={() => navigate("/configurator")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Конфигуратор</button>
         </nav>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <ThemeSwitcher />
           {isAuthed() ? (
             <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
               <Icon name="User" size={15} />

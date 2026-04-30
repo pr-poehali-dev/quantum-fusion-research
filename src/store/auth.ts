@@ -24,6 +24,6 @@ export const useAuth = create<AuthStore>()(
       logout: () => set({ user: null, sessionId: null }),
       isAuthed: () => !!get().sessionId && !!get().user,
     }),
-    { name: "pcpro-auth" }
+    { name: "begraphics-auth" }
   )
 )

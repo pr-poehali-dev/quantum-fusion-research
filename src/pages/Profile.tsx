@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 
 interface UserBuild {
   id: number
@@ -59,18 +60,21 @@ export default function Profile() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">P</div>
-            <span className="font-semibold text-lg text-foreground">PCPRO</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
+            <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
           <nav className="hidden items-center gap-6 md:flex">
             <button onClick={() => navigate("/shop")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Каталог</button>
             <button onClick={() => navigate("/configurator")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Конфигуратор</button>
             <button onClick={() => navigate("/profile")} className="text-sm font-medium text-primary" style={{ cursor: "pointer" }}>Профиль</button>
           </nav>
-          <button onClick={handleLogout} className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="LogOut" size={15} />
-            Выйти
-          </button>
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            <button onClick={handleLogout} className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="LogOut" size={15} />
+              Выйти
+            </button>
+          </div>
         </div>
       </header>
 

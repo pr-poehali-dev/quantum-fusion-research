@@ -39,9 +39,9 @@ export default function AuthPage() {
 
         <div className="rounded-2xl border border-border bg-card p-8">
           <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">P</div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">PCPRO</h1>
+              <h1 className="text-lg font-semibold text-foreground">BeGraphics</h1>
               <p className="text-xs text-foreground/40">{mode === "login" ? "Войти в аккаунт" : "Создать аккаунт"}</p>
             </div>
           </div>
