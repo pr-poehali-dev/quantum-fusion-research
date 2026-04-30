@@ -18,16 +18,12 @@ export function hslToHex(hsl: string): string {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const { mode, getAccent } = useTheme()
+  const { mode, accentId, getAccent } = useTheme()
 
   useEffect(() => {
     const root = document.documentElement
     const accent = getAccent()
 
-    // Включаем плавный переход на всех CSS-переменных
-    root.style.setProperty("transition", "background-color 0.4s ease, color 0.4s ease")
-
-    // Светлая / тёмная тема
     if (mode === "light") {
       root.style.setProperty("--background", "0 0% 97%")
       root.style.setProperty("--foreground", "0 0% 8%")
@@ -62,11 +58,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.add("dark")
     }
 
-    // Акцентный цвет
     root.style.setProperty("--primary", accent.primary)
     root.style.setProperty("--accent", accent.accent)
     root.style.setProperty("--ring", accent.ring)
-  }, [mode, getAccent])
+  }, [mode, accentId]) // accentId явно в зависимостях — срабатывает при любом изменении цвета
 
   return <>{children}</>
 }
