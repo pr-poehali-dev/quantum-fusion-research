@@ -14,7 +14,9 @@ import { useTheme } from "@/store/theme"
 
 export default function Index() {
   const navigate = useNavigate()
-  const { mode, getShaderColors } = useTheme()
+  const { getShaderColors } = useTheme()
+  // На главной всегда тёмная тема — светлая игнорируется
+  const mode = "dark" as const
   const shaderColors = getShaderColors()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [currentSection, setCurrentSection] = useState(0)
@@ -184,7 +186,7 @@ export default function Index() {
   }, [currentSection])
 
   return (
-    <main className="custom-cursor-active relative h-screen w-full overflow-hidden bg-background">
+    <main className="custom-cursor-active dark relative h-screen w-full overflow-hidden" style={{ background: "#080808", color: "#f2f2f2" }}>
       <CustomCursor />
       <GrainOverlay />
 
