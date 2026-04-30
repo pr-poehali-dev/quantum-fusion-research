@@ -14,6 +14,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 const BUILD_STATUS: Record<string, string> = {
   catalog: "На сайте",
+  client: "Для клиента",
   archive: "Архив",
   draft: "Черновик",
 }
@@ -74,6 +75,8 @@ interface PCBuild {
   total_price: number
   status: string
   is_featured: boolean
+  client_token: string | null
+  client_user_id: number | null
 }
 
 export default function Admin() {
@@ -107,6 +110,17 @@ export default function Admin() {
     slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number
   }>>([])
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
+  const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
+
+  const generateClientLink = async (b: PCBuild) => {
+    const token = b.client_token || (await api.builds.generateClientLink(b.id)).client_token
+    if (!token) return
+    setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, client_token: token } : bb))
+    const url = `${window.location.origin}/build?token=${token}`
+    navigator.clipboard.writeText(url)
+    setCopiedBuildId(b.id)
+    setTimeout(() => setCopiedBuildId(null), 2500)
+  }
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
   const partsTotal = buildComponents.reduce((s, c) => s + c.price, 0)
@@ -508,9 +522,19 @@ export default function Admin() {
                         <span className="font-bold text-foreground">Итого: {fmt(b.total_price)}</span>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button onClick={() => editBuild(b)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                         <Icon name="Pencil" size={13} />Изменить
+                      </button>
+                      {/* Клиентская ссылка */}
+                      <button
+                        onClick={() => generateClientLink(b)}
+                        className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${b.client_token ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                        style={{ cursor: "pointer" }}
+                        title={b.client_token ? "Скопировать ссылку для клиента" : "Создать ссылку для клиента"}
+                      >
+                        <Icon name={copiedBuildId === b.id ? "Check" : "Link"} size={13} />
+                        {copiedBuildId === b.id ? "Скопировано!" : b.client_token ? "Ссылка клиента" : "Ссылка для клиента"}
                       </button>
                       <select
                         value={b.status}

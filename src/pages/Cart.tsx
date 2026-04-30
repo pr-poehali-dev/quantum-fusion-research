@@ -1,11 +1,13 @@
 import { useState } from "react"
 import { useCart } from "@/store/cart"
+import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate } from "react-router-dom"
 
 export default function Cart() {
   const { items, removeItem, updateQty, clearCart, total, count } = useCart()
+  const { sessionId } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: "", phone: "", email: "", comment: "" })
   const [submitting, setSubmitting] = useState(false)
@@ -17,7 +19,7 @@ export default function Cart() {
     e.preventDefault()
     if (!form.name || !form.phone) return
     setSubmitting(true)
-    await api.orders.create({
+    await api.orders.createWithSession({
       customer_name: form.name,
       customer_phone: form.phone,
       customer_email: form.email || undefined,
@@ -25,7 +27,7 @@ export default function Cart() {
       items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
       total: total(),
       comment: form.comment || undefined,
-    })
+    }, sessionId)
     clearCart()
     setSuccess(true)
     setSubmitting(false)
