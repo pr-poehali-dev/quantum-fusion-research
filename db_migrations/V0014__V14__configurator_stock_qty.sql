@@ -1,0 +1,1 @@
+ALTER TABLE configurator_components ADD COLUMN IF NOT EXISTS stock_qty INTEGER NOT NULL DEFAULT 0

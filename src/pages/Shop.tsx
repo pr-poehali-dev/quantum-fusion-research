@@ -467,24 +467,30 @@ function ProductCard({
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
       <button onClick={onOpen} className="relative aspect-video bg-muted flex items-center justify-center overflow-hidden" style={{ cursor: "pointer" }}>
-        {p.image_url ? (
-          <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
-        ) : (
-          <Icon name="Monitor" size={48} className="text-foreground/20" />
-        )}
-        {p.old_price && (
+        {/* Превью с 50% прозрачностью если нет в наличии */}
+        <div className={`h-full w-full flex items-center justify-center transition-opacity ${!p.in_stock ? "opacity-50" : ""}`}>
+          {p.image_url
+            ? <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
+            : <Icon name="Monitor" size={48} className="text-foreground/20" />
+          }
+        </div>
+        {p.old_price && p.in_stock && (
           <span className="absolute right-2 top-2 rounded bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">
             -{Math.round((1 - p.price / p.old_price) * 100)}%
           </span>
         )}
         {!p.in_stock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-            <span className="rounded bg-muted px-3 py-1 text-xs text-foreground/60">Нет в наличии</span>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="rounded-xl border border-foreground/20 bg-background/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-foreground/70 backdrop-blur-sm">
+              Out of Stock
+            </span>
           </div>
         )}
-        <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/40 transition-all">
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Подробнее</span>
-        </div>
+        {p.in_stock && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/40 transition-all">
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Подробнее</span>
+          </div>
+        )}
       </button>
       <div className="flex flex-col flex-1 p-4">
         {p.category && <span className="mb-1 text-xs text-foreground/40 font-mono">{p.category.name}</span>}
