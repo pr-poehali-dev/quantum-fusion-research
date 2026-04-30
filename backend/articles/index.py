@@ -1,0 +1,123 @@
+import json
+import os
+import re
+import psycopg2
+
+def get_conn():
+    return psycopg2.connect(os.environ["DATABASE_URL"])
+
+def slugify(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r'[а-яё]', lambda m: {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z',
+        'и':'i','й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+        'с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'sch',
+        'ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
+    }.get(m.group(), ''), text)
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    return text.strip('-')
+
+def handler(event: dict, context) -> dict:
+    """
+    Статьи и тесты.
+    GET  /            — список (params: category, limit, offset, published)
+    GET  /?id=N       — одна статья + инкремент просмотров
+    POST /            — создать
+    PUT  /            — обновить (body.id обязателен)
+    DELETE /?id=N     — удалить
+    """
+    cors = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+    if event.get("httpMethod") == "OPTIONS":
+        return {"statusCode": 200, "headers": cors, "body": ""}
+
+    method = event.get("httpMethod", "GET")
+    params = event.get("queryStringParameters") or {}
+    conn = get_conn()
+    cur = conn.cursor()
+
+    def row_to_article(row, full=False):
+        a = {
+            "id": row[0], "title": row[1], "slug": row[2],
+            "excerpt": row[3], "image_url": row[5],
+            "category": row[6], "tags": row[7] or [],
+            "is_published": row[8], "views": row[9],
+            "created_at": row[10].isoformat() if row[10] else None,
+            "updated_at": row[11].isoformat() if row[11] else None,
+        }
+        if full:
+            a["content"] = row[4]
+        return a
+
+    if method == "GET":
+        article_id = params.get("id")
+        if article_id:
+            cur.execute("UPDATE articles SET views = views + 1 WHERE id = %s", (article_id,))
+            conn.commit()
+            cur.execute(
+                "SELECT id, title, slug, excerpt, content, image_url, category, tags, is_published, views, created_at, updated_at FROM articles WHERE id = %s",
+                (article_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(row_to_article(row, full=True))}
+        else:
+            where = []
+            args = []
+            published = params.get("published")
+            if published == "true":
+                where.append("is_published = true")
+            category = params.get("category")
+            if category:
+                where.append("category = %s")
+                args.append(category)
+            where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+            limit = int(params.get("limit", 20))
+            offset = int(params.get("offset", 0))
+            cur.execute(
+                f"SELECT id, title, slug, excerpt, content, image_url, category, tags, is_published, views, created_at, updated_at FROM articles {where_sql} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                args + [limit, offset]
+            )
+            rows = cur.fetchall()
+            cur.execute(f"SELECT COUNT(*) FROM articles {where_sql}", args)
+            total = cur.fetchone()[0]
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"articles": [row_to_article(r) for r in rows], "total": total})}
+
+    elif method == "POST":
+        body = json.loads(event.get("body") or "{}")
+        slug = body.get("slug") or slugify(body["title"]) or f"article-{os.urandom(4).hex()}"
+        cur.execute(
+            """INSERT INTO articles (title, slug, excerpt, content, image_url, category, tags, is_published)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (body["title"], slug, body.get("excerpt"), body.get("content", ""),
+             body.get("image_url"), body.get("category", "article"),
+             body.get("tags", []), body.get("is_published", False))
+        )
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "slug": slug, "ok": True})}
+
+    elif method == "PUT":
+        body = json.loads(event.get("body") or "{}")
+        slug = body.get("slug") or slugify(body["title"])
+        cur.execute(
+            """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, image_url=%s,
+               category=%s, tags=%s, is_published=%s, updated_at=NOW() WHERE id=%s""",
+            (body["title"], slug, body.get("excerpt"), body.get("content", ""),
+             body.get("image_url"), body.get("category", "article"),
+             body.get("tags", []), body.get("is_published", False), body["id"])
+        )
+        conn.commit()
+        return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+    elif method == "DELETE":
+        article_id = params.get("id")
+        cur.execute("DELETE FROM articles WHERE id = %s", (article_id,))
+        conn.commit()
+        return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+    return {"statusCode": 405, "headers": cors, "body": json.dumps({"error": "Method not allowed"})}

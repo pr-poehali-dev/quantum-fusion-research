@@ -3,6 +3,7 @@ const URLS = {
   orders: "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745",
   builds: "https://functions.poehali.dev/1ac5a0d4-3c42-4a98-8f16-25e5deb5f7d0",
   auth: "https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3",
+  articles: "https://functions.poehali.dev/f13f1242-55c3-4265-9f6e-bb883371a574",
 }
 
 function authHeaders(session?: string | null) {
@@ -51,6 +52,16 @@ export const api = {
     patch: (data: unknown) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     generateClientLink: (id: number) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate_client_link", id }) }).then(r => r.json()),
     claimBuild: (clientToken: string, session: string) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json", "X-Session-Id": session }, body: JSON.stringify({ action: "claim", client_token: clientToken }) }).then(r => r.json()),
+  },
+  articles: {
+    getAll: (params?: Record<string, string>) => {
+      const qs = params ? "?" + new URLSearchParams(params).toString() : ""
+      return fetch(URLS.articles + qs).then(r => r.json())
+    },
+    getById: (id: number) => fetch(`${URLS.articles}?id=${id}`).then(r => r.json()),
+    create: (data: unknown) => fetch(URLS.articles, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: unknown) => fetch(URLS.articles, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.articles}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },
   auth: {
     register: (data: unknown) => fetch(`${URLS.auth}/register`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),

@@ -5,6 +5,7 @@ import { WorkSection } from "@/components/sections/work-section"
 import { ServicesSection } from "@/components/sections/services-section"
 import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
+import { ArticlesSection } from "@/components/sections/articles-section"
 import { MagneticButton } from "@/components/magnetic-button"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
@@ -129,7 +130,7 @@ export default function Index() {
       wheelLockRef.current = true
       setTimeout(() => { wheelLockRef.current = false }, 900)
 
-      if (e.deltaY > 0 && currentSection < 4) {
+      if (e.deltaY > 0 && currentSection < 5) {
         scrollToSection(currentSection + 1)
       } else if (e.deltaY < 0 && currentSection > 0) {
         scrollToSection(currentSection - 1)
@@ -162,7 +163,7 @@ export default function Index() {
         const scrollLeft = scrollContainerRef.current.scrollLeft
         const newSection = Math.round(scrollLeft / sectionWidth)
 
-        if (newSection !== currentSection && newSection >= 0 && newSection <= 4) {
+        if (newSection !== currentSection && newSection >= 0 && newSection <= 5) {
           setCurrentSection(newSection)
         }
 
@@ -276,7 +277,7 @@ export default function Index() {
         </button>
 
         <div className="hidden items-center gap-8 md:flex">
-          {["Главная", "Сборки", "Услуги", "О нас", "Контакты"].map((item, index) => (
+          {["Главная", "Сборки", "Услуги", "О нас", "Статьи", "Контакты"].map((item, index) => (
             <button
               key={item}
               onClick={() => scrollToSection(index)}
@@ -362,6 +363,7 @@ export default function Index() {
         <WorkSection />
         <ServicesSection />
         <AboutSection scrollToSection={scrollToSection} />
+        <ArticlesSection />
         <ContactSection />
       </div>
 

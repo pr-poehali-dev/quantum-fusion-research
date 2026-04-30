@@ -59,6 +59,11 @@ const SLOT_NAMES: Record<string, string> = {
   storage: "Накопитель", psu: "Блок питания", case: "Корпус", motherboard: "Материнская плата",
 }
 
+const SLOT_ICONS: Record<string, string> = {
+  cpu: "Cpu", gpu: "Monitor", ram: "MemoryStick", storage: "HardDrive",
+  psu: "Zap", case: "Package", motherboard: "CircuitBoard",
+}
+
 export default function Shop() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -654,62 +659,180 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
 }
 
 function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose: () => void; onOrder: () => void; fmt: (n: number) => string }) {
-  const [imgIdx, setImgIdx] = useState(0)
+  const [slideIdx, setSlideIdx] = useState(0)
+  const [animDir, setAnimDir] = useState<"left" | "right">("right")
+  const [animating, setAnimating] = useState(false)
+
+  // Слайды: общее описание + по одному на каждый компонент
+  const slides = [
+    { type: "overview" as const },
+    ...b.components.map((c, i) => ({ type: "component" as const, component: c, index: i })),
+    { type: "summary" as const },
+  ]
+  const total = slides.length
+
+  const goTo = (idx: number, dir: "left" | "right") => {
+    if (animating || idx === slideIdx) return
+    setAnimDir(dir)
+    setAnimating(true)
+    setTimeout(() => {
+      setSlideIdx(idx)
+      setAnimating(false)
+    }, 320)
+  }
+
+  const prev = () => { if (slideIdx > 0) goTo(slideIdx - 1, "left") }
+  const next = () => { if (slideIdx < total - 1) goTo(slideIdx + 1, "right") }
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") next()
+      else if (e.key === "ArrowLeft") prev()
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [slideIdx, animating])
+
+  const slide = slides[slideIdx]
   const images = b.image_urls || []
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ cursor: "auto" }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} style={{ cursor: "pointer" }} />
-      <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-card overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="relative aspect-video bg-gradient-to-br from-card to-muted flex items-center justify-center">
-          {images.length > 0 ? (
-            <>
-              <img src={images[imgIdx]} alt={b.name} className="h-full w-full object-cover" />
-              {images.length > 1 && (
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {images.map((_, i) => (
-                    <button key={i} onClick={() => setImgIdx(i)} className={`h-1.5 rounded-full transition-all ${i === imgIdx ? "w-6 bg-primary" : "w-1.5 bg-foreground/30"}`} style={{ cursor: "pointer" }} />
-                  ))}
+      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-card overflow-hidden" style={{ maxHeight: "90vh" }}>
+
+        {/* Слайд */}
+        <div
+          className="transition-all duration-300 ease-out"
+          style={{
+            opacity: animating ? 0 : 1,
+            transform: animating
+              ? `translateX(${animDir === "right" ? "32px" : "-32px"})`
+              : "translateX(0)",
+          }}
+        >
+          {slide.type === "overview" && (
+            <div>
+              <div className="relative aspect-video bg-gradient-to-br from-card to-muted flex items-center justify-center overflow-hidden">
+                {images.length > 0 ? (
+                  <img src={images[0]} alt={b.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <Icon name="Cpu" size={56} className="text-primary/30" />
+                    <span className="font-mono text-sm text-foreground/30">BeGraphics Build</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-5">
+                  <p className="font-mono text-xs text-foreground/50 uppercase tracking-wider mb-1">Готовая сборка</p>
+                  <h2 className="text-2xl font-medium text-white">{b.name}</h2>
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-3"><Icon name="Cpu" size={56} className="text-primary/30" /><span className="font-mono text-sm text-foreground/30">BeGraphics Build</span></div>
-          )}
-          <button onClick={onClose} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground/70 hover:text-foreground backdrop-blur" style={{ cursor: "pointer" }}>
-            <Icon name="X" size={16} />
-          </button>
-        </div>
-        <div className="p-6">
-          <h2 className="mb-2 text-2xl font-medium text-foreground">{b.name}</h2>
-          {b.description && <p className="mb-5 text-sm text-foreground/70 leading-relaxed">{b.description}</p>}
-          <h3 className="mb-3 font-mono text-xs text-foreground/40 uppercase tracking-wider">Состав и стоимость</h3>
-          <div className="mb-2 space-y-2 rounded-xl border border-border p-4">
-            {b.components.map((c, i) => (
-              <div key={i} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 text-xs text-foreground/40 font-mono w-24">{SLOT_NAMES[c.slot] || c.slot}</span>
-                  <span className="text-foreground/80 truncate">{c.name}</span>
-                </div>
-                <span className="ml-3 shrink-0 font-medium text-foreground">{fmt(c.current_price ?? c.price)}</span>
               </div>
+              <div className="p-6">
+                {b.description && <p className="text-sm text-foreground/70 leading-relaxed mb-4">{b.description}</p>}
+                <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-4 py-3">
+                  <span className="text-sm text-foreground/60">{b.components.length} компонентов</span>
+                  <span className="text-lg font-bold text-foreground">{fmt(b.total_price)}</span>
+                </div>
+                <p className="mt-3 text-center text-xs text-foreground/40">Листайте вправо, чтобы увидеть каждый компонент</p>
+              </div>
+            </div>
+          )}
+
+          {slide.type === "component" && (
+            <div>
+              <div className="relative aspect-video bg-gradient-to-br from-card to-muted flex items-center justify-center overflow-hidden">
+                {images[slide.index + 1] ? (
+                  <img src={images[slide.index + 1]} alt={slide.component.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <Icon name={SLOT_ICONS[slide.component.slot] || "Cpu"} size={64} className="text-primary/25" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-5">
+                  <p className="font-mono text-xs text-primary/80 uppercase tracking-wider mb-1">{SLOT_NAMES[slide.component.slot] || slide.component.slot}</p>
+                  <h3 className="text-xl font-medium text-white leading-snug">{slide.component.name}</h3>
+                </div>
+              </div>
+              <div className="p-6">
+                {slide.component.description && (
+                  <p className="text-sm text-foreground/70 leading-relaxed mb-4">{slide.component.description}</p>
+                )}
+                {!slide.component.description && (
+                  <p className="text-sm text-foreground/40 italic mb-4">Комплектующее уровня {SLOT_NAMES[slide.component.slot] || slide.component.slot}</p>
+                )}
+                <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <span className="text-sm text-foreground/60">Стоимость</span>
+                  <span className="text-xl font-bold text-primary">{fmt(slide.component.current_price ?? slide.component.price)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {slide.type === "summary" && (
+            <div className="p-6 pt-8">
+              <h3 className="mb-5 text-center text-lg font-medium text-foreground">Итоговая стоимость</h3>
+              <div className="mb-4 space-y-2 rounded-xl border border-border p-4">
+                {b.components.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="shrink-0 text-xs text-foreground/40 font-mono w-20">{SLOT_NAMES[c.slot] || c.slot}</span>
+                      <span className="text-foreground/70 truncate">{c.name}</span>
+                    </div>
+                    <span className="ml-2 shrink-0 text-foreground/80">{fmt(c.current_price ?? c.price)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mb-6 rounded-xl border border-border/50 bg-muted/30 p-4 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-foreground/60">Железо:</span>
+                  <span className="text-foreground">{fmt(b.parts_total)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-foreground/60">Сборка:</span>
+                  <span className="text-foreground">{fmt(b.assembly_fee)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-border pt-2">
+                  <span className="font-medium text-foreground">Итого:</span>
+                  <span className="text-xl font-bold text-foreground">{fmt(b.total_price)}</span>
+                </div>
+              </div>
+              <button onClick={onOrder} className="w-full rounded-xl bg-primary py-3.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>Заказать эту сборку</button>
+              <p className="mt-2 text-center text-xs text-foreground/40">После оформления менеджер свяжется для подтверждения</p>
+            </div>
+          )}
+        </div>
+
+        {/* Навигация */}
+        <div className="flex items-center justify-between border-t border-border px-5 py-3">
+          <button
+            onClick={prev}
+            disabled={slideIdx === 0}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/60 hover:border-primary hover:text-foreground disabled:opacity-20 transition-all"
+            style={{ cursor: slideIdx === 0 ? "default" : "pointer" }}
+          >
+            <Icon name="ChevronLeft" size={16} />
+          </button>
+
+          <div className="flex gap-1.5">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i, i > slideIdx ? "right" : "left")}
+                className={`rounded-full transition-all duration-300 ${i === slideIdx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/20 hover:bg-foreground/40"}`}
+                style={{ cursor: "pointer" }}
+              />
             ))}
           </div>
-          <div className="mb-6 rounded-xl border border-border/50 bg-muted/30 p-4 space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-foreground/60">Железо:</span>
-              <span className="text-foreground">{fmt(b.parts_total)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-foreground/60">Сборка (7%):</span>
-              <span className="text-foreground">{fmt(b.assembly_fee)}</span>
-            </div>
-            <div className="flex items-center justify-between border-t border-border pt-2">
-              <span className="font-medium text-foreground">Итого:</span>
-              <span className="text-xl font-bold text-foreground">{fmt(b.total_price)}</span>
-            </div>
-          </div>
-          <button onClick={onOrder} className="w-full rounded-xl bg-primary py-3.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>Заказать эту сборку</button>
-          <p className="mt-2 text-center text-xs text-foreground/40">После оформления менеджер свяжется для подтверждения</p>
+
+          <button
+            onClick={slideIdx === total - 1 ? onClose : next}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/60 hover:border-primary hover:text-foreground transition-all"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name={slideIdx === total - 1 ? "X" : "ChevronRight"} size={16} />
+          </button>
         </div>
       </div>
     </div>

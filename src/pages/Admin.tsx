@@ -79,18 +79,36 @@ interface PCBuild {
   client_user_id: number | null
 }
 
+interface Article {
+  id: number
+  title: string
+  slug: string
+  excerpt: string | null
+  image_url: string | null
+  category: string
+  is_published: boolean
+  views: number
+  created_at: string
+}
+
 export default function Admin() {
   const navigate = useNavigate()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
-  const [tab, setTab] = useState<"orders" | "products" | "add_product" | "builds" | "add_build">("orders")
+  const [tab, setTab] = useState<"orders" | "products" | "add_product" | "builds" | "add_build" | "articles" | "add_article">("orders")
 
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [configSlots, setConfigSlots] = useState<Record<string, ConfigComponent[]>>({})
   const [builds, setBuilds] = useState<PCBuild[]>([])
+  const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
+  const [articleForm, setArticleForm] = useState({
+    id: null as number | null,
+    title: "", slug: "", excerpt: "", content: "",
+    image_url: "", category: "article", is_published: false,
+  })
 
   const [productForm, setProductForm] = useState({
     id: null as number | null,
@@ -162,6 +180,8 @@ export default function Admin() {
         setBuilds(b)
         setLoading(false)
       })
+    } else if (tab === "articles" || tab === "add_article") {
+      api.articles.getAll().then(d => { setArticles(d.articles || []); setLoading(false) })
     }
   }, [authed, tab])
 
@@ -293,12 +313,50 @@ export default function Admin() {
     )
   }
 
+  const submitArticle = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const payload = {
+      id: articleForm.id,
+      title: articleForm.title,
+      slug: articleForm.slug,
+      excerpt: articleForm.excerpt || null,
+      content: articleForm.content,
+      image_url: articleForm.image_url || null,
+      category: articleForm.category,
+      is_published: articleForm.is_published,
+    }
+    if (articleForm.id) await api.articles.update(payload)
+    else await api.articles.create(payload)
+    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false })
+    setTab("articles")
+  }
+
+  const editArticle = (a: Article) => {
+    setArticleForm({
+      id: a.id, title: a.title, slug: a.slug,
+      excerpt: a.excerpt || "", content: "",
+      image_url: a.image_url || "", category: a.category, is_published: a.is_published,
+    })
+    api.articles.getById(a.id).then(full => {
+      setArticleForm(f => ({ ...f, content: full.content || "" }))
+    })
+    setTab("add_article")
+  }
+
+  const deleteArticle = async (id: number) => {
+    if (!confirm("Удалить статью?")) return
+    await api.articles.delete(id)
+    setArticles(as => as.filter(a => a.id !== id))
+  }
+
   const tabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "products", label: "Товары", icon: "Package" },
     { key: "add_product", label: productForm.id ? "Ред. товар" : "Добавить товар", icon: "PlusCircle" },
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
     { key: "add_build", label: buildForm.id ? "Ред. сборку" : "Новая сборка", icon: "Wrench" },
+    { key: "articles", label: "Статьи", icon: "BookOpen" },
+    { key: "add_article", label: articleForm.id ? "Ред. статью" : "Новая статья", icon: "FilePlus" },
   ]
 
   return (
@@ -730,6 +788,131 @@ export default function Admin() {
                   {buildForm.id ? "Сохранить" : "Опубликовать сборку"}
                 </button>
                 <button type="button" onClick={() => setTab("builds")}
+                  className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ── ARTICLES LIST ── */}
+        {tab === "articles" && (
+          <div>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
+              <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false }); setTab("add_article") }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={15} />Новая статья
+              </button>
+            </div>
+            {loading ? (
+              <p className="text-sm text-foreground/40">Загрузка...</p>
+            ) : articles.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-12 text-center">
+                <Icon name="BookOpen" size={32} className="mx-auto mb-3 text-foreground/20" />
+                <p className="text-sm text-foreground/40">Статей пока нет. Создайте первую!</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {articles.map(a => (
+                  <div key={a.id} className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 hover:border-primary/40 transition-colors">
+                    {a.image_url && (
+                      <img src={a.image_url} alt={a.title} className="h-14 w-20 rounded-lg object-cover shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.is_published ? "bg-green-400/10 text-green-400" : "bg-muted text-foreground/40"}`}>
+                          {a.is_published ? "Опубликована" : "Черновик"}
+                        </span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">
+                          {a.category === "review" ? "Обзор" : a.category === "test" ? "Тест" : "Статья"}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-foreground truncate">{a.title}</p>
+                      <p className="text-xs text-foreground/40">{new Date(a.created_at).toLocaleDateString("ru-RU")} · {a.views} просмотров</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => editArticle(a)} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                        Редакт.
+                      </button>
+                      <button onClick={() => deleteArticle(a.id)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/50 hover:border-red-400 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="Trash2" size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ADD / EDIT ARTICLE ── */}
+        {tab === "add_article" && (
+          <div>
+            <h2 className="mb-5 text-lg font-semibold text-foreground">{articleForm.id ? "Редактировать статью" : "Новая статья"}</h2>
+            <form onSubmit={submitArticle} className="space-y-4 max-w-3xl">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-foreground/60">Заголовок *</label>
+                  <input required value={articleForm.title}
+                    onChange={e => setArticleForm(f => ({ ...f, title: e.target.value }))}
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-foreground/60">Slug (URL)</label>
+                  <input value={articleForm.slug}
+                    onChange={e => setArticleForm(f => ({ ...f, slug: e.target.value }))}
+                    placeholder="auto-generated"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-foreground/60">Категория</label>
+                  <select value={articleForm.category}
+                    onChange={e => setArticleForm(f => ({ ...f, category: e.target.value }))}
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                    <option value="article">Статья</option>
+                    <option value="review">Обзор</option>
+                    <option value="test">Тест / Бенчмарк</option>
+                    <option value="guide">Гайд</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-foreground/60">URL изображения</label>
+                  <input value={articleForm.image_url}
+                    onChange={e => setArticleForm(f => ({ ...f, image_url: e.target.value }))}
+                    placeholder="https://..."
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/60">Краткое описание (превью)</label>
+                <textarea rows={2} value={articleForm.excerpt}
+                  onChange={e => setArticleForm(f => ({ ...f, excerpt: e.target.value }))}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/60">Текст статьи *</label>
+                <textarea required rows={16} value={articleForm.content}
+                  onChange={e => setArticleForm(f => ({ ...f, content: e.target.value }))}
+                  placeholder="Поддерживается Markdown: **жирный**, *курсив*, ## Заголовок, - список"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-y font-mono" style={{ cursor: "text" }} />
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="is_published" checked={articleForm.is_published}
+                  onChange={e => setArticleForm(f => ({ ...f, is_published: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border accent-primary" style={{ cursor: "pointer" }} />
+                <label htmlFor="is_published" className="text-sm text-foreground/70" style={{ cursor: "pointer" }}>
+                  Опубликовать (показывать на сайте)
+                </label>
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                  {articleForm.id ? "Сохранить" : "Создать статью"}
+                </button>
+                <button type="button" onClick={() => setTab("articles")}
                   className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                   Отмена
                 </button>
