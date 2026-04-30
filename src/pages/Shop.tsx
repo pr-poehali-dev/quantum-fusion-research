@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { CartToast } from "@/components/cart-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
 
 interface Product {
@@ -70,7 +71,15 @@ export default function Shop() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedBuild, setSelectedBuild] = useState<Build | null>(null)
   const [shopTab, setShopTab] = useState<"catalog" | "builds" | "community">("catalog")
-  const { addItem, count } = useCart()
+  const [catOpen, setCatOpen] = useState(false)
+
+  // Toast state
+  const [toastShow, setToastShow] = useState(false)
+  const [toastKey, setToastKey] = useState(0)
+  const [toastName, setToastName] = useState("")
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  const { addItem, updateQty, getItemQty, count } = useCart()
   const { isAuthed } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -86,6 +95,8 @@ export default function Shop() {
     const params: Record<string, string> = {}
     if (activeCategory !== "all") params.category = activeCategory
     if (search) params.search = search
+    // На главной (без фильтров) показываем только рекомендуемые
+    if (activeCategory === "all" && !search) params.featured = "true"
     api.products.getAll(params).then(data => {
       setProducts(data.products || [])
       setCategories(data.categories || [])
@@ -114,10 +125,38 @@ export default function Shop() {
   }, [])
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeModal() }
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { closeModal(); setCatOpen(false) } }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
   }, [closeModal])
+
+  // Воспроизведение звука и показ тоста
+  const showAddedToast = (name: string) => {
+    setToastName(name)
+    setToastShow(false)
+    clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => {
+      setToastKey(k => k + 1)
+      setToastShow(true)
+    }, 50)
+    // Звук
+    try {
+      const ctx = new AudioContext()
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.connect(g); g.connect(ctx.destination)
+      o.frequency.setValueAtTime(880, ctx.currentTime)
+      o.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1)
+      g.gain.setValueAtTime(0.15, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
+      o.start(); o.stop(ctx.currentTime + 0.3)
+    } catch { /* AudioContext недоступен */ }
+  }
+
+  const handleAddToCart = (p: Product) => {
+    addItem({ id: p.id, name: p.name, price: p.price, image_url: p.image_url, type: "product" })
+    showAddedToast(p.name)
+  }
 
   const ShopHeader = () => (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
@@ -157,6 +196,9 @@ export default function Shop() {
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
       <ShopHeader />
 
+      {/* Toast */}
+      <CartToast key={toastKey} show={toastShow} productName={toastName} />
+
       {/* Tab selector */}
       <div className="border-b border-border">
         <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto">
@@ -182,7 +224,23 @@ export default function Shop() {
         {/* CATALOG TAB */}
         {shopTab === "catalog" && (
           <>
-            <div className="mb-6 flex gap-4">
+            {/* Search + controls row */}
+            <div className="mb-6 flex gap-3">
+              {/* Кнопка категорий с 3 полосками */}
+              <div className="relative">
+                <button
+                  onClick={() => setCatOpen(v => !v)}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${catOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}
+                >
+                  <Icon name="AlignLeft" size={16} />
+                  <span className="hidden sm:inline">Категории</span>
+                  {activeCategory !== "all" && (
+                    <span className="flex h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </button>
+              </div>
+
               <div className="relative flex-1">
                 <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
                 <input
@@ -194,22 +252,69 @@ export default function Shop() {
                   style={{ cursor: "text" }}
                 />
               </div>
+
               <button
                 onClick={() => navigate("/configurator")}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary transition-colors"
                 style={{ cursor: "pointer" }}
               >
                 <Icon name="Cpu" size={16} />
-                Конфигуратор
+                <span className="hidden sm:inline">Конфигуратор</span>
               </button>
             </div>
 
-            <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
-              <CategoryBtn label="Все" active={activeCategory === "all"} onClick={() => setActiveCategory("all")} />
-              {categories.map(cat => (
-                <CategoryBtn key={cat.slug} label={cat.name} active={activeCategory === cat.slug} onClick={() => setActiveCategory(cat.slug)} />
-              ))}
+            {/* Выпадающий список категорий */}
+            <div
+              className="overflow-hidden transition-all duration-300 ease-in-out"
+              style={{
+                maxHeight: catOpen ? "500px" : "0px",
+                opacity: catOpen ? 1 : 0,
+                marginBottom: catOpen ? "24px" : "0px",
+              }}
+            >
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => { setActiveCategory("all"); setCatOpen(false) }}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${activeCategory === "all" ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Icon name="LayoutGrid" size={14} />
+                    Все товары
+                  </button>
+                  {categories.map(cat => (
+                    <button
+                      key={cat.slug}
+                      onClick={() => { setActiveCategory(cat.slug); setCatOpen(false) }}
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${activeCategory === cat.slug ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+
+            {/* Активная категория — бейджик */}
+            {activeCategory !== "all" && (
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-sm text-foreground/60">Категория:</span>
+                <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  {categories.find(c => c.slug === activeCategory)?.name || activeCategory}
+                  <button onClick={() => setActiveCategory("all")} className="ml-1" style={{ cursor: "pointer" }}>
+                    <Icon name="X" size={11} />
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {/* Подзаголовок */}
+            {activeCategory === "all" && !search && (
+              <p className="mb-4 text-sm text-foreground/50">
+                Показываем рекомендуемые товары. Выберите категорию или введите поиск для полного каталога.
+              </p>
+            )}
 
             {loading ? (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -223,7 +328,15 @@ export default function Shop() {
             ) : (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {products.map(p => (
-                  <ProductCard key={p.id} product={p} onOpen={() => setSelectedProduct(p)} onAddCart={() => addItem({ id: p.id, name: p.name, price: p.price, image_url: p.image_url, type: "product" })} fmt={fmt} />
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    onOpen={() => setSelectedProduct(p)}
+                    onAddCart={() => handleAddToCart(p)}
+                    onUpdateQty={(qty) => updateQty(p.id, qty)}
+                    cartQty={getItemQty(p.id, "product")}
+                    fmt={fmt}
+                  />
                 ))}
               </div>
             )}
@@ -235,7 +348,7 @@ export default function Shop() {
           <>
             <div className="mb-8">
               <h1 className="mb-2 text-3xl font-light text-foreground">Наши ПК</h1>
-              <p className="text-sm text-foreground/60">Готовые сборки от PCPRO с прозрачным составом и ценами</p>
+              <p className="text-sm text-foreground/60">Готовые сборки от BeGraphics с прозрачным составом и ценами</p>
             </div>
             {buildsLoading ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -266,7 +379,7 @@ export default function Shop() {
             <div className="mb-8 flex items-center justify-between">
               <div>
                 <h1 className="mb-2 text-3xl font-light text-foreground">Сборки сообщества</h1>
-                <p className="text-sm text-foreground/60">Конфигурации от пользователей PCPRO — вдохновляйтесь и копируйте</p>
+                <p className="text-sm text-foreground/60">Конфигурации от пользователей BeGraphics — вдохновляйтесь и копируйте</p>
               </div>
               <button
                 onClick={() => navigate(isAuthed() ? "/configurator" : "/auth")}
@@ -291,12 +404,7 @@ export default function Shop() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {communityBuilds.map(b => (
-                  <CommunityBuildCard
-                    key={b.id}
-                    build={b}
-                    fmt={fmt}
-                    onLoad={() => navigate(`/configurator?build=${b.share_token}`)}
-                  />
+                  <CommunityBuildCard key={b.id} build={b} fmt={fmt} onLoad={() => navigate(`/configurator?build=${b.share_token}`)} />
                 ))}
               </div>
             )}
@@ -306,30 +414,42 @@ export default function Shop() {
 
       {/* Product Modal */}
       {selectedProduct && (
-        <ProductModal product={selectedProduct} onClose={closeModal} onAddCart={() => { addItem({ id: selectedProduct.id, name: selectedProduct.name, price: selectedProduct.price, image_url: selectedProduct.image_url, type: "product" }); closeModal() }} fmt={fmt} />
+        <ProductModal
+          product={selectedProduct}
+          onClose={closeModal}
+          onAddCart={() => {
+            handleAddToCart(selectedProduct)
+            closeModal()
+          }}
+          fmt={fmt}
+        />
       )}
 
       {/* Build Modal */}
       {selectedBuild && (
-        <BuildModal build={selectedBuild} onClose={closeModal} onOrder={() => { addItem({ id: selectedBuild.id, name: selectedBuild.name, price: selectedBuild.total_price, type: "config" }); navigate("/cart") }} fmt={fmt} />
+        <BuildModal build={selectedBuild} onClose={closeModal} onOrder={() => {
+          addItem({ id: selectedBuild.id, name: selectedBuild.name, price: selectedBuild.total_price, type: "config" })
+          navigate("/cart")
+        }} fmt={fmt} />
       )}
+
+      {/* Backdrop для закрытия категорий */}
+      {catOpen && <div className="fixed inset-0 z-10" onClick={() => setCatOpen(false)} />}
     </div>
   )
 }
 
-function CategoryBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
-      style={{ cursor: "pointer" }}
-    >
-      {label}
-    </button>
-  )
-}
-
-function ProductCard({ product: p, onOpen, onAddCart, fmt }: { product: Product; onOpen: () => void; onAddCart: () => void; fmt: (n: number) => string }) {
+// ── ProductCard с кнопкой «в корзине» ──
+function ProductCard({
+  product: p, onOpen, onAddCart, onUpdateQty, cartQty, fmt
+}: {
+  product: Product
+  onOpen: () => void
+  onAddCart: () => void
+  onUpdateQty: (qty: number) => void
+  cartQty: number
+  fmt: (n: number) => string
+}) {
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
       <button onClick={onOpen} className="relative aspect-video bg-muted flex items-center justify-center overflow-hidden" style={{ cursor: "pointer" }}>
@@ -363,20 +483,45 @@ function ProductCard({ product: p, onOpen, onAddCart, fmt }: { product: Product;
             ))}
           </div>
         )}
-        <div className="mt-auto flex items-end justify-between">
+        <div className="mt-auto flex items-end justify-between gap-2">
           <div>
             <div className="text-lg font-bold text-foreground">{fmt(p.price)}</div>
             {p.old_price && <div className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</div>}
           </div>
-          <button
-            onClick={onAddCart}
-            disabled={!p.in_stock}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-            style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}
-          >
-            <Icon name="Plus" size={14} />
-            В корзину
-          </button>
+
+          {cartQty > 0 ? (
+            /* Кнопка «в корзине» с контролем количества */
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-xs font-medium text-green-400">в корзине</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onUpdateQty(cartQty - 1)}
+                  className="flex h-6 w-6 items-center justify-center rounded border border-border text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+                  style={{ cursor: "pointer" }}
+                >
+                  <Icon name="Minus" size={10} />
+                </button>
+                <span className="w-7 text-center text-xs font-bold text-foreground">{cartQty}шт</span>
+                <button
+                  onClick={onAddCart}
+                  className="flex h-6 w-6 items-center justify-center rounded border border-border text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+                  style={{ cursor: "pointer" }}
+                >
+                  <Icon name="Plus" size={10} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={onAddCart}
+              disabled={!p.in_stock}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+              style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}
+            >
+              <Icon name="Plus" size={14} />
+              В корзину
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -392,12 +537,10 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
         ) : (
           <div className="flex flex-col items-center gap-2">
             <Icon name="Cpu" size={40} className="text-primary/40" />
-            <span className="text-xs text-foreground/30 font-mono">PCPRO Build</span>
+            <span className="text-xs text-foreground/30 font-mono">BeGraphics Build</span>
           </div>
         )}
-        <div className="absolute top-2 right-2 rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">
-          Сборка
-        </div>
+        <div className="absolute top-2 right-2 rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">Сборка</div>
         <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/40 transition-all">
           <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Состав и цены</span>
         </div>
@@ -423,20 +566,8 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
             </div>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={onOpen}
-              className="flex-1 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors"
-              style={{ cursor: "pointer" }}
-            >
-              Подробнее
-            </button>
-            <button
-              onClick={onOrder}
-              className="flex-1 rounded-lg bg-primary py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-              style={{ cursor: "pointer" }}
-            >
-              Заказать
-            </button>
+            <button onClick={onOpen} className="flex-1 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Подробнее</button>
+            <button onClick={onOrder} className="flex-1 rounded-lg bg-primary py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>Заказать</button>
           </div>
         </div>
       </div>
@@ -447,12 +578,10 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
 function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Product; onClose: () => void; onAddCart: () => void; fmt: (n: number) => string }) {
   const [imgIdx, setImgIdx] = useState(0)
   const images = p.image_url ? [p.image_url] : []
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ cursor: "auto" }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} style={{ cursor: "pointer" }} />
       <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-card overflow-hidden max-h-[90vh] overflow-y-auto">
-        {/* Image area */}
         <div className="relative aspect-video bg-muted flex items-center justify-center">
           {images.length > 0 ? (
             <>
@@ -465,24 +594,16 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
                 </div>
               )}
             </>
-          ) : (
-            <Icon name="Monitor" size={64} className="text-foreground/15" />
-          )}
+          ) : <Icon name="Monitor" size={64} className="text-foreground/15" />}
           <button onClick={onClose} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground/70 hover:text-foreground backdrop-blur" style={{ cursor: "pointer" }}>
             <Icon name="X" size={16} />
           </button>
-          {p.old_price && (
-            <span className="absolute left-3 top-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground">
-              -{Math.round((1 - p.price / p.old_price) * 100)}%
-            </span>
-          )}
+          {p.old_price && <span className="absolute left-3 top-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground">-{Math.round((1 - p.price / p.old_price) * 100)}%</span>}
         </div>
-
         <div className="p-6">
           {p.category && <p className="mb-1 font-mono text-xs text-foreground/40">{p.category.name}</p>}
           <h2 className="mb-2 text-2xl font-medium text-foreground">{p.name}</h2>
           {p.description && <p className="mb-4 text-sm text-foreground/70 leading-relaxed">{p.description}</p>}
-
           {Object.keys(p.specs).length > 0 && (
             <div className="mb-6">
               <h3 className="mb-3 text-xs font-mono text-foreground/40 uppercase tracking-wider">Характеристики</h3>
@@ -496,18 +617,12 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
               </div>
             </div>
           )}
-
           <div className="flex items-end justify-between">
             <div>
               <div className="text-3xl font-bold text-foreground">{fmt(p.price)}</div>
               {p.old_price && <div className="text-sm text-foreground/40 line-through">{fmt(p.old_price)}</div>}
             </div>
-            <button
-              onClick={onAddCart}
-              disabled={!p.in_stock}
-              className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-              style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}
-            >
+            <button onClick={onAddCart} disabled={!p.in_stock} className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors" style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}>
               <Icon name="ShoppingCart" size={16} />
               {p.in_stock ? "В корзину" : "Нет в наличии"}
             </button>
@@ -521,7 +636,6 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
 function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose: () => void; onOrder: () => void; fmt: (n: number) => string }) {
   const [imgIdx, setImgIdx] = useState(0)
   const images = b.image_urls || []
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ cursor: "auto" }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} style={{ cursor: "pointer" }} />
@@ -539,20 +653,15 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center gap-3">
-              <Icon name="Cpu" size={56} className="text-primary/30" />
-              <span className="font-mono text-sm text-foreground/30">PCPRO Build</span>
-            </div>
+            <div className="flex flex-col items-center gap-3"><Icon name="Cpu" size={56} className="text-primary/30" /><span className="font-mono text-sm text-foreground/30">BeGraphics Build</span></div>
           )}
           <button onClick={onClose} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground/70 hover:text-foreground backdrop-blur" style={{ cursor: "pointer" }}>
             <Icon name="X" size={16} />
           </button>
         </div>
-
         <div className="p-6">
           <h2 className="mb-2 text-2xl font-medium text-foreground">{b.name}</h2>
           {b.description && <p className="mb-5 text-sm text-foreground/70 leading-relaxed">{b.description}</p>}
-
           <h3 className="mb-3 font-mono text-xs text-foreground/40 uppercase tracking-wider">Состав и стоимость</h3>
           <div className="mb-2 space-y-2 rounded-xl border border-border p-4">
             {b.components.map((c, i) => (
@@ -565,7 +674,6 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
               </div>
             ))}
           </div>
-
           <div className="mb-6 rounded-xl border border-border/50 bg-muted/30 p-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="text-foreground/60">Железо:</span>
@@ -580,14 +688,7 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
               <span className="text-xl font-bold text-foreground">{fmt(b.total_price)}</span>
             </div>
           </div>
-
-          <button
-            onClick={onOrder}
-            className="w-full rounded-xl bg-primary py-3.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            Заказать эту сборку
-          </button>
+          <button onClick={onOrder} className="w-full rounded-xl bg-primary py-3.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>Заказать эту сборку</button>
           <p className="mt-2 text-center text-xs text-foreground/40">После оформления менеджер свяжется для подтверждения</p>
         </div>
       </div>
@@ -606,7 +707,6 @@ function CommunityBuildCard({ build: b, fmt, onLoad }: { build: CommunityBuild; 
         </div>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{b.components.length} компонентов</span>
       </div>
-
       <div className="mb-4 space-y-1.5">
         {b.components.slice(0, 4).map((c, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
@@ -617,19 +717,12 @@ function CommunityBuildCard({ build: b, fmt, onLoad }: { build: CommunityBuild; 
         ))}
         {b.components.length > 4 && <p className="text-xs text-foreground/30 pl-10">+ ещё {b.components.length - 4}</p>}
       </div>
-
       <div className="mb-4 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-xs">
         <span className="text-foreground/50">Итого со сборкой</span>
         <span className="font-bold text-foreground">{fmt(b.total_price)}</span>
       </div>
-
-      <button
-        onClick={onLoad}
-        className="w-full flex items-center justify-center gap-2 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-primary transition-colors"
-        style={{ cursor: "pointer" }}
-      >
-        <Icon name="Copy" size={13} />
-        Открыть в конфигураторе
+      <button onClick={onLoad} className="w-full flex items-center justify-center gap-2 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+        <Icon name="Copy" size={13} />Открыть в конфигураторе
       </button>
     </div>
   )

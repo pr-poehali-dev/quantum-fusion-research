@@ -18,6 +18,7 @@ interface CartStore {
   clearCart: () => void
   total: () => number
   count: () => number
+  getItemQty: (id: number, type: "product" | "config") => number
 }
 
 export const useCart = create<CartStore>()(
@@ -43,6 +44,7 @@ export const useCart = create<CartStore>()(
       clearCart: () => set({ items: [] }),
       total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
       count: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
+      getItemQty: (id, type) => get().items.find(i => i.id === id && i.type === type)?.quantity ?? 0,
     }),
     { name: "begraphics-cart" }
   )
