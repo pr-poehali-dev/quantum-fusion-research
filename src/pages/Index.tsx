@@ -112,23 +112,21 @@ export default function Index() {
     }
   }, [currentSection])
 
+  const wheelLockRef = useRef(false)
+
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault()
+      e.preventDefault()
+      if (wheelLockRef.current) return
+      if (Math.abs(e.deltaY) < 10) return
 
-        if (!scrollContainerRef.current) return
+      wheelLockRef.current = true
+      setTimeout(() => { wheelLockRef.current = false }, 900)
 
-        scrollContainerRef.current.scrollBy({
-          left: e.deltaY,
-          behavior: "instant",
-        })
-
-        const sectionWidth = scrollContainerRef.current.offsetWidth
-        const newSection = Math.round(scrollContainerRef.current.scrollLeft / sectionWidth)
-        if (newSection !== currentSection) {
-          setCurrentSection(newSection)
-        }
+      if (e.deltaY > 0 && currentSection < 4) {
+        scrollToSection(currentSection + 1)
+      } else if (e.deltaY < 0 && currentSection > 0) {
+        scrollToSection(currentSection - 1)
       }
     }
 

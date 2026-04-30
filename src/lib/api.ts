@@ -3,6 +3,13 @@ const URLS = {
   orders: "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745",
   configurator: "https://functions.poehali.dev/a844a2c2-9cb6-4144-a1d9-51477c02c750",
   builds: "https://functions.poehali.dev/1ac5a0d4-3c42-4a98-8f16-25e5deb5f7d0",
+  auth: "https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3",
+}
+
+function authHeaders(session?: string | null) {
+  const h: Record<string, string> = { "Content-Type": "application/json" }
+  if (session) h["X-Session-Id"] = session
+  return h
 }
 
 export const api = {
@@ -38,5 +45,16 @@ export const api = {
     create: (data: unknown) => fetch(URLS.builds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.builds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+  },
+  auth: {
+    register: (data: unknown) => fetch(`${URLS.auth}/register`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
+    login: (data: unknown) => fetch(`${URLS.auth}/login`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
+    me: (session: string) => fetch(`${URLS.auth}/me`, { headers: authHeaders(session) }).then(r => r.json()),
+    logout: (session: string) => fetch(`${URLS.auth}/logout`, { method: "POST", headers: authHeaders(session) }).then(r => r.json()),
+    getBuilds: (session: string) => fetch(`${URLS.auth}/builds`, { headers: authHeaders(session) }).then(r => r.json()),
+    getCommunityBuilds: () => fetch(`${URLS.auth}/builds/community`).then(r => r.json()),
+    getBuildByToken: (token: string) => fetch(`${URLS.auth}/builds?token=${token}`).then(r => r.json()),
+    saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}/builds`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
+    updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}/builds`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
   },
 }
