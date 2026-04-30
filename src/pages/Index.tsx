@@ -6,18 +6,27 @@ import { ServicesSection } from "@/components/sections/services-section"
 import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
 import { MagneticButton } from "@/components/magnetic-button"
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import Icon from "@/components/ui/icon"
 
 export default function Index() {
   const navigate = useNavigate()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [currentSection, setCurrentSection] = useState(0)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [mouseIntensity, setMouseIntensity] = useState(0)
+  const mouseTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const touchStartY = useRef(0)
   const touchStartX = useRef(0)
   const shaderContainerRef = useRef<HTMLDivElement>(null)
   const scrollThrottleRef = useRef<number>()
+
+  const handleMouseMove = useCallback(() => {
+    setMouseIntensity(1)
+    clearTimeout(mouseTimerRef.current)
+    mouseTimerRef.current = setTimeout(() => setMouseIntensity(0), 2000)
+  }, [])
 
   useEffect(() => {
     const checkShaderReady = () => {
@@ -181,35 +190,36 @@ export default function Index() {
         ref={shaderContainerRef}
         className={`fixed inset-0 z-0 transition-opacity duration-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}
         style={{ contain: "strict" }}
+        onMouseMove={handleMouseMove}
       >
         <Shader className="h-full w-full">
           <Swirl
-            colorA="#cc1111"
-            colorB="#e05a10"
-            speed={0.8}
-            detail={0.8}
-            blend={50}
-            coarseX={40}
-            coarseY={40}
-            mediumX={40}
-            mediumY={40}
-            fineX={40}
-            fineY={40}
+            colorA="#0a0a0a"
+            colorB="#111111"
+            speed={0.3}
+            detail={0.4}
+            blend={80}
+            coarseX={20}
+            coarseY={20}
+            mediumX={20}
+            mediumY={20}
+            fineX={20}
+            fineY={20}
           />
           <ChromaFlow
             baseColor="#cc1111"
-            upColor="#cc1111"
-            downColor="#111111"
-            leftColor="#e05a10"
+            upColor="#e05a10"
+            downColor="#050505"
+            leftColor="#ff2200"
             rightColor="#e05a10"
-            intensity={0.9}
-            radius={1.8}
-            momentum={25}
+            intensity={mouseIntensity}
+            radius={2.2}
+            momentum={18}
             maskType="alpha"
-            opacity={0.97}
+            opacity={mouseIntensity > 0.5 ? 0.92 : 0.15}
           />
         </Shader>
-        <div className="absolute inset-0 bg-black/20" />
+        <div className={`absolute inset-0 transition-opacity duration-1000 ${mouseIntensity > 0.5 ? "opacity-0" : "opacity-100"}`} style={{ background: "radial-gradient(ellipse at center, #0d0d0d 0%, #050505 100%)" }} />
       </div>
 
       <nav
@@ -246,9 +256,18 @@ export default function Index() {
           ))}
         </div>
 
-        <MagneticButton variant="secondary" onClick={() => navigate("/shop")}>
-          Каталог
-        </MagneticButton>
+        <div className="flex items-center gap-3">
+          <MagneticButton variant="secondary" onClick={() => navigate("/shop")}>
+            Каталог
+          </MagneticButton>
+          <button
+            onClick={() => navigate("/admin")}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground/10 backdrop-blur-md transition-all hover:bg-foreground/20"
+            title="Панель управления"
+          >
+            <Icon name="Settings" size={16} className="text-foreground/60" />
+          </button>
+        </div>
       </nav>
 
       <div

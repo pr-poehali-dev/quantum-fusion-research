@@ -17,15 +17,28 @@ interface Component {
   id: number
   slot: string
   name: string
-  brand: string
+  brand?: string
   price: number
   specs: Record<string, string>
+  source: "catalog" | "custom"
+}
+
+interface SelectedComponent {
+  slot: string
+  name: string
+  price: number
+  source: "catalog" | "custom"
+  source_id?: number
 }
 
 export default function Configurator() {
   const [slots, setSlots] = useState<Record<string, Component[]>>({})
-  const [selected, setSelected] = useState<Record<string, Component | null>>({})
+  const [selected, setSelected] = useState<Record<string, SelectedComponent | null>>({})
+  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string }>>({})
+  const [mode, setMode] = useState<"catalog" | "custom">("catalog")
+  const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [wantAssembly, setWantAssembly] = useState(true)
   const { addItem, count } = useCart()
   const navigate = useNavigate()
 
@@ -36,27 +49,44 @@ export default function Configurator() {
     })
   }, [])
 
-  const total = Object.values(selected).reduce((sum, c) => sum + (c?.price || 0), 0)
+  const partsTotal = Object.values(selected).reduce((sum, c) => sum + (c?.price || 0), 0)
+  const assemblyFee = wantAssembly ? Math.round(partsTotal * 0.07) : 0
+  const total = partsTotal + assemblyFee
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
   const requiredSlots = Object.entries(SLOT_LABELS).filter(([, v]) => v.required).map(([k]) => k)
   const isComplete = requiredSlots.every(slot => selected[slot])
 
+  // Проверяем — все ли выбранные компоненты из нашего каталога
+  const allFromCatalog = Object.values(selected).filter(Boolean).every(c => c?.source === "catalog")
+  const hasComponents = Object.values(selected).some(Boolean)
+
   const addToCart = () => {
-    const components = Object.values(selected).filter(Boolean) as Component[]
-    const names = components.map(c => c.name).join(" + ")
+    const components = Object.values(selected).filter(Boolean) as SelectedComponent[]
+    const names = components.map(c => c.name).join(", ").substring(0, 80)
     addItem({
       id: Date.now(),
-      name: `Сборка: ${names.substring(0, 60)}...`,
+      name: `Сборка: ${names}`,
       price: total,
       type: "config",
     })
     navigate("/cart")
   }
 
+  const selectFromCatalog = (slot: string, comp: Component) => {
+    setSelected(s => ({ ...s, [slot]: { slot, name: comp.name, price: comp.price, source: "catalog", source_id: comp.id } }))
+    setOpenSlot(null)
+  }
+
+  const applyCustom = (slot: string) => {
+    const input = customInputs[slot]
+    if (!input?.name || !input?.price) return
+    setSelected(s => ({ ...s, [slot]: { slot, name: input.name, price: parseFloat(input.price) || 0, source: "custom" } }))
+    setOpenSlot(null)
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
-      {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
@@ -75,9 +105,7 @@ export default function Configurator() {
             <Icon name="ShoppingCart" size={16} />
             <span>Корзина</span>
             {count() > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">
-                {count()}
-              </span>
+              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>
             )}
           </button>
         </div>
@@ -86,63 +114,135 @@ export default function Configurator() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-8">
           <h1 className="mb-2 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
-          <p className="text-sm text-foreground/60">Выберите компоненты и соберите идеальный ПК</p>
+          <p className="text-sm text-foreground/60">Соберите конфиг из нашего каталога или укажите своё железо</p>
         </div>
+
+        {/* Mode toggle */}
+        <div className="mb-6 flex overflow-hidden rounded-xl border border-border">
+          <button
+            onClick={() => setMode("catalog")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="ShoppingBag" size={16} />
+            Из нашего каталога
+          </button>
+          <button
+            onClick={() => setMode("custom")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "custom" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="PenLine" size={16} />
+            Своё железо
+          </button>
+        </div>
+
+        {/* Assembly offer banner */}
+        {mode === "custom" && hasComponents && allFromCatalog && (
+          <div className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-center gap-4">
+            <Icon name="Sparkles" size={20} className="text-primary shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">Все компоненты из нашего каталога!</p>
+              <p className="text-xs text-foreground/60">Мы можем собрать этот ПК за 7% от стоимости железа — {fmt(Math.round(partsTotal * 0.07))}</p>
+            </div>
+            <button onClick={() => setWantAssembly(true)} className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
+              Добавить сборку
+            </button>
+          </div>
+        )}
 
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
           {/* Slots */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             {loading ? (
               [...Array(6)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)
             ) : (
               Object.entries(SLOT_LABELS).map(([slot, meta]) => {
                 const options = slots[slot] || []
                 const current = selected[slot]
+                const isOpen = openSlot === slot
+                const customInput = customInputs[slot] || { name: "", price: "" }
+
                 return (
-                  <div key={slot} className={`rounded-xl border bg-card p-5 transition-all ${current ? "border-primary/40" : "border-border"}`}>
-                    <div className="mb-3 flex items-center gap-3">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${current ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
+                  <div key={slot} className={`rounded-xl border bg-card transition-all ${current ? "border-primary/40" : "border-border"}`}>
+                    <div className="flex items-center gap-3 p-4">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${current ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
                         <Icon name={meta.icon as "Cpu"} size={16} />
                       </div>
-                      <div>
-                        <h3 className="text-sm font-medium text-foreground">{meta.label}</h3>
-                        {meta.required && !current && <p className="text-xs text-foreground/40">Обязательный компонент</p>}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{meta.label}</p>
+                        {current ? (
+                          <p className="text-xs text-foreground/50 truncate">{current.name} — {fmt(current.price)}</p>
+                        ) : (
+                          <p className="text-xs text-foreground/30">{meta.required ? "Обязательный" : "Необязательный"}</p>
+                        )}
                       </div>
-                      {current && (
+                      <div className="flex items-center gap-2">
+                        {current && (
+                          <button onClick={() => setSelected(s => ({ ...s, [slot]: null }))} className="text-foreground/30 hover:text-foreground/60" style={{ cursor: "pointer" }}>
+                            <Icon name="X" size={14} />
+                          </button>
+                        )}
                         <button
-                          onClick={() => setSelected(s => ({ ...s, [slot]: null }))}
-                          className="ml-auto text-xs text-foreground/40 hover:text-foreground transition-colors"
+                          onClick={() => setOpenSlot(isOpen ? null : slot)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${current ? "border-primary/30 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
                           style={{ cursor: "pointer" }}
                         >
-                          <Icon name="X" size={14} />
+                          {current ? "Заменить" : "Выбрать"}
                         </button>
-                      )}
+                      </div>
                     </div>
 
-                    {current ? (
-                      <div className="flex items-center justify-between rounded-lg bg-muted px-4 py-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{current.name}</p>
-                          <p className="text-xs text-foreground/50">{current.brand}</p>
-                        </div>
-                        <p className="text-sm font-bold text-primary">{fmt(current.price)}</p>
-                      </div>
-                    ) : (
-                      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
-                        {options.slice(0, 6).map(opt => (
-                          <button
-                            key={opt.id}
-                            onClick={() => setSelected(s => ({ ...s, [slot]: opt }))}
-                            className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left hover:border-primary transition-colors group"
-                            style={{ cursor: "pointer" }}
-                          >
-                            <div className="min-w-0 mr-2">
-                              <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
-                              <p className="text-xs text-foreground/40">{opt.brand}</p>
+                    {isOpen && (
+                      <div className="border-t border-border p-4">
+                        {mode === "catalog" ? (
+                          options.length === 0 ? (
+                            <p className="text-xs text-foreground/40 text-center py-4">Нет доступных компонентов</p>
+                          ) : (
+                            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+                              {options.map(opt => (
+                                <button
+                                  key={opt.id}
+                                  onClick={() => selectFromCatalog(slot, opt)}
+                                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left hover:border-primary transition-colors"
+                                  style={{ cursor: "pointer" }}
+                                >
+                                  <div className="min-w-0 mr-2">
+                                    <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
+                                    {opt.brand && <p className="text-xs text-foreground/40">{opt.brand}</p>}
+                                  </div>
+                                  <p className="shrink-0 text-xs font-bold text-accent">{fmt(opt.price)}</p>
+                                </button>
+                              ))}
                             </div>
-                            <p className="shrink-0 text-xs font-bold text-accent">{fmt(opt.price)}</p>
-                          </button>
-                        ))}
+                          )
+                        ) : (
+                          <div className="flex gap-3">
+                            <input
+                              type="text"
+                              placeholder="Название компонента"
+                              value={customInput.name}
+                              onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...customInput, name: e.target.value } }))}
+                              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                              style={{ cursor: "text" }}
+                            />
+                            <input
+                              type="number"
+                              placeholder="Цена ₽"
+                              value={customInput.price}
+                              onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...customInput, price: e.target.value } }))}
+                              className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                              style={{ cursor: "text" }}
+                            />
+                            <button
+                              onClick={() => applyCustom(slot)}
+                              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                              style={{ cursor: "pointer" }}
+                            >
+                              OK
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -155,25 +255,52 @@ export default function Configurator() {
           <div className="lg:sticky lg:top-24 h-fit">
             <div className="rounded-xl border border-border bg-card p-6">
               <h2 className="mb-4 text-lg font-medium text-foreground">Итого</h2>
+
               <div className="mb-4 space-y-2">
                 {Object.entries(SLOT_LABELS).map(([slot, meta]) => {
                   const c = selected[slot]
                   return (
                     <div key={slot} className="flex items-center justify-between text-sm">
                       <span className="text-foreground/50">{meta.label}</span>
-                      <span className={c ? "text-foreground font-medium" : "text-foreground/20"}>
-                        {c ? fmt(c.price) : "—"}
-                      </span>
+                      <span className={c ? "text-foreground font-medium" : "text-foreground/20"}>{c ? fmt(c.price) : "—"}</span>
                     </div>
                   )
                 })}
               </div>
+
+              {/* Assembly toggle */}
+              <div className="mb-4 border-t border-border pt-4">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Сборка от PCPRO</p>
+                    <p className="text-xs text-foreground/50">7% от стоимости железа</p>
+                  </div>
+                  <button
+                    onClick={() => setWantAssembly(w => !w)}
+                    className={`relative h-6 w-11 rounded-full transition-colors ${wantAssembly ? "bg-primary" : "bg-muted"}`}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${wantAssembly ? "left-6" : "left-1"}`} />
+                  </button>
+                </label>
+                {wantAssembly && partsTotal > 0 && (
+                  <p className="mt-1 text-right text-xs text-primary">+ {fmt(assemblyFee)}</p>
+                )}
+              </div>
+
               <div className="mb-6 border-t border-border pt-4">
                 <div className="flex items-center justify-between">
                   <span className="text-foreground/70">Итого:</span>
                   <span className="text-2xl font-bold text-foreground">{fmt(total)}</span>
                 </div>
               </div>
+
+              {hasComponents && allFromCatalog && mode === "custom" && (
+                <div className="mb-3 rounded-lg bg-primary/10 border border-primary/20 p-3">
+                  <p className="text-xs text-primary font-medium">Всё железо из нашего каталога — мы соберём ПК за вас!</p>
+                </div>
+              )}
+
               <button
                 onClick={addToCart}
                 disabled={!isComplete}
@@ -182,9 +309,7 @@ export default function Configurator() {
               >
                 {isComplete ? "Добавить в корзину" : "Выберите обязательные компоненты"}
               </button>
-              <p className="mt-3 text-center text-xs text-foreground/40">
-                После оформления менеджер свяжется для подтверждения
-              </p>
+              <p className="mt-3 text-center text-xs text-foreground/40">Менеджер свяжется для подтверждения деталей</p>
             </div>
           </div>
         </div>
