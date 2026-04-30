@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
 import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
@@ -72,6 +73,16 @@ export default function Shop() {
   const [selectedBuild, setSelectedBuild] = useState<Build | null>(null)
   const [shopTab, setShopTab] = useState<"catalog" | "builds" | "community">("catalog")
   const [catOpen, setCatOpen] = useState(false)
+  const catBtnRef = useRef<HTMLButtonElement>(null)
+  const [catPos, setCatPos] = useState({ top: 0, left: 0 })
+
+  const openCat = () => {
+    if (catBtnRef.current) {
+      const r = catBtnRef.current.getBoundingClientRect()
+      setCatPos({ top: r.bottom + 6, left: r.left })
+    }
+    setCatOpen(v => !v)
+  }
 
   // Toast state
   const [toastShow, setToastShow] = useState(false)
@@ -226,20 +237,17 @@ export default function Shop() {
           <>
             {/* Search + controls row */}
             <div className="mb-6 flex gap-3">
-              {/* Кнопка категорий с 3 полосками */}
-              <div className="relative">
-                <button
-                  onClick={() => setCatOpen(v => !v)}
-                  className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${catOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
-                  style={{ cursor: "pointer" }}
-                >
-                  <Icon name="AlignLeft" size={16} />
-                  <span className="hidden sm:inline">Категории</span>
-                  {activeCategory !== "all" && (
-                    <span className="flex h-2 w-2 rounded-full bg-primary" />
-                  )}
-                </button>
-              </div>
+              {/* Кнопка категорий */}
+              <button
+                ref={catBtnRef}
+                onClick={openCat}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${catOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}
+              >
+                <Icon name="AlignLeft" size={16} />
+                <span className="hidden sm:inline">Категории</span>
+                {activeCategory !== "all" && <span className="h-2 w-2 rounded-full bg-primary" />}
+              </button>
 
               <div className="relative flex-1">
                 <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
@@ -263,38 +271,45 @@ export default function Shop() {
               </button>
             </div>
 
-            {/* Выпадающий список категорий */}
-            <div
-              className="overflow-hidden transition-all duration-300 ease-in-out"
-              style={{
-                maxHeight: catOpen ? "500px" : "0px",
-                opacity: catOpen ? 1 : 0,
-                marginBottom: catOpen ? "24px" : "0px",
-              }}
-            >
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => { setActiveCategory("all"); setCatOpen(false) }}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${activeCategory === "all" ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <Icon name="LayoutGrid" size={14} />
-                    Все товары
-                  </button>
-                  {categories.map(cat => (
+            {/* Дропдаун категорий через portal — левее поля, z-50 */}
+            {catOpen && createPortal(
+              <>
+                <div
+                  className="fixed inset-0 z-[998]"
+                  onClick={() => setCatOpen(false)}
+                  style={{ cursor: "auto" }}
+                />
+                <div
+                  className="fixed z-[999] w-80 rounded-2xl border border-border bg-card p-4 shadow-2xl"
+                  style={{ top: catPos.top, left: catPos.left, cursor: "auto" }}
+                >
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-foreground/40">Категории</p>
+                  <div className="flex flex-col gap-1">
                     <button
-                      key={cat.slug}
-                      onClick={() => { setActiveCategory(cat.slug); setCatOpen(false) }}
-                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${activeCategory === cat.slug ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                      onClick={() => { setActiveCategory("all"); setCatOpen(false) }}
+                      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${activeCategory === "all" ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
                       style={{ cursor: "pointer" }}
                     >
-                      {cat.name}
+                      <Icon name="LayoutGrid" size={15} />
+                      Все товары
+                      {activeCategory === "all" && <Icon name="Check" size={13} className="ml-auto" />}
                     </button>
-                  ))}
+                    {categories.map(cat => (
+                      <button
+                        key={cat.slug}
+                        onClick={() => { setActiveCategory(cat.slug); setCatOpen(false) }}
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${activeCategory === cat.slug ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {cat.name}
+                        {activeCategory === cat.slug && <Icon name="Check" size={13} className="ml-auto" />}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>,
+              document.body
+            )}
 
             {/* Активная категория — бейджик */}
             {activeCategory !== "all" && (
@@ -433,8 +448,7 @@ export default function Shop() {
         }} fmt={fmt} />
       )}
 
-      {/* Backdrop для закрытия категорий */}
-      {catOpen && <div className="fixed inset-0 z-10" onClick={() => setCatOpen(false)} />}
+
     </div>
   )
 }
