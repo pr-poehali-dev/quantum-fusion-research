@@ -7,8 +7,10 @@ import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
 import { MagneticButton } from "@/components/magnetic-button"
 import { useRef, useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 export default function Index() {
+  const navigate = useNavigate()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [currentSection, setCurrentSection] = useState(0)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -182,8 +184,8 @@ export default function Index() {
       >
         <Shader className="h-full w-full">
           <Swirl
-            colorA="#1275d8"
-            colorB="#e19136"
+            colorA="#cc1111"
+            colorB="#e05a10"
             speed={0.8}
             detail={0.8}
             blend={50}
@@ -195,11 +197,11 @@ export default function Index() {
             fineY={40}
           />
           <ChromaFlow
-            baseColor="#0066ff"
-            upColor="#0066ff"
-            downColor="#d1d1d1"
-            leftColor="#e19136"
-            rightColor="#e19136"
+            baseColor="#cc1111"
+            upColor="#cc1111"
+            downColor="#111111"
+            leftColor="#e05a10"
+            rightColor="#e05a10"
             intensity={0.9}
             radius={1.8}
             momentum={25}
@@ -244,8 +246,8 @@ export default function Index() {
           ))}
         </div>
 
-        <MagneticButton variant="secondary" onClick={() => scrollToSection(4)}>
-          Заказать ПК
+        <MagneticButton variant="secondary" onClick={() => navigate("/shop")}>
+          Каталог
         </MagneticButton>
       </nav>
 
@@ -279,12 +281,12 @@ export default function Index() {
               <MagneticButton
                 size="lg"
                 variant="primary"
-                onClick={() => scrollToSection(4)}
+                onClick={() => navigate("/shop")}
               >
-                Заказать сборку
+                Открыть каталог
               </MagneticButton>
-              <MagneticButton size="lg" variant="secondary" onClick={() => scrollToSection(2)}>
-                Наши услуги
+              <MagneticButton size="lg" variant="secondary" onClick={() => navigate("/configurator")}>
+                Конфигуратор ПК
               </MagneticButton>
             </div>
           </div>

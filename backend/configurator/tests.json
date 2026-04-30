@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get configurator slots",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"slots": {}},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
