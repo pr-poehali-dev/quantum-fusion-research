@@ -182,44 +182,66 @@ export default function Index() {
   }, [currentSection])
 
   return (
-    <main className="relative h-screen w-full overflow-hidden bg-background">
+    <main className="custom-cursor-active relative h-screen w-full overflow-hidden bg-background">
       <CustomCursor />
       <GrainOverlay />
 
+      {/* Фон: слои снизу вверх */}
       <div
         ref={shaderContainerRef}
         className={`fixed inset-0 z-0 transition-opacity duration-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}
         style={{ contain: "strict" }}
         onMouseMove={handleMouseMove}
       >
-        <Shader className="h-full w-full">
+        {/* 1. Базовый чёрный фон */}
+        <div className="absolute inset-0" style={{ background: "#080808" }} />
+
+        {/* 2. WebGL-шейдер с красными тонами */}
+        <Shader className="absolute inset-0 h-full w-full">
           <Swirl
-            colorA="#0a0a0a"
-            colorB="#111111"
-            speed={0.3}
-            detail={0.4}
-            blend={80}
-            coarseX={20}
-            coarseY={20}
-            mediumX={20}
-            mediumY={20}
-            fineX={20}
-            fineY={20}
+            colorA="#200000"
+            colorB="#3a0000"
+            speed={0.5}
+            detail={0.6}
+            blend={55}
+            coarseX={45}
+            coarseY={45}
+            mediumX={45}
+            mediumY={45}
+            fineX={45}
+            fineY={45}
           />
           <ChromaFlow
-            baseColor="#cc1111"
-            upColor="#e05a10"
-            downColor="#050505"
-            leftColor="#ff2200"
-            rightColor="#e05a10"
-            intensity={mouseIntensity}
-            radius={2.2}
-            momentum={18}
+            baseColor="#cc0000"
+            upColor="#dd2200"
+            downColor="#080000"
+            leftColor="#ff1100"
+            rightColor="#cc3300"
+            intensity={0.7}
+            radius={1.9}
+            momentum={22}
             maskType="alpha"
-            opacity={mouseIntensity > 0.5 ? 0.92 : 0.15}
+            opacity={0.8}
           />
         </Shader>
-        <div className={`absolute inset-0 transition-opacity duration-1000 ${mouseIntensity > 0.5 ? "opacity-0" : "opacity-100"}`} style={{ background: "radial-gradient(ellipse at center, #0d0d0d 0%, #050505 100%)" }} />
+
+        {/* 3. Статичный красный акцент в центре */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "radial-gradient(ellipse 90% 70% at 50% 45%, rgba(160,0,0,0.30) 0%, rgba(80,0,0,0.12) 55%, transparent 100%)",
+          }}
+        />
+
+        {/* 4. Огненный всплеск при движении мыши (поверх всего) */}
+        <div
+          className="absolute inset-0 transition-opacity duration-300"
+          style={{
+            opacity: mouseIntensity,
+            background: "radial-gradient(ellipse 75% 55% at 50% 45%, rgba(230,40,0,0.55) 0%, rgba(180,20,0,0.25) 45%, transparent 80%)",
+            mixBlendMode: "screen",
+          }}
+        />
       </div>
 
       <nav

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useCart } from "@/store/cart"
+import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate, useSearchParams } from "react-router-dom"
@@ -38,6 +39,18 @@ interface Build {
   is_featured: boolean
 }
 
+interface CommunityBuild {
+  id: number
+  name: string
+  username: string
+  components: Array<{ slot: string; name: string; price: number; qty: number }>
+  parts_total: number
+  assembly_fee: number
+  total_price: number
+  share_token: string
+  created_at: string
+}
+
 const SLOT_NAMES: Record<string, string> = {
   cpu: "Процессор", gpu: "Видеокарта", ram: "Оперативная память",
   storage: "Накопитель", psu: "Блок питания", case: "Корпус", motherboard: "Материнская плата",
@@ -47,19 +60,24 @@ export default function Shop() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [builds, setBuilds] = useState<Build[]>([])
+  const [communityBuilds, setCommunityBuilds] = useState<CommunityBuild[]>([])
   const [activeCategory, setActiveCategory] = useState<string>("all")
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [buildsLoading, setBuildsLoading] = useState(true)
+  const [communityLoading, setCommunityLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedBuild, setSelectedBuild] = useState<Build | null>(null)
-  const [shopTab, setShopTab] = useState<"catalog" | "builds">("catalog")
+  const [shopTab, setShopTab] = useState<"catalog" | "builds" | "community">("catalog")
   const { addItem, count } = useCart()
+  const { isAuthed } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   useEffect(() => {
-    if (searchParams.get("build")) setShopTab("builds")
+    const tab = searchParams.get("tab")
+    if (tab === "community") setShopTab("community")
+    else if (searchParams.get("build")) setShopTab("builds")
   }, [searchParams])
 
   useEffect(() => {
@@ -79,6 +97,11 @@ export default function Shop() {
     api.builds.getAll({ status: "catalog" }).then(data => {
       setBuilds(data.builds || [])
       setBuildsLoading(false)
+    })
+    setCommunityLoading(true)
+    api.auth.getCommunityBuilds().then(data => {
+      setCommunityBuilds(data.builds || [])
+      setCommunityLoading(false)
     })
   }, [])
 
@@ -103,37 +126,27 @@ export default function Shop() {
           <span className="font-semibold text-lg text-foreground">PCPRO</span>
         </button>
         <nav className="hidden items-center gap-6 md:flex">
-          <button
-            onClick={() => { setShopTab("catalog") }}
-            className={`text-sm font-medium transition-colors ${shopTab === "catalog" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}
-          >
-            Каталог
-          </button>
-          <button
-            onClick={() => setShopTab("builds")}
-            className={`text-sm font-medium transition-colors ${shopTab === "builds" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}
-          >
-            Наши ПК
-          </button>
-          <button onClick={() => navigate("/configurator")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            Конфигуратор
-          </button>
+          <button onClick={() => setShopTab("catalog")} className={`text-sm font-medium transition-colors ${shopTab === "catalog" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Каталог</button>
+          <button onClick={() => setShopTab("builds")} className={`text-sm font-medium transition-colors ${shopTab === "builds" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Наши ПК</button>
+          <button onClick={() => setShopTab("community")} className={`text-sm font-medium transition-colors ${shopTab === "community" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Сборки</button>
+          <button onClick={() => navigate("/configurator")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Конфигуратор</button>
         </nav>
-        <button
-          onClick={() => navigate("/cart")}
-          className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors"
-          style={{ cursor: "pointer" }}
-        >
-          <Icon name="ShoppingCart" size={16} />
-          <span>Корзина</span>
-          {count() > 0 && (
-            <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">
-              {count()}
-            </span>
+        <div className="flex items-center gap-3">
+          {isAuthed() ? (
+            <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="User" size={15} />
+            </button>
+          ) : (
+            <button onClick={() => navigate("/auth")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="LogIn" size={15} />
+            </button>
           )}
-        </button>
+          <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ShoppingCart" size={16} />
+            <span>Корзина</span>
+            {count() > 0 && <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>}
+          </button>
+        </div>
       </div>
     </header>
   )
@@ -144,15 +157,16 @@ export default function Shop() {
 
       {/* Tab selector */}
       <div className="border-b border-border">
-        <div className="mx-auto flex max-w-7xl gap-0 px-6">
+        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto">
           {[
             { key: "catalog", label: "Каталог товаров", icon: "Package" },
             { key: "builds", label: "Наши ПК", icon: "Monitor" },
+            { key: "community", label: "Сборки сообщества", icon: "Users" },
           ].map(t => (
             <button
               key={t.key}
-              onClick={() => setShopTab(t.key as "catalog" | "builds")}
-              className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${shopTab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+              onClick={() => setShopTab(t.key as typeof shopTab)}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${shopTab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
               style={{ cursor: "pointer" }}
             >
               <Icon name={t.icon as "Package"} size={15} />
@@ -238,6 +252,49 @@ export default function Shop() {
                     addItem({ id: b.id, name: b.name, price: b.total_price, type: "config" })
                     navigate("/cart")
                   }} fmt={fmt} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* COMMUNITY TAB */}
+        {shopTab === "community" && (
+          <>
+            <div className="mb-8 flex items-center justify-between">
+              <div>
+                <h1 className="mb-2 text-3xl font-light text-foreground">Сборки сообщества</h1>
+                <p className="text-sm text-foreground/60">Конфигурации от пользователей PCPRO — вдохновляйтесь и копируйте</p>
+              </div>
+              <button
+                onClick={() => navigate(isAuthed() ? "/configurator" : "/auth")}
+                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}
+              >
+                <Icon name="Plus" size={16} />
+                Поделиться сборкой
+              </button>
+            </div>
+            {communityLoading ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {[...Array(6)].map((_, i) => <div key={i} className="h-56 rounded-xl bg-card animate-pulse" />)}
+              </div>
+            ) : communityBuilds.length === 0 ? (
+              <div className="py-24 text-center text-foreground/50">
+                <Icon name="Users" size={48} className="mx-auto mb-4 opacity-30" />
+                <p className="mb-2">Публичных сборок пока нет</p>
+                <p className="text-xs">Станьте первым — сохраните свою сборку в конфигураторе</p>
+                <button onClick={() => navigate("/configurator")} className="mt-4 text-sm text-primary hover:underline" style={{ cursor: "pointer" }}>Открыть конфигуратор →</button>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {communityBuilds.map(b => (
+                  <CommunityBuildCard
+                    key={b.id}
+                    build={b}
+                    fmt={fmt}
+                    onLoad={() => navigate(`/configurator?build=${b.share_token}`)}
+                  />
                 ))}
               </div>
             )}
@@ -532,6 +589,46 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
           <p className="mt-2 text-center text-xs text-foreground/40">После оформления менеджер свяжется для подтверждения</p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function CommunityBuildCard({ build: b, fmt, onLoad }: { build: CommunityBuild; fmt: (n: number) => string; onLoad: () => void }) {
+  const slotNames: Record<string, string> = { cpu: "CPU", gpu: "GPU", ram: "RAM", storage: "SSD", psu: "БП", case: "Корпус" }
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 hover:border-primary/40 transition-all">
+      <div className="mb-3 flex items-start justify-between">
+        <div>
+          <h3 className="font-medium text-foreground">{b.name}</h3>
+          <p className="text-xs text-foreground/40">от {b.username} · {new Date(b.created_at).toLocaleDateString("ru-RU")}</p>
+        </div>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{b.components.length} компонентов</span>
+      </div>
+
+      <div className="mb-4 space-y-1.5">
+        {b.components.slice(0, 4).map((c, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="w-8 shrink-0 rounded bg-muted px-1 py-0.5 text-center text-foreground/40 font-mono text-xs">{slotNames[c.slot] || c.slot}</span>
+            <span className="flex-1 truncate text-foreground/70">{c.name}</span>
+            <span className="text-foreground/50 shrink-0">{fmt(c.price * (c.qty || 1))}</span>
+          </div>
+        ))}
+        {b.components.length > 4 && <p className="text-xs text-foreground/30 pl-10">+ ещё {b.components.length - 4}</p>}
+      </div>
+
+      <div className="mb-4 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-xs">
+        <span className="text-foreground/50">Итого со сборкой</span>
+        <span className="font-bold text-foreground">{fmt(b.total_price)}</span>
+      </div>
+
+      <button
+        onClick={onLoad}
+        className="w-full flex items-center justify-center gap-2 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-primary transition-colors"
+        style={{ cursor: "pointer" }}
+      >
+        <Icon name="Copy" size={13} />
+        Открыть в конфигураторе
+      </button>
     </div>
   )
 }

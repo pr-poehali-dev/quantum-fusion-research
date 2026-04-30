@@ -9,6 +9,8 @@ import Shop from "./pages/Shop";
 import Configurator from "./pages/Configurator";
 import Cart from "./pages/Cart";
 import Admin from "./pages/Admin";
+import AuthPage from "./pages/AuthPage";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +27,8 @@ const App = () => (
           <Route path="/configurator" element={<Configurator />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

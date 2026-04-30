@@ -93,11 +93,16 @@
 @layer base {
   * {
     @apply border-border;
-    cursor: none;
   }
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Кастомный курсор только на главной странице */
+  .custom-cursor-active,
+  .custom-cursor-active * {
+    cursor: none !important;
   }
 
   [data-scroll-container] {
