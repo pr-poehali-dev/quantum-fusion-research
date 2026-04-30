@@ -93,6 +93,20 @@
 @layer base {
   * {
     @apply border-border;
+    transition:
+      background-color 0.35s ease,
+      border-color 0.35s ease,
+      color 0.25s ease;
+  }
+
+  /* Исключаем transition там где он мешает анимациям */
+  *[style*="transform"],
+  .animate-in,
+  canvas {
+    transition:
+      background-color 0.35s ease,
+      border-color 0.35s ease,
+      color 0.25s ease !important;
   }
 
   body {

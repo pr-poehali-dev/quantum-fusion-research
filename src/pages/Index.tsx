@@ -10,9 +10,12 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { useTheme } from "@/store/theme"
 
 export default function Index() {
   const navigate = useNavigate()
+  const { mode, getShaderColors } = useTheme()
+  const shaderColors = getShaderColors()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [currentSection, setCurrentSection] = useState(0)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -192,14 +195,17 @@ export default function Index() {
         style={{ contain: "strict" }}
         onMouseMove={handleMouseMove}
       >
-        {/* 1. Базовый чёрный фон */}
-        <div className="absolute inset-0" style={{ background: "#080808" }} />
+        {/* 1. Базовый фон — тёмный или светлый */}
+        <div
+          className="absolute inset-0 transition-colors duration-500"
+          style={{ background: mode === "light" ? "#f5f5f5" : "#080808" }}
+        />
 
-        {/* 2. WebGL-шейдер с красными тонами */}
+        {/* 2. WebGL-шейдер — цвета из акцента */}
         <Shader className="absolute inset-0 h-full w-full">
           <Swirl
-            colorA="#200000"
-            colorB="#3a0000"
+            colorA={shaderColors.colorA}
+            colorB={shaderColors.colorB}
             speed={0.5}
             detail={0.6}
             blend={55}
@@ -211,36 +217,45 @@ export default function Index() {
             fineY={45}
           />
           <ChromaFlow
-            baseColor="#cc0000"
-            upColor="#dd2200"
-            downColor="#080000"
-            leftColor="#ff1100"
-            rightColor="#cc3300"
-            intensity={0.7}
+            baseColor={shaderColors.base}
+            upColor={shaderColors.base}
+            downColor={mode === "light" ? "#dddddd" : "#080000"}
+            leftColor={shaderColors.base}
+            rightColor={shaderColors.base}
+            intensity={mode === "light" ? 0.5 : 0.7}
             radius={1.9}
             momentum={22}
             maskType="alpha"
-            opacity={0.8}
+            opacity={mode === "light" ? 0.55 : 0.8}
           />
         </Shader>
 
-        {/* 3. Статичный красный акцент в центре */}
+        {/* 3. Акцентный радиальный градиент в центре */}
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 transition-opacity duration-500"
           style={{
-            background: "radial-gradient(ellipse 90% 70% at 50% 45%, rgba(160,0,0,0.30) 0%, rgba(80,0,0,0.12) 55%, transparent 100%)",
+            background: `radial-gradient(ellipse 90% 70% at 50% 45%, ${shaderColors.glow.replace("88", "50")} 0%, transparent 70%)`,
+            opacity: mode === "light" ? 0.5 : 0.8,
           }}
         />
 
-        {/* 4. Огненный всплеск при движении мыши (поверх всего) */}
+        {/* 4. Огненный всплеск при движении мыши */}
         <div
           className="absolute inset-0 transition-opacity duration-300"
           style={{
-            opacity: mouseIntensity,
-            background: "radial-gradient(ellipse 75% 55% at 50% 45%, rgba(230,40,0,0.55) 0%, rgba(180,20,0,0.25) 45%, transparent 80%)",
+            opacity: mouseIntensity * (mode === "light" ? 0.4 : 1),
+            background: `radial-gradient(ellipse 75% 55% at 50% 45%, ${shaderColors.glow} 0%, transparent 80%)`,
             mixBlendMode: "screen",
           }}
         />
+
+        {/* 5. Лёгкий оверлей для светлой темы — белый туман */}
+        {mode === "light" && (
+          <div
+            className="absolute inset-0 transition-opacity duration-500"
+            style={{ background: "rgba(255,255,255,0.35)" }}
+          />
+        )}
       </div>
 
       <nav
