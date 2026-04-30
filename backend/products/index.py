@@ -33,10 +33,9 @@ def handler(event: dict, context) -> dict:
 
     method = event.get("httpMethod", "GET")
     params = event.get("queryStringParameters") or {}
-    path = event.get("path", "")
-    path_parts = [p for p in path.split("/") if p]
-    is_slots = "slots" in path_parts
-    product_id = path_parts[-1] if not is_slots and len(path_parts) > 1 and path_parts[-1].isdigit() else None
+    # is_slots определяется через query-параметр (путь /slots не поддерживается функциями)
+    is_slots = params.get("resource") == "slots"
+    product_id = params.get("id")
 
     conn = get_conn()
     cur = conn.cursor()

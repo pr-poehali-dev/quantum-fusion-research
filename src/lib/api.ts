@@ -23,10 +23,10 @@ export const api = {
     patch: (data: unknown) => fetch(URLS.products, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
   configurator: {
-    getSlots: () => fetch(`${URLS.products}/slots`).then(r => r.json()),
-    create: (data: unknown) => fetch(`${URLS.products}/slots`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
-    update: (data: unknown) => fetch(`${URLS.products}/slots`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
-    patch: (data: unknown) => fetch(`${URLS.products}/slots`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    getSlots: () => fetch(`${URLS.products}?resource=slots`).then(r => r.json()),
+    create: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    patch: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
   orders: {
     create: (data: unknown) => fetch(URLS.orders, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),

@@ -143,11 +143,23 @@ export default function Admin() {
     } else if (tab === "builds" || tab === "add_build") {
       Promise.all([
         api.builds.getAll().then(d => d.builds || []),
-        api.products.getAll().then(d => { setProducts(d.products || []); return d }),
-        api.configurator.getSlots().then(d => d.slots || {}),
-      ]).then(([b, , cs]) => {
+        // Берём ВСЕ товары из каталога и группируем по slug категории как слот
+        api.products.getAll().then(d => {
+          const prods = d.products || []
+          setProducts(prods)
+          setCategories(d.categories || [])
+          // Формируем configSlots из products — slug категории = slot
+          const slots: Record<string, ConfigComponent[]> = {}
+          for (const p of prods) {
+            const slot = p.category?.slug || "other"
+            if (!slots[slot]) slots[slot] = []
+            slots[slot].push({ id: p.id, slot, name: p.name, brand: p.category?.name, price: p.price })
+          }
+          setConfigSlots(slots)
+          return d
+        }),
+      ]).then(([b]) => {
         setBuilds(b)
-        setConfigSlots(cs)
         setLoading(false)
       })
     }
@@ -237,14 +249,14 @@ export default function Admin() {
 
   const addCatalogComponent = (slot: string, comp: ConfigComponent) => {
     setBuildComponents(cs => {
-      const filtered = cs.filter(c => c.slot !== slot)
-      return [...filtered, { slot, source: "catalog", source_id: comp.id, name: comp.name, price: comp.price }]
+      // Если товар уже добавлен — не дублируем
+      if (cs.some(c => c.source_id === comp.id)) return cs
+      return [...cs, { slot, source: "catalog", source_id: comp.id, name: comp.name, price: comp.price }]
     })
-    setAddingSlot(null)
   }
 
-  const removeComponent = (slot: string) => {
-    setBuildComponents(cs => cs.filter(c => c.slot !== slot))
+  const removeComponent = (sourceId: number) => {
+    setBuildComponents(cs => cs.filter(c => c.source_id !== sourceId))
   }
 
   if (!authed) {
@@ -585,57 +597,74 @@ export default function Admin() {
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-medium text-foreground">Состав сборки</h3>
-                  <p className="text-xs text-foreground/40">Выбирайте из каталога — цены будут обновляться автоматически</p>
+                  <p className="text-xs text-foreground/40">Выбирайте товары из каталога по категориям</p>
                 </div>
+
+                {/* Уже добавленные компоненты */}
+                {buildComponents.length > 0 && (
+                  <div className="mb-3 space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="mb-2 text-xs font-medium text-foreground/60">Выбрано компонентов: {buildComponents.length}</p>
+                    {buildComponents.map((c, i) => (
+                      <div key={i} className="flex items-center gap-3 text-sm">
+                        <span className="w-32 shrink-0 text-xs text-foreground/50 font-mono truncate">{c.slot}</span>
+                        <span className="flex-1 text-foreground font-medium truncate">{c.name}</span>
+                        <span className="shrink-0 font-bold text-primary text-xs">{fmt(c.price)}</span>
+                        <button onClick={() => removeComponent(c.source_id ?? 0)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                          <Icon name="X" size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Выбор из каталога по категориям */}
                 <div className="space-y-2">
-                  {Object.entries(SLOT_LABELS).map(([slot, label]) => {
-                    const existing = buildComponents.find(c => c.slot === slot)
-                    const slotOptions = configSlots[slot] || []
-                    const isOpen = addingSlot === slot
+                  {categories.length === 0 ? (
+                    <p className="text-xs text-foreground/40 text-center py-4">Загрузка категорий...</p>
+                  ) : categories.map(cat => {
+                    const slotOptions = configSlots[cat.slug] || []
+                    const isOpen = addingSlot === cat.slug
+                    const addedFromCat = buildComponents.filter(c => c.slot === cat.slug || slotOptions.some(o => o.id === c.source_id))
                     return (
-                      <div key={slot} className={`rounded-xl border bg-card p-4 transition-all ${existing ? "border-primary/30" : "border-border"}`}>
-                        <div className="flex items-center gap-3">
-                          <span className="w-28 shrink-0 text-xs text-foreground/50 font-mono">{label}</span>
-                          {existing ? (
-                            <>
-                              <span className="flex-1 text-sm text-foreground font-medium truncate">{existing.name}</span>
-                              <span className="shrink-0 text-sm font-bold text-primary">{fmt(existing.price)}</span>
-                              <button onClick={() => removeComponent(slot)} className="ml-2 text-foreground/30 hover:text-foreground/60" style={{ cursor: "pointer" }}>
-                                <Icon name="X" size={14} />
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setAddingSlot(isOpen ? null : slot)}
-                              className="flex items-center gap-1.5 text-xs text-foreground/50 hover:text-primary transition-colors"
-                              style={{ cursor: "pointer" }}
-                            >
-                              <Icon name="Plus" size={13} />Выбрать из каталога
-                            </button>
+                      <div key={cat.slug} className={`rounded-xl border bg-card transition-all ${addedFromCat.length > 0 ? "border-primary/30" : "border-border"}`}>
+                        <button
+                          type="button"
+                          onClick={() => setAddingSlot(isOpen ? null : cat.slug)}
+                          className="flex w-full items-center gap-3 p-4 text-left"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <span className="flex-1 text-sm font-medium text-foreground">{cat.name}</span>
+                          {addedFromCat.length > 0 && (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{addedFromCat.length} выбрано</span>
                           )}
-                        </div>
+                          {slotOptions.length === 0
+                            ? <span className="text-xs text-foreground/30">Нет товаров</span>
+                            : <Icon name={isOpen ? "ChevronUp" : "ChevronDown"} size={15} className="text-foreground/40" />
+                          }
+                        </button>
                         {isOpen && slotOptions.length > 0 && (
-                          <div className="mt-3 grid gap-1.5 grid-cols-1 sm:grid-cols-2 border-t border-border pt-3">
-                            {slotOptions.map(opt => (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() => addCatalogComponent(slot, opt)}
-                                className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-left hover:border-primary transition-colors"
-                                style={{ cursor: "pointer" }}
-                              >
-                                <div className="min-w-0 mr-2">
-                                  <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
-                                  {opt.brand && <p className="text-xs text-foreground/40">{opt.brand}</p>}
-                                </div>
-                                <p className="shrink-0 text-xs font-bold text-accent">{fmt(opt.price)}</p>
-                              </button>
-                            ))}
+                          <div className="grid gap-1.5 grid-cols-1 sm:grid-cols-2 border-t border-border p-3">
+                            {slotOptions.map(opt => {
+                              const isAdded = buildComponents.some(c => c.source_id === opt.id)
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => isAdded ? removeComponent(opt.id) : addCatalogComponent(cat.slug, opt)}
+                                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors ${isAdded ? "border-primary bg-primary/10" : "border-border hover:border-primary"}`}
+                                  style={{ cursor: "pointer" }}
+                                >
+                                  <div className="min-w-0 mr-2">
+                                    <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <p className="text-xs font-bold text-accent">{fmt(opt.price)}</p>
+                                    {isAdded && <Icon name="Check" size={12} className="text-primary" />}
+                                  </div>
+                                </button>
+                              )
+                            })}
                           </div>
-                        )}
-                        {isOpen && slotOptions.length === 0 && (
-                          <p className="mt-2 text-xs text-foreground/40">Нет компонентов в этом слоте. Добавьте их в разделе "Товары".</p>
                         )}
                       </div>
                     )
