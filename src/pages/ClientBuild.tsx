@@ -199,24 +199,13 @@ export default function ClientBuild() {
           <span className="hidden sm:block text-sm font-medium text-foreground/80">BeGraphics</span>
         </button>
 
-        {/* Вкладки вариантов — по центру */}
+        {/* Счётчик вариантов — по центру */}
         {variants.length > 1 && (
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
-            {variants.map((v, i) => (
-              <button
-                key={v.id}
-                onClick={() => setActiveVariant(i)}
-                style={{ cursor: "pointer" }}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap ${
-                  i === activeVariant
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {v.name.replace(/ \(вариант.*?\)/, "") || `Вариант ${i + 1}`}
-                <span className="ml-1.5 opacity-60">{fmt(v.total_price)}</span>
-              </button>
-            ))}
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card/80 backdrop-blur px-3 py-1.5">
+            <Icon name="GitBranch" size={12} className="text-primary" />
+            <span className="text-xs text-muted-foreground">
+              Вариант <span className="font-semibold text-foreground">{activeVariant + 1}</span> из {variants.length}
+            </span>
           </div>
         )}
 
