@@ -554,45 +554,81 @@ function ProductCard({
 }
 
 function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: () => void; onOrder: () => void; fmt: (n: number) => string }) {
+  const hasImage = !!b.image_urls?.[0]
   return (
-    <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
-      <button onClick={onOpen} className="relative aspect-video bg-gradient-to-br from-card to-muted flex items-center justify-center overflow-hidden" style={{ cursor: "pointer" }}>
-        {b.image_urls?.[0] ? (
-          <img src={b.image_urls[0]} alt={b.name} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <Icon name="Cpu" size={40} className="text-primary/40" />
-            <span className="text-xs text-foreground/30 font-mono">BeGraphics Build</span>
-          </div>
-        )}
-        <div className="absolute top-2 right-2 rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">Сборка</div>
-        <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/40 transition-all">
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Состав и цены</span>
+    <div className="group relative flex flex-col rounded-xl border border-border overflow-hidden hover:border-primary/40 transition-all duration-300 cursor-pointer" style={{ minHeight: 320 }}>
+      {/* Фото на весь фон */}
+      {hasImage ? (
+        <img
+          src={b.image_urls[0]} alt={b.name}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          style={{ filter: "brightness(0.65)" }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-card to-muted flex items-center justify-center">
+          <Icon name="Cpu" size={48} className="text-primary/20" />
         </div>
-      </button>
-      <div className="flex flex-col flex-1 p-5">
-        <button onClick={onOpen} className="mb-2 text-left text-lg font-medium text-foreground hover:text-primary transition-colors" style={{ cursor: "pointer" }}>{b.name}</button>
-        {b.description && <p className="mb-3 text-sm text-foreground/60 line-clamp-2">{b.description}</p>}
+      )}
+
+      {/* Градиент снизу — текст читаем поверх */}
+      {hasImage && (
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+      )}
+
+      {/* Бейдж */}
+      <div className="absolute top-3 left-3 z-10">
+        <span className="rounded-full bg-primary/90 px-2.5 py-0.5 text-xs font-medium text-primary-foreground backdrop-blur-sm">
+          Сборка
+        </span>
+      </div>
+
+      {/* Ховер-подсказка */}
+      <div className="absolute inset-0 flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <span className="rounded-full bg-background/80 backdrop-blur-sm px-4 py-1.5 text-xs font-medium text-foreground border border-border/50">
+          Состав и цены
+        </span>
+      </div>
+
+      {/* Контент поверх градиента — внизу карточки */}
+      <div className="relative z-10 mt-auto p-5">
+        {/* Название */}
+        <button onClick={onOpen} className="block w-full text-left mb-1" style={{ cursor: "pointer" }}>
+          <h3 className="text-lg font-medium text-white leading-snug group-hover:text-primary transition-colors line-clamp-2">
+            {b.name}
+          </h3>
+        </button>
+
+        {b.description && (
+          <p className="mb-3 text-xs text-white/60 line-clamp-1">{b.description}</p>
+        )}
+
+        {/* Ключевые компоненты */}
         <div className="mb-4 space-y-1">
           {b.components.slice(0, 3).map((c, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-foreground/50">{SLOT_NAMES[c.slot] || c.slot}</span>
-              <span className="text-foreground/70 truncate ml-2 max-w-[160px]">{c.name}</span>
+              <span className="text-white/40 shrink-0">{SLOT_NAMES[c.slot] || c.slot}</span>
+              <span className="text-white/70 truncate ml-2 max-w-[160px] text-right">{c.name}</span>
             </div>
           ))}
-          {b.components.length > 3 && <p className="text-xs text-foreground/30">+ ещё {b.components.length - 3} компонента</p>}
+          {b.components.length > 3 && (
+            <p className="text-xs text-white/30">+ ещё {b.components.length - 3} компонента</p>
+          )}
         </div>
-        <div className="mt-auto">
-          <div className="mb-3 flex items-end justify-between">
-            <div>
-              <p className="text-xs text-foreground/40">Итого со сборкой</p>
-              <p className="text-2xl font-bold text-foreground">{fmt(b.total_price)}</p>
-              <p className="text-xs text-foreground/40">железо {fmt(b.parts_total)} + работа {fmt(b.assembly_fee)}</p>
-            </div>
+
+        {/* Цена + кнопки */}
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-xs text-white/40 mb-0.5">Итого со сборкой</p>
+            <p className="text-2xl font-bold text-white">{fmt(b.total_price)}</p>
+            <p className="text-xs text-white/30">железо {fmt(b.parts_total)} + работа {fmt(b.assembly_fee)}</p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={onOpen} className="flex-1 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Подробнее</button>
-            <button onClick={onOrder} className="flex-1 rounded-lg bg-primary py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>Заказать</button>
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <button onClick={onOpen} className="rounded-lg border border-white/20 bg-white/10 backdrop-blur px-4 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors" style={{ cursor: "pointer" }}>
+              Подробнее
+            </button>
+            <button onClick={onOrder} className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+              Заказать
+            </button>
           </div>
         </div>
       </div>
