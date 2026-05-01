@@ -131,7 +131,7 @@ export default function BuildPreview() {
   }
 
   if (loading) return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="dark flex min-h-screen items-center justify-center" style={{ background: "#0a0a0a" }}>
       <div className="flex flex-col items-center gap-4">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         <p className="text-sm text-foreground/40">Загружаем сборку...</p>
@@ -140,7 +140,7 @@ export default function BuildPreview() {
   )
 
   if (error || !build) return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
+    <div className="dark flex min-h-screen flex-col items-center justify-center px-6 text-center" style={{ background: "#0a0a0a" }}>
       <Icon name="MonitorOff" size={48} className="mb-4 text-foreground/20" />
       <h1 className="mb-2 text-xl font-medium text-foreground">{error || "Сборка не найдена"}</h1>
       <button onClick={() => navigate("/shop")} className="mt-6 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
@@ -152,7 +152,7 @@ export default function BuildPreview() {
   const buildImages = build.image_urls || []
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="dark relative h-screen w-screen overflow-hidden bg-background text-foreground" style={{ background: "#0a0a0a", color: "#f2f2f2" }}>
 
       {/* Точки навигации */}
       <nav className="fixed right-4 top-1/2 z-50 -translate-y-1/2 hidden sm:flex flex-col gap-2.5">
