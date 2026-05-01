@@ -179,7 +179,7 @@ export default function Admin() {
       ]).then(([b]) => {
         setBuilds(b)
         setLoading(false)
-      })
+      }).catch(() => setLoading(false))
     } else if (tab === "articles" || tab === "add_article") {
       api.articles.getAll().then(d => { setArticles(d.articles || []); setLoading(false) })
     }
