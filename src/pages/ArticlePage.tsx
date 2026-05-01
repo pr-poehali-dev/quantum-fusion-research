@@ -44,7 +44,6 @@ export default function ArticlePage() {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [showHtml, setShowHtml] = useState(false)
 
   useEffect(() => {
     if (!id) { setError("Статья не найдена"); setLoading(false); return }
@@ -129,34 +128,12 @@ export default function ArticlePage() {
           />
         )}
 
-        {/* HTML-вложение */}
+        {/* HTML-вложение — рендерится нативно без рамки */}
         {article.html_attachment && (
-          <div className="mt-10">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Icon name="Code2" size={16} className="text-primary" />
-                <span className="text-sm font-medium text-foreground">Результаты теста</span>
-              </div>
-              <button
-                onClick={() => setShowHtml(v => !v)}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-foreground transition-all"
-                style={{ cursor: "pointer" }}
-              >
-                <Icon name={showHtml ? "EyeOff" : "Eye"} size={13} />
-                {showHtml ? "Скрыть" : "Показать"}
-              </button>
-            </div>
-            {showHtml && (
-              <div className="overflow-hidden rounded-xl border border-border" style={{ height: 560 }}>
-                <iframe
-                  srcDoc={article.html_attachment}
-                  sandbox="allow-scripts"
-                  className="w-full h-full border-0 bg-white"
-                  title="Результаты теста"
-                />
-              </div>
-            )}
-          </div>
+          <div
+            className="mt-10"
+            dangerouslySetInnerHTML={{ __html: article.html_attachment }}
+          />
         )}
       </main>
     </div>
