@@ -45,6 +45,7 @@ export default function ClientBuild() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const wheelLockRef = useRef(false)
   const touchStartY = useRef(0)
+  const touchStartX = useRef(0)
 
   useEffect(() => {
     if (!token) { setError("Ссылка недействительна"); setLoading(false); return }
@@ -110,11 +111,21 @@ export default function ClientBuild() {
   }, [currentSection, scrollToSection])
 
   useEffect(() => {
-    const onTouchStart = (e: TouchEvent) => { touchStartY.current = e.touches[0].clientY }
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY
+      touchStartX.current = e.touches[0].clientX
+    }
     const onTouchEnd = (e: TouchEvent) => {
-      const delta = touchStartY.current - e.changedTouches[0].clientY
-      if (Math.abs(delta) > 50) {
-        if (delta > 0) scrollToSection(currentSection + 1)
+      const deltaY = touchStartY.current - e.changedTouches[0].clientY
+      const deltaX = touchStartX.current - e.changedTouches[0].clientX
+      // Горизонтальный свайп — переключаем вариант (только если вариантов > 1)
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 60) {
+        if (deltaX > 0) setActiveVariant(i => Math.min(i + 1, variants.length - 1))
+        else setActiveVariant(i => Math.max(i - 1, 0))
+        return
+      }
+      if (Math.abs(deltaY) > 50) {
+        if (deltaY > 0) scrollToSection(currentSection + 1)
         else scrollToSection(currentSection - 1)
       }
     }
@@ -249,6 +260,33 @@ export default function ClientBuild() {
                 <p className="text-xs text-foreground/70">Персональная сборка, подготовлена специально для вас</p>
               </div>
             </div>
+
+            {/* Стрелки переключения вариантов — только если вариантов > 1 */}
+            {variants.length > 1 && (
+              <>
+                <button
+                  onClick={() => setActiveVariant(i => Math.max(i - 1, 0))}
+                  disabled={activeVariant === 0}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur border border-border/60 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-all disabled:opacity-20"
+                  style={{ cursor: activeVariant === 0 ? "default" : "pointer" }}>
+                  <Icon name="ChevronLeft" size={18} />
+                </button>
+                <button
+                  onClick={() => setActiveVariant(i => Math.min(i + 1, variants.length - 1))}
+                  disabled={activeVariant === variants.length - 1}
+                  className="absolute right-14 sm:right-20 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur border border-border/60 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-all disabled:opacity-20"
+                  style={{ cursor: activeVariant === variants.length - 1 ? "default" : "pointer" }}>
+                  <Icon name="ChevronRight" size={18} />
+                </button>
+                {/* Индикатор точек вариантов */}
+                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
+                  {variants.map((_, i) => (
+                    <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
+                      className={`rounded-full transition-all ${i === activeVariant ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/20 hover:bg-foreground/40"}`} />
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 px-5 sm:px-16 pt-32 pb-16">
               <div className="flex-1 min-w-0">

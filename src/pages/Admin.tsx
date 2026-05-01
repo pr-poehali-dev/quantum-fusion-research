@@ -97,7 +97,7 @@ export default function Admin() {
   const navigate = useNavigate()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
-  const [tab, setTab] = useState<"orders" | "products" | "add_product" | "builds" | "add_build" | "articles" | "add_article">("orders")
+  const [tab, setTab] = useState<"orders" | "products" | "add_product" | "builds" | "archive" | "add_build" | "articles" | "add_article">("orders")
 
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -133,6 +133,7 @@ export default function Admin() {
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
   const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
   const [dupeLoading, setDupeLoading] = useState<number | null>(null)
+  const [expandedVariants, setExpandedVariants] = useState<number | null>(null)
 
   const generateClientLink = async (b: PCBuild) => {
     const token = b.client_token || (await api.builds.generateClientLink(b.id)).client_token
@@ -162,7 +163,7 @@ export default function Admin() {
         setCategories(d.categories || [])
         setLoading(false)
       })
-    } else if (tab === "builds" || tab === "add_build") {
+    } else if (tab === "builds" || tab === "archive" || tab === "add_build") {
       Promise.all([
         api.builds.getAll().then(d => d.builds || []),
         // Берём ВСЕ товары из каталога и группируем по slug категории как слот
@@ -292,8 +293,14 @@ export default function Admin() {
 
   const duplicateBuild = async (b: PCBuild) => {
     setDupeLoading(b.id)
+    // Убедимся что токен есть — генерируем если нет
+    let token = b.client_token
+    if (!token) {
+      const res = await api.builds.generateClientLink(b.id)
+      token = res.client_token
+      if (token) setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, client_token: token } : bb))
+    }
     const payload = {
-      id: null,
       name: b.name + " (вариант)",
       description: b.description,
       image_urls: b.image_urls || [],
@@ -303,13 +310,21 @@ export default function Admin() {
       status: "draft",
       is_featured: false,
       sort_order: 0,
-      client_token: b.client_token,
+      client_token: token,
     }
     const created = await api.builds.create(payload)
     if (created?.id) {
-      setBuilds(bs => [...bs, { ...b, id: created.id, name: payload.name, status: "draft", is_featured: false }])
+      const newBuild: PCBuild = { ...b, id: created.id, name: payload.name, status: "draft", is_featured: false, client_token: token }
+      setBuilds(bs => [...bs, newBuild])
+      setExpandedVariants(b.id) // раскрыть варианты родительской сборки
     }
     setDupeLoading(null)
+  }
+
+  const deleteBuild = async (id: number) => {
+    if (!confirm("Удалить сборку? Это действие нельзя отменить.")) return
+    await api.builds.delete(id)
+    setBuilds(bs => bs.filter(b => b.id !== id))
   }
 
   if (!authed) {
@@ -389,6 +404,7 @@ export default function Admin() {
     { key: "products", label: "Товары", icon: "Package" },
     { key: "add_product", label: productForm.id ? "Ред. товар" : "Добавить товар", icon: "PlusCircle" },
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
+    { key: "archive", label: "Архив ПК", icon: "Archive" },
     { key: "add_build", label: buildForm.id ? "Ред. сборку" : "Новая сборка", icon: "Wrench" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
     { key: "add_article", label: articleForm.id ? "Ред. статью" : "Новая статья", icon: "FilePlus" },
@@ -594,72 +610,126 @@ export default function Admin() {
           </div>
         )}
 
-        {/* BUILDS LIST */}
-        {tab === "builds" && (
-          <div>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-light text-foreground">Наши ПК ({builds.length})</h2>
-              <button onClick={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: "" }); setBuildComponents([]); setTab("add_build") }}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={16} />Новая сборка
-              </button>
-            </div>
-            {loading ? <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)}</div>
-              : builds.length === 0 ? (
-                <div className="py-16 text-center text-foreground/40">
-                  <Icon name="Monitor" size={40} className="mx-auto mb-3 opacity-30" />
-                  <p>Сборок нет. Создайте первую!</p>
-                </div>
-              ) : builds.map(b => (
-                <div key={b.id} className="mb-3 rounded-xl border border-border bg-card p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium text-foreground">{b.name}</p>
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${b.status === "catalog" ? "bg-green-400/10 text-green-400" : "bg-muted text-foreground/50"}`}>
-                          {BUILD_STATUS[b.status] || b.status}
-                        </span>
-                      </div>
-                      <p className="text-xs text-foreground/50 mb-2">{b.components?.length || 0} компонентов</p>
-                      <div className="flex items-center gap-4 text-xs text-foreground/60">
-                        <span>Железо: {fmt(b.parts_total)}</span>
-                        <span>Сборка: {fmt(b.assembly_fee)}</span>
-                        <span className="font-bold text-foreground">Итого: {fmt(b.total_price)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => editBuild(b)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                        <Icon name="Pencil" size={13} />Изменить
-                      </button>
-                      <button onClick={() => duplicateBuild(b)} disabled={dupeLoading === b.id}
-                        className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
-                        style={{ cursor: "pointer" }}
-                        title="Создать вариант сборки с тем же токеном клиента">
-                        <Icon name={dupeLoading === b.id ? "Loader2" : "Copy"} size={13} />Вариант
-                      </button>
-                      {/* Клиентская ссылка */}
-                      <button
-                        onClick={() => generateClientLink(b)}
-                        className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${b.client_token ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
-                        style={{ cursor: "pointer" }}
-                        title={b.client_token ? "Скопировать ссылку для клиента" : "Создать ссылку для клиента"}
-                      >
-                        <Icon name={copiedBuildId === b.id ? "Check" : "Link"} size={13} />
-                        {copiedBuildId === b.id ? "Скопировано!" : b.client_token ? "Ссылка клиента" : "Ссылка для клиента"}
-                      </button>
-                      <select
-                        value={b.status}
-                        onChange={async e => { await api.builds.patch({ id: b.id, status: e.target.value }); setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, status: e.target.value } : bb)) }}
-                        className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}
-                      >
-                        {Object.entries(BUILD_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                    </div>
+        {/* BUILDS LIST + ARCHIVE */}
+        {(tab === "builds" || tab === "archive") && (() => {
+          const isArchive = tab === "archive"
+          const filtered = builds.filter(b => isArchive ? b.status === "archive" : b.status !== "archive")
+
+          // Группируем: главные (без токена или уникальный токен) + их варианты
+          const tokenMap = new Map<string, PCBuild[]>()
+          const standalone: PCBuild[] = []
+          for (const b of filtered) {
+            if (b.client_token) {
+              if (!tokenMap.has(b.client_token)) tokenMap.set(b.client_token, [])
+              tokenMap.get(b.client_token)!.push(b)
+            } else {
+              standalone.push(b)
+            }
+          }
+          // Группы по токену — первый в группе считается «главным»
+          const groups: { main: PCBuild; variants: PCBuild[] }[] = []
+          tokenMap.forEach(list => {
+            const sorted = [...list].sort((a, b) => a.id - b.id)
+            groups.push({ main: sorted[0], variants: sorted.slice(1) })
+          })
+          standalone.forEach(b => groups.push({ main: b, variants: [] }))
+          groups.sort((a, b) => b.main.id - a.main.id)
+
+          const renderBuildRow = (b: PCBuild, isVariant = false) => (
+            <div key={b.id} className={`rounded-xl border bg-card p-4 ${isVariant ? "ml-6 border-dashed border-border/50 bg-card/50" : "border-border"}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {isVariant && <Icon name="CornerDownRight" size={13} className="text-muted-foreground shrink-0" />}
+                    <p className="font-medium text-foreground text-sm">{b.name}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-xs shrink-0 ${b.status === "catalog" ? "bg-green-400/10 text-green-400" : b.status === "archive" ? "bg-muted text-foreground/30" : "bg-muted text-foreground/50"}`}>
+                      {BUILD_STATUS[b.status] || b.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-foreground/50">
+                    <span>{b.components?.length || 0} комп.</span>
+                    <span>Итого: <span className="font-semibold text-foreground/80">{fmt(b.total_price)}</span></span>
                   </div>
                 </div>
-              ))}
-          </div>
-        )}
+                <div className="flex flex-wrap gap-1.5 shrink-0">
+                  <button onClick={() => editBuild(b)} className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Pencil" size={12} />Ред.
+                  </button>
+                  {!isVariant && !isArchive && (
+                    <button onClick={() => duplicateBuild(b)} disabled={dupeLoading === b.id}
+                      className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={dupeLoading === b.id ? "Loader2" : "GitBranch"} size={12} />Вариант
+                    </button>
+                  )}
+                  {!isArchive && (
+                    <button onClick={() => generateClientLink(b)}
+                      className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${b.client_token ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={copiedBuildId === b.id ? "Check" : "Link"} size={12} />
+                      {copiedBuildId === b.id ? "Скопировано!" : b.client_token ? "Ссылка" : "Создать ссылку"}
+                    </button>
+                  )}
+                  <select value={b.status}
+                    onChange={async e => { await api.builds.patch({ id: b.id, status: e.target.value }); setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, status: e.target.value } : bb)) }}
+                    className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                    {Object.entries(BUILD_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                  <button onClick={() => deleteBuild(b.id)}
+                    className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="Trash2" size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+
+          return (
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-light text-foreground">
+                  {isArchive ? "Архив ПК" : "Наши ПК"} <span className="text-sm text-foreground/40 ml-1">({filtered.length})</span>
+                </h2>
+                {!isArchive && (
+                  <button onClick={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] }); setBuildComponents([]); setTab("add_build") }}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Plus" size={16} />Новая сборка
+                  </button>
+                )}
+              </div>
+              {loading
+                ? <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-card animate-pulse" />)}</div>
+                : groups.length === 0
+                  ? <div className="py-16 text-center text-foreground/40"><Icon name="Monitor" size={40} className="mx-auto mb-3 opacity-30" /><p>{isArchive ? "Архив пуст" : "Сборок нет. Создайте первую!"}</p></div>
+                  : <div className="space-y-3">
+                    {groups.map(({ main, variants }) => (
+                      <div key={main.id}>
+                        {renderBuildRow(main)}
+                        {/* Варианты — выпадающий список */}
+                        {variants.length > 0 && (
+                          <div className="mt-1 ml-6">
+                            <button
+                              onClick={() => setExpandedVariants(expandedVariants === main.id ? null : main.id)}
+                              className="flex items-center gap-1.5 text-xs text-foreground/40 hover:text-foreground/70 transition-colors mb-1.5"
+                              style={{ cursor: "pointer" }}>
+                              <Icon name={expandedVariants === main.id ? "ChevronUp" : "ChevronDown"} size={12} />
+                              {variants.length} {variants.length === 1 ? "вариант" : "варианта"}
+                            </button>
+                            {expandedVariants === main.id && (
+                              <div className="space-y-1.5">
+                                {variants.map(v => renderBuildRow(v, true))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+          )
+        })()}
 
         {/* ADD/EDIT BUILD */}
         {tab === "add_build" && (
