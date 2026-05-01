@@ -383,7 +383,7 @@ export default function Shop() {
             ) : (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {builds.map(b => (
-                  <BuildCard key={b.id} build={b} onOpen={() => setSelectedBuild(b)} onOrder={() => {
+                  <BuildCard key={b.id} build={b} onOpen={() => navigate(`/build-preview/${b.id}`)} onOrder={() => {
                     addItem({ id: b.id, name: b.name, price: b.total_price, type: "config" })
                     navigate("/cart")
                   }} fmt={fmt} />

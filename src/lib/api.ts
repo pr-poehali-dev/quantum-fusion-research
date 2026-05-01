@@ -46,7 +46,7 @@ export const api = {
     },
     getByClientToken: (token: string) => fetch(`${URLS.builds}?client_token=${token}`).then(r => r.json()),
     getByUserId: (userId: number) => fetch(`${URLS.builds}?user_id=${userId}`).then(r => r.json()),
-    getById: (id: number) => fetch(`${URLS.builds}/${id}`).then(r => r.json()),
+    getById: (id: number) => fetch(`${URLS.builds}?id=${id}`).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.builds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.builds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),

@@ -13,6 +13,7 @@ import Admin from "./pages/Admin";
 import AuthPage from "./pages/AuthPage";
 import Profile from "./pages/Profile";
 import ClientBuild from "./pages/ClientBuild";
+import BuildPreview from "./pages/BuildPreview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/build" element={<ClientBuild />} />
+            <Route path="/build-preview/:id" element={<BuildPreview />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

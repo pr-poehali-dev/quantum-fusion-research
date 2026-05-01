@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react"
-import { useSearchParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
-import { useAuth } from "@/store/auth"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
 
@@ -35,26 +34,23 @@ interface Build {
   assembly_fee: number
   total_price: number
   assembly_type: string
-  client_token: string | null
-  client_user_id: number | null
   image_urls: string[]
+  is_featured: boolean
+  status: string
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
-export default function ClientBuild() {
-  const [searchParams] = useSearchParams()
+export default function BuildPreview() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isAuthed, sessionId, user } = useAuth()
   const { addItem } = useCart()
 
-  const token = searchParams.get("token")
   const [build, setBuild] = useState<Build | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [claiming, setClaiming] = useState(false)
-  const [claimed, setClaimed] = useState(false)
   const [buildImgIdx, setBuildImgIdx] = useState(0)
+  const [enrichedComponents, setEnrichedComponents] = useState<Component[]>([])
 
   const [currentSection, setCurrentSection] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
@@ -62,14 +58,11 @@ export default function ClientBuild() {
   const wheelLockRef = useRef(false)
   const touchStartY = useRef(0)
 
-  const [enrichedComponents, setEnrichedComponents] = useState<Component[]>([])
-
   useEffect(() => {
-    if (!token) { setError("Ссылка недействительна"); setLoading(false); return }
-    api.builds.getByClientToken(token).then(async (data) => {
-      if (data.error) { setError(data.error); setLoading(false); return }
+    if (!id) { setError("Сборка не найдена"); setLoading(false); return }
+    api.builds.getById(Number(id)).then(async (data) => {
+      if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
       setBuild(data)
-      if (data.client_user_id && user && data.client_user_id === user.id) setClaimed(true)
 
       const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }) => ({
         ...c,
@@ -79,9 +72,10 @@ export default function ClientBuild() {
       setEnrichedComponents(comps)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
-  }, [token, user])
+  }, [id])
 
-  const totalSections = enrichedComponents.length + 2
+  const components = enrichedComponents.length > 0 ? enrichedComponents : (build?.components || [])
+  const totalSections = components.length + 2
 
   const scrollToSection = useCallback((index: number) => {
     if (index < 0 || index >= totalSections || isTransitioning) return
@@ -130,14 +124,6 @@ export default function ClientBuild() {
     }
   }, [currentSection, scrollToSection])
 
-  const claimBuild = async () => {
-    if (!isAuthed() || !sessionId) { navigate(`/auth?redirect=/build?token=${token}`); return }
-    setClaiming(true)
-    await api.builds.claimBuild(token!, sessionId)
-    setClaimed(true)
-    setClaiming(false)
-  }
-
   const orderBuild = () => {
     if (!build) return
     addItem({ id: build.id, name: build.name, price: build.total_price, type: "config" })
@@ -148,31 +134,27 @@ export default function ClientBuild() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-foreground/40">Загружаем вашу сборку...</p>
+        <p className="text-sm text-foreground/40">Загружаем сборку...</p>
       </div>
     </div>
   )
 
-  if (error) return (
+  if (error || !build) return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
-      <Icon name="LinkOff" size={48} className="mb-4 text-foreground/20" />
-      <h1 className="mb-2 text-xl font-medium text-foreground">{error}</h1>
-      <p className="mb-6 text-sm text-foreground/50">Возможно ссылка устарела или была деактивирована</p>
-      <button onClick={() => navigate("/")} className="rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
-        На главную
+      <Icon name="MonitorOff" size={48} className="mb-4 text-foreground/20" />
+      <h1 className="mb-2 text-xl font-medium text-foreground">{error || "Сборка не найдена"}</h1>
+      <button onClick={() => navigate("/shop")} className="mt-6 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
+        Все сборки
       </button>
     </div>
   )
 
-  if (!build) return null
-
-  const components = enrichedComponents.length > 0 ? enrichedComponents : build.components
   const buildImages = build.image_urls || []
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
 
-      {/* Точки навигации — скрыты на мобиле */}
+      {/* Точки навигации */}
       <nav className="fixed right-4 top-1/2 z-50 -translate-y-1/2 hidden sm:flex flex-col gap-2.5">
         {Array.from({ length: totalSections }).map((_, i) => (
           <button key={i} onClick={() => scrollToSection(i)} style={{ cursor: "pointer" }}
@@ -183,26 +165,14 @@ export default function ClientBuild() {
 
       {/* Хедер */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-4">
-        <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">B</div>
-          <span className="hidden sm:block text-sm font-medium text-foreground/80">BeGraphics</span>
+        <button onClick={() => navigate("/shop")} className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <Icon name="ArrowLeft" size={16} />
+          <span className="text-sm">Все сборки</span>
         </button>
-        <div className="flex items-center gap-2">
-          {claimed ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary">
-              <Icon name="Check" size={12} /> Сохранено
-            </span>
-          ) : (
-            <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
-              className="hidden sm:block rounded-full border border-border bg-background/80 backdrop-blur px-4 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-all">
-              {claiming ? "Сохранение..." : "Сохранить в профиль"}
-            </button>
-          )}
-          <button onClick={orderBuild} style={{ cursor: "pointer" }}
-            className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-            <span className="hidden sm:inline">Заказать — </span>{fmt(build.total_price)}
-          </button>
-        </div>
+        <button onClick={orderBuild} style={{ cursor: "pointer" }}
+          className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+          <span className="hidden sm:inline">Заказать — </span>{fmt(build.total_price)}
+        </button>
       </header>
 
       {/* Скролл-контейнер */}
@@ -213,7 +183,7 @@ export default function ClientBuild() {
           <div className="relative flex h-full w-full items-center overflow-hidden">
             {buildImages.length > 0 && (
               <div className="absolute inset-0">
-                <img src={buildImages[0]} alt={build.name} className="h-full w-full object-cover" style={{ filter: "brightness(0.2)" }} />
+                <img src={buildImages[buildImgIdx]} alt={build.name} className="h-full w-full object-cover" style={{ filter: "brightness(0.2)" }} />
                 <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(10,10,10,0.98) 40%, rgba(10,10,10,0.4) 100%)" }} />
               </div>
             )}
@@ -222,13 +192,12 @@ export default function ClientBuild() {
             )}
 
             <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 sm:px-16 lg:flex-row lg:items-center pt-20 pb-16">
-              {/* Левая часть — текст */}
               <div className="flex-1">
                 <div className={`transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                   <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">
-                    Персональная сборка · BeGraphics
+                    BeGraphics · Готовая сборка
                   </p>
-                  <h1 className="mb-4 text-3xl sm:text-5xl lg:text-6xl font-light leading-tight tracking-tight text-foreground">
+                  <h1 className="mb-4 font-light leading-tight tracking-tight text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}>
                     {build.name}
                   </h1>
                   {build.description && (
@@ -239,7 +208,7 @@ export default function ClientBuild() {
                   <div className="mb-6 flex flex-wrap items-end gap-4 sm:gap-6">
                     <div>
                       <p className="text-xs text-foreground/40 mb-1">Итоговая стоимость</p>
-                      <p className="text-3xl sm:text-4xl font-bold text-foreground">{fmt(build.total_price)}</p>
+                      <p className="font-bold text-foreground" style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)" }}>{fmt(build.total_price)}</p>
                     </div>
                     <div className="mb-0.5 flex flex-col gap-0.5">
                       <p className="text-xs text-foreground/40">Железо: <span className="text-foreground/60">{fmt(build.parts_total)}</span></p>
@@ -249,7 +218,7 @@ export default function ClientBuild() {
                   <div className="flex flex-wrap items-center gap-3">
                     <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
-                      Изучить подробнее <Icon name="ArrowDown" size={15} />
+                      Изучить состав <Icon name="ArrowDown" size={15} />
                     </button>
                     <button onClick={orderBuild} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full border border-border px-5 sm:px-7 py-3 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-all">
@@ -259,7 +228,7 @@ export default function ClientBuild() {
                 </div>
               </div>
 
-              {/* Список компонентов — на мобиле компактный, на десктопе полный */}
+              {/* Список компонентов */}
               <div className={`w-full lg:max-w-sm transition-all duration-700 delay-200 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                 <p className="mb-2 text-xs font-mono uppercase tracking-widest text-foreground/30">Состав</p>
                 <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4 space-y-2.5">
@@ -270,7 +239,7 @@ export default function ClientBuild() {
                           <ComponentIcon slot={c.slot} />
                         </span>
                         <div className="min-w-0">
-                          <p className="text-xs text-foreground/40 leading-none mb-0.5 hidden sm:block">{SLOT_NAMES[c.slot] || c.slot}</p>
+                          <p className="hidden sm:block text-xs text-foreground/40 leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
                           <p className="text-xs sm:text-sm text-foreground/80 truncate">{c.name}</p>
                         </div>
                       </div>
@@ -281,7 +250,6 @@ export default function ClientBuild() {
               </div>
             </div>
 
-            {/* Скролл-подсказка */}
             <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === 0 ? "opacity-50" : "opacity-0"}`}>
               <p className="text-xs text-foreground/40">Прокрутите вниз</p>
               <Icon name="ChevronDown" size={16} className="text-foreground/30 animate-bounce" />
@@ -310,7 +278,6 @@ export default function ClientBuild() {
 
             <div className={`relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-8 pt-20 pb-8 transition-all duration-700 ${currentSection === totalSections - 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
 
-              {/* Фото сборки — карусель */}
               {buildImages.length > 0 && (
                 <div className="mb-6 sm:mb-8">
                   <BuildImageCarousel images={buildImages} />
@@ -318,11 +285,10 @@ export default function ClientBuild() {
               )}
 
               <div className="flex flex-col items-center text-center">
-                <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">Готово к заказу</p>
-                <h2 className="mb-2 text-3xl sm:text-4xl font-light text-foreground">{build.name}</h2>
+                <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">Готова к заказу</p>
+                <h2 className="mb-2 font-light text-foreground" style={{ fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}>{build.name}</h2>
                 <p className="mb-6 text-foreground/50 text-sm">{components.length} компонентов · Сборка включена</p>
 
-                {/* Цены */}
                 <div className="mb-6 w-full max-w-lg flex items-center justify-center gap-4 sm:gap-8 rounded-2xl border border-border bg-card/50 px-4 sm:px-10 py-4 sm:py-6 backdrop-blur">
                   <div className="text-center">
                     <p className="text-xs text-foreground/40 mb-0.5">Железо</p>
@@ -340,26 +306,11 @@ export default function ClientBuild() {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-sm sm:max-w-none sm:justify-center">
-                  <button onClick={orderBuild} style={{ cursor: "pointer" }}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-full bg-primary px-8 sm:px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
-                    <Icon name="ShoppingCart" size={17} />
-                    Оформить заказ
-                  </button>
-                  {!claimed && (
-                    <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-full border border-border px-7 py-3.5 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-all">
-                      <Icon name="BookmarkPlus" size={15} />
-                      {claiming ? "Сохранение..." : "Сохранить в профиль"}
-                    </button>
-                  )}
-                </div>
-
-                {claimed && (
-                  <p className="mt-4 flex items-center gap-1.5 text-sm text-primary">
-                    <Icon name="Check" size={14} /> Сборка сохранена в профиле
-                  </p>
-                )}
+                <button onClick={orderBuild} style={{ cursor: "pointer" }}
+                  className="flex items-center justify-center gap-2 rounded-full bg-primary px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                  <Icon name="ShoppingCart" size={17} />
+                  Заказать сборку
+                </button>
 
                 <button onClick={() => scrollToSection(0)} style={{ cursor: "pointer" }}
                   className="mt-6 flex items-center gap-1.5 text-xs text-foreground/30 hover:text-foreground/60 transition-colors">
@@ -375,7 +326,6 @@ export default function ClientBuild() {
   )
 }
 
-// ── Карусель фото сборки ──
 function BuildImageCarousel({ images }: { images: string[] }) {
   const [idx, setIdx] = useState(0)
   return (
@@ -403,24 +353,20 @@ function BuildImageCarousel({ images }: { images: string[] }) {
   )
 }
 
-// ── Секция компонента ──
 function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
   comp: Component; index: number; total: number; active: boolean; onNext: () => void; onPrev: () => void
 }) {
   const price = comp.current_price ?? comp.price
-  const image = comp.image_url
 
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden">
-      {/* Фон из картинки */}
-      {image && (
+      {comp.image_url && (
         <div className="absolute inset-0 overflow-hidden">
-          <img src={image} alt="" className="h-full w-full object-cover scale-110" style={{ filter: "blur(60px) brightness(0.12)" }} />
+          <img src={comp.image_url} alt="" className="h-full w-full object-cover scale-110" style={{ filter: "blur(60px) brightness(0.12)" }} />
         </div>
       )}
       <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(10,10,10,0.97) 0%, rgba(10,10,10,0.75) 100%)" }} />
 
-      {/* Большой номер — фон */}
       <div className={`absolute top-16 sm:top-24 left-4 sm:left-16 transition-all duration-500 delay-100 ${active ? "opacity-100" : "opacity-0"}`}>
         <span className="font-mono font-bold leading-none text-foreground/[0.03] select-none" style={{ fontSize: "clamp(80px, 15vw, 140px)" }}>
           {String(index + 1).padStart(2, "0")}
@@ -428,7 +374,6 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
       </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 sm:gap-16 px-5 sm:px-16 pt-20 pb-16">
-        {/* Текст — всегда слева, всегда на первом плане */}
         <div className="flex-1 min-w-0">
           <div className={`transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
             <p className="mb-1.5 font-mono text-xs uppercase tracking-widest text-primary/70">
@@ -440,17 +385,15 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
             <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.25rem, 3vw, 2rem)" }}>
               {fmt(price)}
             </p>
-
             {comp.description && (
               <p className="mb-5 text-sm sm:text-base leading-relaxed text-foreground/55 max-w-md">
                 {comp.description}
               </p>
             )}
-
             {comp.specs && Object.keys(comp.specs).length > 0 && (
               <div className="grid grid-cols-2 gap-1.5 mt-3 max-w-sm">
                 {Object.entries(comp.specs).slice(0, 4).map(([k, v]) => (
-                  <div key={k} className="rounded-lg bg-white/5 border border-white/8 px-3 py-2">
+                  <div key={k} className="rounded-lg bg-white/5 border border-white/[0.08] px-3 py-2">
                     <p className="text-xs text-foreground/30 mb-0.5 truncate">{k}</p>
                     <p className="text-xs sm:text-sm text-foreground/80 font-medium truncate">{v}</p>
                   </div>
@@ -460,24 +403,20 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
           </div>
         </div>
 
-        {/* Фото — только на больших экранах, компактное */}
-        {image && (
-          <div className={`hidden md:block w-56 lg:w-80 shrink-0 transition-all duration-700 delay-150 ${active ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-8 scale-95"}`}>
+        {comp.image_url && (
+          <div className={`hidden md:block w-56 lg:w-80 shrink-0 transition-all duration-700 delay-150 ${active ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 aspect-square">
-              <img src={image} alt={comp.name} className="h-full w-full object-contain p-6" />
+              <img src={comp.image_url} alt={comp.name} className="h-full w-full object-contain p-6" />
             </div>
           </div>
         )}
-
-        {/* На мобиле — маленькая картинка под текстом (если нет описания — показываем) */}
-        {image && !comp.description && (
+        {comp.image_url && !comp.description && (
           <div className={`md:hidden w-24 h-24 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 transition-all duration-700 delay-150 ${active ? "opacity-100" : "opacity-0"}`}>
-            <img src={image} alt={comp.name} className="h-full w-full object-contain p-2" />
+            <img src={comp.image_url} alt={comp.name} className="h-full w-full object-contain p-2" />
           </div>
         )}
       </div>
 
-      {/* Навигация */}
       <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-5 transition-all duration-500 ${active ? "opacity-100" : "opacity-0"}`}>
         <button onClick={onPrev} style={{ cursor: "pointer" }}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-foreground/40 hover:border-foreground/40 hover:text-foreground transition-all">
