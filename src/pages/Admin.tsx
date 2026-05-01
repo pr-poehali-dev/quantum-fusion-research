@@ -109,6 +109,7 @@ export default function Admin() {
     id: null as number | null,
     title: "", slug: "", excerpt: "", content: "",
     image_url: "", category: "article", is_published: false,
+    html_attachment: "",
   })
 
   const [productForm, setProductForm] = useState({
@@ -126,10 +127,11 @@ export default function Admin() {
     image_urls: [] as string[],
   })
   const [buildComponents, setBuildComponents] = useState<Array<{
-    slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number
+    slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; qty: number
   }>>([])
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
   const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
+  const [dupeLoading, setDupeLoading] = useState<number | null>(null)
 
   const generateClientLink = async (b: PCBuild) => {
     const token = b.client_token || (await api.builds.generateClientLink(b.id)).client_token
@@ -142,7 +144,7 @@ export default function Admin() {
   }
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
-  const partsTotal = buildComponents.reduce((s, c) => s + c.price, 0)
+  const partsTotal = buildComponents.reduce((s, c) => s + c.price * (c.qty || 1), 0)
   const assemblyFee = buildForm.assembly_type === "percent"
     ? Math.round(partsTotal * 0.07)
     : (parseFloat(buildForm.assembly_fee_manual) || 0)
@@ -261,23 +263,52 @@ export default function Admin() {
       assembly_fee_manual: b.assembly_type === "manual" ? String(b.assembly_fee) : "",
       image_urls: b.image_urls || [],
     })
-    setBuildComponents(b.components.map(c => ({
+    setBuildComponents(b.components.map((c: { slot: string; source: string; source_id?: number; name: string; price: number; current_price?: number; qty?: number }) => ({
       slot: c.slot, source: c.source as "catalog" | "custom",
-      source_id: c.source_id, name: c.name, price: c.current_price ?? c.price,
+      source_id: c.source_id, name: c.name, price: c.current_price ?? c.price, qty: c.qty || 1,
     })))
     setTab("add_build")
   }
 
   const addCatalogComponent = (slot: string, comp: ConfigComponent) => {
     setBuildComponents(cs => {
-      // Если товар уже добавлен — не дублируем
       if (cs.some(c => c.source_id === comp.id)) return cs
-      return [...cs, { slot, source: "catalog", source_id: comp.id, name: comp.name, price: comp.price }]
+      return [...cs, { slot, source: "catalog", source_id: comp.id, name: comp.name, price: comp.price, qty: 1 }]
     })
   }
 
   const removeComponent = (sourceId: number) => {
     setBuildComponents(cs => cs.filter(c => c.source_id !== sourceId))
+  }
+
+  const setComponentQty = (sourceId: number, delta: number) => {
+    setBuildComponents(cs => cs.map(c => {
+      if (c.source_id !== sourceId) return c
+      const next = Math.max(1, (c.qty || 1) + delta)
+      return { ...c, qty: next }
+    }))
+  }
+
+  const duplicateBuild = async (b: PCBuild) => {
+    setDupeLoading(b.id)
+    const payload = {
+      id: null,
+      name: b.name + " (вариант)",
+      description: b.description,
+      image_urls: b.image_urls || [],
+      components: b.components,
+      assembly_type: b.assembly_type,
+      assembly_fee: b.assembly_fee,
+      status: "draft",
+      is_featured: false,
+      sort_order: 0,
+      client_token: b.client_token,
+    }
+    const created = await api.builds.create(payload)
+    if (created?.id) {
+      setBuilds(bs => [...bs, { ...b, id: created.id, name: payload.name, status: "draft", is_featured: false }])
+    }
+    setDupeLoading(null)
   }
 
   if (!authed) {
@@ -325,10 +356,11 @@ export default function Admin() {
       image_url: articleForm.image_url || null,
       category: articleForm.category,
       is_published: articleForm.is_published,
+      html_attachment: articleForm.html_attachment || null,
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
-    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false })
+    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false, html_attachment: "" })
     setTab("articles")
   }
 
@@ -337,9 +369,10 @@ export default function Admin() {
       id: a.id, title: a.title, slug: a.slug,
       excerpt: a.excerpt || "", content: "",
       image_url: a.image_url || "", category: a.category, is_published: a.is_published,
+      html_attachment: "",
     })
     api.articles.getById(a.id).then(full => {
-      setArticleForm(f => ({ ...f, content: full.content || "" }))
+      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "" }))
     })
     setTab("add_article")
   }
@@ -597,6 +630,12 @@ export default function Admin() {
                       <button onClick={() => editBuild(b)} className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                         <Icon name="Pencil" size={13} />Изменить
                       </button>
+                      <button onClick={() => duplicateBuild(b)} disabled={dupeLoading === b.id}
+                        className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
+                        style={{ cursor: "pointer" }}
+                        title="Создать вариант сборки с тем же токеном клиента">
+                        <Icon name={dupeLoading === b.id ? "Loader2" : "Copy"} size={13} />Вариант
+                      </button>
                       {/* Клиентская ссылка */}
                       <button
                         onClick={() => generateClientLink(b)}
@@ -665,13 +704,27 @@ export default function Admin() {
                 {/* Уже добавленные компоненты */}
                 {buildComponents.length > 0 && (
                   <div className="mb-3 space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                    <p className="mb-2 text-xs font-medium text-foreground/60">Выбрано компонентов: {buildComponents.length}</p>
+                    <p className="mb-2 text-xs font-medium text-foreground/60">Позиций: {buildComponents.length} · Итого железо: {fmt(partsTotal)}</p>
                     {buildComponents.map((c, i) => (
-                      <div key={i} className="flex items-center gap-3 text-sm">
-                        <span className="w-32 shrink-0 text-xs text-foreground/50 font-mono truncate">{c.slot}</span>
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className="w-28 shrink-0 text-xs text-foreground/50 font-mono truncate">{c.slot}</span>
                         <span className="flex-1 text-foreground font-medium truncate">{c.name}</span>
-                        <span className="shrink-0 font-bold text-primary text-xs">{fmt(c.price)}</span>
-                        <button onClick={() => removeComponent(c.source_id ?? 0)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                        {/* qty controls */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, -1)}
+                            className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                            style={{ cursor: "pointer" }}>
+                            <Icon name="Minus" size={10} />
+                          </button>
+                          <span className="w-5 text-center text-xs font-bold text-foreground">{c.qty || 1}</span>
+                          <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, 1)}
+                            className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                            style={{ cursor: "pointer" }}>
+                            <Icon name="Plus" size={10} />
+                          </button>
+                        </div>
+                        <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(c.price * (c.qty || 1))}</span>
+                        <button type="button" onClick={() => removeComponent(c.source_id ?? 0)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name="X" size={13} />
                         </button>
                       </div>
@@ -805,7 +858,7 @@ export default function Admin() {
           <div>
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
-              <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false }); setTab("add_article") }}
+              <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false, html_attachment: "" }); setTab("add_article") }}
                 className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={15} />Новая статья
               </button>
@@ -904,6 +957,59 @@ export default function Admin() {
                   placeholder="Поддерживается Markdown: **жирный**, *курсив*, ## Заголовок, - список"
                   className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-y font-mono" style={{ cursor: "text" }} />
               </div>
+
+              {/* HTML-вложение */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs text-foreground/60">HTML-вложение <span className="text-foreground/30">(опционально — для результатов тестов, бенчмарков)</span></label>
+                  {articleForm.html_attachment && (
+                    <button type="button" onClick={() => setArticleForm(f => ({ ...f, html_attachment: "" }))}
+                      className="text-xs text-foreground/40 hover:text-red-400 transition-colors flex items-center gap-1" style={{ cursor: "pointer" }}>
+                      <Icon name="X" size={11} /> Очистить
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <textarea rows={8} value={articleForm.html_attachment}
+                    onChange={e => setArticleForm(f => ({ ...f, html_attachment: e.target.value }))}
+                    placeholder="<!DOCTYPE html>&#10;<html>&#10;  <body>&#10;    <!-- Вставьте HTML-код результатов теста -->&#10;  </body>&#10;</html>"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-xs text-foreground focus:border-primary focus:outline-none resize-y font-mono" style={{ cursor: "text" }} />
+                  <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+                    {articleForm.html_attachment && (
+                      <span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                        {articleForm.html_attachment.length.toLocaleString()} симв.
+                      </span>
+                    )}
+                    <label className="flex cursor-pointer items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
+                      <Icon name="Upload" size={11} />
+                      .html
+                      <input type="file" accept=".html,.htm" className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          const reader = new FileReader()
+                          reader.onload = ev => setArticleForm(f => ({ ...f, html_attachment: ev.target?.result as string || "" }))
+                          reader.readAsText(file)
+                          e.target.value = ""
+                        }} />
+                    </label>
+                  </div>
+                </div>
+                {articleForm.html_attachment && (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-xs text-foreground/40 hover:text-foreground/60 select-none">Предпросмотр</summary>
+                    <div className="mt-2 rounded-lg border border-border overflow-hidden" style={{ height: 320 }}>
+                      <iframe
+                        srcDoc={articleForm.html_attachment}
+                        sandbox="allow-scripts"
+                        className="w-full h-full border-0 bg-white"
+                        title="HTML preview"
+                      />
+                    </div>
+                  </details>
+                )}
+              </div>
+
               <div className="flex items-center gap-3">
                 <input type="checkbox" id="is_published" checked={articleForm.is_published}
                   onChange={e => setArticleForm(f => ({ ...f, is_published: e.target.checked }))}

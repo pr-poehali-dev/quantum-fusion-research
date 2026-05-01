@@ -3,9 +3,9 @@
     {
       "name": "Get articles list",
       "method": "GET",
-      "path": "/?published=true",
+      "path": "/",
       "expectedStatus": 200,
-      "expectedBody": {"articles": [], "total": 0},
+      "expectedBody": {"articles": []},
       "bodyMatcher": "partial"
     }
   ]

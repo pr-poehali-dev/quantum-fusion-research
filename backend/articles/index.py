@@ -21,7 +21,7 @@ def handler(event: dict, context) -> dict:
     """
     Статьи и тесты.
     GET  /            — список (params: category, limit, offset, published)
-    GET  /?id=N       — одна статья + инкремент просмотров
+    GET  /?id=N       — одна статья
     POST /            — создать
     PUT  /            — обновить (body.id обязателен)
     DELETE /?id=N     — удалить
@@ -39,26 +39,26 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
 
+    # Колонки: id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at, html_attachment
     def row_to_article(row, full=False):
         a = {
             "id": row[0], "title": row[1], "slug": row[2],
             "excerpt": row[3], "image_url": row[5],
-            "category": row[6], "tags": row[7] or [],
-            "is_published": row[8], "views": row[9],
-            "created_at": row[10].isoformat() if row[10] else None,
-            "updated_at": row[11].isoformat() if row[11] else None,
+            "category": row[6], "tags": [],
+            "is_published": row[7], "views": 0,
+            "created_at": row[9].isoformat() if row[9] else None,
+            "updated_at": None,
         }
         if full:
             a["content"] = row[4]
+            a["html_attachment"] = row[10] if len(row) > 10 else None
         return a
 
     if method == "GET":
         article_id = params.get("id")
         if article_id:
-            cur.execute("UPDATE articles SET views = views + 1 WHERE id = %s", (article_id,))
-            conn.commit()
             cur.execute(
-                "SELECT id, title, slug, excerpt, content, image_url, category, tags, is_published, views, created_at, updated_at FROM articles WHERE id = %s",
+                "SELECT id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at, html_attachment FROM articles WHERE id = %s",
                 (article_id,)
             )
             row = cur.fetchone()
@@ -79,7 +79,7 @@ def handler(event: dict, context) -> dict:
             limit = int(params.get("limit", 20))
             offset = int(params.get("offset", 0))
             cur.execute(
-                f"SELECT id, title, slug, excerpt, content, image_url, category, tags, is_published, views, created_at, updated_at FROM articles {where_sql} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                f"SELECT id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at FROM articles {where_sql} ORDER BY created_at DESC LIMIT %s OFFSET %s",
                 args + [limit, offset]
             )
             rows = cur.fetchall()
@@ -91,11 +91,12 @@ def handler(event: dict, context) -> dict:
         body = json.loads(event.get("body") or "{}")
         slug = body.get("slug") or slugify(body["title"]) or f"article-{os.urandom(4).hex()}"
         cur.execute(
-            """INSERT INTO articles (title, slug, excerpt, content, image_url, category, tags, is_published)
+            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              body.get("image_url"), body.get("category", "article"),
-             body.get("tags", []), body.get("is_published", False))
+             body.get("is_published", False),
+             body.get("html_attachment") or None)
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -105,11 +106,12 @@ def handler(event: dict, context) -> dict:
         body = json.loads(event.get("body") or "{}")
         slug = body.get("slug") or slugify(body["title"])
         cur.execute(
-            """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, image_url=%s,
-               category=%s, tags=%s, is_published=%s, updated_at=NOW() WHERE id=%s""",
+            """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, cover_url=%s,
+               category=%s, is_published=%s, html_attachment=%s WHERE id=%s""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              body.get("image_url"), body.get("category", "article"),
-             body.get("tags", []), body.get("is_published", False), body["id"])
+             body.get("is_published", False),
+             body.get("html_attachment") or None, body["id"])
         )
         conn.commit()
         return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
