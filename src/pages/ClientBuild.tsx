@@ -30,7 +30,11 @@ export default function ClientBuild() {
   const { addItem } = useCart()
 
   const token = searchParams.get("token")
-  const [build, setBuild] = useState<Build | null>(null)
+
+  // Все варианты сборки по одному токену
+  const [variants, setVariants] = useState<Build[]>([])
+  const [activeVariant, setActiveVariant] = useState(0)
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [claiming, setClaiming] = useState(false)
@@ -46,18 +50,37 @@ export default function ClientBuild() {
     if (!token) { setError("Ссылка недействительна"); setLoading(false); return }
     api.builds.getByClientToken(token).then(async (data) => {
       if (data.error) { setError(data.error); setLoading(false); return }
-      setBuild(data)
-      if (data.client_user_id && user && data.client_user_id === user.id) setClaimed(true)
-      const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }) => ({
-        ...c,
-        description: c.description || c.product_description || undefined,
-        image_url: c.image_url || (c.product_images && c.product_images[0]) || undefined,
-      }))
-      setEnrichedComponents(comps)
+
+      // Бэкенд может вернуть один объект или массив — нормализуем
+      const list: Build[] = Array.isArray(data) ? data : [data]
+      setVariants(list)
+
+      const b = list[0]
+      if (b.client_user_id && user && b.client_user_id === user.id) setClaimed(true)
+      setEnrichedComponents(enrichComponents(b.components))
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
   }, [token, user])
 
+  // При смене вкладки — обновляем компоненты и сбрасываем прокрутку
+  useEffect(() => {
+    if (!variants[activeVariant]) return
+    setEnrichedComponents(enrichComponents(variants[activeVariant].components))
+    setCurrentSection(0)
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }, [activeVariant, variants])
+
+  function enrichComponents(comps: (Component & { product_description?: string; product_images?: string[] })[]) {
+    return comps.map(c => ({
+      ...c,
+      description: c.description || c.product_description || undefined,
+      image_url: c.image_url || (c.product_images && c.product_images[0]) || undefined,
+    }))
+  }
+
+  const build = variants[activeVariant] ?? null
   const components = enrichedComponents.length > 0 ? enrichedComponents : (build?.components || [])
   const totalSections = components.length + 2
 
@@ -159,11 +182,33 @@ export default function ClientBuild() {
       </nav>
 
       {/* Хедер */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-4 bg-background/80 backdrop-blur-sm border-b border-border/50">
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-3 bg-background/80 backdrop-blur-sm border-b border-border/50">
         <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">B</div>
           <span className="hidden sm:block text-sm font-medium text-foreground/80">BeGraphics</span>
         </button>
+
+        {/* Вкладки вариантов — по центру */}
+        {variants.length > 1 && (
+          <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
+            {variants.map((v, i) => (
+              <button
+                key={v.id}
+                onClick={() => setActiveVariant(i)}
+                style={{ cursor: "pointer" }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap ${
+                  i === activeVariant
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {v.name.replace(/ \(вариант.*?\)/, "") || `Вариант ${i + 1}`}
+                <span className="ml-1.5 opacity-60">{fmt(v.total_price)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           {claimed ? (
             <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary">
@@ -188,7 +233,7 @@ export default function ClientBuild() {
         <div className="h-screen w-screen shrink-0 relative" style={{ scrollSnapAlign: "start" }}>
           <div className="relative flex h-full w-full overflow-hidden">
 
-            {/* Фото сборки — справа, полная высота, сохраняем пропорции */}
+            {/* Фото сборки — справа, полная высота */}
             {buildImages.length > 0 && (
               <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none">
                 <img src={buildImages[0]} alt={build.name} className="h-full w-full object-contain object-right" />
@@ -197,7 +242,7 @@ export default function ClientBuild() {
             )}
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
-            {/* Баннер — персональная сборка */}
+            {/* Баннер */}
             <div className={`absolute top-20 left-0 right-0 px-5 sm:px-16 z-10 transition-all duration-500 ${currentSection === 0 ? "opacity-100" : "opacity-0"}`}>
               <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 max-w-md">
                 <Icon name="Sparkles" size={15} className="text-primary shrink-0" />
@@ -206,7 +251,6 @@ export default function ClientBuild() {
             </div>
 
             <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 px-5 sm:px-16 pt-32 pb-16">
-              {/* Левая часть — текст */}
               <div className="flex-1 min-w-0">
                 <div className={`transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                   <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">Персональная сборка · BeGraphics</p>
@@ -216,7 +260,6 @@ export default function ClientBuild() {
                   {build.description && (
                     <p className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground">{build.description}</p>
                   )}
-                  {/* Фото — мобайл */}
                   {buildImages.length > 0 && (
                     <div className="lg:hidden mb-6">
                       <img src={buildImages[0]} alt={build.name} className="w-full rounded-2xl object-contain max-h-52 border border-border bg-muted" />
@@ -276,7 +319,7 @@ export default function ClientBuild() {
 
         {/* ── СЕКЦИИ 1..N: Компоненты ── */}
         {components.map((comp, idx) => (
-          <div key={idx} className="h-screen w-screen shrink-0" style={{ scrollSnapAlign: "start" }}>
+          <div key={`${build.id}-${idx}`} className="h-screen w-screen shrink-0" style={{ scrollSnapAlign: "start" }}>
             <ComponentSection comp={comp} index={idx} total={components.length}
               active={currentSection === idx + 1}
               onNext={() => scrollToSection(idx + 2)}
@@ -385,67 +428,69 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
   const price = comp.current_price ?? comp.price
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden bg-background">
-      <div className="absolute top-16 sm:top-24 left-4 sm:left-16 pointer-events-none select-none">
-        <span className="font-mono font-bold leading-none text-foreground/[0.04]" style={{ fontSize: "clamp(80px, 15vw, 140px)" }}>
+
+      {/* Фото — на весь фон */}
+      {comp.image_url && (
+        <div className={`absolute inset-0 transition-all duration-1000 ${active ? "opacity-100 scale-100" : "opacity-0 scale-105"}`}>
+          <img src={comp.image_url} alt={comp.name}
+            className="h-full w-full object-cover object-center"
+            style={{ filter: "brightness(0.75)" }}
+          />
+          <div className="absolute inset-0" style={{
+            background: "linear-gradient(to right, var(--tw-gradient-from, hsl(var(--background))) 35%, hsl(var(--background) / 0.6) 60%, transparent 100%)"
+          }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
+        </div>
+      )}
+      {!comp.image_url && (
+        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
+      )}
+
+      {/* Большой номер */}
+      <div className="absolute top-16 sm:top-20 left-4 sm:left-16 pointer-events-none select-none">
+        <span className="font-mono font-bold leading-none" style={{
+          fontSize: "clamp(80px, 15vw, 160px)",
+          color: comp.image_url ? "rgba(255,255,255,0.06)" : "hsl(var(--foreground) / 0.04)"
+        }}>
           {String(index + 1).padStart(2, "0")}
         </span>
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 sm:gap-16 px-5 sm:px-16 pt-20 pb-20">
-        <div className="flex-1 min-w-0">
-          <div className={`transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
-            <p className="mb-1.5 font-mono text-xs uppercase tracking-widest text-primary/70">
-              {SLOT_NAMES[comp.slot] || comp.slot} · {index + 1} / {total}
-            </p>
-            <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.5rem, 4vw, 3rem)" }}>
-              {comp.name}
-            </h2>
-            <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.25rem, 3vw, 2rem)" }}>{fmt(price)}</p>
-            {comp.description && (
-              <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md">{comp.description}</p>
-            )}
-            {comp.specs && Object.keys(comp.specs).length > 0 && (
-              <div className="grid grid-cols-2 gap-1.5 mt-3 max-w-sm">
-                {Object.entries(comp.specs).slice(0, 4).map(([k, v]) => (
-                  <div key={k} className="rounded-lg bg-muted border border-border px-3 py-2">
-                    <p className="text-xs text-muted-foreground mb-0.5 truncate">{k}</p>
-                    <p className="text-xs sm:text-sm text-foreground font-medium truncate">{v}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* Текст — слева */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-16 pt-20 pb-24">
+        <div className={`max-w-lg transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
+          <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
+            {SLOT_NAMES[comp.slot] || comp.slot} · {index + 1} / {total}
+          </p>
+          <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.6rem, 4vw, 3.2rem)" }}>
+            {comp.name}
+          </h2>
+          <p className="mb-5 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
+          {comp.description && (
+            <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground">{comp.description}</p>
+          )}
+          {comp.specs && Object.keys(comp.specs).length > 0 && (
+            <div className="grid grid-cols-2 gap-1.5 max-w-sm">
+              {Object.entries(comp.specs).slice(0, 4).map(([k, v]) => (
+                <div key={k} className="rounded-lg bg-background/70 backdrop-blur-sm border border-border/60 px-3 py-2">
+                  <p className="text-xs text-muted-foreground mb-0.5 truncate">{k}</p>
+                  <p className="text-xs sm:text-sm text-foreground font-medium truncate">{v}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-
-        {/* Фото — десктоп, пропорции сохранены */}
-        {comp.image_url && (
-          <div className={`hidden md:block shrink-0 transition-all duration-700 delay-150 ${active ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}
-            style={{ width: "clamp(160px, 26vw, 340px)" }}>
-            <img src={comp.image_url} alt={comp.name}
-              className="w-full rounded-2xl object-contain border border-border bg-muted"
-              style={{ maxHeight: "55vh" }}
-            />
-          </div>
-        )}
-        {/* Фото — мобайл */}
-        {comp.image_url && !comp.description && (
-          <div className={`md:hidden shrink-0 transition-all duration-700 delay-150 ${active ? "opacity-100" : "opacity-0"}`}>
-            <img src={comp.image_url} alt={comp.name}
-              className="rounded-xl object-contain border border-border bg-muted"
-              style={{ width: 80, height: 80 }}
-            />
-          </div>
-        )}
       </div>
 
+      {/* Навигация */}
       <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-5 transition-all duration-500 ${active ? "opacity-100" : "opacity-0"}`}>
         <button onClick={onPrev} style={{ cursor: "pointer" }}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-background/70 backdrop-blur border border-border/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
           <Icon name="ChevronUp" size={16} />
         </button>
-        <span className="text-xs font-mono text-muted-foreground">{index + 1} / {total}</span>
+        <span className="text-xs font-mono text-muted-foreground bg-background/70 backdrop-blur px-2 py-0.5 rounded">{index + 1} / {total}</span>
         <button onClick={onNext} style={{ cursor: "pointer" }}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-background/70 backdrop-blur border border-border/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
           <Icon name="ChevronDown" size={16} />
         </button>
       </div>

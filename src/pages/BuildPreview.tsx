@@ -330,68 +330,74 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
   const price = comp.current_price ?? comp.price
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden bg-background">
-      <div className="absolute top-16 sm:top-24 left-4 sm:left-16 pointer-events-none select-none">
-        <span className="font-mono font-bold leading-none text-foreground/[0.04]" style={{ fontSize: "clamp(80px, 15vw, 140px)" }}>
+
+      {/* Фото — на весь фон справа */}
+      {comp.image_url && (
+        <div className={`absolute inset-0 transition-all duration-1000 ${active ? "opacity-100 scale-100" : "opacity-0 scale-105"}`}>
+          <img
+            src={comp.image_url} alt={comp.name}
+            className="h-full w-full object-cover object-center"
+            style={{ filter: "brightness(0.75)" }}
+          />
+          {/* Градиент: слева плотный фон, справа прозрачно */}
+          <div className="absolute inset-0" style={{
+            background: "linear-gradient(to right, var(--tw-gradient-from, hsl(var(--background))) 35%, hsl(var(--background) / 0.6) 60%, transparent 100%)"
+          }} />
+          {/* Лёгкий градиент снизу */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
+        </div>
+      )}
+
+      {/* Без фото — просто фон */}
+      {!comp.image_url && (
+        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
+      )}
+
+      {/* Большой номер */}
+      <div className="absolute top-16 sm:top-20 left-4 sm:left-16 pointer-events-none select-none">
+        <span className="font-mono font-bold leading-none" style={{
+          fontSize: "clamp(80px, 15vw, 160px)",
+          color: comp.image_url ? "rgba(255,255,255,0.06)" : "hsl(var(--foreground) / 0.04)"
+        }}>
           {String(index + 1).padStart(2, "0")}
         </span>
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 sm:gap-16 px-5 sm:px-16 pt-20 pb-20">
-        {/* Текст */}
-        <div className="flex-1 min-w-0">
-          <div className={`transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
-            <p className="mb-1.5 font-mono text-xs uppercase tracking-widest text-primary/70">
-              {SLOT_NAMES[comp.slot] || comp.slot} · {index + 1} / {total}
-            </p>
-            <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.5rem, 4vw, 3rem)" }}>
-              {comp.name}
-            </h2>
-            <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.25rem, 3vw, 2rem)" }}>{fmt(price)}</p>
-            {comp.description && (
-              <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md">{comp.description}</p>
-            )}
-            {comp.specs && Object.keys(comp.specs).length > 0 && (
-              <div className="grid grid-cols-2 gap-1.5 mt-3 max-w-sm">
-                {Object.entries(comp.specs).slice(0, 4).map(([k, v]) => (
-                  <div key={k} className="rounded-lg bg-muted border border-border px-3 py-2">
-                    <p className="text-xs text-muted-foreground mb-0.5 truncate">{k}</p>
-                    <p className="text-xs sm:text-sm text-foreground font-medium truncate">{v}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* Текст — всегда слева */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-16 pt-20 pb-24">
+        <div className={`max-w-lg transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
+          <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
+            {SLOT_NAMES[comp.slot] || comp.slot} · {index + 1} / {total}
+          </p>
+          <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.6rem, 4vw, 3.2rem)" }}>
+            {comp.name}
+          </h2>
+          <p className="mb-5 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
+          {comp.description && (
+            <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground">{comp.description}</p>
+          )}
+          {comp.specs && Object.keys(comp.specs).length > 0 && (
+            <div className="grid grid-cols-2 gap-1.5 max-w-sm">
+              {Object.entries(comp.specs).slice(0, 4).map(([k, v]) => (
+                <div key={k} className="rounded-lg bg-background/70 backdrop-blur-sm border border-border/60 px-3 py-2">
+                  <p className="text-xs text-muted-foreground mb-0.5 truncate">{k}</p>
+                  <p className="text-xs sm:text-sm text-foreground font-medium truncate">{v}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-
-        {/* Фото — десктоп, сохраняем пропорции */}
-        {comp.image_url && (
-          <div className={`hidden md:block shrink-0 transition-all duration-700 delay-150 ${active ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}
-            style={{ width: "clamp(160px, 26vw, 340px)" }}>
-            <img src={comp.image_url} alt={comp.name}
-              className="w-full rounded-2xl object-contain border border-border bg-muted"
-              style={{ maxHeight: "55vh" }}
-            />
-          </div>
-        )}
-        {/* Фото — мобайл, только если нет описания */}
-        {comp.image_url && !comp.description && (
-          <div className={`md:hidden shrink-0 transition-all duration-700 delay-150 ${active ? "opacity-100" : "opacity-0"}`}>
-            <img src={comp.image_url} alt={comp.name}
-              className="rounded-xl object-contain border border-border bg-muted"
-              style={{ width: 80, height: 80 }}
-            />
-          </div>
-        )}
       </div>
 
+      {/* Навигация */}
       <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-5 transition-all duration-500 ${active ? "opacity-100" : "opacity-0"}`}>
         <button onClick={onPrev} style={{ cursor: "pointer" }}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-background/70 backdrop-blur border border-border/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
           <Icon name="ChevronUp" size={16} />
         </button>
-        <span className="text-xs font-mono text-muted-foreground">{index + 1} / {total}</span>
+        <span className="text-xs font-mono text-muted-foreground bg-background/70 backdrop-blur px-2 py-0.5 rounded">{index + 1} / {total}</span>
         <button onClick={onNext} style={{ cursor: "pointer" }}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-background/70 backdrop-blur border border-border/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
           <Icon name="ChevronDown" size={16} />
         </button>
       </div>
