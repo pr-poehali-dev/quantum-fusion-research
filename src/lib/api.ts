@@ -18,7 +18,7 @@ export const api = {
       const qs = params ? "?" + new URLSearchParams(params).toString() : ""
       return fetch(URLS.products + qs).then(r => r.json())
     },
-    getById: (id: number) => fetch(`${URLS.products}/${id}`).then(r => r.json()),
+    getById: (id: number) => fetch(`${URLS.products}?id=${id}`).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.products, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.products, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.products, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
