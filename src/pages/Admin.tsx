@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate } from "react-router-dom"
+import { ImageUploader } from "@/components/image-uploader"
 
 const ADMIN_PASSWORD = "begraphics2024"
 
@@ -122,7 +123,7 @@ export default function Admin() {
     name: "", description: "", status: "catalog", is_featured: false,
     assembly_type: "percent" as "percent" | "manual",
     assembly_fee_manual: "",
-    image_urls: "",
+    image_urls: [] as string[],
   })
   const [buildComponents, setBuildComponents] = useState<Array<{
     slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number
@@ -237,7 +238,7 @@ export default function Admin() {
     const payload = {
       id: buildForm.id,
       name: buildForm.name, description: buildForm.description,
-      image_urls: buildForm.image_urls ? buildForm.image_urls.split("\n").filter(Boolean) : [],
+      image_urls: buildForm.image_urls,
       components: buildComponents,
       assembly_type: buildForm.assembly_type,
       assembly_fee: buildForm.assembly_type === "manual" ? parseFloat(buildForm.assembly_fee_manual) || 0 : 0,
@@ -247,7 +248,7 @@ export default function Admin() {
     }
     if (buildForm.id) await api.builds.update(payload)
     else await api.builds.create(payload)
-    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: "" })
+    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] })
     setBuildComponents([])
     setTab("builds")
   }
@@ -258,7 +259,7 @@ export default function Admin() {
       status: b.status, is_featured: b.is_featured,
       assembly_type: b.assembly_type as "percent" | "manual",
       assembly_fee_manual: b.assembly_type === "manual" ? String(b.assembly_fee) : "",
-      image_urls: "",
+      image_urls: b.image_urls || [],
     })
     setBuildComponents(b.components.map(c => ({
       slot: c.slot, source: c.source as "catalog" | "custom",
@@ -646,9 +647,12 @@ export default function Admin() {
                   className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-foreground/60">URL фотографий (по одной на строку)</label>
-                <textarea rows={2} value={buildForm.image_urls} onChange={e => setBuildForm(f => ({ ...f, image_urls: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none" placeholder="https://..." style={{ cursor: "text" }} />
+                <label className="mb-2 block text-xs text-foreground/60">Фотографии сборки</label>
+                <ImageUploader
+                  images={buildForm.image_urls}
+                  onChange={urls => setBuildForm(f => ({ ...f, image_urls: urls }))}
+                  folder="builds"
+                />
               </div>
 
               {/* Components constructor */}
