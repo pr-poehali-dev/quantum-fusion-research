@@ -69,7 +69,8 @@ interface PCBuild {
   id: number
   name: string
   description: string
-  components: Array<{ slot: string; name: string; price: number; source: string; source_id?: number; current_price?: number }>
+  image_urls: string[]
+  components: Array<{ slot: string; name: string; price: number; source: string; source_id?: number; current_price?: number; qty?: number }>
   parts_total: number
   assembly_type: string
   assembly_fee: number
