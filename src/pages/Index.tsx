@@ -187,7 +187,7 @@ export default function Index() {
   }, [currentSection])
 
   return (
-    <main className="custom-cursor-active dark relative h-screen w-full overflow-hidden" style={{ background: "#080808", color: "#f2f2f2" }}>
+    <main className="custom-cursor-active relative h-screen w-full overflow-hidden" style={{ background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}>
       <CustomCursor />
       <GrainOverlay />
 
@@ -201,7 +201,7 @@ export default function Index() {
         {/* 1. Базовый фон — тёмный или светлый */}
         <div
           className="absolute inset-0 transition-colors duration-500"
-          style={{ background: mode === "light" ? "#f5f5f5" : "#080808" }}
+          style={{ background: "hsl(var(--background))" }}
         />
 
         {/* 2. WebGL-шейдер — цвета из акцента */}
