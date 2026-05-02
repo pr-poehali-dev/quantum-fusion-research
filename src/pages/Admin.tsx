@@ -281,6 +281,7 @@ export default function Admin() {
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [productCatFilter, setProductCatFilter] = useState("all")
   const [configSlots, setConfigSlots] = useState<Record<string, ConfigComponent[]>>({})
   const [builds, setBuilds] = useState<PCBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
@@ -384,6 +385,12 @@ export default function Admin() {
     const newQty = p.in_stock ? 0 : 1
     await api.products.patch({ id: p.id, stock_qty: newQty })
     setProducts(ps => ps.map(pp => pp.id === p.id ? { ...pp, in_stock: newQty > 0, stock_qty: newQty } : pp))
+  }
+
+  const deleteProduct = async (id: number) => {
+    if (!confirm("Удалить товар? Это действие нельзя отменить.")) return
+    await api.products.delete(id)
+    setProducts(ps => ps.filter(p => p.id !== id))
   }
 
   const submitProduct = async (e: React.FormEvent) => {
@@ -669,59 +676,85 @@ export default function Admin() {
         )}
 
         {/* PRODUCTS LIST */}
-        {tab === "products" && (
-          <div>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-light text-foreground">Товары ({products.length})</h2>
-              <button onClick={() => setTab("add_product")} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={16} />Добавить
-              </button>
-            </div>
-            {loading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-card animate-pulse" />)}</div>
-              : (
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        {["Товар", "Категория", "Цена", "В наличии", ""].map(h => (
-                          <th key={h} className="px-4 py-3 text-left text-xs font-medium text-foreground/60">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.map((p, i) => (
-                        <tr key={p.id} className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-foreground">{p.name}</p>
-                            {p.is_featured && <span className="text-xs text-accent">★ Рекомендуем</span>}
-                          </td>
-                          <td className="px-4 py-3 text-foreground/60 text-xs">{p.category?.name || "—"}</td>
-                          <td className="px-4 py-3 text-right">
-                            <p className="font-bold text-foreground">{fmt(p.price)}</p>
-                            {p.old_price && <p className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</p>}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => toggleStock(p)}
-                              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${p.in_stock ? "bg-green-400/10 text-green-400 hover:bg-red-400/10 hover:text-red-400" : "bg-red-400/10 text-red-400 hover:bg-green-400/10 hover:text-green-400"}`}
-                              style={{ cursor: "pointer" }}
-                            >
-                              {p.in_stock ? "Есть" : "Нет"}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button onClick={() => editProduct(p)} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                              <Icon name="Pencil" size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+        {tab === "products" && (() => {
+          const filtered = productCatFilter === "all"
+            ? products
+            : products.filter(p => p.category?.name === productCatFilter)
+          return (
+            <div>
+              <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
+                <h2 className="text-xl font-light text-foreground">Товары ({filtered.length})</h2>
+                <div className="flex items-center gap-2">
+                  {/* Фильтр по категориям */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={() => setProductCatFilter("all")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${productCatFilter === "all" ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                      style={{ cursor: "pointer" }}>Все</button>
+                    {categories.map(c => (
+                      <button key={c.id} onClick={() => setProductCatFilter(c.name)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${productCatFilter === c.name ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                        style={{ cursor: "pointer" }}>{c.name}</button>
+                    ))}
+                  </div>
+                  <button onClick={() => setTab("add_product")} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Plus" size={16} />Добавить
+                  </button>
                 </div>
-              )}
-          </div>
-        )}
+              </div>
+              {loading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-card animate-pulse" />)}</div>
+                : (
+                  <div className="overflow-x-auto rounded-xl border border-border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          {["Товар", "Категория", "Цена", "В наличии", ""].map(h => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-medium text-foreground/60">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((p, i) => (
+                          <tr key={p.id} className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                {p.image_url && <img src={p.image_url} alt={p.name} className="h-10 w-10 rounded-lg object-contain bg-muted shrink-0" />}
+                                <div>
+                                  <p className="font-medium text-foreground">{p.name}</p>
+                                  {p.is_featured && <span className="text-xs text-accent">★ Рекомендуем</span>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-foreground/60 text-xs">{p.category?.name || "—"}</td>
+                            <td className="px-4 py-3 text-right">
+                              <p className="font-bold text-foreground">{fmt(p.price)}</p>
+                              {p.old_price && <p className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</p>}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button onClick={() => toggleStock(p)}
+                                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${p.in_stock ? "bg-green-400/10 text-green-400 hover:bg-red-400/10 hover:text-red-400" : "bg-red-400/10 text-red-400 hover:bg-green-400/10 hover:text-green-400"}`}
+                                style={{ cursor: "pointer" }}>
+                                {p.in_stock ? "Есть" : "Нет"}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => editProduct(p)} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                                  <Icon name="Pencil" size={15} />
+                                </button>
+                                <button onClick={() => deleteProduct(p.id)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                                  <Icon name="Trash2" size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+            </div>
+          )
+        })()}
 
         {/* ADD/EDIT PRODUCT */}
         {tab === "add_product" && (

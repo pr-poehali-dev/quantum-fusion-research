@@ -232,6 +232,14 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        elif method == "DELETE":
+            product_id = (event.get("queryStringParameters") or {}).get("id")
+            if not product_id:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "id required"})}
+            cur.execute("DELETE FROM products WHERE id=%s", (int(product_id),))
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
     finally:
         cur.close()
         conn.close()

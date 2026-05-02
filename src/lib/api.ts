@@ -22,6 +22,7 @@ export const api = {
     create: (data: unknown) => fetch(URLS.products, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.products, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.products, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.products}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },
   configurator: {
     getSlots: () => fetch(`${URLS.products}?resource=slots`).then(r => r.json()),

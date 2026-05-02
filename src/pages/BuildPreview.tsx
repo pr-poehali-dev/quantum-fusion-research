@@ -423,43 +423,47 @@ function ComponentPhotoCarousel({ photos, name, active }: { photos: string[]; na
   const next = () => setIdx(i => (i + 1) % photos.length)
 
   return (
-    <div className={`absolute right-0 top-0 bottom-0 hidden lg:flex items-center justify-end pr-12 transition-all duration-1000 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-16"}`}
-      style={{ width: "42%" }}>
-      <div className="relative w-full max-w-sm">
-        {/* Стек фото с fade */}
-        <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-muted shadow-2xl" style={{ aspectRatio: "4/3" }}>
-          {photos.map((src, i) => (
-            <img
-              key={i} src={src} alt={name}
-              className="absolute inset-0 w-full h-full object-contain transition-opacity duration-700"
-              style={{ opacity: i === idx ? 1 : 0 }}
-            />
-          ))}
-          {/* Тонкий градиент слева — плавный переход к тексту */}
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: "linear-gradient(to right, hsl(var(--background) / 0.6) 0%, transparent 30%)"
-          }} />
-
-          {photos.length > 1 && (
-            <>
-              <button onClick={prev} style={{ cursor: "pointer" }}
-                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
-                <Icon name="ChevronLeft" size={13} />
-              </button>
-              <button onClick={next} style={{ cursor: "pointer" }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
-                <Icon name="ChevronRight" size={13} />
-              </button>
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                {photos.map((_, i) => (
-                  <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
-                    className={`rounded-full transition-all ${i === idx ? "w-4 h-1 bg-primary" : "w-1 h-1 bg-foreground/30 hover:bg-foreground/60"}`} />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+    <div
+      className={`absolute right-0 top-0 bottom-0 hidden lg:block transition-all duration-1000 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-16"}`}
+      style={{ width: "50%" }}
+    >
+      {/* Стек фото — без рамок, на весь блок, object-contain */}
+      <div className="absolute inset-0">
+        {photos.map((src, i) => (
+          <img
+            key={i} src={src} alt={name}
+            className="absolute inset-0 w-full h-full object-contain transition-opacity duration-700"
+            style={{ opacity: i === idx ? 1 : 0 }}
+          />
+        ))}
       </div>
+
+      {/* Градиент слева — плавный переход к тексту */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.4) 25%, transparent 55%)"
+      }} />
+
+      {/* Кнопки и точки поверх */}
+      {photos.length > 1 && (
+        <div className="absolute inset-0 flex flex-col justify-end pb-8 pr-6 items-end gap-3">
+          <div className="flex items-center gap-2">
+            <button onClick={prev} style={{ cursor: "pointer" }}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
+              <Icon name="ChevronLeft" size={14} />
+            </button>
+            <button onClick={next} style={{ cursor: "pointer" }}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
+              <Icon name="ChevronRight" size={14} />
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            {photos.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+                className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30 hover:bg-foreground/60"}`} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
