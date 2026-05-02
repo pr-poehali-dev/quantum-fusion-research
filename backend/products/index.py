@@ -57,10 +57,15 @@ def handler(event: dict, context) -> dict:
         # ── CONFIGURATOR SLOTS ──
         if is_slots:
             if method == "GET":
+                schema = "t_p72635010_quantum_fusion_resea"
+                # Берём товары из products, используя category.slug как слот
                 cur.execute(
-                    """SELECT id, slot, name, brand, price, specs, stock_qty, sort_order
-                       FROM configurator_components
-                       ORDER BY slot ASC, sort_order ASC"""
+                    f"""SELECT p.id, c.slug, p.name, c.name, p.price, p.specs, p.stock_qty, p.sort_order
+                       FROM {schema}.products p
+                       JOIN {schema}.categories c ON p.category_id = c.id
+                       WHERE c.slug IN ('cpu','gpu','ram','storage','psu','case','motherboard')
+                         AND p.in_stock = TRUE
+                       ORDER BY c.slug ASC, p.sort_order ASC, p.id ASC"""
                 )
                 rows = cur.fetchall()
                 slots = {}
@@ -70,7 +75,7 @@ def handler(event: dict, context) -> dict:
                         slots[slot] = []
                     stock_qty = row[6] or 0
                     slots[slot].append({
-                        "id": row[0], "slot": row[1], "name": row[2], "brand": row[3],
+                        "id": row[0], "slot": slot, "name": row[2], "brand": row[3],
                         "price": float(row[4]), "specs": row[5] or {},
                         "in_stock": stock_qty > 0,
                         "stock_qty": stock_qty,
