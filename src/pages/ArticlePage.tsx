@@ -24,17 +24,26 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 function renderMarkdown(text: string): string {
-  return text
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>")
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/(.+)/s, "<p>$1</p>")
+  // Разбиваем по двойному переносу — это параграфы
+  const paragraphs = text.split(/\n{2,}/)
+
+  const processLine = (line: string) =>
+    line
+      .replace(/^### (.+)$/, "<h3>$1</h3>")
+      .replace(/^## (.+)$/, "<h2>$1</h2>")
+      .replace(/^# (.+)$/, "<h1>$1</h1>")
+      .replace(/^- (.+)$/, "<li>$1</li>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`(.+?)`/g, "<code>$1</code>")
+
+  return paragraphs.map(para => {
+    const lines = para.split("\n").map(processLine)
+    const content = lines.join("<br/>")
+    // Не оборачиваем в <p> если уже есть блочный тег
+    if (/^<(h[1-3]|ul|li|blockquote)/.test(content)) return content
+    return `<p>${content}</p>`
+  }).join("\n")
 }
 
 // Открывает HTML-вложение в новой вкладке через Blob URL

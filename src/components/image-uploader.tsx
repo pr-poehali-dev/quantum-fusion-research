@@ -1,7 +1,7 @@
 import { useRef, useState } from "react"
 import Icon from "@/components/ui/icon"
 
-const BUILDS_URL = "https://functions.poehali.dev/83b9068d-8121-4c37-9aae-093624716123"
+const UPLOAD_URL = "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81"
 
 interface Props {
   images: string[]
@@ -9,8 +9,6 @@ interface Props {
   folder?: string
   maxImages?: number
 }
-
-const UPLOAD_URL = "https://functions.poehali.dev/upload"
 
 export function ImageUploader({ images, onChange, folder = "builds", maxImages = 8 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -22,10 +20,10 @@ export function ImageUploader({ images, onChange, folder = "builds", maxImages =
       const reader = new FileReader()
       reader.onload = async () => {
         try {
-          const res = await fetch(BUILDS_URL, {
-            method: "PATCH",
+          const res = await fetch(UPLOAD_URL, {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "upload_image", file: reader.result, name: file.name, folder }),
+            body: JSON.stringify({ file: reader.result, name: file.name, folder }),
           })
           const data = await res.json()
           if (data.url) resolve(data.url)

@@ -759,9 +759,13 @@ export default function Admin() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-foreground/60">URL изображения</label>
-                <input type="url" value={productForm.image_url} onChange={e => setProductForm(f => ({ ...f, image_url: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="https://..." style={{ cursor: "text" }} />
+                <label className="mb-1 block text-xs text-foreground/60">Фото товара</label>
+                <ImageUploader
+                  images={productForm.image_url ? [productForm.image_url] : []}
+                  onChange={urls => setProductForm(f => ({ ...f, image_url: urls[0] || "" }))}
+                  folder="products"
+                  maxImages={1}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/60">Характеристики (JSON)</label>

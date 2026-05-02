@@ -510,22 +510,44 @@ export default function ClientBuild() {
 
 function BuildImageCarousel({ images }: { images: string[] }) {
   const [idx, setIdx] = useState(0)
+  const [fading, setFading] = useState(false)
+
+  // Авто-смена каждые 5-7 секунд (рандом)
+  useEffect(() => {
+    if (images.length <= 1) return
+    const delay = 5000 + Math.random() * 2000
+    const timer = setTimeout(() => {
+      setFading(true)
+      setTimeout(() => {
+        setIdx(i => (i + 1) % images.length)
+        setFading(false)
+      }, 400)
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [idx, images.length])
+
+  const goTo = (i: number) => { setFading(true); setTimeout(() => { setIdx(i); setFading(false) }, 400) }
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border bg-muted">
-      <img src={images[idx]} alt="" className="w-full object-contain rounded-2xl" style={{ maxHeight: "38vh" }} />
+      <img
+        src={images[idx]} alt=""
+        className="w-full object-contain rounded-2xl transition-opacity duration-400"
+        style={{ maxHeight: "38vh", opacity: fading ? 0 : 1 }}
+      />
       {images.length > 1 && (
         <>
-          <button onClick={() => setIdx(i => (i - 1 + images.length) % images.length)} style={{ cursor: "pointer" }}
+          <button onClick={() => goTo((idx - 1 + images.length) % images.length)} style={{ cursor: "pointer" }}
             className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background transition-all">
             <Icon name="ChevronLeft" size={16} />
           </button>
-          <button onClick={() => setIdx(i => (i + 1) % images.length)} style={{ cursor: "pointer" }}
+          <button onClick={() => goTo((idx + 1) % images.length)} style={{ cursor: "pointer" }}
             className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background transition-all">
             <Icon name="ChevronRight" size={16} />
           </button>
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
             {images.map((_, i) => (
-              <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+              <button key={i} onClick={() => goTo(i)} style={{ cursor: "pointer" }}
                 className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30"}`} />
             ))}
           </div>
