@@ -164,7 +164,7 @@ export default function Index() {
         const scrollLeft = scrollContainerRef.current.scrollLeft
         const newSection = Math.round(scrollLeft / sectionWidth)
 
-        if (newSection !== currentSection && newSection >= 0 && newSection <= 5) {
+        if (newSection !== currentSection && newSection >= 0 && newSection <= 6) {
           setCurrentSection(newSection)
         }
 

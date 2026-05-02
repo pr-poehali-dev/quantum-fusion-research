@@ -12,7 +12,7 @@ const SLOT_NAMES: Record<string, string> = {
 
 interface Component {
   slot: string; name: string; price: number; current_price?: number
-  source_id?: number; image_url?: string; description?: string; specs?: Record<string, string>
+  source_id?: number; image_url?: string; image_urls?: string[]; description?: string; specs?: Record<string, string>
 }
 
 interface Build {
@@ -508,50 +508,116 @@ export default function ClientBuild() {
   )
 }
 
-function BuildImageCarousel({ images }: { images: string[] }) {
+// Карусель фото компонента (авто-смена 7 сек)
+function ComponentPhotoCarousel({ images, name, active }: { images: string[]; name: string; active: boolean }) {
   const [idx, setIdx] = useState(0)
-  const [fading, setFading] = useState(false)
 
-  // Авто-смена каждые 5-7 секунд (рандом)
   useEffect(() => {
     if (images.length <= 1) return
-    const delay = 5000 + Math.random() * 2000
-    const timer = setTimeout(() => {
-      setFading(true)
-      setTimeout(() => {
-        setIdx(i => (i + 1) % images.length)
-        setFading(false)
-      }, 400)
-    }, delay)
-    return () => clearTimeout(timer)
-  }, [idx, images.length])
+    const timer = setInterval(() => setIdx(i => (i + 1) % images.length), 7000)
+    return () => clearInterval(timer)
+  }, [images.length])
 
-  const goTo = (i: number) => { setFading(true); setTimeout(() => { setIdx(i); setFading(false) }, 400) }
+  if (!images.length) return null
+  return (
+    <div className="absolute inset-0">
+      {images.map((src, i) => (
+        <div key={i} className={`absolute inset-0 transition-opacity duration-1000 ${i === idx && active ? "opacity-100" : "opacity-0"}`}>
+          <img src={src} alt={name} className="h-full w-full object-cover object-center" style={{ filter: "brightness(0.75)" }} />
+        </div>
+      ))}
+      <div className="absolute inset-0" style={{
+        background: "linear-gradient(to right, hsl(var(--background)) 30%, hsl(var(--background) / 0.5) 60%, transparent 100%)"
+      }} />
+      <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
+      {images.length > 1 && (
+        <div className="absolute bottom-4 right-4 flex gap-1.5">
+          {images.map((_, i) => (
+            <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+              className={`rounded-full transition-all ${i === idx ? "w-4 h-1.5 bg-white/80" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Красивая карусель фото сборки — 3 фото одновременно, сдвиг лентой
+function BuildImageCarousel({ images }: { images: string[] }) {
+  const [offset, setOffset] = useState(0) // индекс левого видимого фото
+  const visible = 3
+  const canPrev = offset > 0
+  const canNext = offset + visible < images.length
+
+  // Авто-прокрутка каждые 7 сек
+  useEffect(() => {
+    if (images.length <= visible) return
+    const timer = setInterval(() => {
+      setOffset(o => (o + visible < images.length ? o + 1 : 0))
+    }, 7000)
+    return () => clearInterval(timer)
+  }, [images.length])
+
+  if (images.length === 0) return null
+
+  // Одно фото — просто показываем
+  if (images.length === 1) return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-muted">
+      <img src={images[0]} alt="" className="w-full object-contain" style={{ maxHeight: "38vh" }} />
+    </div>
+  )
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-muted">
-      <img
-        src={images[idx]} alt=""
-        className="w-full object-contain rounded-2xl transition-opacity duration-400"
-        style={{ maxHeight: "38vh", opacity: fading ? 0 : 1 }}
-      />
-      {images.length > 1 && (
-        <>
-          <button onClick={() => goTo((idx - 1 + images.length) % images.length)} style={{ cursor: "pointer" }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background transition-all">
-            <Icon name="ChevronLeft" size={16} />
-          </button>
-          <button onClick={() => goTo((idx + 1) % images.length)} style={{ cursor: "pointer" }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background transition-all">
-            <Icon name="ChevronRight" size={16} />
-          </button>
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
-            {images.map((_, i) => (
-              <button key={i} onClick={() => goTo(i)} style={{ cursor: "pointer" }}
-                className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30"}`} />
-            ))}
+    <div className="relative">
+      {/* Лента фото */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(visible, images.length)}, 1fr)` }}>
+        {images.slice(offset, offset + visible).map((src, i) => (
+          <div
+            key={`${offset}-${i}`}
+            className="relative overflow-hidden rounded-2xl border border-border bg-muted aspect-video"
+            style={{
+              opacity: i === 0 ? (canPrev ? 0.6 : 1) : i === visible - 1 ? (canNext ? 0.6 : 1) : 1,
+              transition: "opacity 0.3s",
+            }}
+          >
+            <img src={src} alt="" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
+            {/* Подсказка «листайте» на крайних */}
+            {i === visible - 1 && canNext && (
+              <div className="absolute inset-0 bg-gradient-to-l from-background/70 to-transparent flex items-center justify-end pr-3">
+                <Icon name="ChevronRight" size={20} className="text-white/60" />
+              </div>
+            )}
+            {i === 0 && canPrev && (
+              <div className="absolute inset-0 bg-gradient-to-r from-background/70 to-transparent flex items-center justify-start pl-3">
+                <Icon name="ChevronLeft" size={20} className="text-white/60" />
+              </div>
+            )}
           </div>
-        </>
+        ))}
+      </div>
+
+      {/* Кнопки */}
+      {canPrev && (
+        <button onClick={() => setOffset(o => Math.max(0, o - 1))} style={{ cursor: "pointer" }}
+          className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-background border border-border shadow-lg hover:border-primary transition-all">
+          <Icon name="ChevronLeft" size={16} />
+        </button>
+      )}
+      {canNext && (
+        <button onClick={() => setOffset(o => Math.min(images.length - visible, o + 1))} style={{ cursor: "pointer" }}
+          className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-background border border-border shadow-lg hover:border-primary transition-all">
+          <Icon name="ChevronRight" size={16} />
+        </button>
+      )}
+
+      {/* Точки */}
+      {images.length > visible && (
+        <div className="mt-3 flex justify-center gap-1.5">
+          {Array.from({ length: images.length - visible + 1 }).map((_, i) => (
+            <button key={i} onClick={() => setOffset(i)} style={{ cursor: "pointer" }}
+              className={`rounded-full transition-all ${i === offset ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/20 hover:bg-foreground/40"}`} />
+          ))}
+        </div>
       )}
     </div>
   )
@@ -561,31 +627,26 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
   comp: Component; index: number; total: number; active: boolean; onNext: () => void; onPrev: () => void
 }) {
   const price = comp.current_price ?? comp.price
+  // Собираем все доступные фото: image_urls[] приоритетнее одиночного image_url
+  const photos = comp.image_urls?.length ? comp.image_urls : comp.image_url ? [comp.image_url] : []
+  const hasPhoto = photos.length > 0
+
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden bg-background">
 
-      {/* Фото — на весь фон */}
-      {comp.image_url && (
-        <div className={`absolute inset-0 transition-all duration-1000 ${active ? "opacity-100 scale-100" : "opacity-0 scale-105"}`}>
-          <img src={comp.image_url} alt={comp.name}
-            className="h-full w-full object-cover object-center"
-            style={{ filter: "brightness(0.75)" }}
-          />
-          <div className="absolute inset-0" style={{
-            background: "linear-gradient(to right, var(--tw-gradient-from, hsl(var(--background))) 35%, hsl(var(--background) / 0.6) 60%, transparent 100%)"
-          }} />
-          <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
-        </div>
-      )}
-      {!comp.image_url && (
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
-      )}
+      {/* Фото — на весь фон с каруселью */}
+      <div className={`absolute inset-0 transition-all duration-1000 ${active ? "opacity-100" : "opacity-0"}`}>
+        {hasPhoto
+          ? <ComponentPhotoCarousel images={photos} name={comp.name} active={active} />
+          : <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
+        }
+      </div>
 
       {/* Большой номер */}
       <div className="absolute top-16 sm:top-20 left-4 sm:left-16 pointer-events-none select-none">
         <span className="font-mono font-bold leading-none" style={{
           fontSize: "clamp(80px, 15vw, 160px)",
-          color: comp.image_url ? "rgba(255,255,255,0.06)" : "hsl(var(--foreground) / 0.04)"
+          color: hasPhoto ? "rgba(255,255,255,0.06)" : "hsl(var(--foreground) / 0.04)"
         }}>
           {String(index + 1).padStart(2, "0")}
         </span>
