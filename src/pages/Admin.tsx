@@ -154,10 +154,17 @@ function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoading, c
             {copiedBuildId === b.id ? "Скопировано!" : b.client_token ? "Ссылка" : "Ссылка клиенту"}
           </button>
         )}
-        <select value={b.status} onChange={e => onStatus(b, e.target.value)}
-          className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-          {Object.entries(BUILD_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        {/* Статус — только у главной сборки; варианты наследуют */}
+        {isMain ? (
+          <select value={b.status} onChange={e => onStatus(b, e.target.value)}
+            className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+            {Object.entries(BUILD_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        ) : (
+          <span className="rounded-lg border border-border/50 px-2 py-1.5 text-xs text-foreground/30 select-none" title="Статус берётся с основной сборки">
+            {BUILD_STATUS[b.status] || b.status}
+          </span>
+        )}
         <button onClick={() => onDelete(b.id)}
           className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/30 hover:border-red-400 hover:text-red-400 transition-colors"
           style={{ cursor: "pointer" }}>
@@ -795,7 +802,13 @@ export default function Admin() {
           onEdit={editBuild}
           onDupe={duplicateBuild}
           onLink={generateClientLink}
-          onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, status } : bb)) }}
+          onStatus={async (b, status) => {
+            await api.builds.patch({ id: b.id, status })
+            // Обновляем статус главной и всех её вариантов
+            setBuilds(bs => bs.map(bb =>
+              bb.id === b.id || bb.parent_id === b.id ? { ...bb, status } : bb
+            ))
+          }}
           onDelete={deleteBuild}
           isArchive={false}
         />}

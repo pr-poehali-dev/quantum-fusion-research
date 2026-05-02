@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
@@ -37,82 +37,13 @@ function renderMarkdown(text: string): string {
     .replace(/(.+)/s, "<p>$1</p>")
 }
 
-// HTML-iframe с автоподгонкой высоты по содержимому
-function Autoiframe({ html, fullscreen = false }: { html: string; fullscreen?: boolean }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [height, setHeight] = useState(400)
-
-  // Инжектим скрипт авторесайза прямо в html
-  const wrappedHtml = html.replace(
-    /<\/body>/i,
-    `<script>
-      function _sendHeight() {
-        var h = document.documentElement.scrollHeight || document.body.scrollHeight;
-        window.parent.postMessage({ type: 'iframe-height', height: h }, '*');
-      }
-      window.addEventListener('load', _sendHeight);
-      new MutationObserver(_sendHeight).observe(document.body, { childList: true, subtree: true, attributes: true });
-      _sendHeight();
-    </script></body>`
-  )
-
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === "iframe-height" && typeof e.data.height === "number") {
-        setHeight(Math.max(200, e.data.height + 32))
-      }
-    }
-    window.addEventListener("message", handler)
-    return () => window.removeEventListener("message", handler)
-  }, [])
-
-  return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={wrappedHtml}
-      sandbox="allow-scripts allow-same-origin"
-      className="w-full border-0"
-      style={{ height: fullscreen ? "100%" : height }}
-      title="HTML вложение"
-    />
-  )
-}
-
-// Полноэкранный оверлей
-function HtmlFullscreen({ html, onClose }: { html: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
-    document.addEventListener("keydown", onKey)
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.removeEventListener("keydown", onKey)
-      document.body.style.overflow = ""
-    }
-  }, [onClose])
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background" style={{ cursor: "auto" }}>
-      <div className="flex items-center justify-between border-b border-border px-4 py-2 shrink-0">
-        <span className="text-sm font-medium text-foreground">Результаты теста</span>
-        <button
-          onClick={onClose}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-foreground transition-all"
-          style={{ cursor: "pointer" }}
-        >
-          <Icon name="X" size={13} /> Закрыть
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto">
-        <iframe
-          srcDoc={html}
-          sandbox="allow-scripts allow-same-origin"
-          className="w-full border-0"
-          style={{ height: "100%", minHeight: "100%" }}
-          title="HTML вложение полноэкранный"
-        />
-      </div>
-    </div>
-  )
+// Открывает HTML-вложение в новой вкладке через Blob URL
+function openHtmlInNewTab(html: string) {
+  const blob = new Blob([html], { type: "text/html" })
+  const url = URL.createObjectURL(blob)
+  window.open(url, "_blank")
+  // Освобождаем URL через небольшую задержку
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 export default function ArticlePage() {
@@ -121,7 +52,6 @@ export default function ArticlePage() {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [fullscreen, setFullscreen] = useState(false)
 
   useEffect(() => {
     if (!id) { setError("Статья не найдена"); setLoading(false); return }
@@ -155,10 +85,6 @@ export default function ArticlePage() {
 
   return (
     <>
-      {fullscreen && article.html_attachment && (
-        <HtmlFullscreen html={article.html_attachment} onClose={() => setFullscreen(false)} />
-      )}
-
       <div className="min-h-screen bg-background text-foreground">
         {/* Хедер */}
         <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-sm">
@@ -211,25 +137,25 @@ export default function ArticlePage() {
             />
           )}
 
-          {/* HTML-вложение — iframe с авто-высотой */}
+          {/* HTML-вложение — кнопка открытия в новой вкладке */}
           {article.html_attachment && (
             <div className="mt-10">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Icon name="BarChart2" size={15} className="text-primary" />
-                  Результаты теста
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <Icon name="FileCode2" size={18} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">HTML-вложение</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Интерактивные результаты теста или бенчмарк</p>
                 </div>
                 <button
-                  onClick={() => setFullscreen(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-foreground transition-all"
+                  onClick={() => openHtmlInNewTab(article.html_attachment!)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                   style={{ cursor: "pointer" }}
                 >
-                  <Icon name="Maximize2" size={12} />
-                  Подробнее
+                  <Icon name="ExternalLink" size={13} />
+                  Посмотреть вложение
                 </button>
-              </div>
-              <div className="w-full overflow-hidden rounded-xl border border-border">
-                <Autoiframe html={article.html_attachment} />
               </div>
             </div>
           )}

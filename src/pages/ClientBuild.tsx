@@ -63,13 +63,14 @@ export default function ClientBuild() {
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
   }, [token, user])
 
-  // При смене вкладки — обновляем компоненты и сбрасываем прокрутку
+  // При смене варианта — обновляем компоненты и прокручиваем к секции обзора
   useEffect(() => {
     if (!variants[activeVariant]) return
     setEnrichedComponents(enrichComponents(variants[activeVariant].components))
-    setCurrentSection(0)
+    const offset = variants.length > 1 ? 1 : 0
+    setCurrentSection(offset)
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" })
+      scrollContainerRef.current.scrollTo({ top: window.innerHeight * offset, behavior: "smooth" })
     }
   }, [activeVariant, variants])
 
@@ -83,7 +84,10 @@ export default function ClientBuild() {
 
   const build = variants[activeVariant] ?? null
   const components = enrichedComponents.length > 0 ? enrichedComponents : (build?.components || [])
-  const totalSections = components.length + 2
+  // Если несколько вариантов — добавляем вводную секцию (секция 0)
+  const hasMultipleVariants = variants.length > 1
+  const introOffset = hasMultipleVariants ? 1 : 0
+  const totalSections = components.length + 2 + introOffset
 
   const scrollToSection = useCallback((index: number) => {
     if (index < 0 || index >= totalSections || isTransitioning) return
@@ -229,7 +233,56 @@ export default function ClientBuild() {
 
       <div ref={scrollContainerRef} className="h-screen w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory" }}>
 
-        {/* ── СЕКЦИЯ 0: Обзор ── */}
+        {/* ── ВВОДНАЯ СЕКЦИЯ: показывается только если вариантов > 1 ── */}
+        {hasMultipleVariants && (
+          <div className="h-screen w-screen shrink-0 relative flex flex-col items-center justify-center px-6 text-center" style={{ scrollSnapAlign: "start" }}>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, hsl(var(--primary) / 0.07) 0%, transparent 70%)" }} />
+            <div className={`relative z-10 transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+              <div className="mb-6 flex items-center justify-center gap-2">
+                <div className="h-px w-12 bg-primary/40" />
+                <span className="font-mono text-xs uppercase tracking-widest text-primary">Варианты сборки</span>
+                <div className="h-px w-12 bg-primary/40" />
+              </div>
+              <h1 className="mb-4 font-light text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", lineHeight: 1.1 }}>
+                Для вас подготовлено<br />
+                <span className="text-primary">{variants.length} варианта</span> сборки
+              </h1>
+              <p className="mb-10 max-w-md text-sm sm:text-base leading-relaxed text-muted-foreground mx-auto">
+                Листайте вниз чтобы посмотреть первый вариант.<br />
+                Листайте вправо или свайпайте влево/вправо чтобы переключаться между вариантами.
+              </p>
+              {/* Превью вариантов */}
+              <div className="flex items-stretch justify-center gap-3 mb-10 flex-wrap">
+                {variants.map((v, i) => (
+                  <button
+                    key={v.id}
+                    onClick={() => { setActiveVariant(i); scrollToSection(introOffset) }}
+                    style={{ cursor: "pointer" }}
+                    className={`flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left transition-all ${i === activeVariant ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/50"}`}
+                  >
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Вариант {i + 1}{i === 0 ? " · Рекомендуемый" : ""}</span>
+                    <span className="text-sm font-medium text-foreground">{v.name}</span>
+                    <span className="text-xs text-primary font-semibold">{fmt(v.total_price)}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => scrollToSection(introOffset)}
+                style={{ cursor: "pointer" }}
+                className="flex items-center gap-2 mx-auto rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <Icon name="ArrowDown" size={15} />
+                Смотреть первый вариант
+              </button>
+            </div>
+            {/* Подсказка скролла */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 animate-bounce opacity-50">
+              <Icon name="ChevronDown" size={16} className="text-muted-foreground" />
+            </div>
+          </div>
+        )}
+
+        {/* ── СЕКЦИЯ обзора (0 или 1 в зависимости от наличия intro) ── */}
         <div className="h-screen w-screen shrink-0 relative" style={{ scrollSnapAlign: "start" }}>
           <div className="relative flex h-full w-full overflow-hidden">
 
@@ -243,7 +296,7 @@ export default function ClientBuild() {
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
             {/* Баннер */}
-            <div className={`absolute top-20 left-0 right-0 px-5 sm:px-16 z-10 transition-all duration-500 ${currentSection === 0 ? "opacity-100" : "opacity-0"}`}>
+            <div className={`absolute top-20 left-0 right-0 px-5 sm:px-16 z-10 transition-all duration-500 ${currentSection === introOffset ? "opacity-100" : "opacity-0"}`}>
               <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 max-w-md">
                 <Icon name="Sparkles" size={15} className="text-primary shrink-0" />
                 <p className="text-xs text-foreground/70">Персональная сборка, подготовлена специально для вас</p>
@@ -279,7 +332,7 @@ export default function ClientBuild() {
 
             <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 px-5 sm:px-16 pt-32 pb-16">
               <div className="flex-1 min-w-0">
-                <div className={`transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+                <div className={`transition-all duration-700 ${currentSection === introOffset ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                   <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">Персональная сборка · BeGraphics</p>
                   <h1 className="mb-4 font-light leading-tight tracking-tight text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}>
                     {build.name}
@@ -303,10 +356,11 @@ export default function ClientBuild() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
+                    <button onClick={() => scrollToSection(introOffset + 1)} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
                       Изучить подробнее <Icon name="ArrowDown" size={15} />
                     </button>
+
                     <button onClick={orderBuild} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full border border-border px-5 sm:px-7 py-3 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
                       Заказать сейчас
@@ -316,7 +370,7 @@ export default function ClientBuild() {
               </div>
 
               {/* Список компонентов — десктоп */}
-              <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+              <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === introOffset ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                 <p className="mb-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">Состав</p>
                 <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                   {components.map((c, i) => (
@@ -337,20 +391,20 @@ export default function ClientBuild() {
               </div>
             </div>
 
-            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === 0 ? "opacity-40" : "opacity-0"}`}>
+            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === introOffset ? "opacity-40" : "opacity-0"}`}>
               <p className="text-xs text-muted-foreground">Прокрутите вниз</p>
               <Icon name="ChevronDown" size={16} className="text-muted-foreground animate-bounce" />
             </div>
           </div>
         </div>
 
-        {/* ── СЕКЦИИ 1..N: Компоненты ── */}
+        {/* ── СЕКЦИИ компонентов ── */}
         {components.map((comp, idx) => (
           <div key={`${build.id}-${idx}`} className="h-screen w-screen shrink-0" style={{ scrollSnapAlign: "start" }}>
             <ComponentSection comp={comp} index={idx} total={components.length}
-              active={currentSection === idx + 1}
-              onNext={() => scrollToSection(idx + 2)}
-              onPrev={() => scrollToSection(idx)}
+              active={currentSection === idx + 1 + introOffset}
+              onNext={() => scrollToSection(idx + 2 + introOffset)}
+              onPrev={() => scrollToSection(idx + introOffset)}
             />
           </div>
         ))}
