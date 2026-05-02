@@ -378,6 +378,26 @@ export default function ClientBuild() {
                       Заказать сейчас
                     </button>
                   </div>
+
+                  {/* Подсказка о вариантах — если они есть */}
+                  {hasMultipleVariants && (
+                    <div className="mt-5 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 max-w-lg">
+                      <Icon name="Layers" size={16} className="text-primary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">
+                          Для вас подготовлено <span className="text-primary">{variants.length} варианта</span> этой сборки
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Разные конфигурации — разные цены</p>
+                      </div>
+                      <button
+                        onClick={() => scrollToSection(0)}
+                        style={{ cursor: "pointer" }}
+                        className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        Выбрать
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -40,6 +40,9 @@ interface Build {
   image_urls: string[]
   status: string
   is_featured: boolean
+  parent_id: number | null
+  client_token: string | null
+  variantsCount?: number
 }
 
 interface CommunityBuild {
@@ -123,7 +126,13 @@ export default function Shop() {
   useEffect(() => {
     setBuildsLoading(true)
     api.builds.getAll({ status: "catalog" }).then(data => {
-      setBuilds(data.builds || [])
+      const all: Build[] = Array.isArray(data) ? data : (data.builds || [])
+      // Считаем количество вариантов для каждой корневой сборки
+      const variantCounts: Record<number, number> = {}
+      all.forEach(b => { if (b.parent_id) variantCounts[b.parent_id] = (variantCounts[b.parent_id] || 0) + 1 })
+      // Показываем только корневые, прокидываем счётчик вариантов
+      const roots = all.filter(b => !b.parent_id).map(b => ({ ...b, variantsCount: variantCounts[b.id] || 0 }))
+      setBuilds(roots as Build[])
       setBuildsLoading(false)
     })
     setCommunityLoading(true)
@@ -575,17 +584,23 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
       )}
 
-      {/* Бейдж */}
-      <div className="absolute top-3 left-3 z-10">
+      {/* Бейджи */}
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
         <span className="rounded-full bg-primary/90 px-2.5 py-0.5 text-xs font-medium text-primary-foreground backdrop-blur-sm">
           Сборка
         </span>
+        {!!b.variantsCount && (
+          <span className="flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-0.5 text-xs font-medium text-white border border-white/10">
+            <Icon name="Layers" size={10} />
+            {b.variantsCount + 1} варианта
+          </span>
+        )}
       </div>
 
       {/* Ховер-подсказка */}
       <div className="absolute inset-0 flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
         <span className="rounded-full bg-background/80 backdrop-blur-sm px-4 py-1.5 text-xs font-medium text-foreground border border-border/50">
-          Состав и цены
+          {b.variantsCount ? `Посмотреть ${b.variantsCount + 1} варианта` : "Состав и цены"}
         </span>
       </div>
 
