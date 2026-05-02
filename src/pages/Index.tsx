@@ -96,7 +96,7 @@ export default function Index() {
       const deltaX = touchStartX.current - touchEndX
 
       if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
-        if (deltaY > 0 && currentSection < 4) {
+        if (deltaY > 0 && currentSection < 6) {
           scrollToSection(currentSection + 1)
         } else if (deltaY < 0 && currentSection > 0) {
           scrollToSection(currentSection - 1)
@@ -131,7 +131,7 @@ export default function Index() {
       wheelLockRef.current = true
       setTimeout(() => { wheelLockRef.current = false }, 900)
 
-      if (e.deltaY > 0 && currentSection < 5) {
+      if (e.deltaY > 0 && currentSection < 6) {
         scrollToSection(currentSection + 1)
       } else if (e.deltaY < 0 && currentSection > 0) {
         scrollToSection(currentSection - 1)
