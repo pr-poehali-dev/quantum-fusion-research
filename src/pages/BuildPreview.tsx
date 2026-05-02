@@ -11,7 +11,7 @@ const SLOT_NAMES: Record<string, string> = {
 
 interface Component {
   slot: string; name: string; price: number; current_price?: number
-  source_id?: number; image_url?: string; description?: string; specs?: Record<string, string>
+  source_id?: number; image_url?: string; image_urls?: string[]; description?: string; specs?: Record<string, string>
 }
 
 interface Build {
@@ -406,46 +406,95 @@ function HeroBuildCarousel({ images, active }: { images: string[]; active: boole
   )
 }
 
+function ComponentPhotoCarousel({ photos, name, active }: { photos: string[]; name: string; active: boolean }) {
+  const [idx, setIdx] = useState(0)
+
+  // Сброс при смене компонента
+  useEffect(() => { setIdx(0) }, [name])
+
+  // Авто-смена каждые 6 сек
+  useEffect(() => {
+    if (!active || photos.length <= 1) return
+    const t = setInterval(() => setIdx(i => (i + 1) % photos.length), 6000)
+    return () => clearInterval(t)
+  }, [active, photos.length])
+
+  const prev = () => setIdx(i => (i - 1 + photos.length) % photos.length)
+  const next = () => setIdx(i => (i + 1) % photos.length)
+
+  return (
+    <div className={`absolute right-0 top-0 bottom-0 hidden lg:flex items-center justify-end pr-12 transition-all duration-1000 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-16"}`}
+      style={{ width: "42%" }}>
+      <div className="relative w-full max-w-sm">
+        {/* Стек фото с fade */}
+        <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-muted shadow-2xl" style={{ aspectRatio: "4/3" }}>
+          {photos.map((src, i) => (
+            <img
+              key={i} src={src} alt={name}
+              className="absolute inset-0 w-full h-full object-contain transition-opacity duration-700"
+              style={{ opacity: i === idx ? 1 : 0 }}
+            />
+          ))}
+          {/* Тонкий градиент слева — плавный переход к тексту */}
+          <div className="absolute inset-0 pointer-events-none" style={{
+            background: "linear-gradient(to right, hsl(var(--background) / 0.6) 0%, transparent 30%)"
+          }} />
+
+          {photos.length > 1 && (
+            <>
+              <button onClick={prev} style={{ cursor: "pointer" }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
+                <Icon name="ChevronLeft" size={13} />
+              </button>
+              <button onClick={next} style={{ cursor: "pointer" }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
+                <Icon name="ChevronRight" size={13} />
+              </button>
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                {photos.map((_, i) => (
+                  <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+                    className={`rounded-full transition-all ${i === idx ? "w-4 h-1 bg-primary" : "w-1 h-1 bg-foreground/30 hover:bg-foreground/60"}`} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
   comp: Component; index: number; total: number; active: boolean; onNext: () => void; onPrev: () => void
 }) {
   const price = comp.current_price ?? comp.price
+  const photos = comp.image_urls?.length ? comp.image_urls : comp.image_url ? [comp.image_url] : []
+  const hasPhoto = photos.length > 0
+
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden bg-background">
 
-      {/* Фото — на весь фон справа */}
-      {comp.image_url && (
-        <div className={`absolute inset-0 transition-all duration-1000 ${active ? "opacity-100 scale-100" : "opacity-0 scale-105"}`}>
-          <img
-            src={comp.image_url} alt={comp.name}
-            className="h-full w-full object-cover object-center"
-            style={{ filter: "brightness(0.75)" }}
-          />
-          {/* Градиент: слева плотный фон, справа прозрачно */}
-          <div className="absolute inset-0" style={{
-            background: "linear-gradient(to right, var(--tw-gradient-from, hsl(var(--background))) 35%, hsl(var(--background) / 0.6) 60%, transparent 100%)"
-          }} />
-          {/* Лёгкий градиент снизу */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
-        </div>
-      )}
+      {/* Тонкий фоновый градиент */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: hasPhoto
+          ? "radial-gradient(ellipse 50% 60% at 20% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)"
+          : "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)"
+      }} />
 
-      {/* Без фото — просто фон */}
-      {!comp.image_url && (
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
-      )}
+      {/* Фото справа — компактная карусель (только десктоп) */}
+      {hasPhoto && <ComponentPhotoCarousel photos={photos} name={comp.name} active={active} />}
 
       {/* Большой номер */}
       <div className="absolute top-16 sm:top-20 left-4 sm:left-16 pointer-events-none select-none">
         <span className="font-mono font-bold leading-none" style={{
           fontSize: "clamp(80px, 15vw, 160px)",
-          color: comp.image_url ? "rgba(255,255,255,0.06)" : "hsl(var(--foreground) / 0.04)"
+          color: "hsl(var(--foreground) / 0.04)"
         }}>
           {String(index + 1).padStart(2, "0")}
         </span>
       </div>
 
-      {/* Текст — всегда слева */}
+      {/* Текст — слева */}
       <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-16 pt-20 pb-24">
         <div className={`max-w-lg transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
           <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
@@ -454,9 +503,17 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
           <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.6rem, 4vw, 3.2rem)" }}>
             {comp.name}
           </h2>
-          <p className="mb-5 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
+          <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
           {comp.description && (
-            <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground">{comp.description}</p>
+            <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md">{comp.description}</p>
+          )}
+          {/* Мобайл — фото под текстом */}
+          {hasPhoto && (
+            <div className="lg:hidden mb-5">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-muted" style={{ aspectRatio: "16/9" }}>
+                <img src={photos[0]} alt={comp.name} className="w-full h-full object-contain" />
+              </div>
+            </div>
           )}
           {comp.specs && Object.keys(comp.specs).length > 0 && (
             <div className="grid grid-cols-2 gap-1.5 max-w-sm">
