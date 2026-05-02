@@ -374,8 +374,9 @@ export default function Admin() {
   }
 
   const toggleStock = async (p: Product) => {
-    await api.products.patch({ id: p.id, in_stock: !p.in_stock })
-    setProducts(ps => ps.map(pp => pp.id === p.id ? { ...pp, in_stock: !pp.in_stock } : pp))
+    const newQty = p.in_stock ? 0 : 1
+    await api.products.patch({ id: p.id, stock_qty: newQty })
+    setProducts(ps => ps.map(pp => pp.id === p.id ? { ...pp, in_stock: newQty > 0, stock_qty: newQty } : pp))
   }
 
   const submitProduct = async (e: React.FormEvent) => {
@@ -465,14 +466,11 @@ export default function Admin() {
 
   const duplicateBuild = async (b: PCBuild) => {
     setDupeLoading(b.id)
-    // Убедимся что у сборки есть клиентский токен — генерируем если нет
+    // Генерируем клиентский токен если его ещё нет
     let clientToken = b.client_token
     if (!clientToken) {
       const res = await api.builds.generateClientLink(b.id)
       clientToken = res.client_token || null
-      if (clientToken) {
-        setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, client_token: clientToken } : bb))
-      }
     }
     if (!clientToken) { setDupeLoading(null); return }
     const payload = {
@@ -490,8 +488,12 @@ export default function Admin() {
     const created = await api.builds.create(payload)
     if (created?.id) {
       const newBuild: PCBuild = { ...b, id: created.id, name: payload.name, status: "draft", is_featured: false, client_token: clientToken }
-      setBuilds(bs => [...bs, newBuild])
-      setExpandedVariants(b.id) // раскрыть варианты этой сборки
+      // Один setBuilds: обновляем токен у главной + добавляем вариант
+      setBuilds(bs => [
+        ...bs.map(bb => bb.id === b.id ? { ...bb, client_token: clientToken } : bb),
+        newBuild,
+      ])
+      setExpandedVariants(b.id)
     }
     setDupeLoading(null)
   }
