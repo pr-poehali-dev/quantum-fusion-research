@@ -94,9 +94,14 @@ interface Article {
 }
 
 // ── Строка одной сборки ──
-function BuildRow({ b, isVariant, isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }: {
-  b: PCBuild; isVariant: boolean; isArchive: boolean
-  dupeLoading: number | null; copiedBuildId: number | null
+function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }: {
+  b: PCBuild
+  isVariant: boolean   // это вариант (показан под главной)
+  isMain: boolean      // это главная сборка группы
+  hasVariants: boolean // у главной есть варианты
+  isArchive: boolean
+  dupeLoading: number | null
+  copiedBuildId: number | null
   fmt: (n: number) => string
   onEdit: (b: PCBuild) => void
   onDupe: (b: PCBuild) => void
@@ -105,11 +110,16 @@ function BuildRow({ b, isVariant, isArchive, dupeLoading, copiedBuildId, fmt, on
   onDelete: (id: number) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 p-4">
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2 mb-1">
-          {isVariant && <Icon name="GitBranch" size={12} className="text-primary shrink-0" />}
+        <div className="flex flex-wrap items-center gap-2 mb-0.5">
           <p className="font-medium text-foreground text-sm truncate">{b.name}</p>
+          {/* Рекомендуемый бейдж — только если у группы есть варианты */}
+          {isMain && hasVariants && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary shrink-0">
+              Рекомендуемый
+            </span>
+          )}
           <span className={`rounded-full px-2 py-0.5 text-xs shrink-0 ${
             b.status === "catalog" ? "bg-green-400/10 text-green-400"
             : b.status === "archive" ? "bg-muted text-foreground/30"
@@ -125,15 +135,17 @@ function BuildRow({ b, isVariant, isArchive, dupeLoading, copiedBuildId, fmt, on
         <button onClick={() => onEdit(b)} className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Pencil" size={12} />Ред.
         </button>
-        {!isArchive && (
+        {/* Кнопка «+ Вариант» — только у главной, не у вариантов */}
+        {isMain && !isArchive && (
           <button onClick={() => onDupe(b)} disabled={dupeLoading === b.id}
             className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
             style={{ cursor: "pointer" }}>
-            <Icon name={dupeLoading === b.id ? "Loader2" : "GitBranch"} size={12} />
+            <Icon name={dupeLoading === b.id ? "Loader2" : "Plus"} size={12} />
             {dupeLoading === b.id ? "..." : "Вариант"}
           </button>
         )}
-        {!isArchive && (
+        {/* Ссылка клиенту — только у главной */}
+        {isMain && !isArchive && (
           <button onClick={() => onLink(b)}
             className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${b.client_token ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
             style={{ cursor: "pointer" }}>
@@ -207,43 +219,46 @@ function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, du
         : groups.length === 0
           ? <div className="py-16 text-center text-foreground/40"><Icon name="Monitor" size={40} className="mx-auto mb-3 opacity-30" /><p>{isArchive ? "Архив пуст" : "Сборок нет."}</p></div>
           : <div className="space-y-2">
-            {groups.map(({ main, variants }) => (
-              <div key={main.id} className="rounded-xl border border-border bg-card overflow-hidden">
-                {/* Главная строка */}
-                <div className="flex items-stretch">
-                  {/* Кнопка-стрелка слева */}
-                  <button
-                    onClick={() => setExpandedVariants(expandedVariants === main.id ? null : main.id)}
-                    disabled={variants.length === 0}
-                    className="flex flex-col items-center justify-center gap-0.5 border-r border-border bg-muted/30 hover:bg-muted/60 transition-colors disabled:opacity-0 disabled:pointer-events-none"
-                    style={{ width: 44, minWidth: 44, cursor: variants.length > 0 ? "pointer" : "default" }}
-                    title={variants.length > 0 ? `${variants.length} вариант(а) — нажмите чтобы раскрыть` : undefined}
-                  >
-                    <Icon name={expandedVariants === main.id ? "ChevronUp" : "ChevronDown"} size={15} className="text-foreground/50" />
-                    <span className="text-[10px] font-bold text-primary leading-none">{variants.length}</span>
-                  </button>
-                  {/* Контент */}
-                  <div className="flex-1 min-w-0">
-                    <BuildRow b={main} isVariant={false} {...rowProps} />
-                  </div>
-                </div>
-
-                {/* Варианты */}
-                {expandedVariants === main.id && variants.length > 0 && (
-                  <div className="border-t border-border/60 bg-muted/20">
-                    <div className="px-4 py-1.5 flex items-center gap-2 border-b border-border/30">
-                      <Icon name="GitBranch" size={11} className="text-primary" />
-                      <span className="text-xs text-muted-foreground font-medium">Варианты — редактируются отдельно</span>
+            {groups.map(({ main, variants }) => {
+              const isOpen = expandedVariants === main.id
+              return (
+                <div key={main.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                  {/* Главная строка */}
+                  <div className="flex items-stretch">
+                    {/* Стрелка — всегда видна, неактивна если вариантов нет */}
+                    <button
+                      onClick={() => variants.length > 0 && setExpandedVariants(isOpen ? null : main.id)}
+                      className={`flex flex-col items-center justify-center gap-0.5 border-r border-border transition-colors ${variants.length > 0 ? "hover:bg-muted/60 cursor-pointer" : "cursor-default opacity-30"}`}
+                      style={{ width: 44, minWidth: 44 }}
+                      title={variants.length > 0 ? `${variants.length} вар. — нажмите` : "Вариантов нет"}
+                    >
+                      <Icon name={isOpen ? "ChevronUp" : "ChevronDown"} size={15} className="text-foreground/50" />
+                      {variants.length > 0 && (
+                        <span className="text-[10px] font-bold text-primary leading-none">{variants.length}</span>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <BuildRow b={main} isMain={true} isVariant={false} hasVariants={variants.length > 0} {...rowProps} />
                     </div>
-                    {variants.map(v => (
-                      <div key={v.id} className="border-b border-border/20 last:border-0 bg-muted/10">
-                        <BuildRow b={v} isVariant={true} {...rowProps} />
-                      </div>
-                    ))}
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Варианты — раскрываются по клику на стрелку */}
+                  {isOpen && variants.length > 0 && (
+                    <div className="border-t border-border/60">
+                      <div className="px-4 py-2 flex items-center gap-2 bg-muted/30 border-b border-border/40">
+                        <Icon name="GitBranch" size={11} className="text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Варианты сборки — каждый редактируется отдельно</span>
+                      </div>
+                      {variants.map((v, i) => (
+                        <div key={v.id} className={`${i < variants.length - 1 ? "border-b border-border/30" : ""} bg-muted/10`}>
+                          <BuildRow b={v} isMain={false} isVariant={true} hasVariants={false} {...rowProps} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
       }
     </div>
