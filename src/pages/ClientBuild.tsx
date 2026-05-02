@@ -19,6 +19,7 @@ interface Build {
   id: number; name: string; description: string; components: Component[]
   parts_total: number; assembly_fee: number; total_price: number
   assembly_type: string; client_token: string | null; client_user_id: number | null; image_urls: string[]
+  parent_id: number | null
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
@@ -49,16 +50,27 @@ export default function ClientBuild() {
 
   useEffect(() => {
     if (!token) { setError("Ссылка недействительна"); setLoading(false); return }
+
     api.builds.getByClientToken(token).then(async (data) => {
-      if (data.error) { setError(data.error); setLoading(false); return }
+      if (data?.error) { setError(data.error); setLoading(false); return }
 
-      // Бэкенд может вернуть один объект или массив — нормализуем
-      const list: Build[] = Array.isArray(data) ? data : [data]
+      // Нормализуем ответ — может быть массив или один объект
+      const rawList: Build[] = Array.isArray(data) ? data : [data]
+      if (!rawList.length) { setError("Сборка не найдена"); setLoading(false); return }
+
+      // Находим корневую сборку (parent_id = null) — она главная
+      const root = rawList.find(b => !b.parent_id) ?? rawList[0]
+
+      // Загружаем варианты по parent_id корневой сборки
+      const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
+      const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
+
+      // Список: [главная, ...варианты]
+      const list: Build[] = [root, ...children]
+
       setVariants(list)
-
-      const b = list[0]
-      if (b.client_user_id && user && b.client_user_id === user.id) setClaimed(true)
-      setEnrichedComponents(enrichComponents(b.components))
+      if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
+      setEnrichedComponents(enrichComponents(root.components))
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
   }, [token, user])

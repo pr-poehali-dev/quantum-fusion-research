@@ -45,6 +45,7 @@ export const api = {
       return fetch(URLS.builds + qs).then(r => r.json())
     },
     getByClientToken: (token: string) => fetch(`${URLS.builds}?client_token=${token}`).then(r => r.json()),
+    getVariants: (parentId: number) => fetch(`${URLS.builds}?parent_id=${parentId}`).then(r => r.json()),
     getByUserId: (userId: number) => fetch(`${URLS.builds}?user_id=${userId}`).then(r => r.json()),
     getById: (id: number) => fetch(`${URLS.builds}?id=${id}`).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.builds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),

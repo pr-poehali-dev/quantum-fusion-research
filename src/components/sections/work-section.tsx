@@ -12,6 +12,7 @@ interface Build {
   assembly_fee: number
   components: Array<{ name: string; slot: string; current_price: number }>
   status: string
+  parent_id: number | null
 }
 
 interface Product {
@@ -28,7 +29,11 @@ export function WorkSection() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.builds.getAll({ status: "catalog" }).then(d => setBuilds((d.builds || []).slice(0, 3)))
+    api.builds.getAll({ status: "catalog" }).then(d => {
+      const list = Array.isArray(d) ? d : (d.builds || [])
+      // Показываем только корневые сборки (без parent_id)
+      setBuilds(list.filter((b: Build) => !b.parent_id).slice(0, 3))
+    })
     api.products.getAll({ featured: "true" }).then(d => setProducts((d.products || []).slice(0, 3)))
   }, [])
 
