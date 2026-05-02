@@ -2,6 +2,7 @@ import { Shader, ChromaFlow, Swirl } from "shaders/react"
 import { CustomCursor } from "@/components/custom-cursor"
 import { GrainOverlay } from "@/components/grain-overlay"
 import { WorkSection } from "@/components/sections/work-section"
+import { ShopSection } from "@/components/sections/shop-section"
 import { ServicesSection } from "@/components/sections/services-section"
 import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
@@ -277,12 +278,12 @@ export default function Index() {
         </button>
 
         <div className="hidden items-center gap-8 md:flex">
-          {["Главная", "Сборки", "Наш магазин", "Услуги", "О нас", "Статьи", "Контакты"].map((item, index) => (
+          {["Главная", "Сборки", "Магазин", "Услуги", "О нас", "Статьи", "Контакты"].map((item, index) => (
             <button
               key={item}
-              onClick={() => item === "Наш магазин" ? navigate("/shop") : scrollToSection(index > 2 ? index - 1 : index)}
+              onClick={() => scrollToSection(index)}
               className={`group relative font-sans text-sm font-medium transition-colors ${
-                item !== "Наш магазин" && currentSection === (index > 2 ? index - 1 : index) ? "text-foreground" : "text-foreground/80 hover:text-foreground"
+                currentSection === index ? "text-foreground" : "text-foreground/80 hover:text-foreground"
               }`}
             >
               {item}
@@ -361,6 +362,7 @@ export default function Index() {
         </section>
 
         <WorkSection />
+        <ShopSection />
         <ServicesSection />
         <AboutSection scrollToSection={scrollToSection} />
         <ArticlesSection />
