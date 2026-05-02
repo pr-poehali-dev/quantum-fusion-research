@@ -159,12 +159,9 @@ export default function BuildPreview() {
         <div className="h-screen w-screen shrink-0 relative" style={{ scrollSnapAlign: "start" }}>
           <div className="relative flex h-full w-full overflow-hidden">
 
-            {/* Фото сборки — справа, полная высота, сохраняем пропорции */}
+            {/* Карусель фото сборки — справа, автосмена */}
             {buildImages.length > 0 && (
-              <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none">
-                <img src={buildImages[0]} alt={build.name} className="h-full w-full object-contain object-right" />
-                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent" />
-              </div>
+              <HeroBuildCarousel images={buildImages} active={currentSection === 0} />
             )}
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
@@ -179,10 +176,10 @@ export default function BuildPreview() {
                   {build.description && (
                     <p className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground">{build.description}</p>
                   )}
-                  {/* Фото — мобайл */}
+                  {/* Фото — мобайл карусель */}
                   {buildImages.length > 0 && (
                     <div className="lg:hidden mb-6">
-                      <img src={buildImages[0]} alt={build.name} className="w-full rounded-2xl object-contain max-h-52 border border-border bg-muted" />
+                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === 0} />
                     </div>
                   )}
                   <div className="mb-6 flex flex-wrap items-end gap-4 sm:gap-6">
@@ -297,28 +294,113 @@ export default function BuildPreview() {
   )
 }
 
-function BuildImageCarousel({ images }: { images: string[] }) {
+// Автоматическая карусель — меняется каждые 5-7 сек, можно листать вручную
+function BuildImageCarousel({ images, autoPlay = true }: { images: string[]; autoPlay?: boolean }) {
   const [idx, setIdx] = useState(0)
+  const [animating, setAnimating] = useState(false)
+  const [dir, setDir] = useState<1 | -1>(1)
+
+  const goTo = (next: number, direction: 1 | -1 = 1) => {
+    if (animating || images.length <= 1) return
+    setDir(direction)
+    setAnimating(true)
+    setTimeout(() => {
+      setIdx((next + images.length) % images.length)
+      setAnimating(false)
+    }, 350)
+  }
+
+  const prev = () => goTo(idx - 1, -1)
+  const next = () => goTo(idx + 1, 1)
+
+  // Авто-прокрутка
+  useEffect(() => {
+    if (!autoPlay || images.length <= 1) return
+    const delay = 5000 + Math.random() * 2000
+    const t = setTimeout(() => next(), delay)
+    return () => clearTimeout(t)
+  }, [idx, autoPlay, images.length])
+
+  if (!images.length) return null
+
+  const nextIdx = (idx + 1) % images.length
+
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-muted">
-      <img src={images[idx]} alt="" className="w-full object-contain rounded-2xl" style={{ maxHeight: "38vh" }} />
+    <div className="relative overflow-hidden rounded-2xl bg-muted border border-border" style={{ minHeight: 220 }}>
+      {/* Текущее фото */}
+      <img
+        key={idx}
+        src={images[idx]} alt=""
+        className="w-full object-contain transition-all duration-350"
+        style={{
+          maxHeight: "38vh",
+          opacity: animating ? 0 : 1,
+          transform: animating ? `translateX(${dir === 1 ? "-40px" : "40px"})` : "translateX(0)",
+        }}
+      />
+
       {images.length > 1 && (
         <>
-          <button onClick={() => setIdx(i => (i - 1 + images.length) % images.length)} style={{ cursor: "pointer" }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background transition-all">
+          {/* Превью следующего — маленький справа */}
+          <div className="absolute right-3 top-3 w-16 h-12 rounded-lg overflow-hidden border border-white/20 opacity-60 hover:opacity-90 transition-opacity">
+            <img src={images[nextIdx]} alt="" className="w-full h-full object-cover" />
+          </div>
+
+          <button onClick={prev} style={{ cursor: "pointer" }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background hover:border-primary transition-all">
             <Icon name="ChevronLeft" size={16} />
           </button>
-          <button onClick={() => setIdx(i => (i + 1) % images.length)} style={{ cursor: "pointer" }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background transition-all">
+          <button onClick={next} style={{ cursor: "pointer" }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-background/80 border border-border backdrop-blur hover:bg-background hover:border-primary transition-all">
             <Icon name="ChevronRight" size={16} />
           </button>
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+
+          {/* Точки */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
             {images.map((_, i) => (
-              <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
-                className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30"}`} />
+              <button key={i} onClick={() => goTo(i, i > idx ? 1 : -1)} style={{ cursor: "pointer" }}
+                className={`rounded-full transition-all duration-300 ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30 hover:bg-foreground/60"}`} />
             ))}
           </div>
+
+          {/* Счётчик */}
+          <div className="absolute top-3 left-3 rounded-full bg-black/50 backdrop-blur px-2.5 py-1 text-xs text-white/80 font-mono">
+            {idx + 1} / {images.length}
+          </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// Карусель-обои для секции обзора — фото меняется каждые 6 сек
+function HeroBuildCarousel({ images, active }: { images: string[]; active: boolean }) {
+  const [idx, setIdx] = useState(0)
+
+  useEffect(() => {
+    if (images.length <= 1) return
+    const t = setInterval(() => setIdx(i => (i + 1) % images.length), 6000)
+    return () => clearInterval(t)
+  }, [images.length])
+
+  return (
+    <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none overflow-hidden">
+      {images.map((src, i) => (
+        <img
+          key={i} src={src} alt=""
+          className="absolute inset-0 h-full w-full object-contain object-right transition-opacity duration-1000"
+          style={{ opacity: i === idx && active ? 1 : 0 }}
+        />
+      ))}
+      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent" />
+      {/* Точки слева снизу */}
+      {images.length > 1 && (
+        <div className="absolute bottom-8 left-4 flex gap-1.5 pointer-events-auto">
+          {images.map((_, i) => (
+            <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+              className={`rounded-full transition-all duration-300 ${i === idx ? "w-4 h-1.5 bg-white/70" : "w-1.5 h-1.5 bg-white/25 hover:bg-white/50"}`} />
+          ))}
+        </div>
       )}
     </div>
   )
