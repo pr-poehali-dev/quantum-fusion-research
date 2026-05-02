@@ -79,6 +79,7 @@ interface PCBuild {
   is_featured: boolean
   client_token: string | null
   client_user_id: number | null
+  parent_id: number | null
 }
 
 interface Article {
@@ -181,23 +182,21 @@ function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, du
   onDelete: (id: number) => void
   isArchive: boolean
 }) {
-  // Группировка по client_token
-  const tokenGroups = new Map<string, PCBuild[]>()
-  const noToken: PCBuild[] = []
+  // Группировка по parent_id: корневые = parent_id null, варианты = parent_id = id родителя
+  const variantMap = new Map<number, PCBuild[]>()
+  const roots: PCBuild[] = []
   for (const b of builds) {
-    if (b.client_token) {
-      if (!tokenGroups.has(b.client_token)) tokenGroups.set(b.client_token, [])
-      tokenGroups.get(b.client_token)!.push(b)
+    if (b.parent_id) {
+      if (!variantMap.has(b.parent_id)) variantMap.set(b.parent_id, [])
+      variantMap.get(b.parent_id)!.push(b)
     } else {
-      noToken.push(b)
+      roots.push(b)
     }
   }
-  const groups: { main: PCBuild; variants: PCBuild[] }[] = []
-  tokenGroups.forEach(list => {
-    const sorted = [...list].sort((a, b) => a.id - b.id)
-    groups.push({ main: sorted[0], variants: sorted.slice(1) })
-  })
-  noToken.forEach(b => groups.push({ main: b, variants: [] }))
+  const groups: { main: PCBuild; variants: PCBuild[] }[] = roots.map(b => ({
+    main: b,
+    variants: (variantMap.get(b.id) || []).sort((a, b) => a.id - b.id),
+  }))
   groups.sort((a, b) => b.main.id - a.main.id)
 
   const rowProps = { isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }
@@ -337,7 +336,7 @@ export default function Admin() {
       })
     } else if (tab === "builds" || tab === "archive" || tab === "add_build") {
       Promise.all([
-        api.builds.getAll().then(d => d.builds || []),
+        api.builds.getAll().then(d => Array.isArray(d) ? d : (d.builds || [])),
         // Берём ВСЕ товары из каталога и группируем по slug категории как слот
         api.products.getAll().then(d => {
           const prods = d.products || []
@@ -466,13 +465,6 @@ export default function Admin() {
 
   const duplicateBuild = async (b: PCBuild) => {
     setDupeLoading(b.id)
-    // Генерируем клиентский токен если его ещё нет
-    let clientToken = b.client_token
-    if (!clientToken) {
-      const res = await api.builds.generateClientLink(b.id)
-      clientToken = res.client_token || null
-    }
-    if (!clientToken) { setDupeLoading(null); return }
     const payload = {
       name: b.name + " (вариант)",
       description: b.description,
@@ -483,16 +475,19 @@ export default function Admin() {
       status: "draft",
       is_featured: false,
       sort_order: 0,
-      client_token: clientToken,
+      parent_id: b.id,   // ← связь через parent_id
     }
     const created = await api.builds.create(payload)
     if (created?.id) {
-      const newBuild: PCBuild = { ...b, id: created.id, name: payload.name, status: "draft", is_featured: false, client_token: clientToken }
-      // Один setBuilds: обновляем токен у главной + добавляем вариант
-      setBuilds(bs => [
-        ...bs.map(bb => bb.id === b.id ? { ...bb, client_token: clientToken } : bb),
-        newBuild,
-      ])
+      const newBuild: PCBuild = {
+        ...b,
+        id: created.id,
+        name: payload.name,
+        status: "draft",
+        is_featured: false,
+        parent_id: b.id,
+      }
+      setBuilds(bs => [...bs, newBuild])
       setExpandedVariants(b.id)
     }
     setDupeLoading(null)
