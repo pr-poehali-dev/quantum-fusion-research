@@ -86,12 +86,8 @@ export default function ClientBuild() {
     }
   }, [activeVariant, variants])
 
-  function enrichComponents(comps: (Component & { product_description?: string; product_images?: string[] })[]) {
-    return comps.map(c => ({
-      ...c,
-      description: c.description || c.product_description || undefined,
-      image_url: c.image_url || (c.product_images && c.product_images[0]) || undefined,
-    }))
+  function enrichComponents(comps: Component[]) {
+    return comps
   }
 
   const build = variants[activeVariant] ?? null
