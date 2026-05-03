@@ -12,6 +12,7 @@ import Cart from "./pages/Cart";
 import Admin from "./pages/Admin";
 import AuthPage from "./pages/AuthPage";
 import Profile from "./pages/Profile";
+import ClientBuild from "./pages/ClientBuild";
 import BuildPreview from "./pages/BuildPreview";
 import ArticlePage from "./pages/ArticlePage";
 import NotFound from "./pages/NotFound";
@@ -33,7 +34,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/build" element={<BuildPreview />} />
+            <Route path="/build" element={<ClientBuild />} />
             <Route path="/build-preview/:id" element={<BuildPreview />} />
             <Route path="/articles/:id" element={<ArticlePage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
