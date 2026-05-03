@@ -25,6 +25,26 @@ interface Build {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
+// Подтягивает фото каждого компонента из каталога по source_id
+async function enrichComponents(comps: Component[]): Promise<Component[]> {
+  const ids = [...new Set(comps.filter(c => c.source_id).map(c => c.source_id!))]
+  const products: Record<number, { image_urls?: string[]; image_url?: string; description?: string }> = {}
+  await Promise.all(ids.map(id =>
+    api.products.getById(id).then(p => { if (p?.id) products[id] = p }).catch(() => {})
+  ))
+  return comps.map(c => {
+    if (!c.source_id) return c
+    const p = products[c.source_id]
+    if (!p) return c
+    return {
+      ...c,
+      image_urls: (p.image_urls && p.image_urls.length > 0) ? p.image_urls : undefined,
+      image_url: p.image_url || (p.image_urls && p.image_urls[0]) || c.image_url,
+      description: c.description || p.description,
+    }
+  })
+}
+
 export default function BuildPreview() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -52,14 +72,9 @@ export default function BuildPreview() {
   // Загрузка по ID (публичная)
   useEffect(() => {
     if (isTokenMode || !id) return
-    api.builds.getById(Number(id)).then((data) => {
+    api.builds.getById(Number(id)).then(async (data) => {
       if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
-      const buildImgs: string[] = data.image_urls || []
-      const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }, i: number) => {
-        const ownImgs: string[] = (c.image_urls && c.image_urls.length > 0) ? c.image_urls : []
-        const fallbackImg = c.image_url || (c.product_images && c.product_images[0]) || buildImgs[i] || undefined
-        return { ...c, description: c.description || c.product_description || undefined, image_urls: ownImgs.length > 0 ? ownImgs : (fallbackImg ? [fallbackImg] : []), image_url: fallbackImg }
-      })
+      const comps = await enrichComponents(data.components || [])
       setVariants([data])
       setComponents(comps)
       setLoading(false)
@@ -77,12 +92,7 @@ export default function BuildPreview() {
       const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
       const list = [root, ...children]
-      const rootImgs: string[] = root.image_urls || []
-      const rootComps = (root.components || []).map((c: Component, i: number) => {
-        const ownImgs: string[] = (c.image_urls && c.image_urls.length > 0) ? c.image_urls : []
-        const fallbackImg = c.image_url || rootImgs[i] || undefined
-        return { ...c, image_urls: ownImgs.length > 0 ? ownImgs : (fallbackImg ? [fallbackImg] : []), image_url: fallbackImg }
-      })
+      const rootComps = await enrichComponents(root.components || [])
       setVariants(list)
       setComponents(rootComps)
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
@@ -94,13 +104,7 @@ export default function BuildPreview() {
   useEffect(() => {
     if (!variants[activeVariant]) return
     const v = variants[activeVariant]
-    const vImgs: string[] = v.image_urls || []
-    const vComps = (v.components || []).map((c: Component, i: number) => {
-      const ownImgs: string[] = (c.image_urls && c.image_urls.length > 0) ? c.image_urls : []
-      const fallbackImg = c.image_url || vImgs[i] || undefined
-      return { ...c, image_urls: ownImgs.length > 0 ? ownImgs : (fallbackImg ? [fallbackImg] : []), image_url: fallbackImg }
-    })
-    setComponents(vComps)
+    enrichComponents(v.components || []).then(setComponents)
     setCurrentSection(0)
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
   }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
