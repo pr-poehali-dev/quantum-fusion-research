@@ -126,7 +126,7 @@ export default function Shop() {
 
   useEffect(() => {
     setBuildsLoading(true)
-    api.builds.getAll({ status: "catalog" }).then(data => {
+    api.builds.getAll({ status: "client" }).then(data => {
       const all: Build[] = Array.isArray(data) ? data : (data.builds || [])
       // Считаем количество вариантов для каждой корневой сборки
       const variantCounts: Record<number, number> = {}

@@ -61,6 +61,7 @@ export const api = {
     exportExcel: () => fetch(URLS.syncProducts).then(r => r.json()),
     importExcel: (file_b64: string) => fetch(URLS.syncProducts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import", file_b64 }) }).then(r => r.json()),
     syncFromApi: (api_url: string, api_key: string) => fetch(URLS.syncProducts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", api_url, api_key }) }).then(r => r.json()),
+    previewApi: (api_url: string, api_key: string) => fetch(URLS.syncProducts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "preview", api_url, api_key }) }).then(r => r.json()),
   },
   articles: {
     getAll: (params?: Record<string, string>) => {

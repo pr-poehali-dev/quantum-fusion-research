@@ -325,6 +325,8 @@ export default function Admin() {
   const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number; total: number; details?: { id: number; name: string; action: string }[] } | null>(null)
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewData, setPreviewData] = useState<{ raw_sample: unknown[]; parsed_sample: { name: string; price: number; _cat_raw?: string; in_stock?: boolean }[]; total_items: number } | null>(null)
 
 
   const handleExportExcel = async () => {
@@ -357,12 +359,20 @@ export default function Admin() {
   }
 
   const handleSyncApi = async () => {
-    setSyncLoading(true); setSyncResult(null)
+    setSyncLoading(true); setSyncResult(null); setPreviewData(null)
     const res = await api.syncProducts.syncFromApi(syncApiUrl, syncApiKey)
     setSyncLoading(false)
     if (res.error) { alert("Ошибка: " + res.error); return }
     setSyncResult(res)
     api.products.getAll().then(d => { setProducts(d.products || []); setCategories(d.categories || []) })
+  }
+
+  const handlePreviewApi = async () => {
+    setPreviewLoading(true); setPreviewData(null); setSyncResult(null)
+    const res = await api.syncProducts.previewApi(syncApiUrl, syncApiKey)
+    setPreviewLoading(false)
+    if (res.error) { alert("Ошибка: " + res.error); return }
+    setPreviewData(res)
   }
 
   const generateClientLink = async (b: PCBuild) => {
@@ -788,13 +798,36 @@ export default function Admin() {
                       placeholder="API Key"
                       className="w-40 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
                       style={{ cursor: "text" }} />
-                    <button onClick={handleSyncApi} disabled={syncLoading}
+                    <button onClick={handlePreviewApi} disabled={previewLoading || syncLoading}
+                      className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-50 transition-colors"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={previewLoading ? "Loader" : "Eye"} size={13} />
+                      {previewLoading ? "Загрузка..." : "Предпросмотр"}
+                    </button>
+                    <button onClick={handleSyncApi} disabled={syncLoading || previewLoading}
                       className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                       style={{ cursor: "pointer" }}>
                       <Icon name={syncLoading ? "Loader" : "RefreshCw"} size={13} />
                       {syncLoading ? "Синхронизация..." : "Запустить"}
                     </button>
                   </div>
+                  {previewData && (
+                    <div className="rounded-lg border border-border bg-background/50 p-3 space-y-2">
+                      <p className="text-xs font-medium text-foreground/70">Всего в API: <span className="text-foreground">{previewData.total_items}</span> товаров. Первые {previewData.parsed_sample.length} после обработки:</p>
+                      <div className="space-y-1.5">
+                        {previewData.parsed_sample.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between rounded-md bg-card px-3 py-2">
+                            <span className="text-xs text-foreground truncate max-w-[60%]">{item.name || <span className="text-red-400">— нет названия</span>}</span>
+                            <div className="flex items-center gap-3 text-[11px] text-foreground/50 shrink-0">
+                              {item._cat_raw && <span className="text-primary/70">{item._cat_raw}</span>}
+                              <span>{item.price?.toLocaleString("ru-RU")} ₽</span>
+                              <span className={item.in_stock ? "text-green-400" : "text-red-400"}>{item.in_stock ? "в наличии" : "нет"}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {syncResult && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-4 text-xs">
