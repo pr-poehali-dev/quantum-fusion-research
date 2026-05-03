@@ -4,6 +4,7 @@ const URLS = {
   builds: "https://functions.poehali.dev/0a87c6dc-877f-497d-92ba-c645d2f4ca39",
   auth: "https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3",
   articles: "https://functions.poehali.dev/f13f1242-55c3-4265-9f6e-bb883371a574",
+  syncProducts: "https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031",
 }
 
 function authHeaders(session?: string | null) {
@@ -55,6 +56,11 @@ export const api = {
     generateClientLink: (id: number) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate_client_link", id }) }).then(r => r.json()),
     claimBuild: (clientToken: string, session: string) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json", "X-Session-Id": session }, body: JSON.stringify({ action: "claim", client_token: clientToken }) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.builds}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+  },
+  syncProducts: {
+    exportExcel: () => fetch(URLS.syncProducts).then(r => r.json()),
+    importExcel: (file_b64: string) => fetch(URLS.syncProducts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import", file_b64 }) }).then(r => r.json()),
+    syncFromApi: (api_url: string, api_key: string) => fetch(URLS.syncProducts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", api_url, api_key }) }).then(r => r.json()),
   },
   articles: {
     getAll: (params?: Record<string, string>) => {

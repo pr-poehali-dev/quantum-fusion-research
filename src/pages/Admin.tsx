@@ -317,6 +317,54 @@ export default function Admin() {
   const [dupeLoading, setDupeLoading] = useState<number | null>(null)
   const [expandedVariants, setExpandedVariants] = useState<number | null>(null)
 
+  // Импорт/экспорт/синхронизация товаров
+  const [showSyncPanel, setShowSyncPanel] = useState(false)
+  const [syncApiUrl, setSyncApiUrl] = useState("http://80.78.243.138/api/webhook/storage")
+  const [syncApiKey, setSyncApiKey] = useState("Deboshir123321")
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number } | null>(null)
+  const [importLoading, setImportLoading] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+
+
+  const handleExportExcel = async () => {
+    setExportLoading(true)
+    const res = await api.syncProducts.exportExcel()
+    setExportLoading(false)
+    if (res.file_b64) {
+      const bin = atob(res.file_b64)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a"); a.href = url; a.download = "products.xlsx"; a.click()
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  const handleImportExcel = async (file: File) => {
+    setImportLoading(true)
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(e.target!.result as ArrayBuffer)))
+      const res = await api.syncProducts.importExcel(b64)
+      setImportLoading(false)
+      if (res.error) { alert("Ошибка: " + res.error); return }
+      alert(`Импорт завершён: добавлено ${res.created}, обновлено ${res.updated}, пропущено ${res.skipped}`)
+      api.products.getAll().then(d => { setProducts(d.products || []); setCategories(d.categories || []) })
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleSyncApi = async () => {
+    setSyncLoading(true); setSyncResult(null)
+    const res = await api.syncProducts.syncFromApi(syncApiUrl, syncApiKey)
+    setSyncLoading(false)
+    if (res.error) { alert("Ошибка: " + res.error); return }
+    setSyncResult(res)
+    api.products.getAll().then(d => { setProducts(d.products || []); setCategories(d.categories || []) })
+  }
+
   const generateClientLink = async (b: PCBuild) => {
     const token = b.client_token || (await api.builds.generateClientLink(b.id)).client_token
     if (!token) return
@@ -699,11 +747,64 @@ export default function Admin() {
                         style={{ cursor: "pointer" }}>{c.name}</button>
                     ))}
                   </div>
-                  <button onClick={() => setTab("add_product")} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-                    <Icon name="Plus" size={16} />Добавить
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* Экспорт Excel */}
+                    <button onClick={handleExportExcel} disabled={exportLoading}
+                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={exportLoading ? "Loader" : "Download"} size={14} />
+                      Excel
+                    </button>
+                    {/* Импорт Excel */}
+                    <label className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors cursor-pointer">
+                      <Icon name={importLoading ? "Loader" : "Upload"} size={14} />
+                      Импорт
+                      <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = "" }} />
+                    </label>
+                    {/* Синхронизация с API */}
+                    <button onClick={() => setShowSyncPanel(v => !v)}
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${showSyncPanel ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                      style={{ cursor: "pointer" }}>
+                      <Icon name="RefreshCw" size={14} />
+                      Синхронизация
+                    </button>
+                    <button onClick={() => setTab("add_product")} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Plus" size={16} />Добавить
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* Панель синхронизации с API */}
+              {showSyncPanel && (
+                <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                  <p className="text-sm font-medium text-foreground">Синхронизация с внешним API</p>
+                  <div className="flex gap-2">
+                    <input value={syncApiUrl} onChange={e => setSyncApiUrl(e.target.value)}
+                      placeholder="URL API"
+                      className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+                      style={{ cursor: "text" }} />
+                    <input value={syncApiKey} onChange={e => setSyncApiKey(e.target.value)}
+                      placeholder="API Key"
+                      className="w-40 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+                      style={{ cursor: "text" }} />
+                    <button onClick={handleSyncApi} disabled={syncLoading}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={syncLoading ? "Loader" : "RefreshCw"} size={13} />
+                      {syncLoading ? "Синхронизация..." : "Запустить"}
+                    </button>
+                  </div>
+                  {syncResult && (
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="text-green-400">✓ Добавлено: {syncResult.created}</span>
+                      <span className="text-primary">↻ Обновлено: {syncResult.updated}</span>
+                      <span className="text-foreground/50">— Пропущено: {syncResult.skipped}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {loading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-card animate-pulse" />)}</div>
                 : (
                   <div className="overflow-x-auto rounded-xl border border-border">
