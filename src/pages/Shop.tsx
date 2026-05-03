@@ -600,9 +600,16 @@ function ProductCard({
 }
 
 function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: () => void; onOrder: () => void; fmt: (n: number) => string }) {
-  const hasImage = !!b.image_urls?.[0]
+  const images = b.image_urls || []
+  const hasImage = images.length > 0
+  const [imgIdx, setImgIdx] = useState(0)
   const cpu = b.components.find(c => c.slot === "cpu")
   const gpu = b.components.find(c => c.slot === "gpu")
+
+  const goImg = (e: React.MouseEvent, dir: 1 | -1) => {
+    e.stopPropagation()
+    setImgIdx(i => (i + dir + images.length) % images.length)
+  }
 
   return (
     <div
@@ -612,11 +619,16 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
     >
       {/* Фон */}
       {hasImage ? (
-        <img
-          src={b.image_urls[0]} alt={b.name}
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-          style={{ filter: "brightness(0.55)" }}
-        />
+        <>
+          {images.map((url, i) => (
+            <img
+              key={i}
+              src={url} alt={b.name}
+              className="absolute inset-0 h-full w-full object-cover transition-all duration-700 group-hover:scale-105"
+              style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease, transform 0.7s ease" }}
+            />
+          ))}
+        </>
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-muted/80 to-card" />
       )}
@@ -632,6 +644,31 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
           </span>
         )}
       </div>
+
+      {/* Стрелки карусели — справа сверху, только если >1 фото */}
+      {images.length > 1 && (
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <button onClick={(e) => goImg(e, -1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ChevronLeft" size={12} />
+          </button>
+          <span className="text-[10px] text-white/70 font-mono">{imgIdx + 1}/{images.length}</span>
+          <button onClick={(e) => goImg(e, 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ChevronRight" size={12} />
+          </button>
+        </div>
+      )}
+
+      {/* Точки карусели — внизу по центру фото */}
+      {images.length > 1 && (
+        <div className="absolute bottom-[88px] left-1/2 z-20 -translate-x-1/2 flex gap-1.5">
+          {images.map((_, i) => (
+            <button key={i} onClick={(e) => { e.stopPropagation(); setImgIdx(i) }}
+              className={`rounded-full transition-all duration-300 ${i === imgIdx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/40"}`}
+              style={{ cursor: "pointer" }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Hover-оверлей: CPU + GPU */}
       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 px-6">
@@ -731,6 +768,8 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
   const [slideIdx, setSlideIdx] = useState(0)
   const [animDir, setAnimDir] = useState<"left" | "right">("right")
   const [animating, setAnimating] = useState(false)
+  const [userInteracted, setUserInteracted] = useState(false)
+  const autoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Слайды: общее описание + по одному на каждый компонент
   const slides = [
@@ -740,8 +779,9 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
   ]
   const total = slides.length
 
-  const goTo = (idx: number, dir: "left" | "right") => {
+  const goTo = (idx: number, dir: "left" | "right", manual = true) => {
     if (animating || idx === slideIdx) return
+    if (manual) setUserInteracted(true)
     setAnimDir(dir)
     setAnimating(true)
     setTimeout(() => {
@@ -752,6 +792,33 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
 
   const prev = () => { if (slideIdx > 0) goTo(slideIdx - 1, "left") }
   const next = () => { if (slideIdx < total - 1) goTo(slideIdx + 1, "right") }
+
+  // Автосмена слайдов компонентов каждые 5 сек (только если user не взаимодействовал)
+  useEffect(() => {
+    if (userInteracted) return
+    const compSlides = slides
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => s.type === "component")
+    if (compSlides.length < 2) return
+    autoRef.current = setInterval(() => {
+      setSlideIdx(cur => {
+        const curPos = compSlides.findIndex(({ i }) => i === cur)
+        if (curPos === -1) {
+          // не на компоненте — перейти к первому
+          setAnimDir("right")
+          setAnimating(true)
+          setTimeout(() => { setAnimating(false) }, 320)
+          return compSlides[0].i
+        }
+        const next = compSlides[(curPos + 1) % compSlides.length]
+        setAnimDir("right")
+        setAnimating(true)
+        setTimeout(() => { setAnimating(false) }, 320)
+        return next.i
+      })
+    }, 5000)
+    return () => { if (autoRef.current) clearInterval(autoRef.current) }
+  }, [userInteracted, total])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -812,7 +879,13 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
             <div>
               <div className="relative aspect-video bg-gradient-to-br from-card to-muted flex items-center justify-center overflow-hidden">
                 {images[slide.index + 1] ? (
-                  <img src={images[slide.index + 1]} alt={slide.component.name} className="h-full w-full object-cover" />
+                  <img
+                    key={slide.index}
+                    src={images[slide.index + 1]}
+                    alt={slide.component.name}
+                    className="h-full w-full object-cover"
+                    style={{ animation: "fadeIn 0.6s ease" }}
+                  />
                 ) : (
                   <div className="flex flex-col items-center gap-3">
                     <Icon name={SLOT_ICONS[slide.component.slot] || "Cpu"} size={64} className="text-primary/25" />
