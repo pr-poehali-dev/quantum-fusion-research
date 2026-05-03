@@ -1,5 +1,4 @@
 import { useEffect } from "react"
-import { useLocation } from "react-router-dom"
 import { useTheme } from "@/store/theme"
 
 // Конвертируем HSL-строку "217 91% 60%" в hex для шейдера
@@ -20,12 +19,11 @@ export function hslToHex(hsl: string): string {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { mode, accentId, getAccent } = useTheme()
-  const { pathname } = useLocation()
-  const effectiveMode = pathname === "/" ? "dark" : mode
 
   useEffect(() => {
     const root = document.documentElement
     const accent = getAccent()
+    const effectiveMode = window.location.pathname === "/" ? "dark" : mode
 
     if (effectiveMode === "light") {
       root.style.setProperty("--background", "0 0% 97%")
@@ -43,7 +41,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.style.setProperty("--primary-foreground", "0 0% 100%")
       root.style.setProperty("--accent-foreground", "0 0% 100%")
       root.classList.remove("dark")
-    } else {  
+    } else {
       root.style.setProperty("--background", "0 0% 4%")
       root.style.setProperty("--foreground", "0 0% 95%")
       root.style.setProperty("--card", "0 0% 7%")
@@ -64,7 +62,48 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty("--primary", accent.primary)
     root.style.setProperty("--accent", accent.accent)
     root.style.setProperty("--ring", accent.ring)
-  }, [effectiveMode, accentId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, accentId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Перехватываем навигацию чтобы пересчитать тему при переходе с/на "/"
+  useEffect(() => {
+    const apply = () => {
+      const root = document.documentElement
+      const accent = getAccent()
+      const effectiveMode = window.location.pathname === "/" ? "dark" : mode
+      if (effectiveMode === "light") {
+        root.classList.remove("dark")
+        root.style.setProperty("--background", "0 0% 97%")
+        root.style.setProperty("--foreground", "0 0% 8%")
+        root.style.setProperty("--card", "0 0% 100%")
+        root.style.setProperty("--card-foreground", "0 0% 8%")
+        root.style.setProperty("--muted", "0 0% 92%")
+        root.style.setProperty("--muted-foreground", "0 0% 45%")
+        root.style.setProperty("--border", "0 0% 86%")
+        root.style.setProperty("--input", "0 0% 86%")
+      } else {
+        root.classList.add("dark")
+        root.style.setProperty("--background", "0 0% 4%")
+        root.style.setProperty("--foreground", "0 0% 95%")
+        root.style.setProperty("--card", "0 0% 7%")
+        root.style.setProperty("--card-foreground", "0 0% 95%")
+        root.style.setProperty("--muted", "0 0% 10%")
+        root.style.setProperty("--muted-foreground", "0 0% 45%")
+        root.style.setProperty("--border", "0 0% 12%")
+        root.style.setProperty("--input", "0 0% 12%")
+      }
+      root.style.setProperty("--primary", accent.primary)
+      root.style.setProperty("--accent", accent.accent)
+      root.style.setProperty("--ring", accent.ring)
+    }
+    window.addEventListener("popstate", apply)
+    // React Router использует history.pushState — патчим его
+    const orig = history.pushState.bind(history)
+    history.pushState = (...args) => { orig(...args); apply() }
+    return () => {
+      window.removeEventListener("popstate", apply)
+      history.pushState = orig
+    }
+  }, [mode, accentId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <>{children}</>
 }
