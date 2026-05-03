@@ -42,6 +42,7 @@ export function ImageUploader({ images, onChange, folder = "builds", maxImages =
     const valid = urls.filter(Boolean) as string[]
     onChange([...images, ...valid])
     setUploading(false)
+    if (inputRef.current) inputRef.current.value = ""
   }
 
   const addUrl = () => {
@@ -51,9 +52,9 @@ export function ImageUploader({ images, onChange, folder = "builds", maxImages =
     setUploadUrl("")
   }
 
-  const remove = (idx: number) => onChange(images.filter((_, i) => i !== idx))
-  const moveLeft = (idx: number) => { if (idx === 0) return; const a = [...images]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; onChange(a) }
-  const moveRight = (idx: number) => { if (idx === images.length - 1) return; const a = [...images]; [a[idx], a[idx + 1]] = [a[idx + 1], a[idx]]; onChange(a) }
+  const remove = (idx: number, e: React.MouseEvent) => { e.stopPropagation(); onChange(images.filter((_, i) => i !== idx)) }
+  const moveLeft = (idx: number, e: React.MouseEvent) => { e.stopPropagation(); if (idx === 0) return; const a = [...images]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; onChange(a) }
+  const moveRight = (idx: number, e: React.MouseEvent) => { e.stopPropagation(); if (idx === images.length - 1) return; const a = [...images]; [a[idx], a[idx + 1]] = [a[idx + 1], a[idx]]; onChange(a) }
 
   return (
     <div className="space-y-3">
@@ -68,16 +69,16 @@ export function ImageUploader({ images, onChange, folder = "builds", maxImages =
               )}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
                 <div className="flex gap-1">
-                  <button onClick={() => moveLeft(i)} style={{ cursor: "pointer" }}
+                  <button onClick={(e) => moveLeft(i, e)} style={{ cursor: "pointer" }}
                     className="flex h-6 w-6 items-center justify-center rounded bg-white/20 text-white hover:bg-white/40">
                     <Icon name="ChevronLeft" size={12} />
                   </button>
-                  <button onClick={() => moveRight(i)} style={{ cursor: "pointer" }}
+                  <button onClick={(e) => moveRight(i, e)} style={{ cursor: "pointer" }}
                     className="flex h-6 w-6 items-center justify-center rounded bg-white/20 text-white hover:bg-white/40">
                     <Icon name="ChevronRight" size={12} />
                   </button>
                 </div>
-                <button onClick={() => remove(i)} style={{ cursor: "pointer" }}
+                <button onClick={(e) => remove(i, e)} style={{ cursor: "pointer" }}
                   className="flex h-6 w-6 items-center justify-center rounded bg-red-500/70 text-white hover:bg-red-500">
                   <Icon name="Trash2" size={12} />
                 </button>
