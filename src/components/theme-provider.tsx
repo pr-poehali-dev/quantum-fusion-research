@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { useLocation } from "react-router-dom"
 import { useTheme } from "@/store/theme"
 
 // Конвертируем HSL-строку "217 91% 60%" в hex для шейдера
@@ -19,12 +20,14 @@ export function hslToHex(hsl: string): string {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { mode, accentId, getAccent } = useTheme()
+  const { pathname } = useLocation()
+  const effectiveMode = pathname === "/" ? "dark" : mode
 
   useEffect(() => {
     const root = document.documentElement
     const accent = getAccent()
 
-    if (mode === "light") {
+    if (effectiveMode === "light") {
       root.style.setProperty("--background", "0 0% 97%")
       root.style.setProperty("--foreground", "0 0% 8%")
       root.style.setProperty("--card", "0 0% 100%")
@@ -40,7 +43,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.style.setProperty("--primary-foreground", "0 0% 100%")
       root.style.setProperty("--accent-foreground", "0 0% 100%")
       root.classList.remove("dark")
-    } else {
+    } else {  
       root.style.setProperty("--background", "0 0% 4%")
       root.style.setProperty("--foreground", "0 0% 95%")
       root.style.setProperty("--card", "0 0% 7%")
@@ -61,7 +64,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty("--primary", accent.primary)
     root.style.setProperty("--accent", accent.accent)
     root.style.setProperty("--ring", accent.ring)
-  }, [mode, accentId]) // accentId явно в зависимостях — срабатывает при любом изменении цвета
+  }, [effectiveMode, accentId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <>{children}</>
 }
