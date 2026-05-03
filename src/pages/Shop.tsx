@@ -621,7 +621,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
         <div className="absolute inset-0 bg-gradient-to-br from-muted/80 to-card" />
       )}
       {/* Градиент */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/50 via-black/15 to-transparent group-hover:h-full group-hover:from-black/95 group-hover:via-black/30 transition-all duration-300" />
 
       {/* Бейджи — сверху */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
