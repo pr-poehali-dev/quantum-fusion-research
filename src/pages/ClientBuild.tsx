@@ -24,6 +24,204 @@ interface Build {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
+// ── Карусель фото сборки справа на hero (без рамки, на весь блок) ──
+function HeroBuildCarousel({ images, active }: { images: string[]; active: boolean }) {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    if (!active || images.length <= 1) return
+    const t = setInterval(() => setIdx(i => (i + 1) % images.length), 6000)
+    return () => clearInterval(t)
+  }, [active, images.length])
+
+  return (
+    <div
+      className={`absolute right-0 top-0 bottom-0 hidden lg:block transition-all duration-1000 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-16"}`}
+      style={{ width: "50%" }}
+    >
+      <div className="absolute inset-0">
+        {images.map((src, i) => (
+          <img key={i} src={src} alt=""
+            className="absolute inset-0 w-full h-full object-contain transition-opacity duration-700"
+            style={{ opacity: i === idx ? 1 : 0 }}
+          />
+        ))}
+      </div>
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.4) 25%, transparent 55%)"
+      }} />
+      {images.length > 1 && (
+        <div className="absolute bottom-8 right-6 flex gap-1.5">
+          {images.map((_, i) => (
+            <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+              className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30 hover:bg-foreground/60"}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Карусель фото для финальной секции ──
+function BuildImageCarousel({ images, autoPlay }: { images: string[]; autoPlay?: boolean }) {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    if (!autoPlay || images.length <= 1) return
+    const t = setInterval(() => setIdx(i => (i + 1) % images.length), 5000 + Math.random() * 2000)
+    return () => clearInterval(t)
+  }, [autoPlay, images.length])
+  const prev = () => setIdx(i => (i - 1 + images.length) % images.length)
+  const next = () => setIdx(i => (i + 1) % images.length)
+  if (!images.length) return null
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-muted" style={{ aspectRatio: "16/7" }}>
+      {images.map((src, i) => (
+        <img key={i} src={src} alt="" className="absolute inset-0 h-full w-full object-contain transition-opacity duration-700"
+          style={{ opacity: i === idx ? 1 : 0 }} />
+      ))}
+      {images.length > 1 && (
+        <>
+          <button onClick={prev} style={{ cursor: "pointer" }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border/50 backdrop-blur hover:border-primary transition-all">
+            <Icon name="ChevronLeft" size={16} />
+          </button>
+          <button onClick={next} style={{ cursor: "pointer" }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border/50 backdrop-blur hover:border-primary transition-all">
+            <Icon name="ChevronRight" size={16} />
+          </button>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {images.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+                className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/40 hover:bg-foreground/70"}`} />
+            ))}
+          </div>
+          <div className="absolute top-3 left-3 rounded-full bg-background/70 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur">
+            {idx + 1} / {images.length}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Карусель фото компонента (справа, на весь блок) ──
+function ComponentPhotoCarousel({ photos, name, active }: { photos: string[]; name: string; active: boolean }) {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => { setIdx(0) }, [name])
+  useEffect(() => {
+    if (!active || photos.length <= 1) return
+    const t = setInterval(() => setIdx(i => (i + 1) % photos.length), 6000)
+    return () => clearInterval(t)
+  }, [active, photos.length])
+  const prev = () => setIdx(i => (i - 1 + photos.length) % photos.length)
+  const next = () => setIdx(i => (i + 1) % photos.length)
+
+  return (
+    <div
+      className={`absolute right-0 top-0 bottom-0 hidden lg:block transition-all duration-1000 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-16"}`}
+      style={{ width: "50%" }}
+    >
+      <div className="absolute inset-0">
+        {photos.map((src, i) => (
+          <img key={i} src={src} alt={name}
+            className="absolute inset-0 w-full h-full object-contain transition-opacity duration-700"
+            style={{ opacity: i === idx ? 1 : 0 }}
+          />
+        ))}
+      </div>
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.4) 25%, transparent 55%)"
+      }} />
+      {photos.length > 1 && (
+        <div className="absolute inset-0 flex flex-col justify-end pb-8 pr-6 items-end gap-3">
+          <div className="flex items-center gap-2">
+            <button onClick={prev} style={{ cursor: "pointer" }}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
+              <Icon name="ChevronLeft" size={14} />
+            </button>
+            <button onClick={next} style={{ cursor: "pointer" }}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-background/70 border border-border/50 backdrop-blur hover:border-primary transition-all">
+              <Icon name="ChevronRight" size={14} />
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            {photos.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
+                className={`rounded-full transition-all ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/30 hover:bg-foreground/60"}`} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Иконка слота ──
+function ComponentIcon({ slot }: { slot: string }) {
+  const icons: Record<string, string> = {
+    cpu: "Cpu", gpu: "Monitor", ram: "MemoryStick", storage: "HardDrive",
+    psu: "Zap", case: "Box", motherboard: "CircuitBoard",
+  }
+  return <Icon name={icons[slot] || "Package"} size={12} />
+}
+
+// ── Секция компонента ──
+function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
+  comp: Component; index: number; total: number; active: boolean; onNext: () => void; onPrev: () => void
+}) {
+  const photos = comp.image_urls?.length ? comp.image_urls : (comp.image_url ? [comp.image_url] : [])
+  return (
+    <div className="relative h-full w-full overflow-hidden flex items-center">
+      {photos.length > 0 && <ComponentPhotoCarousel photos={photos} name={comp.name} active={active} />}
+      <div className={`absolute inset-0 pointer-events-none ${photos.length === 0 ? "hidden" : ""}`}
+        style={{ background: "radial-gradient(ellipse 60% 80% at 20% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
+
+      <div className={`relative z-10 w-full max-w-xl px-5 sm:px-16 pt-20 pb-16 transition-all duration-700 ${active ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-8"}`}>
+        <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
+          {index + 1} / {total} · {SLOT_NAMES[comp.slot] || comp.slot}
+        </p>
+        <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.4rem, 3.5vw, 2.5rem)" }}>
+          {comp.name}
+        </h2>
+        {comp.description && (
+          <p className="mb-5 text-sm leading-relaxed text-muted-foreground whitespace-pre-line max-w-md">{comp.description}</p>
+        )}
+        {comp.specs && Object.keys(comp.specs).length > 0 && (
+          <div className="mb-6 grid grid-cols-2 gap-2 max-w-sm">
+            {Object.entries(comp.specs).slice(0, 6).map(([k, v]) => (
+              <div key={k} className="rounded-lg bg-card border border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground truncate">{k}</p>
+                <p className="text-sm font-medium text-foreground truncate">{v}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mb-6">
+          <p className="text-xs text-muted-foreground mb-1">Стоимость</p>
+          <p className="text-2xl font-bold text-foreground">{fmt(comp.current_price ?? comp.price)}</p>
+        </div>
+
+        {/* Фото — мобайл */}
+        {photos.length > 0 && (
+          <div className="lg:hidden mb-6 rounded-xl overflow-hidden border border-border bg-muted" style={{ aspectRatio: "4/3" }}>
+            <img src={photos[0]} alt={comp.name} className="h-full w-full object-contain" />
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button onClick={onPrev} style={{ cursor: "pointer" }}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-primary hover:text-foreground transition-all">
+            <Icon name="ArrowUp" size={16} />
+          </button>
+          <button onClick={onNext} style={{ cursor: "pointer" }}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-primary hover:text-foreground transition-all">
+            <Icon name="ArrowDown" size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ClientBuild() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -32,10 +230,8 @@ export default function ClientBuild() {
 
   const token = searchParams.get("token")
 
-  // Все варианты сборки по одному токену
   const [variants, setVariants] = useState<Build[]>([])
   const [activeVariant, setActiveVariant] = useState(0)
-
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [claiming, setClaiming] = useState(false)
@@ -50,52 +246,34 @@ export default function ClientBuild() {
 
   useEffect(() => {
     if (!token) { setError("Ссылка недействительна"); setLoading(false); return }
-
     api.builds.getByClientToken(token).then(async (data) => {
       if (data?.error) { setError(data.error); setLoading(false); return }
-
-      // Нормализуем ответ — может быть массив или один объект
       const rawList: Build[] = Array.isArray(data) ? data : [data]
       if (!rawList.length) { setError("Сборка не найдена"); setLoading(false); return }
-
-      // Находим корневую сборку (parent_id = null) — она главная
       const root = rawList.find(b => !b.parent_id) ?? rawList[0]
-
-      // Загружаем варианты по parent_id корневой сборки
       const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
-
-      // Список: [главная, ...варианты]
       const list: Build[] = [root, ...children]
-
       setVariants(list)
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
-      setEnrichedComponents(enrichComponents(root.components))
+      setEnrichedComponents(root.components || [])
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
   }, [token, user])
 
-  // При смене варианта — обновляем компоненты и прокручиваем к секции обзора
   useEffect(() => {
     if (!variants[activeVariant]) return
-    setEnrichedComponents(enrichComponents(variants[activeVariant].components))
-    const offset = variants.length > 1 ? 1 : 0
-    setCurrentSection(offset)
+    setEnrichedComponents(variants[activeVariant].components || [])
+    setCurrentSection(0)
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({ top: window.innerHeight * offset, behavior: "smooth" })
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" })
     }
   }, [activeVariant, variants])
 
-  function enrichComponents(comps: Component[]) {
-    return comps
-  }
-
   const build = variants[activeVariant] ?? null
   const components = enrichedComponents.length > 0 ? enrichedComponents : (build?.components || [])
-  // Если несколько вариантов — добавляем вводную секцию (секция 0)
   const hasMultipleVariants = variants.length > 1
-  const introOffset = hasMultipleVariants ? 1 : 0
-  const totalSections = components.length + 2 + introOffset
+  const totalSections = components.length + 2
 
   const scrollToSection = useCallback((index: number) => {
     if (index < 0 || index >= totalSections || isTransitioning) return
@@ -130,8 +308,7 @@ export default function ClientBuild() {
     const onTouchEnd = (e: TouchEvent) => {
       const deltaY = touchStartY.current - e.changedTouches[0].clientY
       const deltaX = touchStartX.current - e.changedTouches[0].clientX
-      // Горизонтальный свайп — переключаем вариант (только если вариантов > 1)
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 60) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 60 && hasMultipleVariants) {
         if (deltaX > 0) setActiveVariant(i => Math.min(i + 1, variants.length - 1))
         else setActiveVariant(i => Math.max(i - 1, 0))
         return
@@ -152,7 +329,7 @@ export default function ClientBuild() {
         el.removeEventListener("touchend", onTouchEnd)
       }
     }
-  }, [currentSection, scrollToSection])
+  }, [currentSection, scrollToSection, hasMultipleVariants, variants.length])
 
   const claimBuild = async () => {
     if (!isAuthed() || !sessionId) { navigate(`/auth?redirect=/build?token=${token}`); return }
@@ -205,32 +382,37 @@ export default function ClientBuild() {
       </nav>
 
       {/* Хедер */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-3 bg-background/80 backdrop-blur-sm border-b border-border/50">
-        <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">B</div>
-          <span className="hidden sm:block text-sm font-medium text-foreground/80">BeGraphics</span>
-        </button>
-
-        {/* Счётчик вариантов — по центру */}
-        {variants.length > 1 && (
-          <div className="flex items-center gap-2 rounded-full border border-border bg-card/80 backdrop-blur px-3 py-1.5">
-            <Icon name="GitBranch" size={12} className="text-primary" />
-            <span className="text-xs text-muted-foreground">
-              Вариант <span className="font-semibold text-foreground">{activeVariant + 1}</span> из {variants.length}
-            </span>
-          </div>
-        )}
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-4 bg-background/80 backdrop-blur-sm border-b border-border/50">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ArrowLeft" size={16} />
+            <span className="text-sm hidden sm:inline">Главная</span>
+          </button>
+          {/* Переключатель вариантов */}
+          {hasMultipleVariants && (
+            <div className="flex items-center gap-1.5 ml-2">
+              {variants.map((v, i) => (
+                <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${i === activeVariant ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary hover:text-foreground"}`}>
+                  {i === 0 ? "Основная" : `Вариант ${i + 1}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
-          {claimed ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary">
-              <Icon name="Check" size={12} /> Сохранено
-            </span>
-          ) : (
+          {!claimed && (
             <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
-              className="hidden sm:block rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
-              {claiming ? "Сохранение..." : "Сохранить в профиль"}
+              className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all disabled:opacity-50">
+              <Icon name="Bookmark" size={14} />
+              <span className="hidden sm:inline">{claiming ? "Сохраняем..." : "Сохранить"}</span>
             </button>
+          )}
+          {claimed && (
+            <span className="flex items-center gap-1.5 text-xs text-primary">
+              <Icon name="BookmarkCheck" size={14} /> Сохранено
+            </span>
           )}
           <button onClick={orderBuild} style={{ cursor: "pointer" }}
             className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
@@ -241,116 +423,29 @@ export default function ClientBuild() {
 
       <div ref={scrollContainerRef} className="h-screen w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory" }}>
 
-        {/* ── ВВОДНАЯ СЕКЦИЯ: показывается только если вариантов > 1 ── */}
-        {hasMultipleVariants && (
-          <div className="h-screen w-screen shrink-0 relative flex flex-col items-center justify-center px-6 text-center" style={{ scrollSnapAlign: "start" }}>
-            <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, hsl(var(--primary) / 0.07) 0%, transparent 70%)" }} />
-            <div className={`relative z-10 transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-              <div className="mb-6 flex items-center justify-center gap-2">
-                <div className="h-px w-12 bg-primary/40" />
-                <span className="font-mono text-xs uppercase tracking-widest text-primary">Варианты сборки</span>
-                <div className="h-px w-12 bg-primary/40" />
-              </div>
-              <h1 className="mb-4 font-light text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", lineHeight: 1.1 }}>
-                Для вас подготовлено<br />
-                <span className="text-primary">{variants.length} варианта</span> сборки
-              </h1>
-              <p className="mb-10 max-w-md text-sm sm:text-base leading-relaxed text-muted-foreground mx-auto">
-                Листайте вниз чтобы посмотреть первый вариант.<br />
-                Листайте вправо или свайпайте влево/вправо чтобы переключаться между вариантами.
-              </p>
-              {/* Превью вариантов */}
-              <div className="flex items-stretch justify-center gap-3 mb-10 flex-wrap">
-                {variants.map((v, i) => (
-                  <button
-                    key={v.id}
-                    onClick={() => { setActiveVariant(i); scrollToSection(introOffset) }}
-                    style={{ cursor: "pointer" }}
-                    className={`flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left transition-all ${i === activeVariant ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/50"}`}
-                  >
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Вариант {i + 1}{i === 0 ? " · Рекомендуемый" : ""}</span>
-                    <span className="text-sm font-medium text-foreground">{v.name}</span>
-                    <span className="text-xs text-primary font-semibold">{fmt(v.total_price)}</span>
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => scrollToSection(introOffset)}
-                style={{ cursor: "pointer" }}
-                className="flex items-center gap-2 mx-auto rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                <Icon name="ArrowDown" size={15} />
-                Смотреть первый вариант
-              </button>
-            </div>
-            {/* Подсказка скролла */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 animate-bounce opacity-50">
-              <Icon name="ChevronDown" size={16} className="text-muted-foreground" />
-            </div>
-          </div>
-        )}
-
-        {/* ── СЕКЦИЯ обзора (0 или 1 в зависимости от наличия intro) ── */}
+        {/* ── СЕКЦИЯ 0: Обзор ── */}
         <div className="h-screen w-screen shrink-0 relative" style={{ scrollSnapAlign: "start" }}>
           <div className="relative flex h-full w-full overflow-hidden">
 
-            {/* Фото сборки — справа, полная высота */}
             {buildImages.length > 0 && (
-              <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none">
-                <img src={buildImages[0]} alt={build.name} className="h-full w-full object-contain object-right" />
-                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent" />
-              </div>
+              <HeroBuildCarousel images={buildImages} active={currentSection === 0} />
             )}
-            <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
-            {/* Баннер */}
-            <div className={`absolute top-20 left-0 right-0 px-5 sm:px-16 z-10 transition-all duration-500 ${currentSection === introOffset ? "opacity-100" : "opacity-0"}`}>
-              <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 max-w-md">
-                <Icon name="Sparkles" size={15} className="text-primary shrink-0" />
-                <p className="text-xs text-foreground/70">Персональная сборка, подготовлена специально для вас</p>
-              </div>
-            </div>
-
-            {/* Стрелки переключения вариантов — только если вариантов > 1 */}
-            {variants.length > 1 && (
-              <>
-                <button
-                  onClick={() => setActiveVariant(i => Math.max(i - 1, 0))}
-                  disabled={activeVariant === 0}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur border border-border/60 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-all disabled:opacity-20"
-                  style={{ cursor: activeVariant === 0 ? "default" : "pointer" }}>
-                  <Icon name="ChevronLeft" size={18} />
-                </button>
-                <button
-                  onClick={() => setActiveVariant(i => Math.min(i + 1, variants.length - 1))}
-                  disabled={activeVariant === variants.length - 1}
-                  className="absolute right-14 sm:right-20 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 backdrop-blur border border-border/60 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-all disabled:opacity-20"
-                  style={{ cursor: activeVariant === variants.length - 1 ? "default" : "pointer" }}>
-                  <Icon name="ChevronRight" size={18} />
-                </button>
-                {/* Индикатор точек вариантов */}
-                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
-                  {variants.map((_, i) => (
-                    <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
-                      className={`rounded-full transition-all ${i === activeVariant ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/20 hover:bg-foreground/40"}`} />
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 px-5 sm:px-16 pt-32 pb-16">
+            <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 px-5 sm:px-16 pt-20 pb-16">
               <div className="flex-1 min-w-0">
-                <div className={`transition-all duration-700 ${currentSection === introOffset ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-                  <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">Персональная сборка · BeGraphics</p>
+                <div className={`transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+                  <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">BeGraphics · Персональная сборка</p>
                   <h1 className="mb-4 font-light leading-tight tracking-tight text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}>
                     {build.name}
                   </h1>
                   {build.description && (
-                    <p className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground">{build.description}</p>
+                    <p className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground whitespace-pre-line">{build.description}</p>
                   )}
+                  {/* Фото — мобайл */}
                   {buildImages.length > 0 && (
                     <div className="lg:hidden mb-6">
-                      <img src={buildImages[0]} alt={build.name} className="w-full rounded-2xl object-contain max-h-52 border border-border bg-muted" />
+                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === 0} />
                     </div>
                   )}
                   <div className="mb-6 flex flex-wrap items-end gap-4 sm:gap-6">
@@ -364,41 +459,20 @@ export default function ClientBuild() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <button onClick={() => scrollToSection(introOffset + 1)} style={{ cursor: "pointer" }}
+                    <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
-                      Изучить подробнее <Icon name="ArrowDown" size={15} />
+                      Изучить состав <Icon name="ArrowDown" size={15} />
                     </button>
-
                     <button onClick={orderBuild} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full border border-border px-5 sm:px-7 py-3 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
                       Заказать сейчас
                     </button>
                   </div>
-
-                  {/* Подсказка о вариантах — если они есть */}
-                  {hasMultipleVariants && (
-                    <div className="mt-5 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 max-w-lg">
-                      <Icon name="Layers" size={16} className="text-primary shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground">
-                          Для вас подготовлено <span className="text-primary">{variants.length} варианта</span> этой сборки
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Разные конфигурации — разные цены</p>
-                      </div>
-                      <button
-                        onClick={() => scrollToSection(0)}
-                        style={{ cursor: "pointer" }}
-                        className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-                      >
-                        Выбрать
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* Список компонентов — десктоп */}
-              <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === introOffset ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+              {/* Список компонентов — десктоп справа */}
+              <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                 <p className="mb-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">Состав</p>
                 <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                   {components.map((c, i) => (
@@ -408,7 +482,7 @@ export default function ClientBuild() {
                           <ComponentIcon slot={c.slot} />
                         </span>
                         <div className="min-w-0">
-                          <p className="hidden sm:block text-xs text-muted-foreground leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5 truncate">{SLOT_NAMES[c.slot] || c.slot}</p>
                           <p className="text-sm text-foreground truncate">{c.name}</p>
                         </div>
                       </div>
@@ -419,20 +493,20 @@ export default function ClientBuild() {
               </div>
             </div>
 
-            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === introOffset ? "opacity-40" : "opacity-0"}`}>
+            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === 0 ? "opacity-40" : "opacity-0"}`}>
               <p className="text-xs text-muted-foreground">Прокрутите вниз</p>
               <Icon name="ChevronDown" size={16} className="text-muted-foreground animate-bounce" />
             </div>
           </div>
         </div>
 
-        {/* ── СЕКЦИИ компонентов ── */}
+        {/* ── СЕКЦИИ 1..N: Компоненты ── */}
         {components.map((comp, idx) => (
-          <div key={`${build.id}-${idx}`} className="h-screen w-screen shrink-0" style={{ scrollSnapAlign: "start" }}>
+          <div key={idx} className="h-screen w-screen shrink-0" style={{ scrollSnapAlign: "start" }}>
             <ComponentSection comp={comp} index={idx} total={components.length}
-              active={currentSection === idx + 1 + introOffset}
-              onNext={() => scrollToSection(idx + 2 + introOffset)}
-              onPrev={() => scrollToSection(idx + introOffset)}
+              active={currentSection === idx + 1}
+              onNext={() => scrollToSection(idx + 2)}
+              onPrev={() => scrollToSection(idx)}
             />
           </div>
         ))}
@@ -442,18 +516,15 @@ export default function ClientBuild() {
           <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 50% 50%, hsl(var(--primary) / 0.06) 0%, transparent 70%)" }} />
             <div className={`relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-8 pt-20 pb-8 transition-all duration-700 ${currentSection === totalSections - 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-
               {buildImages.length > 0 && (
                 <div className="mb-6 sm:mb-8">
                   <BuildImageCarousel images={buildImages} />
                 </div>
               )}
-
               <div className="flex flex-col items-center text-center">
-                <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">Готово к заказу</p>
+                <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">Готова к заказу</p>
                 <h2 className="mb-2 font-light text-foreground" style={{ fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}>{build.name}</h2>
                 <p className="mb-6 text-muted-foreground text-sm">{components.length} компонентов · Сборка включена</p>
-
                 <div className="mb-6 w-full max-w-lg flex items-center justify-center gap-4 sm:gap-8 rounded-2xl border border-border bg-card px-4 sm:px-10 py-4 sm:py-6">
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground mb-0.5">Железо</p>
@@ -470,26 +541,20 @@ export default function ClientBuild() {
                     <p className="text-xl sm:text-2xl font-bold text-primary">{fmt(build.total_price)}</p>
                   </div>
                 </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-sm sm:max-w-none sm:justify-center">
+                <div className="flex flex-wrap items-center justify-center gap-3">
                   <button onClick={orderBuild} style={{ cursor: "pointer" }}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-full bg-primary px-8 sm:px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                    className="flex items-center justify-center gap-2 rounded-full bg-primary px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
                     <Icon name="ShoppingCart" size={17} />
-                    Оформить заказ
+                    Заказать сборку
                   </button>
                   {!claimed && (
                     <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-full border border-border px-7 py-3.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
-                      <Icon name="BookmarkPlus" size={15} />
-                      {claiming ? "Сохранение..." : "Сохранить в профиль"}
+                      className="flex items-center gap-2 rounded-full border border-border px-6 py-3.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all disabled:opacity-50">
+                      <Icon name="Bookmark" size={16} />
+                      {claiming ? "Сохраняем..." : "Сохранить в профиль"}
                     </button>
                   )}
                 </div>
-                {claimed && (
-                  <p className="mt-4 flex items-center gap-1.5 text-sm text-primary">
-                    <Icon name="Check" size={14} /> Сборка сохранена в профиле
-                  </p>
-                )}
                 <button onClick={() => scrollToSection(0)} style={{ cursor: "pointer" }}
                   className="mt-6 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Icon name="ArrowUp" size={12} /> Вернуться к обзору
@@ -502,198 +567,4 @@ export default function ClientBuild() {
       </div>
     </div>
   )
-}
-
-// Карусель фото компонента (авто-смена 7 сек)
-function ComponentPhotoCarousel({ images, name, active }: { images: string[]; name: string; active: boolean }) {
-  const [idx, setIdx] = useState(0)
-
-  useEffect(() => {
-    if (images.length <= 1) return
-    const timer = setInterval(() => setIdx(i => (i + 1) % images.length), 7000)
-    return () => clearInterval(timer)
-  }, [images.length])
-
-  if (!images.length) return null
-  return (
-    <div className="absolute inset-0">
-      {images.map((src, i) => (
-        <div key={i} className={`absolute inset-0 transition-opacity duration-1000 ${i === idx && active ? "opacity-100" : "opacity-0"}`}>
-          <img src={src} alt={name} className="h-full w-full object-cover object-center" style={{ filter: "brightness(0.75)" }} />
-        </div>
-      ))}
-      <div className="absolute inset-0" style={{
-        background: "linear-gradient(to right, hsl(var(--background)) 30%, hsl(var(--background) / 0.5) 60%, transparent 100%)"
-      }} />
-      <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
-      {images.length > 1 && (
-        <div className="absolute bottom-4 right-4 flex gap-1.5">
-          {images.map((_, i) => (
-            <button key={i} onClick={() => setIdx(i)} style={{ cursor: "pointer" }}
-              className={`rounded-full transition-all ${i === idx ? "w-4 h-1.5 bg-white/80" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Красивая карусель фото сборки — 3 фото одновременно, сдвиг лентой
-function BuildImageCarousel({ images }: { images: string[] }) {
-  const [offset, setOffset] = useState(0) // индекс левого видимого фото
-  const visible = 3
-  const canPrev = offset > 0
-  const canNext = offset + visible < images.length
-
-  // Авто-прокрутка каждые 7 сек
-  useEffect(() => {
-    if (images.length <= visible) return
-    const timer = setInterval(() => {
-      setOffset(o => (o + visible < images.length ? o + 1 : 0))
-    }, 7000)
-    return () => clearInterval(timer)
-  }, [images.length])
-
-  if (images.length === 0) return null
-
-  // Одно фото — просто показываем
-  if (images.length === 1) return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-muted">
-      <img src={images[0]} alt="" className="w-full object-contain" style={{ maxHeight: "38vh" }} />
-    </div>
-  )
-
-  return (
-    <div className="relative">
-      {/* Лента фото */}
-      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(visible, images.length)}, 1fr)` }}>
-        {images.slice(offset, offset + visible).map((src, i) => (
-          <div
-            key={`${offset}-${i}`}
-            className="relative overflow-hidden rounded-2xl border border-border bg-muted aspect-video"
-            style={{
-              opacity: i === 0 ? (canPrev ? 0.6 : 1) : i === visible - 1 ? (canNext ? 0.6 : 1) : 1,
-              transition: "opacity 0.3s",
-            }}
-          >
-            <img src={src} alt="" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
-            {/* Подсказка «листайте» на крайних */}
-            {i === visible - 1 && canNext && (
-              <div className="absolute inset-0 bg-gradient-to-l from-background/70 to-transparent flex items-center justify-end pr-3">
-                <Icon name="ChevronRight" size={20} className="text-white/60" />
-              </div>
-            )}
-            {i === 0 && canPrev && (
-              <div className="absolute inset-0 bg-gradient-to-r from-background/70 to-transparent flex items-center justify-start pl-3">
-                <Icon name="ChevronLeft" size={20} className="text-white/60" />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Кнопки */}
-      {canPrev && (
-        <button onClick={() => setOffset(o => Math.max(0, o - 1))} style={{ cursor: "pointer" }}
-          className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-background border border-border shadow-lg hover:border-primary transition-all">
-          <Icon name="ChevronLeft" size={16} />
-        </button>
-      )}
-      {canNext && (
-        <button onClick={() => setOffset(o => Math.min(images.length - visible, o + 1))} style={{ cursor: "pointer" }}
-          className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-background border border-border shadow-lg hover:border-primary transition-all">
-          <Icon name="ChevronRight" size={16} />
-        </button>
-      )}
-
-      {/* Точки */}
-      {images.length > visible && (
-        <div className="mt-3 flex justify-center gap-1.5">
-          {Array.from({ length: images.length - visible + 1 }).map((_, i) => (
-            <button key={i} onClick={() => setOffset(i)} style={{ cursor: "pointer" }}
-              className={`rounded-full transition-all ${i === offset ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-foreground/20 hover:bg-foreground/40"}`} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
-  comp: Component; index: number; total: number; active: boolean; onNext: () => void; onPrev: () => void
-}) {
-  const price = comp.current_price ?? comp.price
-  // Собираем все доступные фото: image_urls[] приоритетнее одиночного image_url
-  const photos = comp.image_urls?.length ? comp.image_urls : comp.image_url ? [comp.image_url] : []
-  const hasPhoto = photos.length > 0
-
-  return (
-    <div className="relative flex h-full w-full items-center overflow-hidden bg-background">
-
-      {/* Фото — на весь фон с каруселью */}
-      <div className={`absolute inset-0 transition-all duration-1000 ${active ? "opacity-100" : "opacity-0"}`}>
-        {hasPhoto
-          ? <ComponentPhotoCarousel images={photos} name={comp.name} active={active} />
-          : <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 30% 50%, hsl(var(--primary) / 0.04) 0%, transparent 70%)" }} />
-        }
-      </div>
-
-      {/* Большой номер */}
-      <div className="absolute top-16 sm:top-20 left-4 sm:left-16 pointer-events-none select-none">
-        <span className="font-mono font-bold leading-none" style={{
-          fontSize: "clamp(80px, 15vw, 160px)",
-          color: hasPhoto ? "rgba(255,255,255,0.06)" : "hsl(var(--foreground) / 0.04)"
-        }}>
-          {String(index + 1).padStart(2, "0")}
-        </span>
-      </div>
-
-      {/* Текст — слева */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-16 pt-20 pb-24">
-        <div className={`max-w-lg transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
-          <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
-            {SLOT_NAMES[comp.slot] || comp.slot} · {index + 1} / {total}
-          </p>
-          <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.6rem, 4vw, 3.2rem)" }}>
-            {comp.name}
-          </h2>
-          <p className="mb-5 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
-          {comp.description && (
-            <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground">{comp.description}</p>
-          )}
-          {comp.specs && Object.keys(comp.specs).length > 0 && (
-            <div className="grid grid-cols-2 gap-1.5 max-w-sm">
-              {Object.entries(comp.specs).slice(0, 4).map(([k, v]) => (
-                <div key={k} className="rounded-lg bg-background/70 backdrop-blur-sm border border-border/60 px-3 py-2">
-                  <p className="text-xs text-muted-foreground mb-0.5 truncate">{k}</p>
-                  <p className="text-xs sm:text-sm text-foreground font-medium truncate">{v}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Навигация */}
-      <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-5 transition-all duration-500 ${active ? "opacity-100" : "opacity-0"}`}>
-        <button onClick={onPrev} style={{ cursor: "pointer" }}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-background/70 backdrop-blur border border-border/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
-          <Icon name="ChevronUp" size={16} />
-        </button>
-        <span className="text-xs font-mono text-muted-foreground bg-background/70 backdrop-blur px-2 py-0.5 rounded">{index + 1} / {total}</span>
-        <button onClick={onNext} style={{ cursor: "pointer" }}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-background/70 backdrop-blur border border-border/60 text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-all">
-          <Icon name="ChevronDown" size={16} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function ComponentIcon({ slot, size = 14 }: { slot: string; size?: number }) {
-  const icons: Record<string, string> = {
-    cpu: "Cpu", gpu: "Monitor", ram: "MemoryStick", storage: "HardDrive",
-    psu: "Zap", case: "Box", motherboard: "CircuitBoard",
-  }
-  return <Icon name={icons[slot] || "Package"} size={size} />
 }
