@@ -1,0 +1,2 @@
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls JSONB DEFAULT '[]'::jsonb;
+UPDATE products SET image_urls = json_build_array(image_url)::jsonb WHERE image_url IS NOT NULL AND (image_urls IS NULL OR image_urls = '[]'::jsonb);

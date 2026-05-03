@@ -41,16 +41,26 @@ def handler(event: dict, context) -> dict:
     cur = conn.cursor()
 
     def row_to_product(row):
-        stock_qty = row[12] if len(row) > 12 else 0
+        # row: id,name,desc,price,old_price,image_url,specs,in_stock,is_featured,sort_order,created_at,stock_qty,image_urls,cat_id,cat_name,cat_slug
+        stock_qty = row[11] if len(row) > 11 else 0
+        image_urls_raw = row[12] if len(row) > 12 else None
+        if isinstance(image_urls_raw, list):
+            image_urls = image_urls_raw
+        elif image_urls_raw:
+            image_urls = image_urls_raw
+        else:
+            image_urls = [row[5]] if row[5] else []
         return {
             "id": row[0], "name": row[1], "description": row[2],
             "price": float(row[3]), "old_price": float(row[4]) if row[4] else None,
-            "image_url": row[5], "specs": row[6] or {},
-            "in_stock": (stock_qty > 0),
-            "stock_qty": stock_qty,
+            "image_url": image_urls[0] if image_urls else row[5],
+            "image_urls": image_urls,
+            "specs": row[6] or {},
+            "in_stock": bool(row[7]),
+            "stock_qty": stock_qty or 0,
             "is_featured": row[8], "sort_order": row[9],
             "created_at": row[10].isoformat() if row[10] else None,
-            "category": {"id": row[11], "name": row[12 if len(row) <= 13 else 13], "slug": row[14 if len(row) > 14 else 13]} if len(row) > 13 and row[13] else None
+            "category": {"id": row[13], "name": row[14], "slug": row[15]} if len(row) > 13 and row[13] else None
         }
 
     try:
@@ -121,31 +131,17 @@ def handler(event: dict, context) -> dict:
 
         # ── PRODUCTS ──
         elif method == "GET":
+            sel = """SELECT p.id, p.name, p.description, p.price, p.old_price,
+                            p.image_url, p.specs, p.in_stock, p.is_featured,
+                            p.sort_order, p.created_at, p.stock_qty, p.image_urls,
+                            c.id, c.name, c.slug
+                     FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
             if product_id:
-                cur.execute(
-                    """SELECT p.id, p.name, p.description, p.price, p.old_price,
-                              p.image_url, p.specs, p.in_stock, p.is_featured,
-                              p.sort_order, p.created_at, p.stock_qty,
-                              c.id, c.name, c.slug
-                       FROM products p LEFT JOIN categories c ON p.category_id = c.id
-                       WHERE p.id = %s""",
-                    (product_id,)
-                )
+                cur.execute(sel + " WHERE p.id = %s", (product_id,))
                 row = cur.fetchone()
                 if not row:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
-                stock_qty = row[11] or 0
-                product = {
-                    "id": row[0], "name": row[1], "description": row[2],
-                    "price": float(row[3]), "old_price": float(row[4]) if row[4] else None,
-                    "image_url": row[5], "specs": row[6] or {},
-                    "in_stock": stock_qty > 0,
-                    "stock_qty": stock_qty,
-                    "is_featured": row[8], "sort_order": row[9],
-                    "created_at": row[10].isoformat() if row[10] else None,
-                    "category": {"id": row[12], "name": row[13], "slug": row[14]} if row[12] else None
-                }
-                return {"statusCode": 200, "headers": cors, "body": json.dumps(product)}
+                return {"statusCode": 200, "headers": cors, "body": json.dumps(row_to_product(row))}
             else:
                 category_slug = params.get("category")
                 featured = params.get("featured")
@@ -161,45 +157,29 @@ def handler(event: dict, context) -> dict:
                     where_clauses.append("LOWER(p.name) LIKE %s")
                     args.append(f"%{search.lower()}%")
                 where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-                cur.execute(
-                    f"""SELECT p.id, p.name, p.description, p.price, p.old_price,
-                               p.image_url, p.specs, p.in_stock, p.is_featured,
-                               p.sort_order, p.created_at, p.stock_qty,
-                               c.id, c.name, c.slug
-                        FROM products p LEFT JOIN categories c ON p.category_id = c.id
-                        {where_sql}
-                        ORDER BY p.sort_order ASC, p.id ASC""",
-                    args
-                )
+                cur.execute(sel + f" {where_sql} ORDER BY p.sort_order ASC, p.id ASC", args)
                 rows = cur.fetchall()
                 products = []
                 for row in rows:
-                    stock_qty = row[11] or 0
-                    products.append({
-                        "id": row[0], "name": row[1], "description": row[2],
-                        "price": float(row[3]), "old_price": float(row[4]) if row[4] else None,
-                        "image_url": row[5], "specs": row[6] or {},
-                        "in_stock": stock_qty > 0,
-                        "stock_qty": stock_qty,
-                        "is_featured": row[8], "sort_order": row[9],
-                        "created_at": row[10].isoformat() if row[10] else None,
-                        "category": {"id": row[12], "name": row[13], "slug": row[14]} if row[12] else None
-                    })
+                    products.append(row_to_product(row))
                 cur.execute("SELECT id, name, slug, description, sort_order FROM categories ORDER BY sort_order ASC")
                 cats = [{"id": r[0], "name": r[1], "slug": r[2], "description": r[3], "sort_order": r[4]} for r in cur.fetchall()]
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"products": products, "categories": cats})}
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
-            stock_qty = body.get("stock_qty", 0)
+            image_urls = body.get("image_urls") or ([body["image_url"]] if body.get("image_url") else [])
+            image_url = image_urls[0] if image_urls else body.get("image_url")
+            in_stock = body.get("in_stock", True)
             cur.execute(
-                """INSERT INTO products (category_id, name, description, price, old_price, image_url, specs,
+                """INSERT INTO products (category_id, name, description, price, old_price, image_url, image_urls, specs,
                    in_stock, stock_qty, is_featured, sort_order, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
                 (body.get("category_id"), body["name"], body.get("description"),
-                 body["price"], body.get("old_price"), body.get("image_url"),
+                 body["price"], body.get("old_price"), image_url,
+                 json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
-                 stock_qty > 0, stock_qty,
+                 in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0))
             )
             new_id = cur.fetchone()[0]
@@ -208,15 +188,18 @@ def handler(event: dict, context) -> dict:
 
         elif method == "PUT":
             body = json.loads(event.get("body") or "{}")
-            stock_qty = body.get("stock_qty", 0)
+            image_urls = body.get("image_urls") or ([body["image_url"]] if body.get("image_url") else [])
+            image_url = image_urls[0] if image_urls else body.get("image_url")
+            in_stock = body.get("in_stock", True)
             cur.execute(
                 """UPDATE products SET category_id=%s, name=%s, description=%s, price=%s,
-                   old_price=%s, image_url=%s, specs=%s, in_stock=%s, stock_qty=%s,
+                   old_price=%s, image_url=%s, image_urls=%s, specs=%s, in_stock=%s, stock_qty=%s,
                    is_featured=%s, sort_order=%s WHERE id=%s""",
                 (body.get("category_id"), body["name"], body.get("description"),
-                 body["price"], body.get("old_price"), body.get("image_url"),
+                 body["price"], body.get("old_price"), image_url,
+                 json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
-                 stock_qty > 0, stock_qty,
+                 in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0), body["id"])
             )
             conn.commit()

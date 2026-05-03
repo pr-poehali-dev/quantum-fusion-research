@@ -50,6 +50,7 @@ interface Product {
   sort_order: number
   is_featured: boolean
   image_url: string | null
+  image_urls: string[]
 }
 
 interface Category {
@@ -418,7 +419,7 @@ export default function Admin() {
       category_id: p.category ? String(categories.find(c => c.name === p.category?.name)?.id || "") : "",
       name: p.name, description: p.description || "",
       price: String(p.price), old_price: p.old_price ? String(p.old_price) : "",
-      image_urls: p.image_url ? [p.image_url] : [],
+      image_urls: p.image_urls?.length ? p.image_urls : (p.image_url ? [p.image_url] : []),
       specs: JSON.stringify(p.specs || {}),
       in_stock: p.in_stock, is_featured: p.is_featured, sort_order: String(p.sort_order || 0),
     })
