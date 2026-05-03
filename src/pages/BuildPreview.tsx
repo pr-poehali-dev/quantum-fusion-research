@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useSearchParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
+import { useAuth } from "@/store/auth"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
 
@@ -17,42 +18,81 @@ interface Component {
 interface Build {
   id: number; name: string; description: string; components: Component[]
   parts_total: number; assembly_fee: number; total_price: number
-  assembly_type: string; image_urls: string[]; is_featured: boolean; status: string
+  assembly_type: string; image_urls: string[]
+  is_featured?: boolean; status?: string
+  client_token?: string | null; client_user_id?: number | null; parent_id?: number | null
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
 export default function BuildPreview() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get("token")
   const navigate = useNavigate()
+  const { isAuthed, sessionId, user } = useAuth()
   const { addItem } = useCart()
 
-  const [build, setBuild] = useState<Build | null>(null)
+  const isTokenMode = !!token
+
+  const [variants, setVariants] = useState<Build[]>([])
+  const [activeVariant, setActiveVariant] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [enrichedComponents, setEnrichedComponents] = useState<Component[]>([])
+  const [claiming, setClaiming] = useState(false)
+  const [claimed, setClaimed] = useState(false)
+  const [components, setComponents] = useState<Component[]>([])
   const [currentSection, setCurrentSection] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const wheelLockRef = useRef(false)
   const touchStartY = useRef(0)
+  const touchStartX = useRef(0)
 
+  // Загрузка по ID (публичная)
   useEffect(() => {
-    if (!id) { setError("Сборка не найдена"); setLoading(false); return }
-    api.builds.getById(Number(id)).then(async (data) => {
+    if (isTokenMode || !id) return
+    api.builds.getById(Number(id)).then((data) => {
       if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
-      setBuild(data)
       const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }) => ({
         ...c,
         description: c.description || c.product_description || undefined,
         image_url: c.image_url || (c.product_images && c.product_images[0]) || undefined,
       }))
-      setEnrichedComponents(comps)
+      setVariants([data])
+      setComponents(comps)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
-  }, [id])
+  }, [id, isTokenMode])
 
-  const components = enrichedComponents.length > 0 ? enrichedComponents : (build?.components || [])
+  // Загрузка по токену (клиентская)
+  useEffect(() => {
+    if (!isTokenMode || !token) return
+    api.builds.getByClientToken(token).then(async (data) => {
+      if (data?.error) { setError(data.error); setLoading(false); return }
+      const rawList: Build[] = Array.isArray(data) ? data : [data]
+      if (!rawList.length) { setError("Сборка не найдена"); setLoading(false); return }
+      const root = rawList.find(b => !b.parent_id) ?? rawList[0]
+      const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
+      const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
+      const list = [root, ...children]
+      setVariants(list)
+      setComponents(root.components || [])
+      if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
+      setLoading(false)
+    }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
+  }, [token, isTokenMode, user])
+
+  // При смене варианта
+  useEffect(() => {
+    if (!variants[activeVariant]) return
+    setComponents(variants[activeVariant].components || [])
+    setCurrentSection(0)
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+  }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const build = variants[activeVariant] ?? null
+  const hasMultipleVariants = variants.length > 1
   const totalSections = components.length + 2
 
   const scrollToSection = useCallback((index: number) => {
@@ -81,9 +121,19 @@ export default function BuildPreview() {
   }, [currentSection, scrollToSection])
 
   useEffect(() => {
-    const onTouchStart = (e: TouchEvent) => { touchStartY.current = e.touches[0].clientY }
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY
+      touchStartX.current = e.touches[0].clientX
+    }
     const onTouchEnd = (e: TouchEvent) => {
-      const delta = touchStartY.current - e.changedTouches[0].clientY
+      const deltaY = touchStartY.current - e.changedTouches[0].clientY
+      const deltaX = touchStartX.current - e.changedTouches[0].clientX
+      if (hasMultipleVariants && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 60) {
+        if (deltaX > 0) setActiveVariant(i => Math.min(i + 1, variants.length - 1))
+        else setActiveVariant(i => Math.max(i - 1, 0))
+        return
+      }
+      const delta = deltaY
       if (Math.abs(delta) > 50) {
         if (delta > 0) scrollToSection(currentSection + 1)
         else scrollToSection(currentSection - 1)
@@ -100,7 +150,15 @@ export default function BuildPreview() {
         el.removeEventListener("touchend", onTouchEnd)
       }
     }
-  }, [currentSection, scrollToSection])
+  }, [currentSection, scrollToSection, hasMultipleVariants, variants.length])
+
+  const claimBuild = async () => {
+    if (!isAuthed() || !sessionId) { navigate(`/auth?redirect=/build?token=${token}`); return }
+    setClaiming(true)
+    await api.builds.claimBuild(token!, sessionId)
+    setClaimed(true)
+    setClaiming(false)
+  }
 
   const orderBuild = () => {
     if (!build) return
@@ -121,8 +179,8 @@ export default function BuildPreview() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
       <Icon name="MonitorOff" size={48} className="mb-4 text-muted-foreground/40" />
       <h1 className="mb-2 text-xl font-medium text-foreground">{error || "Сборка не найдена"}</h1>
-      <button onClick={() => navigate("/shop")} className="mt-6 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
-        Все сборки
+      <button onClick={() => navigate(isTokenMode ? "/" : "/shop")} className="mt-6 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
+        {isTokenMode ? "На главную" : "Все сборки"}
       </button>
     </div>
   )
@@ -143,14 +201,40 @@ export default function BuildPreview() {
 
       {/* Хедер */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-4 bg-background/80 backdrop-blur-sm border-b border-border/50">
-        <button onClick={() => navigate("/shop")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-          <Icon name="ArrowLeft" size={16} />
-          <span className="text-sm">Все сборки</span>
-        </button>
-        <button onClick={orderBuild} style={{ cursor: "pointer" }}
-          className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-          <span className="hidden sm:inline">Заказать — </span>{fmt(build.total_price)}
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(isTokenMode ? "/" : "/shop")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ArrowLeft" size={16} />
+            <span className="text-sm hidden sm:inline">{isTokenMode ? "Главная" : "Все сборки"}</span>
+          </button>
+          {hasMultipleVariants && (
+            <div className="flex items-center gap-1.5 ml-2">
+              {variants.map((_, i) => (
+                <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${i === activeVariant ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary hover:text-foreground"}`}>
+                  {i === 0 ? "Основная" : `Вариант ${i + 1}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {isTokenMode && !claimed && (
+            <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
+              className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all disabled:opacity-50">
+              <Icon name="Bookmark" size={14} />
+              <span className="hidden sm:inline">{claiming ? "Сохраняем..." : "Сохранить"}</span>
+            </button>
+          )}
+          {isTokenMode && claimed && (
+            <span className="flex items-center gap-1.5 text-xs text-primary">
+              <Icon name="BookmarkCheck" size={14} /> Сохранено
+            </span>
+          )}
+          <button onClick={orderBuild} style={{ cursor: "pointer" }}
+            className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+            <span className="hidden sm:inline">Заказать — </span>{fmt(build.total_price)}
+          </button>
+        </div>
       </header>
 
       <div ref={scrollContainerRef} className="h-screen w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory" }}>
@@ -275,11 +359,20 @@ export default function BuildPreview() {
                     <p className="text-xl sm:text-2xl font-bold text-primary">{fmt(build.total_price)}</p>
                   </div>
                 </div>
-                <button onClick={orderBuild} style={{ cursor: "pointer" }}
-                  className="flex items-center justify-center gap-2 rounded-full bg-primary px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
-                  <Icon name="ShoppingCart" size={17} />
-                  Заказать сборку
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button onClick={orderBuild} style={{ cursor: "pointer" }}
+                    className="flex items-center justify-center gap-2 rounded-full bg-primary px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                    <Icon name="ShoppingCart" size={17} />
+                    Заказать сборку
+                  </button>
+                  {isTokenMode && !claimed && (
+                    <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
+                      className="flex items-center gap-2 rounded-full border border-border px-6 py-3.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all disabled:opacity-50">
+                      <Icon name="Bookmark" size={16} />
+                      {claiming ? "Сохраняем..." : "Сохранить в профиль"}
+                    </button>
+                  )}
+                </div>
                 <button onClick={() => scrollToSection(0)} style={{ cursor: "pointer" }}
                   className="mt-6 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Icon name="ArrowUp" size={12} /> Вернуться к обзору
