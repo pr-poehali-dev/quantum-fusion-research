@@ -620,10 +620,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
     >
       {/* Фон */}
       {hasImage ? (
-        <div
-          className="absolute inset-0 group-hover:scale-105"
-          style={{ transition: "transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
-        >
+        <div className="absolute inset-0">
           {images.map((url, i) => (
             <img
               key={i}
