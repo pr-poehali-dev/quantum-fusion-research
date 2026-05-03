@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Probe CRM API",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
