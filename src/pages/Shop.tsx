@@ -709,7 +709,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
 
 function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Product; onClose: () => void; onAddCart: () => void; fmt: (n: number) => string }) {
   const [imgIdx, setImgIdx] = useState(0)
-  const images = p.image_url ? [p.image_url] : []
+  const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ cursor: "auto" }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} style={{ cursor: "pointer" }} />
@@ -719,11 +719,23 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
             <>
               <img src={images[imgIdx]} alt={p.name} className="h-full w-full object-cover" />
               {images.length > 1 && (
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {images.map((_, i) => (
-                    <button key={i} onClick={() => setImgIdx(i)} className={`h-1.5 rounded-full transition-all ${i === imgIdx ? "w-6 bg-primary" : "w-1.5 bg-foreground/30"}`} style={{ cursor: "pointer" }} />
-                  ))}
-                </div>
+                <>
+                  <button onClick={() => setImgIdx(i => (i - 1 + images.length) % images.length)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border/50 hover:border-primary transition-colors backdrop-blur"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="ChevronLeft" size={16} />
+                  </button>
+                  <button onClick={() => setImgIdx(i => (i + 1) % images.length)}
+                    className="absolute right-12 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 border border-border/50 hover:border-primary transition-colors backdrop-blur"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="ChevronRight" size={16} />
+                  </button>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {images.map((_, i) => (
+                      <button key={i} onClick={() => setImgIdx(i)} className={`h-1.5 rounded-full transition-all ${i === imgIdx ? "w-6 bg-primary" : "w-1.5 bg-foreground/30"}`} style={{ cursor: "pointer" }} />
+                    ))}
+                  </div>
+                </>
               )}
             </>
           ) : <Icon name="Monitor" size={64} className="text-foreground/15" />}
