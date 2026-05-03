@@ -620,16 +620,19 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
     >
       {/* Фон */}
       {hasImage ? (
-        <>
+        <div
+          className="absolute inset-0 group-hover:scale-105"
+          style={{ transition: "transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
+        >
           {images.map((url, i) => (
             <img
               key={i}
               src={url} alt={b.name}
-              className="absolute inset-0 h-full w-full object-cover group-hover:scale-105"
-              style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease, transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease" }}
             />
           ))}
-        </>
+        </div>
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-muted/80 to-card" />
       )}
