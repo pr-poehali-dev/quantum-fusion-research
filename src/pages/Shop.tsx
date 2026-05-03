@@ -126,13 +126,21 @@ export default function Shop() {
 
   useEffect(() => {
     setBuildsLoading(true)
-    api.builds.getAll({ status: "client" }).then(data => {
+    api.builds.getAll().then(data => {
       const all: Build[] = Array.isArray(data) ? data : (data.builds || [])
-      // Считаем количество вариантов для каждой корневой сборки
+      // Считаем количество вариантов client для каждой корневой сборки
       const variantCounts: Record<number, number> = {}
-      all.forEach(b => { if (b.parent_id) variantCounts[b.parent_id] = (variantCounts[b.parent_id] || 0) + 1 })
-      // Показываем только корневые, прокидываем счётчик вариантов
-      const roots = all.filter(b => !b.parent_id).map(b => ({ ...b, variantsCount: variantCounts[b.id] || 0 }))
+      const clientVariantParents = new Set<number>()
+      all.forEach(b => {
+        if (b.parent_id) {
+          variantCounts[b.parent_id] = (variantCounts[b.parent_id] || 0) + 1
+          if (b.status === "client") clientVariantParents.add(b.parent_id)
+        }
+      })
+      // Показываем корневые у которых статус client ИЛИ есть варианты с client
+      const roots = all
+        .filter(b => !b.parent_id && (b.status === "client" || clientVariantParents.has(b.id)))
+        .map(b => ({ ...b, variantsCount: variantCounts[b.id] || 0 }))
       setBuilds(roots as Build[])
       setBuildsLoading(false)
     })
