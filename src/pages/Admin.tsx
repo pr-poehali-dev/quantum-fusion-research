@@ -309,8 +309,9 @@ export default function Admin() {
     image_urls: [] as string[],
   })
   const [buildComponents, setBuildComponents] = useState<Array<{
-    slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; qty: number
+    slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; qty: number; image_urls?: string[]
   }>>([])
+  const [expandedComponent, setExpandedComponent] = useState<number | null>(null)
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
   const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
   const [dupeLoading, setDupeLoading] = useState<number | null>(null)
@@ -454,9 +455,10 @@ export default function Admin() {
       assembly_fee_manual: b.assembly_type === "manual" ? String(b.assembly_fee) : "",
       image_urls: b.image_urls || [],
     })
-    setBuildComponents(b.components.map((c: { slot: string; source: string; source_id?: number; name: string; price: number; current_price?: number; qty?: number }) => ({
+    setBuildComponents(b.components.map((c: { slot: string; source: string; source_id?: number; name: string; price: number; current_price?: number; qty?: number; image_urls?: string[] }) => ({
       slot: c.slot, source: c.source as "catalog" | "custom",
       source_id: c.source_id, name: c.name, price: c.current_price ?? c.price, qty: c.qty || 1,
+      image_urls: c.image_urls || [],
     })))
     setTab("add_build")
   }
@@ -917,27 +919,48 @@ export default function Admin() {
                   <div className="mb-3 space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-4">
                     <p className="mb-2 text-xs font-medium text-foreground/60">Позиций: {buildComponents.length} · Итого железо: {fmt(partsTotal)}</p>
                     {buildComponents.map((c, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <span className="w-28 shrink-0 text-xs text-foreground/50 font-mono truncate">{c.slot}</span>
-                        <span className="flex-1 text-foreground font-medium truncate">{c.name}</span>
-                        {/* qty controls */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, -1)}
-                            className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
-                            style={{ cursor: "pointer" }}>
-                            <Icon name="Minus" size={10} />
+                      <div key={i} className="rounded-lg border border-border/40 bg-card/60">
+                        <div className="flex items-center gap-2 text-sm px-3 py-2">
+                          <span className="w-24 shrink-0 text-xs text-foreground/50 font-mono truncate">{c.slot}</span>
+                          <span className="flex-1 text-foreground font-medium truncate">{c.name}</span>
+                          {/* фото-индикатор */}
+                          {(c.image_urls?.length ?? 0) > 0 && (
+                            <span className="shrink-0 text-[10px] text-primary/70 font-mono">{c.image_urls!.length}ф</span>
+                          )}
+                          {/* qty controls */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, -1)}
+                              className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                              style={{ cursor: "pointer" }}>
+                              <Icon name="Minus" size={10} />
+                            </button>
+                            <span className="w-5 text-center text-xs font-bold text-foreground">{c.qty || 1}</span>
+                            <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, 1)}
+                              className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                              style={{ cursor: "pointer" }}>
+                              <Icon name="Plus" size={10} />
+                            </button>
+                          </div>
+                          <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(c.price * (c.qty || 1))}</span>
+                          <button type="button" onClick={() => setExpandedComponent(expandedComponent === i ? null : i)}
+                            className="text-foreground/30 hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                            <Icon name={expandedComponent === i ? "ChevronUp" : "Image"} size={13} />
                           </button>
-                          <span className="w-5 text-center text-xs font-bold text-foreground">{c.qty || 1}</span>
-                          <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, 1)}
-                            className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
-                            style={{ cursor: "pointer" }}>
-                            <Icon name="Plus" size={10} />
+                          <button type="button" onClick={() => removeComponent(c.source_id ?? 0)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                            <Icon name="X" size={13} />
                           </button>
                         </div>
-                        <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(c.price * (c.qty || 1))}</span>
-                        <button type="button" onClick={() => removeComponent(c.source_id ?? 0)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
-                          <Icon name="X" size={13} />
-                        </button>
+                        {expandedComponent === i && (
+                          <div className="px-3 pb-3 border-t border-border/30 pt-2">
+                            <p className="text-xs text-foreground/50 mb-1.5">Фото компонента</p>
+                            <ImageUploader
+                              images={c.image_urls || []}
+                              onChange={urls => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, image_urls: urls } : comp))}
+                              folder="builds"
+                              maxImages={6}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
