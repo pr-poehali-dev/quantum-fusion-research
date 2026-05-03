@@ -54,11 +54,12 @@ export default function BuildPreview() {
     if (isTokenMode || !id) return
     api.builds.getById(Number(id)).then((data) => {
       if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
-      const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }) => ({
-        ...c,
-        description: c.description || c.product_description || undefined,
-        image_url: c.image_url || (c.product_images && c.product_images[0]) || undefined,
-      }))
+      const buildImgs: string[] = data.image_urls || []
+      const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }, i: number) => {
+        const ownImgs: string[] = (c.image_urls && c.image_urls.length > 0) ? c.image_urls : []
+        const fallbackImg = c.image_url || (c.product_images && c.product_images[0]) || buildImgs[i] || undefined
+        return { ...c, description: c.description || c.product_description || undefined, image_urls: ownImgs.length > 0 ? ownImgs : (fallbackImg ? [fallbackImg] : []), image_url: fallbackImg }
+      })
       setVariants([data])
       setComponents(comps)
       setLoading(false)
@@ -76,8 +77,14 @@ export default function BuildPreview() {
       const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
       const list = [root, ...children]
+      const rootImgs: string[] = root.image_urls || []
+      const rootComps = (root.components || []).map((c: Component, i: number) => {
+        const ownImgs: string[] = (c.image_urls && c.image_urls.length > 0) ? c.image_urls : []
+        const fallbackImg = c.image_url || rootImgs[i] || undefined
+        return { ...c, image_urls: ownImgs.length > 0 ? ownImgs : (fallbackImg ? [fallbackImg] : []), image_url: fallbackImg }
+      })
       setVariants(list)
-      setComponents(root.components || [])
+      setComponents(rootComps)
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
@@ -87,7 +94,13 @@ export default function BuildPreview() {
   useEffect(() => {
     if (!variants[activeVariant]) return
     const v = variants[activeVariant]
-    setComponents(v.components || [])
+    const vImgs: string[] = v.image_urls || []
+    const vComps = (v.components || []).map((c: Component, i: number) => {
+      const ownImgs: string[] = (c.image_urls && c.image_urls.length > 0) ? c.image_urls : []
+      const fallbackImg = c.image_url || vImgs[i] || undefined
+      return { ...c, image_urls: ownImgs.length > 0 ? ownImgs : (fallbackImg ? [fallbackImg] : []), image_url: fallbackImg }
+    })
+    setComponents(vComps)
     setCurrentSection(0)
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
   }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
