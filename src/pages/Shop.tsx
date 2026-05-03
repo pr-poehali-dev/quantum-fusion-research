@@ -15,6 +15,7 @@ interface Product {
   price: number
   old_price: number | null
   image_url: string | null
+  image_urls?: string[]
   specs: Record<string, string>
   in_stock: boolean
   is_featured: boolean
@@ -524,7 +525,7 @@ function ProductCard({
   cartQty: number
   fmt: (n: number) => string
 }) {
-  const images = p.image_url ? [p.image_url] : []
+  const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
       <button onClick={onOpen} className={`relative aspect-video bg-muted flex items-center justify-center overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`} style={{ cursor: "pointer" }}>
