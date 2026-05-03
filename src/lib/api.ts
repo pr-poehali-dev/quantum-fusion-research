@@ -1,7 +1,7 @@
 const URLS = {
   products: "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd",
   orders: "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745",
-  builds: "https://functions.poehali.dev/7d1142e6-0db0-4774-8302-ee0a9f7caf32",
+  builds: "https://functions.poehali.dev/0a87c6dc-877f-497d-92ba-c645d2f4ca39",
   auth: "https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3",
   articles: "https://functions.poehali.dev/f13f1242-55c3-4265-9f6e-bb883371a574",
 }
