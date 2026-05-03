@@ -54,10 +54,11 @@ export default function BuildPreview() {
     if (isTokenMode || !id) return
     api.builds.getById(Number(id)).then((data) => {
       if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
-      const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }) => ({
+      const imgs: string[] = data.image_urls || []
+      const comps = (data.components || []).map((c: Component & { product_description?: string; product_images?: string[] }, i: number) => ({
         ...c,
         description: c.description || c.product_description || undefined,
-        image_url: c.image_url || (c.product_images && c.product_images[0]) || undefined,
+        image_url: c.image_url || (c.product_images && c.product_images[0]) || imgs[i + 1] || undefined,
       }))
       setVariants([data])
       setComponents(comps)
@@ -77,7 +78,11 @@ export default function BuildPreview() {
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
       const list = [root, ...children]
       setVariants(list)
-      setComponents(root.components || [])
+      const imgs: string[] = root.image_urls || []
+      setComponents((root.components || []).map((c: Component, i: number) => ({
+        ...c,
+        image_url: c.image_url || imgs[i + 1] || undefined,
+      })))
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
@@ -86,7 +91,12 @@ export default function BuildPreview() {
   // При смене варианта
   useEffect(() => {
     if (!variants[activeVariant]) return
-    setComponents(variants[activeVariant].components || [])
+    const v = variants[activeVariant]
+    const imgs: string[] = v.image_urls || []
+    setComponents((v.components || []).map((c: Component, i: number) => ({
+      ...c,
+      image_url: c.image_url || imgs[i + 1] || undefined,
+    })))
     setCurrentSection(0)
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
   }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
