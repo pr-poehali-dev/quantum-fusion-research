@@ -625,8 +625,8 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
             <img
               key={i}
               src={url} alt={b.name}
-              className="absolute inset-0 h-full w-full object-cover transition-all duration-700 group-hover:scale-105"
-              style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease, transform 0.7s ease" }}
+              className="absolute inset-0 h-full w-full object-cover group-hover:scale-105"
+              style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease, transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
             />
           ))}
         </>
