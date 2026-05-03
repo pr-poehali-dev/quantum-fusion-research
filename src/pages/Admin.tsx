@@ -322,7 +322,7 @@ export default function Admin() {
   const [syncApiUrl, setSyncApiUrl] = useState("http://80.78.243.138/api/webhook/storage")
   const [syncApiKey, setSyncApiKey] = useState("Deboshir123321")
   const [syncLoading, setSyncLoading] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number; total: number; details?: { id: number; name: string; action: string }[] } | null>(null)
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
 
@@ -796,10 +796,21 @@ export default function Admin() {
                     </button>
                   </div>
                   {syncResult && (
-                    <div className="flex items-center gap-4 text-xs">
-                      <span className="text-green-400">✓ Добавлено: {syncResult.created}</span>
-                      <span className="text-primary">↻ Обновлено: {syncResult.updated}</span>
-                      <span className="text-foreground/50">— Пропущено: {syncResult.skipped}</span>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="text-green-400 font-medium">✓ Добавлено: {syncResult.created}</span>
+                        <span className="text-primary font-medium">↻ Обновлено: {syncResult.updated}</span>
+                        <span className="text-foreground/50">— Пропущено: {syncResult.skipped}</span>
+                        <span className="text-foreground/30">Всего в API: {syncResult.total}</span>
+                      </div>
+                      {syncResult.details && syncResult.details.filter(d => d.action === "created").length > 0 && (
+                        <div className="rounded-lg bg-green-500/5 border border-green-500/20 p-2 max-h-32 overflow-y-auto">
+                          <p className="text-[10px] text-green-400 font-medium mb-1">Новые товары:</p>
+                          {syncResult.details.filter(d => d.action === "created").map(d => (
+                            <p key={d.id} className="text-[11px] text-foreground/70 truncate">+ {d.name}</p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
