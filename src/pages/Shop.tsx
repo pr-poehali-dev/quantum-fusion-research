@@ -537,7 +537,7 @@ function ProductCard({
         )}
         {p.in_stock && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/30 transition-all z-10">
-            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Подробнее</span>
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Предпросмотр</span>
           </div>
         )}
       </button>
