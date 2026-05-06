@@ -78,18 +78,18 @@ def handler(event: dict, context) -> dict:
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, {"build": fmt_build(row)})
+                return resp(200, fmt_build(row))
 
             if client_token:
                 cur.execute(base + " WHERE client_token = %s", (client_token,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, {"build": fmt_build(row)})
+                return resp(200, fmt_build(row))
 
             if parent_id:
                 cur.execute(base + " WHERE parent_id = %s ORDER BY id", (parent_id,))
-                return resp(200, {"builds": [fmt_build(r) for r in cur.fetchall()]})
+                return resp(200, [fmt_build(r) for r in cur.fetchall()])
 
             if user_id:
                 cur.execute(base + " WHERE client_user_id = %s ORDER BY id DESC", (user_id,))
