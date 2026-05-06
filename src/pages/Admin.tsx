@@ -446,6 +446,25 @@ export default function Admin() {
     setOrders(o => o.map(ord => ord.id === id ? { ...ord, status } : ord))
   }
 
+  const openOrderBuild = async (orderId: number) => {
+    const data = await api.builds.getAll()
+    const allBuilds: PCBuild[] = data.builds || []
+    const padded = String(orderId).padStart(5, "0")
+    const found = allBuilds.find(b =>
+      b.name.includes(padded) || b.description?.includes(`#${padded}`)
+    )
+    if (!found) { alert("Сборка для этого заказа не найдена"); return }
+    // Подгружаем products для редактора если ещё не загружены
+    if (!products.length) {
+      const pd = await api.products.getAll()
+      setProducts(pd.products || [])
+      setCategories(pd.categories || [])
+      const slots = await api.configurator.getSlots()
+      setConfigSlots(slots.slots || {})
+    }
+    editBuild(found)
+  }
+
   const toggleStock = async (p: Product) => {
     const newQty = p.in_stock ? 0 : 1
     await api.products.patch({ id: p.id, stock_qty: newQty })
@@ -719,6 +738,8 @@ export default function Admin() {
                         <div className="flex items-center gap-3 mb-1">
                           <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
+                          {order.order_type === "pc_build" && <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent">Сборка ПК</span>}
+                          {order.order_type === "parts" && <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">Комплектующие</span>}
                           <span className="text-xs text-foreground/40">{new Date(order.created_at).toLocaleDateString("ru-RU")}</span>
                         </div>
                         <p className="text-sm font-medium text-foreground">{order.customer_name}</p>
@@ -730,8 +751,16 @@ export default function Admin() {
                           ))}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="mb-2 text-lg font-bold text-foreground">{fmt(order.total)}</p>
+                      <div className="flex flex-col items-end gap-2">
+                        <p className="text-lg font-bold text-foreground">{fmt(order.total)}</p>
+                        <button
+                          onClick={() => openOrderBuild(order.id)}
+                          className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <Icon name="Pencil" size={12} />
+                          {order.order_type === "parts" ? "Редакт. список" : "Редакт. сборку"}
+                        </button>
                         <select
                           value={order.status}
                           onChange={e => updateStatus(order.id, e.target.value)}

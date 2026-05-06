@@ -19,12 +19,15 @@ export default function Cart() {
     e.preventDefault()
     if (!form.name || !form.phone) return
     setSubmitting(true)
+    const hasBuild = items.some(i => i.type === "config")
+    const hasOnlyParts = !hasBuild && items.every(i => i.type === "product")
+    const orderType = hasBuild ? "pc_build" : hasOnlyParts ? "parts" : "cart"
     await api.orders.createWithSession({
       customer_name: form.name,
       customer_phone: form.phone,
       customer_email: form.email || undefined,
-      order_type: "cart",
-      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
+      order_type: orderType,
+      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type })),
       total: total(),
       comment: form.comment || undefined,
     }, sessionId)

@@ -62,22 +62,70 @@ def handler(event: dict, context) -> dict:
             )
             order_id = cur.fetchone()[0]
 
-            # Создаём сборку с названием "BeGraphics, {order_id:05d}"
-            build_name = f"BeGraphics, {order_id:05d}"
+            order_type = body.get("order_type", "cart")
             items = body.get("items") or []
-            components = [
-                {"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0),
-                 "source": "order", "quantity": it.get("quantity", 1)}
-                for it in items
-            ]
             parts_total = float(body["total"])
-            cur.execute(
-                """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
-                   total_price, assembly_type, status, created_at)
-                   VALUES (%s, %s, %s, %s, 0, %s, 'manual', 'active', NOW())""",
-                (build_name, f"Заказ #{order_id:05d} от {body['customer_name']}",
-                 json.dumps(components), parts_total, parts_total)
-            )
+            customer = body["customer_name"]
+
+            if order_type == "pc_build":
+                # Сборка ПК — каждый item это готовая сборка, компоненты берём по id сборки
+                build_name = f"BeGraphics, {order_id:05d}"
+                description = f"Заказ ПК #{order_id:05d} от {customer}"
+                components = []
+                for it in items:
+                    if it.get("item_type") == "config" and it.get("id"):
+                        # Подтягиваем компоненты из существующей сборки
+                        cur.execute("SELECT components, assembly_type, assembly_fee FROM pc_builds WHERE id = %s", (it["id"],))
+                        row = cur.fetchone()
+                        if row:
+                            components = row[0] or []
+                            asm_type = row[1] or "manual"
+                            asm_fee = float(row[2] or 0)
+                        else:
+                            components = [{"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0), "source": "order"}]
+                            asm_type = "manual"
+                            asm_fee = 0
+                    else:
+                        components.append({"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0), "source": "order"})
+                        asm_type = "manual"
+                        asm_fee = 0
+                cur.execute(
+                    """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
+                       total_price, assembly_type, status, created_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, 'client', NOW()) RETURNING id""",
+                    (build_name, description, json.dumps(components), parts_total, asm_fee, parts_total, asm_type)
+                )
+            elif order_type == "parts":
+                # Только комплектующие без сборки
+                build_name = f"Заказ комплектующих {order_id:05d}"
+                description = f"Заказ комплектующих #{order_id:05d} от {customer}"
+                components = [
+                    {"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0),
+                     "source": "catalog", "source_id": it.get("id") if str(it.get("id", "")).isdigit() and int(str(it.get("id", 0))) < 10**9 else None,
+                     "quantity": it.get("quantity", 1)}
+                    for it in items
+                ]
+                cur.execute(
+                    """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
+                       total_price, assembly_type, status, created_at)
+                       VALUES (%s, %s, %s, %s, 0, %s, 'manual', 'client', NOW()) RETURNING id""",
+                    (build_name, description, json.dumps(components), parts_total, parts_total)
+                )
+            else:
+                # Обычная корзина — общая сборка
+                build_name = f"BeGraphics, {order_id:05d}"
+                components = [
+                    {"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0),
+                     "source": "order", "quantity": it.get("quantity", 1)}
+                    for it in items
+                ]
+                cur.execute(
+                    """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
+                       total_price, assembly_type, status, created_at)
+                       VALUES (%s, %s, %s, %s, 0, %s, 'manual', 'client', NOW()) RETURNING id""",
+                    (build_name, f"Заказ #{order_id:05d} от {customer}", json.dumps(components), parts_total, parts_total)
+                )
+
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
 
