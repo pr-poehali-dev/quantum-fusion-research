@@ -23,8 +23,6 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
   const [idx, setIdx] = useState(startIdx)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
-  const dragging = useRef(false)
-  const lastPos = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -36,6 +34,7 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
     return () => window.removeEventListener("keydown", onKey)
   }, [images.length, onClose])
 
+  const imgRef = useRef<HTMLImageElement>(null)
   const changeIdx = (next: number) => { setIdx(next); setZoom(1); setPan({ x: 0, y: 0 }) }
 
   const onWheel = (e: React.WheelEvent) => {
@@ -43,30 +42,17 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
     setZoom(z => Math.min(5, Math.max(1, z - e.deltaY * 0.002)))
   }
 
-  const [isDragging, setIsDragging] = useState(false)
-
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (zoom <= 1) return
-    e.preventDefault()
-    dragging.current = true
-    setIsDragging(true)
-    lastPos.current = { x: e.clientX, y: e.clientY }
-  }
   const onMouseMove = (e: React.MouseEvent) => {
-    if (!dragging.current) return
-    e.preventDefault()
-    setPan(p => ({ x: p.x + e.clientX - lastPos.current.x, y: p.y + e.clientY - lastPos.current.y }))
-    lastPos.current = { x: e.clientX, y: e.clientY }
+    if (zoom <= 1 || !imgRef.current) return
+    const rect = imgRef.current.getBoundingClientRect()
+    const cx = ((e.clientX - rect.left) / rect.width - 0.5) * -(zoom - 1) * rect.width * 0.8
+    const cy = ((e.clientY - rect.top) / rect.height - 0.5) * -(zoom - 1) * rect.height * 0.8
+    setPan({ x: cx, y: cy })
   }
-  const onMouseUp = () => { dragging.current = false; setIsDragging(false) }
 
   const onImgClick = (e: React.MouseEvent) => {
     if (zoom > 1) { setZoom(1); setPan({ x: 0, y: 0 }); return }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const cx = ((e.clientX - rect.left) / rect.width - 0.5) * -300
-    const cy = ((e.clientY - rect.top) / rect.height - 0.5) * -300
     setZoom(3)
-    setPan({ x: cx, y: cy })
   }
 
   return createPortal(
@@ -88,17 +74,19 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
       <div
         className="relative flex flex-1 items-center justify-center overflow-hidden"
         style={{ userSelect: "none" }}
-        onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+        onWheel={onWheel}
+        onMouseMove={onMouseMove}
       >
         <img
+          ref={imgRef}
           src={images[idx]}
           alt=""
           draggable={false}
           onClick={onImgClick}
           style={{
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-            transition: isDragging ? "none" : "transform 0.2s ease",
-            cursor: isDragging ? "grabbing" : zoom > 1 ? "grab" : "zoom-in",
+            transition: "transform 0.1s ease-out",
+            cursor: zoom > 1 ? "zoom-out" : "zoom-in",
             maxWidth: "90vw",
             maxHeight: "75vh",
             objectFit: "contain",
