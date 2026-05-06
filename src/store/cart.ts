@@ -8,6 +8,7 @@ export interface CartItem {
   quantity: number
   image_url?: string | null
   type: "product" | "config"
+  assembly?: boolean
 }
 
 interface CartStore {
