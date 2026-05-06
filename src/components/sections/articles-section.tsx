@@ -27,8 +27,10 @@ export function ArticlesSection() {
       .catch(() => {})
   }, [])
 
-  const fmt = (date: string) =>
-    new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
+  const fmt = (date: string | number) => {
+    const d = typeof date === "number" ? new Date(date * 1000) : new Date(date)
+    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
+  }
 
   return (
     <section
