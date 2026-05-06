@@ -467,16 +467,11 @@ export default function Shop() {
 }
 
 // ── Мини-карусель фото для карточки товара ──
-function ProductImageCarousel({ images, name, inStock }: { images: string[]; name: string; inStock: boolean }) {
+function ProductImageCarousel({ images, name, inStock, onOpen }: { images: string[]; name: string; inStock: boolean; onOpen: () => void }) {
   const [idx, setIdx] = useState(0)
 
-  const goTo = (e: React.MouseEvent, next: number) => {
-    e.stopPropagation()
-    setIdx(next)
-  }
-
   if (!images.length) return (
-    <div className="h-full w-full flex items-center justify-center">
+    <div className="h-full w-full flex items-center justify-center" onClick={onOpen}>
       <Icon name="Monitor" size={48} className="text-foreground/20" />
     </div>
   )
@@ -485,28 +480,29 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
       <div
         className="flex h-full transition-transform duration-500 ease-in-out"
         style={{ width: `${images.length * 100}%`, transform: `translateX(-${idx * (100 / images.length)}%)` }}
+        onClick={onOpen}
       >
         {images.map((src, i) => (
-          <img key={i} src={src} alt={name}
-            className="h-full object-cover"
-            style={{ width: `${100 / images.length}%`, flexShrink: 0 }} />
+          <img key={i} src={src} alt={name} className="h-full object-cover" style={{ width: `${100 / images.length}%`, flexShrink: 0 }} />
         ))}
       </div>
       {images.length > 1 && (
         <>
-          <button onClick={e => goTo(e, (idx - 1 + images.length) % images.length)}
+          <div
+            onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + images.length) % images.length) }}
             className="absolute left-1.5 top-1/2 -translate-y-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity hover:border-primary"
             style={{ cursor: "pointer" }}>
             <Icon name="ChevronLeft" size={12} />
-          </button>
-          <button onClick={e => goTo(e, (idx + 1) % images.length)}
+          </div>
+          <div
+            onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % images.length) }}
             className="absolute right-1.5 top-1/2 -translate-y-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity hover:border-primary"
             style={{ cursor: "pointer" }}>
             <Icon name="ChevronRight" size={12} />
-          </button>
+          </div>
           <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1 z-10">
             {images.map((_, i) => (
-              <button key={i} onClick={e => goTo(e, i)}
+              <div key={i} onClick={e => { e.stopPropagation(); setIdx(i) }}
                 className={`rounded-full transition-all ${i === idx ? "w-3 h-1 bg-primary" : "w-1 h-1 bg-white/50"}`}
                 style={{ cursor: "pointer" }} />
             ))}
@@ -514,7 +510,7 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
         </>
       )}
       {!inStock && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span className="rounded-xl border border-foreground/20 bg-background/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-foreground/70 backdrop-blur-sm">
             Out of Stock
           </span>
@@ -538,17 +534,12 @@ function ProductCard({
   const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
-      <div onClick={onOpen} className={`relative aspect-video bg-muted flex items-center justify-center overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`} style={{ cursor: "pointer" }}>
-        <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} />
+      <div className={`relative aspect-video bg-muted overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`}>
+        <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} onOpen={onOpen} />
         {p.old_price && p.in_stock && (
-          <span className="absolute right-2 top-2 z-10 rounded bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">
+          <span className="absolute right-2 top-2 z-10 rounded bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground pointer-events-none">
             -{Math.round((1 - p.price / p.old_price) * 100)}%
           </span>
-        )}
-        {p.in_stock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/30 transition-all z-10 pointer-events-none">
-            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Подробнее</span>
-          </div>
         )}
       </div>
       <div className="flex flex-col flex-1 p-4">
