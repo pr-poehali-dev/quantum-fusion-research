@@ -196,7 +196,7 @@ export default function ProductPage() {
       {/* Хедер */}
       <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <button onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/shop")} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="ArrowLeft" size={15} />
             Назад
           </button>
