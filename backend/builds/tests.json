@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "Get all builds",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get catalog builds",
+      "method": "GET",
+      "path": "/?status=catalog",
+      "expectedStatus": 200
+    }
+  ]
+}
