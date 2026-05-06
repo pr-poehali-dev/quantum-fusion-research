@@ -90,7 +90,7 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
             maxWidth: "90vw",
             maxHeight: "75vh",
             objectFit: "contain",
-            pointerEvents: isDragging ? "none" : "auto",
+            pointerEvents: "auto",
           }}
         />
         {images.length > 1 && <>
