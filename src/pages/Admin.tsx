@@ -8,11 +8,14 @@ import RichTextEditor from "@/components/ui/rich-text-editor"
 const ADMIN_PASSWORD = "begraphics2024"
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  new: { label: "Новый", color: "text-primary bg-primary/10" },
-  processing: { label: "В работе", color: "text-accent bg-accent/10" },
-  done: { label: "Выполнен", color: "text-green-400 bg-green-400/10" },
+  new: { label: "Заказ новый", color: "text-primary bg-primary/10" },
+  processing: { label: "Заказ в работе", color: "text-accent bg-accent/10" },
+  done: { label: "Заказ выполнен", color: "text-green-400 bg-green-400/10" },
   cancelled: { label: "Отменён", color: "text-foreground/50 bg-muted" },
 }
+
+const ACTIVE_STATUSES = ["new", "processing"]
+const ARCHIVE_STATUSES = ["done", "cancelled"]
 
 const BUILD_STATUS: Record<string, string> = {
   catalog: "На сайте",
@@ -278,7 +281,7 @@ export default function Admin() {
   const navigate = useNavigate()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
-  const [tab, setTab] = useState<"orders" | "products" | "add_product" | "builds" | "archive" | "add_build" | "articles" | "add_article">("orders")
+  const [tab, setTab] = useState<"orders" | "orders_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "articles" | "add_article">("orders")
 
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -397,7 +400,7 @@ export default function Admin() {
   useEffect(() => {
     if (!authed) return
     setLoading(true)
-    if (tab === "orders") {
+    if (tab === "orders" || tab === "orders_archive") {
       api.orders.getAll().then(d => { setOrders(d.orders || []); setLoading(false) })
     } else if (tab === "products" || tab === "add_product") {
       api.products.getAll().then(d => {
@@ -652,6 +655,7 @@ export default function Admin() {
 
   const tabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
+    { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
     { key: "products", label: "Товары", icon: "Package" },
     { key: "add_product", label: productForm.id ? "Ред. товар" : "Добавить товар", icon: "PlusCircle" },
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
@@ -694,49 +698,55 @@ export default function Admin() {
         </div>
 
         {/* ORDERS */}
-        {tab === "orders" && (
-          <div>
-            <h2 className="mb-4 text-xl font-light text-foreground">Заказы ({orders.length})</h2>
-            {loading ? <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)}</div>
-              : orders.length === 0 ? (
-                <div className="py-16 text-center text-foreground/40">
-                  <Icon name="ClipboardList" size={40} className="mx-auto mb-3 opacity-30" />
-                  <p>Заказов пока нет</p>
-                </div>
-              ) : orders.map(order => (
-                <div key={order.id} className="mb-3 rounded-xl border border-border bg-card p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
-                        <span className="text-xs text-foreground/40">{new Date(order.created_at).toLocaleDateString("ru-RU")}</span>
+        {(tab === "orders" || tab === "orders_archive") && (() => {
+          const isArchive = tab === "orders_archive"
+          const filtered = orders.filter(o => isArchive ? ARCHIVE_STATUSES.includes(o.status) : ACTIVE_STATUSES.includes(o.status))
+          return (
+            <div>
+              <h2 className="mb-4 text-xl font-light text-foreground">
+                {isArchive ? "Архив заказов" : "Активные заказы"} ({filtered.length})
+              </h2>
+              {loading ? <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)}</div>
+                : filtered.length === 0 ? (
+                  <div className="py-16 text-center text-foreground/40">
+                    <Icon name="ClipboardList" size={40} className="mx-auto mb-3 opacity-30" />
+                    <p>{isArchive ? "Архив пуст" : "Активных заказов нет"}</p>
+                  </div>
+                ) : filtered.map(order => (
+                  <div key={order.id} className="mb-3 rounded-xl border border-border bg-card p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
+                          <span className="text-xs text-foreground/40">{new Date(order.created_at).toLocaleDateString("ru-RU")}</span>
+                        </div>
+                        <p className="text-sm font-medium text-foreground">{order.customer_name}</p>
+                        <p className="text-xs text-foreground/60">{order.customer_phone}{order.customer_email && ` · ${order.customer_email}`}</p>
+                        {order.comment && <p className="mt-1 text-xs text-foreground/40 italic">"{order.comment}"</p>}
+                        <div className="mt-2 space-y-0.5">
+                          {(order.items || []).map((item, i) => (
+                            <p key={i} className="text-xs text-foreground/50">· {item.name} × {item.quantity} — {fmt(item.price * item.quantity)}</p>
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-sm font-medium text-foreground">{order.customer_name}</p>
-                      <p className="text-xs text-foreground/60">{order.customer_phone}{order.customer_email && ` · ${order.customer_email}`}</p>
-                      {order.comment && <p className="mt-1 text-xs text-foreground/40 italic">"{order.comment}"</p>}
-                      <div className="mt-2 space-y-0.5">
-                        {(order.items || []).map((item, i) => (
-                          <p key={i} className="text-xs text-foreground/50">· {item.name} × {item.quantity} — {fmt(item.price * item.quantity)}</p>
-                        ))}
+                      <div className="text-right">
+                        <p className="mb-2 text-lg font-bold text-foreground">{fmt(order.total)}</p>
+                        <select
+                          value={order.status}
+                          onChange={e => updateStatus(order.id, e.target.value)}
+                          className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                          style={{ cursor: "pointer" }}
+                        >
+                          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                        </select>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="mb-2 text-lg font-bold text-foreground">{fmt(order.total)}</p>
-                      <select
-                        value={order.status}
-                        onChange={e => updateStatus(order.id, e.target.value)}
-                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                        style={{ cursor: "pointer" }}
-                      >
-                        {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                      </select>
                     </div>
                   </div>
-                </div>
-              ))}
-          </div>
-        )}
+                ))}
+            </div>
+          )
+        })()}
 
         {/* PRODUCTS LIST */}
         {tab === "products" && (() => {
