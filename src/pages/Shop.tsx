@@ -469,32 +469,69 @@ export default function Shop() {
 // ── Мини-карусель фото для карточки товара ──
 function ProductImageCarousel({ images, name, inStock }: { images: string[]; name: string; inStock: boolean }) {
   const [idx, setIdx] = useState(0)
+  const [prev, setPrev] = useState<number | null>(null)
+  const [dir, setDir] = useState<1 | -1>(1)
+  const [animating, setAnimating] = useState(false)
+
+  const [entering, setEntering] = useState(false)
+
+  const goTo = (e: React.MouseEvent, next: number) => {
+    e.stopPropagation()
+    if (animating || next === idx) return
+    const newDir: 1 | -1 = next > idx ? 1 : -1
+    setDir(newDir)
+    setPrev(idx)
+    setEntering(true)
+    setIdx(next)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setEntering(false)
+        setAnimating(true)
+        setTimeout(() => { setPrev(null); setAnimating(false) }, 420)
+      })
+    })
+  }
+
   if (!images.length) return (
     <div className="h-full w-full flex items-center justify-center">
       <Icon name="Monitor" size={48} className="text-foreground/20" />
     </div>
   )
   return (
-    <div className="relative h-full w-full">
-      {images.map((src, i) => (
-        <img key={i} src={src} alt={name}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ease-in-out ${i === idx ? "opacity-100" : "opacity-0"}`} />
-      ))}
+    <div className="relative h-full w-full overflow-hidden">
+      {images.map((src, i) => {
+        const isCurrent = i === idx
+        const isPrev = i === prev
+        if (!isCurrent && !isPrev) return null
+        return (
+          <img key={i} src={src} alt={name}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              transition: (animating && !entering) ? "transform 0.4s cubic-bezier(0.4,0,0.2,1)" : "none",
+              transform: isCurrent
+                ? (entering ? `translateX(${dir * 100}%)` : "translateX(0%)")
+                : isPrev
+                  ? `translateX(${-dir * 100}%)`
+                  : `translateX(${dir * 100}%)`,
+              willChange: "transform",
+            }} />
+        )
+      })}
       {images.length > 1 && (
         <>
-          <button onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + images.length) % images.length) }}
+          <button onClick={e => goTo(e, (idx - 1 + images.length) % images.length)}
             className="absolute left-1.5 top-1/2 -translate-y-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity hover:border-primary"
             style={{ cursor: "pointer" }}>
             <Icon name="ChevronLeft" size={12} />
           </button>
-          <button onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % images.length) }}
+          <button onClick={e => goTo(e, (idx + 1) % images.length)}
             className="absolute right-1.5 top-1/2 -translate-y-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity hover:border-primary"
             style={{ cursor: "pointer" }}>
             <Icon name="ChevronRight" size={12} />
           </button>
           <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1 z-10">
             {images.map((_, i) => (
-              <button key={i} onClick={e => { e.stopPropagation(); setIdx(i) }}
+              <button key={i} onClick={e => goTo(e, i)}
                 className={`rounded-full transition-all ${i === idx ? "w-3 h-1 bg-primary" : "w-1 h-1 bg-white/50"}`}
                 style={{ cursor: "pointer" }} />
             ))}
