@@ -43,24 +43,29 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
     setZoom(z => Math.min(5, Math.max(1, z - e.deltaY * 0.002)))
   }
 
+  const [isDragging, setIsDragging] = useState(false)
+
   const onMouseDown = (e: React.MouseEvent) => {
     if (zoom <= 1) return
+    e.preventDefault()
     dragging.current = true
+    setIsDragging(true)
     lastPos.current = { x: e.clientX, y: e.clientY }
   }
   const onMouseMove = (e: React.MouseEvent) => {
     if (!dragging.current) return
+    e.preventDefault()
     setPan(p => ({ x: p.x + e.clientX - lastPos.current.x, y: p.y + e.clientY - lastPos.current.y }))
     lastPos.current = { x: e.clientX, y: e.clientY }
   }
-  const onMouseUp = () => { dragging.current = false }
+  const onMouseUp = () => { dragging.current = false; setIsDragging(false) }
 
   const onImgClick = (e: React.MouseEvent) => {
-    if (zoom > 1) return
+    if (zoom > 1) { setZoom(1); setPan({ x: 0, y: 0 }); return }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const cx = ((e.clientX - rect.left) / rect.width - 0.5) * -200
-    const cy = ((e.clientY - rect.top) / rect.height - 0.5) * -200
-    setZoom(2.5)
+    const cx = ((e.clientX - rect.left) / rect.width - 0.5) * -300
+    const cy = ((e.clientY - rect.top) / rect.height - 0.5) * -300
+    setZoom(3)
     setPan({ x: cx, y: cy })
   }
 
@@ -80,19 +85,24 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
       </div>
 
       {/* Основное фото */}
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden"
-        onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+      <div
+        className="relative flex flex-1 items-center justify-center overflow-hidden"
+        style={{ userSelect: "none" }}
+        onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+      >
         <img
           src={images[idx]}
           alt=""
+          draggable={false}
           onClick={onImgClick}
           style={{
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-            transition: dragging.current ? "none" : "transform 0.2s ease",
-            cursor: zoom > 1 ? "grab" : "zoom-in",
+            transition: isDragging ? "none" : "transform 0.2s ease",
+            cursor: isDragging ? "grabbing" : zoom > 1 ? "grab" : "zoom-in",
             maxWidth: "90vw",
             maxHeight: "75vh",
             objectFit: "contain",
+            pointerEvents: isDragging ? "none" : "auto",
           }}
         />
         {images.length > 1 && <>
