@@ -34,25 +34,48 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
     return () => window.removeEventListener("keydown", onKey)
   }, [images.length, onClose])
 
+  const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
+
+  const clampPan = (x: number, y: number, z: number) => {
+    if (!imgRef.current || !containerRef.current) return { x, y }
+    const img = imgRef.current
+    const maxX = (img.offsetWidth * (z - 1)) / 2
+    const maxY = (img.offsetHeight * (z - 1)) / 2
+    return {
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    }
+  }
+
   const changeIdx = (next: number) => { setIdx(next); setZoom(1); setPan({ x: 0, y: 0 }) }
 
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault()
-    setZoom(z => Math.min(5, Math.max(1, z - e.deltaY * 0.002)))
+    const newZoom = Math.min(5, Math.max(1, zoom * (1 - e.deltaY * 0.001)))
+    setPan(p => clampPan(p.x, p.y, newZoom))
+    setZoom(newZoom)
   }
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (zoom <= 1 || !imgRef.current) return
-    const rect = imgRef.current.getBoundingClientRect()
-    const cx = ((e.clientX - rect.left) / rect.width - 0.5) * -(zoom - 1) * rect.width * 0.8
-    const cy = ((e.clientY - rect.top) / rect.height - 0.5) * -(zoom - 1) * rect.height * 0.8
-    setPan({ x: cx, y: cy })
+    const img = imgRef.current
+    const rect = img.getBoundingClientRect()
+    // Позиция курсора относительно центра картинки в диапазоне [-0.5, 0.5]
+    const relX = (e.clientX - (rect.left + rect.width / 2)) / rect.width
+    const relY = (e.clientY - (rect.top + rect.height / 2)) / rect.height
+    // Максимальный сдвиг = половина размера * (zoom-1)
+    const maxX = (img.offsetWidth * (zoom - 1)) / 2
+    const maxY = (img.offsetHeight * (zoom - 1)) / 2
+    setPan({
+      x: Math.min(maxX, Math.max(-maxX, -relX * img.offsetWidth * (zoom - 1))),
+      y: Math.min(maxY, Math.max(-maxY, -relY * img.offsetHeight * (zoom - 1))),
+    })
   }
 
-  const onImgClick = (e: React.MouseEvent) => {
+  const onImgClick = () => {
     if (zoom > 1) { setZoom(1); setPan({ x: 0, y: 0 }); return }
-    setZoom(3)
+    setZoom(2.5)
   }
 
   return createPortal(
@@ -72,6 +95,7 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
 
       {/* Основное фото */}
       <div
+        ref={containerRef}
         className="relative flex flex-1 items-center justify-center overflow-hidden"
         style={{ userSelect: "none" }}
         onWheel={onWheel}
@@ -84,13 +108,12 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
           draggable={false}
           onClick={onImgClick}
           style={{
-            transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-            transition: "transform 0.1s ease-out",
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transition: "transform 0.08s ease-out",
             cursor: zoom > 1 ? "zoom-out" : "zoom-in",
-            maxWidth: "90vw",
-            maxHeight: "75vh",
+            maxWidth: "88vw",
+            maxHeight: "73vh",
             objectFit: "contain",
-            pointerEvents: "auto",
           }}
         />
         {images.length > 1 && <>
