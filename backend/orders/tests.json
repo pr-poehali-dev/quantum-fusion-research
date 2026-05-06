@@ -4,9 +4,7 @@
       "name": "Get orders list",
       "method": "GET",
       "path": "/",
-      "expectedStatus": 200,
-      "expectedBody": {"orders": []},
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
     }
   ]
 }

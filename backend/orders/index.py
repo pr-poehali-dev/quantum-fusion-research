@@ -61,6 +61,23 @@ def handler(event: dict, context) -> dict:
                  body.get("comment"), user_id)
             )
             order_id = cur.fetchone()[0]
+
+            # Создаём сборку с названием "BeGraphics, {order_id:05d}"
+            build_name = f"BeGraphics, {order_id:05d}"
+            items = body.get("items") or []
+            components = [
+                {"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0),
+                 "source": "order", "quantity": it.get("quantity", 1)}
+                for it in items
+            ]
+            parts_total = float(body["total"])
+            cur.execute(
+                """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
+                   total_price, assembly_type, status, created_at)
+                   VALUES (%s, %s, %s, %s, 0, %s, 'manual', 'active', NOW())""",
+                (build_name, f"Заказ #{order_id:05d} от {body['customer_name']}",
+                 json.dumps(components), parts_total, parts_total)
+            )
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
 
