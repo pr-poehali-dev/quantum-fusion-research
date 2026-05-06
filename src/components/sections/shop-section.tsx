@@ -46,7 +46,7 @@ export function ShopSection() {
             <h2 className="mb-2 font-sans text-5xl font-light tracking-tight text-foreground md:text-6xl lg:text-7xl">
               Магазин
             </h2>
-            <p className="font-mono text-sm text-foreground/60 md:text-base">/ Комплектующие в наличии</p>
+            <p className="font-mono text-sm text-foreground/60 md:text-base">/ Комплектующие в наличии и под заказ</p>
           </div>
           <button
             onClick={() => navigate("/shop")}
