@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
+import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useCart } from "@/store/cart"
@@ -18,12 +19,120 @@ interface Product {
   category: { id: number; name: string; slug: string } | null
 }
 
+function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(startIdx)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const dragging = useRef(false)
+  const lastPos = useRef({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+      if (e.key === "ArrowRight") { setIdx(i => (i + 1) % images.length); setZoom(1); setPan({ x: 0, y: 0 }) }
+      if (e.key === "ArrowLeft") { setIdx(i => (i - 1 + images.length) % images.length); setZoom(1); setPan({ x: 0, y: 0 }) }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [images.length, onClose])
+
+  const changeIdx = (next: number) => { setIdx(next); setZoom(1); setPan({ x: 0, y: 0 }) }
+
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    setZoom(z => Math.min(5, Math.max(1, z - e.deltaY * 0.002)))
+  }
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return
+    dragging.current = true
+    lastPos.current = { x: e.clientX, y: e.clientY }
+  }
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragging.current) return
+    setPan(p => ({ x: p.x + e.clientX - lastPos.current.x, y: p.y + e.clientY - lastPos.current.y }))
+    lastPos.current = { x: e.clientX, y: e.clientY }
+  }
+  const onMouseUp = () => { dragging.current = false }
+
+  const onImgClick = (e: React.MouseEvent) => {
+    if (zoom > 1) return
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const cx = ((e.clientX - rect.left) / rect.width - 0.5) * -200
+    const cy = ((e.clientY - rect.top) / rect.height - 0.5) * -200
+    setZoom(2.5)
+    setPan({ x: cx, y: cy })
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex flex-col bg-black/95 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      {/* Хедер */}
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+        <span className="text-sm text-white/40">{idx + 1} / {images.length}</span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="text-xs text-white/40 hover:text-white transition-colors" style={{ cursor: "pointer" }}>
+            Сбросить зум
+          </button>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Основное фото */}
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden"
+        onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+        <img
+          src={images[idx]}
+          alt=""
+          onClick={onImgClick}
+          style={{
+            transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+            transition: dragging.current ? "none" : "transform 0.2s ease",
+            cursor: zoom > 1 ? "grab" : "zoom-in",
+            maxWidth: "90vw",
+            maxHeight: "75vh",
+            objectFit: "contain",
+          }}
+        />
+        {images.length > 1 && <>
+          <button onClick={() => changeIdx((idx - 1 + images.length) % images.length)}
+            className="absolute left-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="ChevronLeft" size={20} />
+          </button>
+          <button onClick={() => changeIdx((idx + 1) % images.length)}
+            className="absolute right-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="ChevronRight" size={20} />
+          </button>
+        </>}
+      </div>
+
+      {/* Миниатюры снизу */}
+      {images.length > 1 && (
+        <div className="flex justify-center gap-2 overflow-x-auto px-4 py-3 shrink-0">
+          {images.map((src, i) => (
+            <button key={i} onClick={() => changeIdx(i)}
+              className={`shrink-0 h-14 w-14 overflow-hidden rounded-lg border-2 transition-colors ${i === idx ? "border-white" : "border-white/20 hover:border-white/50"}`}
+              style={{ cursor: "pointer" }}>
+              <img src={src} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>,
+    document.body
+  )
+}
+
 export default function ProductPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [imgIdx, setImgIdx] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const { addItem, items, updateQty } = useCart()
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
@@ -97,9 +206,22 @@ export default function ProductPage() {
         <div className="grid gap-8 lg:grid-cols-2 lg:gap-16 mb-12">
           {/* Левая часть — галерея */}
           <div className="space-y-3">
-            <div className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-muted">
+            <div className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-muted group/img">
               {images.length > 0 ? (
-                <img src={images[imgIdx]} alt={product.name} className="h-full w-full object-cover" />
+                <>
+                  <img
+                    src={images[imgIdx]}
+                    alt={product.name}
+                    className="h-full w-full object-cover cursor-zoom-in"
+                    onClick={() => setLightboxOpen(true)}
+                  />
+                  <div className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover/img:opacity-100 transition-opacity pointer-events-none">
+                    <span className="rounded-full bg-background/80 backdrop-blur px-3 py-1.5 text-xs text-foreground/70 flex items-center gap-1.5">
+                      <Icon name="ZoomIn" size={12} />
+                      Нажми для увеличения
+                    </span>
+                  </div>
+                </>
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <Icon name="Monitor" size={64} className="text-foreground/15" />
@@ -226,6 +348,10 @@ export default function ProductPage() {
           </div>
         )}
       </main>
+
+      {lightboxOpen && images.length > 0 && (
+        <Lightbox images={images} startIdx={imgIdx} onClose={() => setLightboxOpen(false)} />
+      )}
     </div>
   )
 }
