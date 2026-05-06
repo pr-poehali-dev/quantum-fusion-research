@@ -283,6 +283,7 @@ export default function Admin() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [productCatFilter, setProductCatFilter] = useState("all")
+  const [productFillFilter, setProductFillFilter] = useState<"all" | "new" | "filled">("all")
   const [configSlots, setConfigSlots] = useState<Record<string, ConfigComponent[]>>({})
   const [builds, setBuilds] = useState<PCBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
@@ -738,9 +739,10 @@ export default function Admin() {
 
         {/* PRODUCTS LIST */}
         {tab === "products" && (() => {
-          const filtered = productCatFilter === "all"
-            ? products
-            : products.filter(p => p.category?.name === productCatFilter)
+          const isNew = (p: Product) => !p.description && (!p.image_urls?.length && !p.image_url)
+          const filtered = products
+            .filter(p => productCatFilter === "all" || p.category?.name === productCatFilter)
+            .filter(p => productFillFilter === "all" ? true : productFillFilter === "new" ? isNew(p) : !isNew(p))
           return (
             <div>
               <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
@@ -755,6 +757,15 @@ export default function Admin() {
                       <button key={c.id} onClick={() => setProductCatFilter(c.name)}
                         className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${productCatFilter === c.name ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
                         style={{ cursor: "pointer" }}>{c.name}</button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5">
+                    {(["all", "new", "filled"] as const).map(f => (
+                      <button key={f} onClick={() => setProductFillFilter(f)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${productFillFilter === f ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                        style={{ cursor: "pointer" }}>
+                        {f === "all" ? "Все" : f === "new" ? "Новые" : "Заполненные"}
+                      </button>
                     ))}
                   </div>
                   <div className="flex items-center gap-2">
