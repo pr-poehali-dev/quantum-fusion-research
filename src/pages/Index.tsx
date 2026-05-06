@@ -7,6 +7,7 @@ import { ServicesSection } from "@/components/sections/services-section"
 import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
 import { ArticlesSection } from "@/components/sections/articles-section"
+import { ConfiguratorSection } from "@/components/sections/configurator-section"
 import { MagneticButton } from "@/components/magnetic-button"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
@@ -163,7 +164,7 @@ export default function Index() {
         const scrollLeft = scrollContainerRef.current.scrollLeft
         const newSection = Math.round(scrollLeft / sectionWidth)
 
-        if (newSection !== currentSection && newSection >= 0 && newSection <= 6) {
+        if (newSection !== currentSection && newSection >= 0 && newSection <= 7) {
           setCurrentSection(newSection)
         }
 
@@ -277,7 +278,7 @@ export default function Index() {
         </button>
 
         <div className="hidden items-center gap-8 md:flex">
-          {["Главная", "Сборки", "Магазин", "Услуги", "О нас", "Статьи", "Контакты"].map((item, index) => (
+          {["Главная", "Сборки", "Магазин", "Услуги", "Конфигуратор", "О нас", "Статьи", "Контакты"].map((item, index) => (
             <button
               key={item}
               onClick={() => scrollToSection(index)}
@@ -360,6 +361,7 @@ export default function Index() {
         <WorkSection />
         <ShopSection />
         <ServicesSection />
+        <ConfiguratorSection />
         <AboutSection scrollToSection={scrollToSection} />
         <ArticlesSection />
         <ContactSection />
