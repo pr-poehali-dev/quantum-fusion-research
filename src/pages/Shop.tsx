@@ -469,27 +469,10 @@ export default function Shop() {
 // ── Мини-карусель фото для карточки товара ──
 function ProductImageCarousel({ images, name, inStock }: { images: string[]; name: string; inStock: boolean }) {
   const [idx, setIdx] = useState(0)
-  const [prev, setPrev] = useState<number | null>(null)
-  const [dir, setDir] = useState<1 | -1>(1)
-  const [animating, setAnimating] = useState(false)
-
-  const [entering, setEntering] = useState(false)
 
   const goTo = (e: React.MouseEvent, next: number) => {
     e.stopPropagation()
-    if (animating || next === idx) return
-    const newDir: 1 | -1 = next > idx ? 1 : -1
-    setDir(newDir)
-    setPrev(idx)
-    setEntering(true)
     setIdx(next)
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setEntering(false)
-        setAnimating(true)
-        setTimeout(() => { setPrev(null); setAnimating(false) }, 420)
-      })
-    })
   }
 
   if (!images.length) return (
@@ -499,24 +482,16 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
   )
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {images.map((src, i) => {
-        const isCurrent = i === idx
-        const isPrev = i === prev
-        if (!isCurrent && !isPrev) return null
-        return (
+      <div
+        className="flex h-full transition-transform duration-500 ease-in-out"
+        style={{ width: `${images.length * 100}%`, transform: `translateX(-${idx * (100 / images.length)}%)` }}
+      >
+        {images.map((src, i) => (
           <img key={i} src={src} alt={name}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              transition: (animating && !entering) ? "transform 0.4s cubic-bezier(0.4,0,0.2,1)" : "none",
-              transform: isCurrent
-                ? (entering ? `translateX(${dir * 100}%)` : "translateX(0%)")
-                : isPrev
-                  ? `translateX(${-dir * 100}%)`
-                  : `translateX(${dir * 100}%)`,
-              willChange: "transform",
-            }} />
-        )
-      })}
+            className="h-full object-cover"
+            style={{ width: `${100 / images.length}%`, flexShrink: 0 }} />
+        ))}
+      </div>
       {images.length > 1 && (
         <>
           <button onClick={e => goTo(e, (idx - 1 + images.length) % images.length)}
@@ -563,7 +538,7 @@ function ProductCard({
   const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
-      <button onClick={onOpen} className={`relative aspect-video bg-muted flex items-center justify-center overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`} style={{ cursor: "pointer" }}>
+      <div onClick={onOpen} className={`relative aspect-video bg-muted flex items-center justify-center overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`} style={{ cursor: "pointer" }}>
         <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} />
         {p.old_price && p.in_stock && (
           <span className="absolute right-2 top-2 z-10 rounded bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">
@@ -571,11 +546,11 @@ function ProductCard({
           </span>
         )}
         {p.in_stock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/30 transition-all z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/30 transition-all z-10 pointer-events-none">
             <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-foreground font-medium bg-background/80 px-3 py-1.5 rounded-full">Подробнее</span>
           </div>
         )}
-      </button>
+      </div>
       <div className="flex flex-col flex-1 p-4">
         {p.category && <span className="mb-1 text-xs text-foreground/40 font-mono">{p.category.name}</span>}
         <button onClick={onOpen} className="mb-2 text-left font-medium text-foreground leading-tight hover:text-primary transition-colors" style={{ cursor: "pointer" }}>{p.name}</button>
