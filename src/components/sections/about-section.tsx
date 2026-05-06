@@ -47,7 +47,7 @@ export function AboutSection({ scrollToSection }: { scrollToSection?: (index: nu
             {[
               { value: "500+", label: "Сборок", sublabel: "Собрано и продано клиентам", direction: "right" },
               { value: "5", label: "Лет", sublabel: "На рынке комплектующих", direction: "left" },
-              { value: "2 года", label: "Гарантия", sublabel: "На каждую сборку под заказ", direction: "right" },
+              { value: "10 лет", label: "Гарантия*", sublabel: "На каждую сборку под заказ", direction: "right" },
             ].map((stat, i) => {
               const getRevealClass = () => {
                 if (!isVisible) {
