@@ -14,6 +14,7 @@ import AuthPage from "./pages/AuthPage";
 import Profile from "./pages/Profile";
 import BuildPreview from "./pages/BuildPreview";
 import ArticlePage from "./pages/ArticlePage";
+import ProductPage from "./pages/ProductPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/build" element={<BuildPreview />} />
             <Route path="/build-preview/:id" element={<BuildPreview />} />
             <Route path="/articles/:id" element={<ArticlePage />} />
+            <Route path="/product/:id" element={<ProductPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

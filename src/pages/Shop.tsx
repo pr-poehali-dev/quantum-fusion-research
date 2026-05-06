@@ -364,6 +364,7 @@ export default function Shop() {
                     onUpdateQty={(qty) => updateQty(p.id, qty)}
                     cartQty={getItemQty(p.id, "product")}
                     fmt={fmt}
+                    onNavigate={() => navigate(`/product/${p.id}`)}
                   />
                 ))}
               </div>
@@ -514,7 +515,7 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
 
 // ── ProductCard с кнопкой «в корзине» ──
 function ProductCard({
-  product: p, onOpen, onAddCart, onUpdateQty, cartQty, fmt
+  product: p, onOpen, onAddCart, onUpdateQty, cartQty, fmt, onNavigate
 }: {
   product: Product
   onOpen: () => void
@@ -522,6 +523,7 @@ function ProductCard({
   onUpdateQty: (qty: number) => void
   cartQty: number
   fmt: (n: number) => string
+  onNavigate: () => void
 }) {
   const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
@@ -552,45 +554,36 @@ function ProductCard({
             ))}
           </div>
         )}
-        <div className="mt-auto flex items-end justify-between gap-2">
-          <div>
-            <div className="text-lg font-bold text-foreground">{fmt(p.price)}</div>
-            {p.old_price && <div className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</div>}
-          </div>
-
-          {cartQty > 0 ? (
-            /* Кнопка «в корзине» с контролем количества */
-            <div className="flex flex-col items-end gap-1">
-              <span className="text-xs font-medium text-green-400">в корзине</span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => onUpdateQty(cartQty - 1)}
-                  className="flex h-6 w-6 items-center justify-center rounded border border-border text-foreground/60 hover:border-primary hover:text-primary transition-colors"
-                  style={{ cursor: "pointer" }}
-                >
-                  <Icon name="Minus" size={10} />
-                </button>
-                <span className="w-7 text-center text-xs font-bold text-foreground">{cartQty}шт</span>
-                <button
-                  onClick={onAddCart}
-                  className="flex h-6 w-6 items-center justify-center rounded border border-border text-foreground/60 hover:border-primary hover:text-primary transition-colors"
-                  style={{ cursor: "pointer" }}
-                >
-                  <Icon name="Plus" size={10} />
-                </button>
-              </div>
+        <div className="mt-auto space-y-2">
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <div className="text-lg font-bold text-foreground">{fmt(p.price)}</div>
+              {p.old_price && <div className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</div>}
             </div>
-          ) : (
-            <button
-              onClick={onAddCart}
-              disabled={!p.in_stock}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-              style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}
-            >
-              <Icon name="Plus" size={14} />
-              В корзину
-            </button>
-          )}
+            {cartQty > 0 ? (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-xs font-medium text-green-400">в корзине</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => onUpdateQty(cartQty - 1)} className="flex h-6 w-6 items-center justify-center rounded border border-border text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Minus" size={10} />
+                  </button>
+                  <span className="w-7 text-center text-xs font-bold text-foreground">{cartQty}шт</span>
+                  <button onClick={onAddCart} className="flex h-6 w-6 items-center justify-center rounded border border-border text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Plus" size={10} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={onAddCart} disabled={!p.in_stock} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors" style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}>
+                <Icon name="Plus" size={14} />
+                В корзину
+              </button>
+            )}
+          </div>
+          <button onClick={onNavigate} className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ExternalLink" size={12} />
+            Перейти к товару
+          </button>
         </div>
       </div>
     </div>
