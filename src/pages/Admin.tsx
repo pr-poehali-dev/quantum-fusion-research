@@ -3,6 +3,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate } from "react-router-dom"
 import { ImageUploader } from "@/components/image-uploader"
+import RichTextEditor from "@/components/ui/rich-text-editor"
 
 const ADMIN_PASSWORD = "begraphics2024"
 
@@ -937,8 +938,11 @@ export default function Admin() {
               </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/60">Описание</label>
-                <textarea rows={3} value={productForm.description} onChange={e => setProductForm(f => ({ ...f, description: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none" placeholder="Описание..." style={{ cursor: "text" }} />
+                <RichTextEditor
+                  value={productForm.description}
+                  onChange={v => setProductForm(f => ({ ...f, description: v }))}
+                  placeholder="Описание..."
+                />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -1336,16 +1340,20 @@ export default function Admin() {
               </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/60">Краткое описание (превью)</label>
-                <textarea rows={2} value={articleForm.excerpt}
-                  onChange={e => setArticleForm(f => ({ ...f, excerpt: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
+                <RichTextEditor
+                  value={articleForm.excerpt}
+                  onChange={v => setArticleForm(f => ({ ...f, excerpt: v }))}
+                  placeholder="Краткое описание для карточки статьи..."
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/60">Текст статьи *</label>
-                <textarea required rows={16} value={articleForm.content}
-                  onChange={e => setArticleForm(f => ({ ...f, content: e.target.value }))}
-                  placeholder="Поддерживается Markdown: **жирный**, *курсив*, ## Заголовок, - список"
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-y font-mono" style={{ cursor: "text" }} />
+                <RichTextEditor
+                  value={articleForm.content}
+                  onChange={v => setArticleForm(f => ({ ...f, content: v }))}
+                  placeholder="Начните писать статью..."
+                  className="min-h-[400px]"
+                />
               </div>
 
               {/* HTML-вложение */}

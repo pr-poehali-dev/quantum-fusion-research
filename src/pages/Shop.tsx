@@ -542,9 +542,8 @@ function ProductCard({
       <div className="flex flex-col flex-1 p-4">
         {p.category && <span className="mb-1 text-xs text-foreground/40 font-mono">{p.category.name}</span>}
         <button onClick={onOpen} className="mb-2 text-left font-medium text-foreground leading-tight hover:text-primary transition-colors" style={{ cursor: "pointer" }}>{p.name}</button>
-        {/* Описание с сохранением переносов строк */}
         {p.description && (
-          <p className="mb-3 text-xs text-foreground/60 leading-relaxed line-clamp-3 whitespace-pre-line">{p.description}</p>
+          <div className="mb-3 text-xs text-foreground/60 leading-relaxed line-clamp-3 rich-content" dangerouslySetInnerHTML={{ __html: p.description }} />
         )}
         {Object.keys(p.specs).length > 0 && (
           <div className="mb-3 flex flex-wrap gap-1">
@@ -745,7 +744,7 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
         <div className="p-6">
           {p.category && <p className="mb-1 font-mono text-xs text-foreground/40">{p.category.name}</p>}
           <h2 className="mb-2 text-2xl font-medium text-foreground">{p.name}</h2>
-          {p.description && <p className="mb-4 text-sm text-foreground/70 leading-relaxed whitespace-pre-line">{p.description}</p>}
+          {p.description && <div className="mb-4 text-sm text-foreground/70 leading-relaxed rich-content" dangerouslySetInnerHTML={{ __html: p.description }} />}
           {Object.keys(p.specs).length > 0 && (
             <div className="mb-6">
               <h3 className="mb-3 text-xs font-mono text-foreground/40 uppercase tracking-wider">Характеристики</h3>
@@ -876,7 +875,7 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
                 </div>
               </div>
               <div className="p-6">
-                {b.description && <p className="text-sm text-foreground/70 leading-relaxed mb-4">{b.description}</p>}
+                {b.description && <div className="text-sm text-foreground/70 leading-relaxed mb-4 rich-content" dangerouslySetInnerHTML={{ __html: b.description }} />}
                 <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-4 py-3">
                   <span className="text-sm text-foreground/60">{b.components.length} компонентов</span>
                   <span className="text-lg font-bold text-foreground">{fmt(b.total_price)}</span>
@@ -910,7 +909,7 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
               </div>
               <div className="p-6">
                 {slide.component.description && (
-                  <p className="text-sm text-foreground/70 leading-relaxed mb-4">{slide.component.description}</p>
+                  <div className="text-sm text-foreground/70 leading-relaxed mb-4 rich-content" dangerouslySetInnerHTML={{ __html: slide.component.description }} />
                 )}
                 {!slide.component.description && (
                   <p className="text-sm text-foreground/40 italic mb-4">Комплектующее уровня {SLOT_NAMES[slide.component.slot] || slide.component.slot}</p>

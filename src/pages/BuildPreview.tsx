@@ -276,7 +276,7 @@ export default function BuildPreview() {
                     {build.name}
                   </h1>
                   {build.description && (
-                    <p className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground">{build.description}</p>
+                    <div className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground rich-content" dangerouslySetInnerHTML={{ __html: build.description }} />
                   )}
                   {/* Фото — мобайл карусель */}
                   {buildImages.length > 0 && (
@@ -620,7 +620,7 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
           </h2>
           <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
           {comp.description && (
-            <p className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md">{comp.description}</p>
+            <div className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md rich-content" dangerouslySetInnerHTML={{ __html: comp.description }} />
           )}
           {/* Мобайл — фото под текстом */}
           {hasPhoto && (
