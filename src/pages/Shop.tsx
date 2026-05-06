@@ -194,10 +194,6 @@ export default function Shop() {
           <span className="font-semibold text-lg text-foreground">BeGraphics</span>
         </button>
         <nav className="hidden items-center gap-6 md:flex">
-          <button onClick={() => setShopTab("catalog")} className={`text-sm font-medium transition-colors ${shopTab === "catalog" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Каталог</button>
-          <button onClick={() => setShopTab("builds")} className={`text-sm font-medium transition-colors ${shopTab === "builds" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Наши ПК</button>
-          <button onClick={() => setShopTab("community")} className={`text-sm font-medium transition-colors ${shopTab === "community" ? "text-primary" : "text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>Сборки</button>
-          <button onClick={() => navigate("/configurator")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Конфигуратор</button>
         </nav>
         <div className="flex items-center gap-2">
           <ThemeSwitcher />
