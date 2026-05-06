@@ -27,7 +27,7 @@ export default function Cart() {
       customer_phone: form.phone,
       customer_email: form.email || undefined,
       order_type: orderType,
-      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type })),
+      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type, assembly: i.assembly, components: i.components })),
       total: total(),
       comment: form.comment || undefined,
     }, sessionId)

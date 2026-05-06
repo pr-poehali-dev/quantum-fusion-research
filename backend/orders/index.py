@@ -67,28 +67,36 @@ def handler(event: dict, context) -> dict:
             parts_total = float(body["total"])
             customer = body["customer_name"]
 
+            def is_real_id(v):
+                try:
+                    return int(str(v)) < 10**9
+                except Exception:
+                    return False
+
             if order_type == "pc_build":
-                # Сборка ПК — каждый item это готовая сборка, компоненты берём по id сборки
                 build_name = f"BeGraphics, {order_id:05d}"
                 description = f"Заказ ПК #{order_id:05d} от {customer}"
                 components = []
+                asm_type = "percent"
+                asm_fee = round(parts_total * 0.07)
                 for it in items:
-                    if it.get("item_type") == "config" and it.get("id"):
-                        # Подтягиваем компоненты из существующей сборки
+                    # Если item несёт components (из конфигуратора) — берём их напрямую
+                    if it.get("components"):
+                        components = it["components"]
+                        if not it.get("assembly", True):
+                            asm_type = "manual"
+                            asm_fee = 0
+                    elif it.get("item_type") == "config" and it.get("id") and is_real_id(it["id"]):
+                        # Берём компоненты из существующей сборки по id
                         cur.execute("SELECT components, assembly_type, assembly_fee FROM pc_builds WHERE id = %s", (it["id"],))
                         row = cur.fetchone()
                         if row:
                             components = row[0] or []
-                            asm_type = row[1] or "manual"
+                            asm_type = row[1] or "percent"
                             asm_fee = float(row[2] or 0)
-                        else:
-                            components = [{"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0), "source": "order"}]
-                            asm_type = "manual"
-                            asm_fee = 0
                     else:
-                        components.append({"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0), "source": "order"})
-                        asm_type = "manual"
-                        asm_fee = 0
+                        components.append({"name": it.get("name", ""), "slot": "other",
+                                           "price": it.get("price", 0), "source": "order"})
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
                        total_price, assembly_type, status, created_at)
@@ -96,15 +104,18 @@ def handler(event: dict, context) -> dict:
                     (build_name, description, json.dumps(components), parts_total, asm_fee, parts_total, asm_type)
                 )
             elif order_type == "parts":
-                # Только комплектующие без сборки
                 build_name = f"Заказ комплектующих {order_id:05d}"
                 description = f"Заказ комплектующих #{order_id:05d} от {customer}"
-                components = [
-                    {"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0),
-                     "source": "catalog", "source_id": it.get("id") if str(it.get("id", "")).isdigit() and int(str(it.get("id", 0))) < 10**9 else None,
-                     "quantity": it.get("quantity", 1)}
-                    for it in items
-                ]
+                components = []
+                for it in items:
+                    # Если item несёт components (из конфигуратора без сборки)
+                    if it.get("components"):
+                        components.extend(it["components"])
+                    else:
+                        sid = it.get("id") if is_real_id(it.get("id", 0)) else None
+                        components.append({"name": it.get("name", ""), "slot": "other",
+                                           "price": it.get("price", 0), "source": "catalog",
+                                           "source_id": sid, "qty": it.get("quantity", 1)})
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
                        total_price, assembly_type, status, created_at)
@@ -112,13 +123,10 @@ def handler(event: dict, context) -> dict:
                     (build_name, description, json.dumps(components), parts_total, parts_total)
                 )
             else:
-                # Обычная корзина — общая сборка
                 build_name = f"BeGraphics, {order_id:05d}"
-                components = [
-                    {"name": it.get("name", ""), "slot": "other", "price": it.get("price", 0),
-                     "source": "order", "quantity": it.get("quantity", 1)}
-                    for it in items
-                ]
+                components = [{"name": it.get("name", ""), "slot": "other",
+                               "price": it.get("price", 0), "source": "order", "qty": it.get("quantity", 1)}
+                              for it in items]
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
                        total_price, assembly_type, status, created_at)

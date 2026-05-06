@@ -1,6 +1,15 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
+export interface CartComponent {
+  slot: string
+  name: string
+  price: number
+  qty: number
+  source: "catalog" | "custom"
+  source_id?: number
+}
+
 export interface CartItem {
   id: number
   name: string
@@ -9,6 +18,7 @@ export interface CartItem {
   image_url?: string | null
   type: "product" | "config"
   assembly?: boolean
+  components?: CartComponent[]
 }
 
 interface CartStore {

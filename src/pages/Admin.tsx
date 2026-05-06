@@ -454,7 +454,6 @@ export default function Admin() {
       b.name.includes(padded) || b.description?.includes(`#${padded}`)
     )
     if (!found) { alert("Сборка для этого заказа не найдена"); return }
-    // Подгружаем products для редактора если ещё не загружены
     if (!products.length) {
       const pd = await api.products.getAll()
       setProducts(pd.products || [])
@@ -463,6 +462,22 @@ export default function Admin() {
       setConfigSlots(slots.slots || {})
     }
     editBuild(found)
+  }
+
+  const [copiedOrderId, setCopiedOrderId] = useState<number | null>(null)
+  const copyOrderSheet = async (orderId: number) => {
+    const data = await api.builds.getAll()
+    const allBuilds: PCBuild[] = data.builds || []
+    const padded = String(orderId).padStart(5, "0")
+    const found = allBuilds.find(b =>
+      b.name.includes(padded) || b.description?.includes(`#${padded}`)
+    )
+    if (!found) { alert("Сборка для этого заказа не найдена"); return }
+    const url = `${window.location.origin}/order-sheet/${found.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedOrderId(orderId)
+      setTimeout(() => setCopiedOrderId(null), 2000)
+    })
   }
 
   const toggleStock = async (p: Product) => {
@@ -753,14 +768,25 @@ export default function Admin() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <p className="text-lg font-bold text-foreground">{fmt(order.total)}</p>
-                        <button
-                          onClick={() => openOrderBuild(order.id)}
-                          className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-                          style={{ cursor: "pointer" }}
-                        >
-                          <Icon name="Pencil" size={12} />
-                          {order.order_type === "parts" ? "Редакт. список" : "Редакт. сборку"}
-                        </button>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => copyOrderSheet(order.id)}
+                            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${copiedOrderId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-border text-foreground/50 hover:border-primary hover:text-primary"}`}
+                            style={{ cursor: "pointer" }}
+                            title="Скопировать ссылку для приёмщика"
+                          >
+                            <Icon name={copiedOrderId === order.id ? "Check" : "Link"} size={12} />
+                            {copiedOrderId === order.id ? "Скопировано" : "Ссылка"}
+                          </button>
+                          <button
+                            onClick={() => openOrderBuild(order.id)}
+                            className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                            style={{ cursor: "pointer" }}
+                          >
+                            <Icon name="Pencil" size={12} />
+                            {order.order_type === "parts" ? "Редакт. список" : "Редакт. сборку"}
+                          </button>
+                        </div>
                         <select
                           value={order.status}
                           onChange={e => updateStatus(order.id, e.target.value)}

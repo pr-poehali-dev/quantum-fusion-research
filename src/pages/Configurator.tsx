@@ -121,7 +121,15 @@ export default function Configurator() {
 
   const addToCart = () => {
     const names = Object.values(selected).filter(Boolean).map(c => c!.name).join(", ").substring(0, 80)
-    addItem({ id: Date.now(), name: `Сборка: ${names}`, price: total, type: "config", assembly: wantAssembly })
+    const components = Object.values(selected).filter(Boolean).map(c => ({
+      slot: c!.slot,
+      name: c!.name,
+      price: c!.price,
+      qty: c!.qty,
+      source: c!.source as "catalog" | "custom",
+      source_id: c!.source_id,
+    }))
+    addItem({ id: Date.now(), name: `Сборка: ${names}`, price: total, type: "config", assembly: wantAssembly, components })
     navigate("/cart")
   }
 
