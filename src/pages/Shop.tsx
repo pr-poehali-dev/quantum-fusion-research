@@ -478,7 +478,7 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
     <div className="relative h-full w-full">
       {images.map((src, i) => (
         <img key={i} src={src} alt={name}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${i === idx ? "opacity-100" : "opacity-0"}`} />
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ease-in-out ${i === idx ? "opacity-100" : "opacity-0"}`} />
       ))}
       {images.length > 1 && (
         <>
