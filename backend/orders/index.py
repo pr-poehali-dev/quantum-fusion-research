@@ -117,25 +117,6 @@ def handler(event: dict, context) -> dict:
                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'client', NOW()) RETURNING id""",
                     (build_name, description, json.dumps(components), parts_total, asm_fee, parts_total, asm_type)
                 )
-            elif order_type == "parts":
-                build_name = f"Заказ комплектующих {order_id:05d}"
-                description = f"Заказ комплектующих #{order_id:05d} от {customer}"
-                components, _, _ = extract_components(items, False)
-                cur.execute(
-                    """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
-                       total_price, assembly_type, status, created_at)
-                       VALUES (%s, %s, %s, %s, 0, %s, 'manual', 'client', NOW()) RETURNING id""",
-                    (build_name, description, json.dumps(components), parts_total, parts_total)
-                )
-            else:
-                build_name = f"BeGraphics, {order_id:05d}"
-                components, _, _ = extract_components(items, False)
-                cur.execute(
-                    """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
-                       total_price, assembly_type, status, created_at)
-                       VALUES (%s, %s, %s, %s, 0, %s, 'manual', 'client', NOW()) RETURNING id""",
-                    (build_name, f"Заказ #{order_id:05d} от {customer}", json.dumps(components), parts_total, parts_total)
-                )
 
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
