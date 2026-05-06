@@ -57,6 +57,6 @@ export const useCart = create<CartStore>()(
       count: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
       getItemQty: (id, type) => get().items.find(i => i.id === id && i.type === type)?.quantity ?? 0,
     }),
-    { name: "begraphics-cart" }
+    { name: "begraphics-cart-v2" }
   )
 )

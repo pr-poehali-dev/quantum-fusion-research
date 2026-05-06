@@ -67,36 +67,50 @@ def handler(event: dict, context) -> dict:
             parts_total = float(body["total"])
             customer = body["customer_name"]
 
-            def is_real_id(v):
+            print(f"ORDER {order_id}: type={order_type}, items={json.dumps(items)}")
+
+            def is_catalog_id(v):
                 try:
-                    return int(str(v)) < 10**9
+                    return 0 < int(str(v)) < 10**9
                 except Exception:
                     return False
+
+            def extract_components(items_list, with_assembly):
+                """Извлечь компоненты из списка items. Приоритет: components в item -> каталог по id -> fallback."""
+                result = []
+                asm_type = "percent" if with_assembly else "manual"
+                asm_fee_val = round(parts_total * 0.07) if with_assembly else 0
+
+                for it in items_list:
+                    # Конфигуратор передаёт components прямо в item
+                    if it.get("components"):
+                        result.extend(it["components"])
+                    elif it.get("item_type") == "config" and is_catalog_id(it.get("id")):
+                        # Готовая сборка из каталога — берём компоненты из БД
+                        cur.execute("SELECT components, assembly_type, assembly_fee FROM pc_builds WHERE id = %s", (it["id"],))
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            result.extend(row[0])
+                            asm_type = row[1] or asm_type
+                            asm_fee_val = float(row[2] or asm_fee_val)
+                        else:
+                            result.append({"name": it.get("name", ""), "slot": "other",
+                                           "price": it.get("price", 0), "source": "order", "qty": 1})
+                    elif it.get("item_type") == "product" and is_catalog_id(it.get("id")):
+                        result.append({"name": it.get("name", ""), "slot": "other",
+                                       "price": it.get("price", 0), "source": "catalog",
+                                       "source_id": it["id"], "qty": it.get("quantity", 1)})
+                    else:
+                        result.append({"name": it.get("name", ""), "slot": "other",
+                                       "price": it.get("price", 0), "source": "order",
+                                       "qty": it.get("quantity", 1)})
+                return result, asm_type, asm_fee_val
 
             if order_type == "pc_build":
                 build_name = f"BeGraphics, {order_id:05d}"
                 description = f"Заказ ПК #{order_id:05d} от {customer}"
-                components = []
-                asm_type = "percent"
-                asm_fee = round(parts_total * 0.07)
-                for it in items:
-                    # Если item несёт components (из конфигуратора) — берём их напрямую
-                    if it.get("components"):
-                        components = it["components"]
-                        if not it.get("assembly", True):
-                            asm_type = "manual"
-                            asm_fee = 0
-                    elif it.get("item_type") == "config" and it.get("id") and is_real_id(it["id"]):
-                        # Берём компоненты из существующей сборки по id
-                        cur.execute("SELECT components, assembly_type, assembly_fee FROM pc_builds WHERE id = %s", (it["id"],))
-                        row = cur.fetchone()
-                        if row:
-                            components = row[0] or []
-                            asm_type = row[1] or "percent"
-                            asm_fee = float(row[2] or 0)
-                    else:
-                        components.append({"name": it.get("name", ""), "slot": "other",
-                                           "price": it.get("price", 0), "source": "order"})
+                has_assembly = any(it.get("assembly", True) for it in items if it.get("item_type") == "config")
+                components, asm_type, asm_fee = extract_components(items, has_assembly)
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
                        total_price, assembly_type, status, created_at)
@@ -106,16 +120,7 @@ def handler(event: dict, context) -> dict:
             elif order_type == "parts":
                 build_name = f"Заказ комплектующих {order_id:05d}"
                 description = f"Заказ комплектующих #{order_id:05d} от {customer}"
-                components = []
-                for it in items:
-                    # Если item несёт components (из конфигуратора без сборки)
-                    if it.get("components"):
-                        components.extend(it["components"])
-                    else:
-                        sid = it.get("id") if is_real_id(it.get("id", 0)) else None
-                        components.append({"name": it.get("name", ""), "slot": "other",
-                                           "price": it.get("price", 0), "source": "catalog",
-                                           "source_id": sid, "qty": it.get("quantity", 1)})
+                components, _, _ = extract_components(items, False)
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
                        total_price, assembly_type, status, created_at)
@@ -124,9 +129,7 @@ def handler(event: dict, context) -> dict:
                 )
             else:
                 build_name = f"BeGraphics, {order_id:05d}"
-                components = [{"name": it.get("name", ""), "slot": "other",
-                               "price": it.get("price", 0), "source": "order", "qty": it.get("quantity", 1)}
-                              for it in items]
+                components, _, _ = extract_components(items, False)
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
                        total_price, assembly_type, status, created_at)
