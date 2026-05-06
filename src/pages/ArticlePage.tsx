@@ -120,7 +120,7 @@ export default function ArticlePage() {
             </div>
             <h1 className="mb-4 text-3xl sm:text-4xl font-light leading-tight text-foreground">{article.title}</h1>
             {article.excerpt && (
-              <p className="text-base leading-relaxed text-muted-foreground">{article.excerpt}</p>
+              <div className="text-base leading-relaxed text-muted-foreground rich-content" dangerouslySetInnerHTML={{ __html: article.excerpt }} />
             )}
           </div>
 
@@ -134,15 +134,8 @@ export default function ArticlePage() {
           {/* Контент */}
           {article.content && (
             <div
-              className="prose prose-sm sm:prose max-w-none text-foreground
-                prose-headings:font-light prose-headings:text-foreground
-                prose-p:text-foreground/80 prose-p:leading-relaxed
-                prose-strong:text-foreground prose-strong:font-semibold
-                prose-em:text-foreground/70
-                prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:text-foreground prose-code:font-mono
-                prose-ul:text-foreground/80 prose-li:marker:text-primary
-                prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(article.content) }}
+              className="rich-content text-foreground/80 leading-relaxed text-base"
+              dangerouslySetInnerHTML={{ __html: article.content }}
             />
           )}
 
