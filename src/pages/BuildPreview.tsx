@@ -17,6 +17,13 @@ interface Component {
 
 interface BuildTag { id: number; name: string; color: string }
 
+interface WipInfo {
+  stage: string
+  received_at?: string
+  issued_at?: string
+  delivery_type?: string
+}
+
 interface Build {
   id: number; name: string; description: string; components: Component[]
   parts_total: number; assembly_fee: number; total_price: number
@@ -24,6 +31,29 @@ interface Build {
   is_featured?: boolean; status?: string
   client_token?: string | null; client_user_id?: number | null; parent_id?: number | null
   tags?: BuildTag[]
+}
+
+const DELIVERY_DESCRIPTIONS: Record<string, { title: string; desc: string }> = {
+  "Самовывоз Беляево":    { title: "Самовывоз · Беляево", desc: "м. Беляево, Профсоюзная ул. Уточним адрес при подтверждении." },
+  "Самовывоз Новокосино": { title: "Самовывоз · Новокосино", desc: "м. Новокосино. Уточним адрес при подтверждении." },
+  "СДЭК (за счёт клиента)":                    { title: "Доставка СДЭК", desc: "Отправим по всей России. Стоимость доставки за счёт получателя." },
+  "Курьер Яндекс по МСК (за счёт клиента)":   { title: "Курьер по Москве", desc: "Доставка курьером Яндекс. Стоимость доставки за счёт получателя." },
+}
+
+const WIP_STAGE_COLORS_CLIENT: Record<string, string> = {
+  "Согласование":           "bg-muted/60 text-foreground/50",
+  "Заказ":                  "bg-blue-500/15 text-blue-400",
+  "Ожидание железа":        "bg-yellow-500/15 text-yellow-400",
+  "Ожидание сборки":        "bg-orange-500/15 text-orange-400",
+  "Сборка":                 "bg-blue-600/15 text-blue-300",
+  "Настройка":              "bg-blue-700/15 text-blue-300",
+  "Тесты":                  "bg-purple-500/15 text-purple-400",
+  "Досборать":              "bg-red-500/15 text-red-400",
+  "Проверка перед выдачей": "bg-teal-500/15 text-teal-400",
+  "Ожидание упаковки":      "bg-cyan-500/15 text-cyan-400",
+  "Готов, можно забрать":   "bg-green-600/20 text-green-400",
+  "Отнести в сдэк":         "bg-green-700/15 text-green-300",
+  "Забрали":                "bg-muted/40 text-foreground/30",
 }
 
 const TAG_COLOR_MAP: Record<string, string> = {
@@ -76,6 +106,7 @@ export default function BuildPreview() {
   const [components, setComponents] = useState<Component[]>([])
   const [currentSection, setCurrentSection] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [wipInfo, setWipInfo] = useState<WipInfo | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const wheelLockRef = useRef(false)
   const touchStartY = useRef(0)
@@ -91,6 +122,10 @@ export default function BuildPreview() {
       setComponents(comps)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
+    // Подгружаем статус сборки в процессе (если есть)
+    api.wipBuilds.getByOrderId(Number(id)).then(d => {
+      if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type })
+    }).catch(() => {})
   }, [id, isTokenMode])
 
   // Загрузка по токену (клиентская)
@@ -294,6 +329,40 @@ export default function BuildPreview() {
                           {t.name}
                         </span>
                       ))}
+                    </div>
+                  )}
+                  {/* Блок статуса сборки (только если есть wip) */}
+                  {wipInfo && (
+                    <div className="mb-5 rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-4 max-w-lg space-y-3">
+                      <div className="flex items-center gap-3">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${WIP_STAGE_COLORS_CLIENT[wipInfo.stage] || "bg-muted text-foreground/50"}`}>
+                          {wipInfo.stage}
+                        </span>
+                        <span className="text-xs text-muted-foreground">Статус вашей сборки</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        {wipInfo.received_at && (
+                          <div>
+                            <p className="text-muted-foreground mb-0.5">Железо придёт</p>
+                            <p className="text-foreground font-medium">{new Date(wipInfo.received_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
+                          </div>
+                        )}
+                        {wipInfo.issued_at && (
+                          <div>
+                            <p className="text-muted-foreground mb-0.5">Дата выдачи</p>
+                            <p className="text-foreground font-medium">{new Date(wipInfo.issued_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
+                          </div>
+                        )}
+                      </div>
+                      {wipInfo.delivery_type && (() => {
+                        const info = DELIVERY_DESCRIPTIONS[wipInfo.delivery_type]
+                        return (
+                          <div>
+                            <p className="text-foreground font-medium text-xs mb-0.5">{info?.title || wipInfo.delivery_type}</p>
+                            {info?.desc && <p className="text-muted-foreground text-xs">{info.desc}</p>}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                   {build.description && (

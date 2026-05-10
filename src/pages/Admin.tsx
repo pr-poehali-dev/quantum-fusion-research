@@ -1777,59 +1777,140 @@ export default function Admin() {
             })()}
 
             {loading ? (
-              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-28 rounded-xl bg-card animate-pulse" />)}</div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[...Array(3)].map((_, i) => <div key={i} className="h-96 rounded-xl bg-card animate-pulse" />)}</div>
             ) : wipBuilds.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border py-16 text-center">
                 <Icon name="Hammer" size={36} className="mx-auto mb-3 text-foreground/20" />
                 <p className="text-sm text-foreground/40">Сборок в процессе нет</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {wipBuilds.map(w => (
-                  <div key={w.id} className={`rounded-xl border bg-card overflow-hidden transition-colors ${w.stage === "Забрали" ? "opacity-40 border-border/40" : "border-border"}`}>
-                    {/* Заголовок карточки */}
-                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50">
-                      <span className="font-mono font-bold text-foreground text-sm">#{w.order_number}</span>
-                      {/* Смена этапа */}
-                      <select
-                        value={w.stage}
-                        onChange={e => {
-                          const val = e.target.value
-                          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: val } : b))
-                          api.wipBuilds.patch({ id: w.id, stage: val })
-                        }}
-                        className={`rounded-full border-0 px-3 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/60"}`}
-                        style={{ cursor: "pointer" }}>
-                        {WIP_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <div className="flex-1" />
-                      {w.customer_name && <span className="text-xs text-foreground/70 font-medium">{w.customer_name}</span>}
-                      {w.customer_phone && <span className="text-xs text-primary font-mono">{w.customer_phone}</span>}
-                      {w.contact && <span className="text-xs text-foreground/40 font-mono">{w.contact}</span>}
-                      {w.delivery_type && <span className="text-xs text-foreground/40">{w.delivery_type}</span>}
-                      {w.issued_at && <span className="text-xs text-foreground/40">выдача: {w.issued_at}</span>}
-                      {/* Кнопки */}
-                      <button onClick={() => setWipPasteId(w.id)}
-                        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                        <Icon name="MessageSquare" size={12} />Паста
-                      </button>
-                      <button onClick={() => { setWipForm({ ...w }); setWipFormOpen(true) }}
-                        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                        <Icon name="Pencil" size={12} />Ред.
-                      </button>
-                    </div>
-                    {/* Компоненты */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-px bg-border/30">
-                      {WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => {
-                        const val = (w as Record<string, string>)[c.key]
-                        const statusKey = c.key === "case_name" ? "case_status" : c.key + "_status"
-                        const status = (w as Record<string, string>)[statusKey] || "pending"
-                        const { label: sLabel, cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
-                        const isReady = status === "ready"
-                        return (
-                          <div key={c.key} className={`flex flex-col gap-1 p-3 bg-card transition-colors ${isReady ? "bg-green-500/5" : ""}`}>
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] text-foreground/40 font-mono uppercase">{c.label}</span>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {wipBuilds.map(w => {
+                  // Находим связанную сборку по order_id чтобы дать ссылку
+                  const buildLink = w.order_id ? `/build-preview/${w.order_id}` : null
+                  return (
+                    <div key={w.id} className={`rounded-xl border bg-card overflow-hidden flex flex-col transition-colors ${w.stage === "Забрали" ? "opacity-50 border-border/30" : "border-border"}`}>
+
+                      {/* ── Шапка: номер + этап ── */}
+                      <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-border/50">
+                        {buildLink ? (
+                          <a href={buildLink} target="_blank" rel="noreferrer"
+                            className="font-mono font-bold text-primary hover:underline text-base"
+                            style={{ cursor: "pointer" }}>
+                            #{w.order_number}
+                          </a>
+                        ) : (
+                          <span className="font-mono font-bold text-foreground text-base">#{w.order_number}</span>
+                        )}
+                        <select
+                          value={w.stage}
+                          onChange={e => {
+                            const val = e.target.value
+                            setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: val } : b))
+                            api.wipBuilds.patch({ id: w.id, stage: val })
+                          }}
+                          className={`ml-1 rounded-full border-0 px-3 py-0.5 text-xs font-semibold focus:outline-none ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/60"}`}
+                          style={{ cursor: "pointer" }}>
+                          {WIP_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+
+                      {/* ── Клиент ── */}
+                      <div className="px-4 py-3 space-y-1.5 border-b border-border/40">
+                        {w.customer_name && (
+                          <div className="flex items-center gap-2">
+                            <Icon name="User" size={13} className="text-foreground/30 shrink-0" />
+                            <span className="text-sm text-foreground font-medium">{w.customer_name}</span>
+                          </div>
+                        )}
+                        {w.customer_phone && (
+                          <div className="flex items-center gap-2">
+                            <Icon name="Phone" size={13} className="text-foreground/30 shrink-0" />
+                            <span className="text-sm text-primary font-mono">{w.customer_phone}</span>
+                          </div>
+                        )}
+                        {w.contact && (
+                          <div className="flex items-center gap-2">
+                            <Icon name="MessageCircle" size={13} className="text-foreground/30 shrink-0" />
+                            <span className="text-sm text-foreground/70">{w.contact}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── Даты и доставка (инлайн-редактирование) ── */}
+                      <div className="px-4 py-3 space-y-2 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                          <Icon name="CalendarClock" size={13} className="text-foreground/30 shrink-0" />
+                          <span className="text-xs text-foreground/40 w-28 shrink-0">Железо придёт:</span>
+                          <input
+                            type="date"
+                            value={w.received_at || ""}
+                            onChange={e => {
+                              const val = e.target.value
+                              setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, received_at: val } : b))
+                              api.wipBuilds.patch({ id: w.id, received_at: val })
+                            }}
+                            className="flex-1 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            style={{ cursor: "text" }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Icon name="CalendarCheck" size={13} className="text-foreground/30 shrink-0" />
+                          <span className="text-xs text-foreground/40 w-28 shrink-0">Дата выдачи:</span>
+                          <input
+                            type="date"
+                            value={w.issued_at || ""}
+                            onChange={e => {
+                              const val = e.target.value
+                              setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, issued_at: val } : b))
+                              api.wipBuilds.patch({ id: w.id, issued_at: val })
+                            }}
+                            className="flex-1 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            style={{ cursor: "text" }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Icon name="Truck" size={13} className="text-foreground/30 shrink-0" />
+                          <span className="text-xs text-foreground/40 w-28 shrink-0">Получение:</span>
+                          <select
+                            value={w.delivery_type || ""}
+                            onChange={e => {
+                              const val = e.target.value
+                              setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, delivery_type: val } : b))
+                              api.wipBuilds.patch({ id: w.id, delivery_type: val })
+                            }}
+                            className="flex-1 rounded border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            style={{ cursor: "pointer" }}>
+                            <option value="">Не выбрано</option>
+                            {DELIVERY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* ── Кнопки ── */}
+                      <div className="px-4 py-3 flex items-center gap-2 border-b border-border/40">
+                        <button onClick={() => setWipPasteId(w.id)}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors flex-1 justify-center" style={{ cursor: "pointer" }}>
+                          <Icon name="Copy" size={12} />Паста
+                        </button>
+                        <button onClick={() => { setWipForm({ ...w }); setWipFormOpen(true) }}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors flex-1 justify-center" style={{ cursor: "pointer" }}>
+                          <Icon name="Pencil" size={12} />Ред.
+                        </button>
+                      </div>
+
+                      {/* ── Компоненты ── */}
+                      <div className="flex-1">
+                        {WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => {
+                          const val = (w as Record<string, string>)[c.key]
+                          const statusKey = c.key === "case_name" ? "case_status" : c.key + "_status"
+                          const status = (w as Record<string, string>)[statusKey] || "pending"
+                          const { cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
+                          const isReady = status === "ready"
+                          return (
+                            <div key={c.key} className={`flex items-center gap-2 px-4 py-2 border-b border-border/20 last:border-0 transition-colors ${isReady ? "bg-green-500/5" : ""}`}>
+                              <span className="w-20 shrink-0 text-[10px] text-foreground/40 font-mono uppercase">{c.label}</span>
+                              <span className={`flex-1 text-xs truncate ${isReady ? "text-green-400" : "text-foreground/70"}`}>{val}</span>
                               <select
                                 value={status}
                                 onChange={e => {
@@ -1837,23 +1918,23 @@ export default function Admin() {
                                   setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: val } : b))
                                   api.wipBuilds.patch({ id: w.id, component: c.key === "case_name" ? "case" : c.key, status: val })
                                 }}
-                                className={`rounded-full border-0 px-2 py-0 text-[10px] font-semibold focus:outline-none ${sCls}`}
+                                className={`shrink-0 rounded-full border-0 px-2 py-0.5 text-[10px] font-semibold focus:outline-none ${sCls}`}
                                 style={{ cursor: "pointer" }}>
                                 {Object.entries(COMP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                               </select>
                             </div>
-                            <p className={`text-xs leading-snug ${isReady ? "text-green-400" : "text-foreground/70"}`}>{val}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    {w.comment && (
-                      <div className="px-4 py-2 border-t border-border/30">
-                        <p className="text-xs text-foreground/50">{w.comment}</p>
+                          )
+                        })}
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {w.comment && (
+                        <div className="px-4 py-2 border-t border-border/30 bg-muted/20">
+                          <p className="text-xs text-foreground/50">{w.comment}</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

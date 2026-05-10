@@ -38,6 +38,23 @@ interface Order {
   total: number
   status: string
   created_at: string
+  wip_stage?: string
+}
+
+const WIP_STAGE_COLORS: Record<string, string> = {
+  "Согласование":           "bg-muted/60 text-foreground/50",
+  "Заказ":                  "bg-blue-500/15 text-blue-400",
+  "Ожидание железа":        "bg-yellow-500/15 text-yellow-400",
+  "Ожидание сборки":        "bg-orange-500/15 text-orange-400",
+  "Сборка":                 "bg-blue-600/15 text-blue-300",
+  "Настройка":              "bg-blue-700/15 text-blue-300",
+  "Тесты":                  "bg-purple-500/15 text-purple-400",
+  "Досборать":              "bg-red-500/15 text-red-400",
+  "Проверка перед выдачей": "bg-teal-500/15 text-teal-400",
+  "Ожидание упаковки":      "bg-cyan-500/15 text-cyan-400",
+  "Готов, можно забрать":   "bg-green-600/20 text-green-400",
+  "Отнести в сдэк":         "bg-green-700/15 text-green-300",
+  "Забрали":                "bg-muted/40 text-foreground/30",
 }
 
 const ORDER_STATUS: Record<string, { label: string; color: string }> = {
@@ -71,7 +88,15 @@ export default function Profile() {
 
     Promise.all([
       api.auth.getBuilds(sessionId).then(d => setUserBuilds(d.builds || [])),
-      api.orders.getMyOrders(sessionId).then(d => setOrders(d.orders || [])),
+      api.orders.getMyOrders(sessionId).then(async d => {
+        const ords: Order[] = d.orders || []
+        // Для pc_build заказов подгружаем wip-статус
+        await Promise.all(ords.filter(o => o.order_type === "pc_build").map(async o => {
+          const wip = await api.wipBuilds.getByOrderId(o.id).catch(() => null)
+          if (wip?.stage) o.wip_stage = wip.stage
+        }))
+        setOrders(ords)
+      }),
       user ? api.builds.getByUserId(user.id).then(d => setAdminBuilds(d.builds || [])) : Promise.resolve(),
     ]).finally(() => setLoading(false))
   }, [])
@@ -175,6 +200,11 @@ export default function Profile() {
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
                               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span>
+                              {order.wip_stage && (
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${WIP_STAGE_COLORS[order.wip_stage] || "bg-muted text-foreground/50"}`}>
+                                  {order.wip_stage}
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-foreground/50">{new Date(order.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</p>
                           </div>

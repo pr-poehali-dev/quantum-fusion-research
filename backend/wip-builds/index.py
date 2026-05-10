@@ -83,8 +83,15 @@ def handler(event: dict, context) -> dict:
     try:
         if method == "GET":
             wip_id = params.get("id")
+            order_id = params.get("order_id")
             if wip_id:
                 cur.execute(SELECT + " WHERE w.id = %s", (wip_id,))
+                row = cur.fetchone()
+                if not row:
+                    return resp(404, {"error": "Не найдено"})
+                return resp(200, fmt_row(row))
+            if order_id:
+                cur.execute(SELECT + " WHERE w.order_id = %s", (order_id,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
