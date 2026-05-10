@@ -1844,7 +1844,7 @@ export default function Admin() {
                           return (
                             <th key={w.id} className={`relative px-3 py-2.5 text-left whitespace-nowrap ${w.stage === "Забрали" ? "opacity-40" : ""}`}
                               style={{ width: colW, minWidth: colW }}>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 {w.client_token ? (
                                   <button
                                     onClick={() => navigate(`/build?token=${w.client_token}`)}
@@ -1853,6 +1853,14 @@ export default function Admin() {
                                   </button>
                                 ) : (
                                   <span className="font-mono font-bold text-foreground">Заказ {w.order_number}</span>
+                                )}
+                                {w.build_id && (
+                                  <button
+                                    onClick={() => navigate(`/order-sheet/${w.build_id}`)}
+                                    className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20 transition-colors"
+                                    style={{ cursor: "pointer" }}>
+                                    <Icon name="Wrench" size={10} />Собрать
+                                  </button>
                                 )}
                               </div>
                               {/* Resize-хэндлер */}
@@ -1905,26 +1913,30 @@ export default function Admin() {
                             )
                             if (row.key === "_received_at") return (
                               <td key={w.id} className={`px-3 py-2 ${isArchived ? "opacity-40" : ""}`}>
-                                <input type="date" value={w.received_at || ""}
-                                  onChange={e => {
-                                    const val = e.target.value
-                                    setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, received_at: val } : b))
-                                    api.wipBuilds.patch({ id: w.id, received_at: val })
-                                  }}
-                                  className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-32"
-                                  style={{ cursor: "text" }} />
+                                <div className="flex items-center gap-1">
+                                  <input type="date" value={w.received_at || ""}
+                                    onChange={e => {
+                                      const val = e.target.value
+                                      setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, received_at: val } : b))
+                                      api.wipBuilds.patch({ id: w.id, received_at: val })
+                                    }}
+                                    className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-28"
+                                    style={{ cursor: "text" }} />
+                                </div>
                               </td>
                             )
                             if (row.key === "_issued_at") return (
                               <td key={w.id} className={`px-3 py-2 ${isArchived ? "opacity-40" : ""}`}>
-                                <input type="date" value={w.issued_at || ""}
-                                  onChange={e => {
-                                    const val = e.target.value
-                                    setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, issued_at: val } : b))
-                                    api.wipBuilds.patch({ id: w.id, issued_at: val })
-                                  }}
-                                  className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-32"
-                                  style={{ cursor: "text" }} />
+                                <div className="flex items-center gap-1">
+                                  <input type="date" value={w.issued_at || ""}
+                                    onChange={e => {
+                                      const val = e.target.value
+                                      setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, issued_at: val } : b))
+                                      api.wipBuilds.patch({ id: w.id, issued_at: val })
+                                    }}
+                                    className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-28"
+                                    style={{ cursor: "text" }} />
+                                </div>
                               </td>
                             )
                             if (row.key === "_delivery") return (
@@ -1956,17 +1968,25 @@ export default function Admin() {
                                 </div>
                               </td>
                             )
-                            // Компонент
+                            // Компонент — берём название и кол-во из pc_builds если есть build_id
                             const val = (w as Record<string, string>)[row.key] || ""
                             const statusKey = row.key === "case_name" ? "case_status" : row.key + "_status"
                             const status = (w as Record<string, string>)[statusKey] || "pending"
                             const { cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
                             const isReady = status === "ready"
+                            // Ищем qty из сборки
+                            const buildForWip = builds.find(b => b.id === w.build_id)
+                            const slotKey = row.key === "case_name" ? "case" : row.key
+                            const compInBuild = buildForWip?.components.find(c => c.slot === slotKey)
+                            const qty = compInBuild?.qty && compInBuild.qty > 1 ? compInBuild.qty : null
                             return (
                               <td key={w.id} className={`px-3 py-2 ${isReady ? "bg-green-500/5" : ""} ${isArchived ? "opacity-40" : ""}`}>
                                 {val ? (
                                   <div className="flex flex-col gap-0.5 min-w-[120px] max-w-[200px]">
-                                    <span className={`leading-snug line-clamp-2 ${isReady ? "text-green-400" : "text-foreground/70"}`}>{val}</span>
+                                    <div className="flex items-start gap-1">
+                                      <span className={`leading-snug line-clamp-2 ${isReady ? "text-green-400" : "text-foreground/70"}`}>{val}</span>
+                                      {qty && <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] font-bold text-primary">{qty}шт</span>}
+                                    </div>
                                     <select
                                       value={status}
                                       onChange={e => {
