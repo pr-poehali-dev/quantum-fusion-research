@@ -15,7 +15,7 @@ CORS = {
 def resp(status, data):
     return {"statusCode": status, "headers": CORS, "body": json.dumps(data, ensure_ascii=False, default=str)}
 
-def fmt_build(row):
+def fmt_build(row, tags=None):
     return {
         "id": row[0], "name": row[1], "description": row[2],
         "image_urls": row[3] or [],
@@ -31,7 +31,20 @@ def fmt_build(row):
         "client_token": row[13],
         "client_user_id": row[14],
         "parent_id": row[15],
+        "tags": tags or [],
     }
+
+def get_tags_for_builds(cur, build_ids):
+    if not build_ids:
+        return {}
+    ids_str = ",".join(str(i) for i in build_ids)
+    cur.execute(
+        f"SELECT bt.build_id, t.id, t.name, t.color FROM build_tags bt JOIN tags t ON bt.tag_id = t.id WHERE bt.build_id IN ({ids_str})"
+    )
+    result = {}
+    for build_id, tag_id, name, color in cur.fetchall():
+        result.setdefault(build_id, []).append({"id": tag_id, "name": name, "color": color})
+    return result
 
 def get_user_by_session(cur, session_id):
     if not session_id:
@@ -78,27 +91,35 @@ def handler(event: dict, context) -> dict:
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, fmt_build(row))
+                tags_map = get_tags_for_builds(cur, [row[0]])
+                return resp(200, fmt_build(row, tags_map.get(row[0], [])))
 
             if client_token:
                 cur.execute(base + " WHERE client_token = %s", (client_token,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, fmt_build(row))
+                tags_map = get_tags_for_builds(cur, [row[0]])
+                return resp(200, fmt_build(row, tags_map.get(row[0], [])))
 
             if parent_id:
                 cur.execute(base + " WHERE parent_id = %s ORDER BY id", (parent_id,))
-                return resp(200, [fmt_build(r) for r in cur.fetchall()])
+                rows = cur.fetchall()
+                tags_map = get_tags_for_builds(cur, [r[0] for r in rows])
+                return resp(200, [fmt_build(r, tags_map.get(r[0], [])) for r in rows])
 
             if user_id:
                 cur.execute(base + " WHERE client_user_id = %s ORDER BY id DESC", (user_id,))
-                return resp(200, {"builds": [fmt_build(r) for r in cur.fetchall()]})
+                rows = cur.fetchall()
+                tags_map = get_tags_for_builds(cur, [r[0] for r in rows])
+                return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], [])) for r in rows]})
 
             where = "WHERE status = %s" if status else ""
             args = [status] if status else []
             cur.execute(base + f" {where} ORDER BY sort_order ASC NULLS LAST, id DESC", args)
-            return resp(200, {"builds": [fmt_build(r) for r in cur.fetchall()]})
+            rows = cur.fetchall()
+            tags_map = get_tags_for_builds(cur, [r[0] for r in rows])
+            return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], [])) for r in rows]})
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
@@ -152,6 +173,15 @@ def handler(event: dict, context) -> dict:
                     "UPDATE pc_builds SET client_user_id=%s WHERE client_token=%s",
                     (user_id, body["client_token"])
                 )
+                conn.commit()
+                return resp(200, {"ok": True})
+
+            if action == "set_tags":
+                build_id = body.get("id")
+                tag_ids = body.get("tag_ids", [])
+                cur.execute("DELETE FROM build_tags WHERE build_id=%s", (build_id,))
+                for tag_id in tag_ids:
+                    cur.execute("INSERT INTO build_tags (build_id, tag_id) VALUES (%s, %s)", (build_id, tag_id))
                 conn.commit()
                 return resp(200, {"ok": True})
 

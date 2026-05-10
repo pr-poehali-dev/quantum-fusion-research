@@ -29,6 +29,12 @@ interface Category {
   description: string
 }
 
+interface BuildTag {
+  id: number
+  name: string
+  color: string
+}
+
 interface Build {
   id: number
   name: string
@@ -43,6 +49,7 @@ interface Build {
   is_featured: boolean
   parent_id: number | null
   client_token: string | null
+  tags?: BuildTag[]
   variantsCount?: number
 }
 
@@ -56,6 +63,19 @@ interface CommunityBuild {
   total_price: number
   share_token: string
   created_at: string
+}
+
+const TAG_COLOR_MAP: Record<string, string> = {
+  primary: "border-primary/40 bg-primary/15 text-primary",
+  green: "border-green-400/40 bg-green-400/15 text-green-400",
+  blue: "border-blue-400/40 bg-blue-400/15 text-blue-400",
+  orange: "border-orange-400/40 bg-orange-400/15 text-orange-400",
+  purple: "border-purple-400/40 bg-purple-400/15 text-purple-400",
+  red: "border-red-400/40 bg-red-400/15 text-red-400",
+}
+
+function getTagClass(color: string) {
+  return TAG_COLOR_MAP[color] || TAG_COLOR_MAP.primary
 }
 
 const SLOT_NAMES: Record<string, string> = {
@@ -75,6 +95,8 @@ export default function Shop() {
   const [communityBuilds, setCommunityBuilds] = useState<CommunityBuild[]>([])
   const [activeCategory, setActiveCategory] = useState<string>("all")
   const [search, setSearch] = useState("")
+  const [allTags, setAllTags] = useState<BuildTag[]>([])
+  const [activeTagIds, setActiveTagIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
   const [buildsLoading, setBuildsLoading] = useState(true)
   const [communityLoading, setCommunityLoading] = useState(true)
@@ -123,6 +145,10 @@ export default function Shop() {
       setLoading(false)
     })
   }, [activeCategory, search])
+
+  useEffect(() => {
+    api.tags.getAll().then(d => setAllTags(d.tags || []))
+  }, [])
 
   useEffect(() => {
     setBuildsLoading(true)
@@ -375,30 +401,63 @@ export default function Shop() {
         {/* BUILDS TAB */}
         {shopTab === "builds" && (
           <>
-            <div className="mb-8">
+            <div className="mb-6">
               <h1 className="mb-2 text-3xl font-light text-foreground">Наши ПК</h1>
               <p className="text-sm text-foreground/60">Готовые сборки от BeGraphics с прозрачным составом и ценами</p>
             </div>
+
+            {/* Фильтр по тегам */}
+            {allTags.length > 0 && (
+              <div className="mb-6 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setActiveTagIds([])}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${activeTagIds.length === 0 ? "border-primary bg-primary/15 text-primary" : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}
+                >
+                  Все
+                </button>
+                {allTags.map(t => {
+                  const active = activeTagIds.includes(t.id)
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveTagIds(ids => active ? ids.filter(i => i !== t.id) : [...ids, t.id])}
+                      className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${active ? getTagClass(t.color) : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {t.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
             {buildsLoading ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {[...Array(3)].map((_, i) => <div key={i} className="h-80 rounded-xl bg-card animate-pulse" />)}
               </div>
-            ) : builds.length === 0 ? (
-              <div className="py-24 text-center text-foreground/50">
-                <Icon name="Monitor" size={48} className="mx-auto mb-4 opacity-30" />
-                <p className="mb-2">Сборки ещё не добавлены</p>
-                <p className="text-xs">Менеджер добавит актуальные конфигурации в ближайшее время</p>
-              </div>
-            ) : (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {builds.map(b => (
-                  <BuildCard key={b.id} build={b} onOpen={() => navigate(`/build-preview/${b.id}`)} onOrder={() => {
-                    addItem({ id: b.id, name: b.name, price: b.total_price, type: "config" })
-                    navigate("/cart")
-                  }} fmt={fmt} />
-                ))}
-              </div>
-            )}
+            ) : (() => {
+              const filtered = activeTagIds.length === 0
+                ? builds
+                : builds.filter(b => activeTagIds.every(tid => (b.tags || []).some(t => t.id === tid)))
+              return filtered.length === 0 ? (
+                <div className="py-24 text-center text-foreground/50">
+                  <Icon name="Monitor" size={48} className="mx-auto mb-4 opacity-30" />
+                  <p className="mb-2">{builds.length === 0 ? "Сборки ещё не добавлены" : "Нет сборок с выбранными тегами"}</p>
+                  {builds.length === 0 && <p className="text-xs">Менеджер добавит актуальные конфигурации в ближайшее время</p>}
+                  {builds.length > 0 && <button onClick={() => setActiveTagIds([])} className="mt-3 text-sm text-primary hover:underline" style={{ cursor: "pointer" }}>Сбросить фильтр</button>}
+                </div>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {filtered.map(b => (
+                    <BuildCard key={b.id} build={b} onOpen={() => navigate(`/build-preview/${b.id}`)} onOrder={() => {
+                      addItem({ id: b.id, name: b.name, price: b.total_price, type: "config" })
+                      navigate("/cart")
+                    }} fmt={fmt} />
+                  ))}
+                </div>
+              )
+            })()}
           </>
         )}
 
@@ -590,12 +649,24 @@ function ProductCard({
   )
 }
 
+function BuildTagChip({ tag }: { tag: BuildTag }) {
+  const cls = getTagClass(tag.color)
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm ${cls}`}>
+      {tag.name}
+    </span>
+  )
+}
+
 function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: () => void; onOrder: () => void; fmt: (n: number) => string }) {
   const images = b.image_urls || []
   const hasImage = images.length > 0
   const [imgIdx, setImgIdx] = useState(0)
+  const [hovered, setHovered] = useState(false)
   const cpu = b.components.find(c => c.slot === "cpu")
   const gpu = b.components.find(c => c.slot === "gpu")
+  const tags = b.tags || []
+  const previewTags = tags.slice(0, 2)
 
   const goImg = (e: React.MouseEvent, dir: 1 | -1) => {
     e.stopPropagation()
@@ -605,6 +676,8 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
   return (
     <div
       onClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className="group relative flex flex-col rounded-2xl border border-border overflow-hidden hover:border-primary/50 transition-all duration-300 cursor-pointer"
       style={{ minHeight: 340 }}
     >
@@ -634,6 +707,15 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
             {b.variantsCount + 1} варианта
           </span>
         )}
+        {/* Теги — 2 при наведении, скрыты иначе */}
+        {previewTags.map(t => (
+          <span
+            key={t.id}
+            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm transition-all duration-300 ${hovered ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"} ${getTagClass(t.color)}`}
+          >
+            {t.name}
+          </span>
+        ))}
       </div>
 
       {/* Стрелки карусели — справа сверху, только если >1 фото */}

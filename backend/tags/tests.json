@@ -1,0 +1,10 @@
+{
+  "tests": [
+    {
+      "name": "Get tags list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

@@ -5,6 +5,7 @@ const URLS = {
   auth: "https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3",
   articles: "https://functions.poehali.dev/f13f1242-55c3-4265-9f6e-bb883371a574",
   syncProducts: "https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031",
+  tags: "https://functions.poehali.dev/52e8165b-43fb-4ed1-a088-53cd09447d2e",
 }
 
 function authHeaders(session?: string | null) {
@@ -72,6 +73,13 @@ export const api = {
     create: (data: unknown) => fetch(URLS.articles, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.articles, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.articles}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+  },
+  tags: {
+    getAll: () => fetch(URLS.tags).then(r => r.json()),
+    create: (data: unknown) => fetch(URLS.tags, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: unknown) => fetch(URLS.tags, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.tags}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    setForBuild: (buildId: number, tagIds: number[]) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_tags", id: buildId, tag_ids: tagIds }) }).then(r => r.json()),
   },
   auth: {
     register: (data: unknown) => fetch(`${URLS.auth}/register`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),

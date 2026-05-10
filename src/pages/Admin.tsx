@@ -71,6 +71,13 @@ interface ConfigComponent {
   price: number
 }
 
+interface Tag {
+  id: number
+  name: string
+  color: string
+  sort_order: number
+}
+
 interface PCBuild {
   id: number
   name: string
@@ -86,6 +93,7 @@ interface PCBuild {
   client_token: string | null
   client_user_id: number | null
   parent_id: number | null
+  tags?: Tag[]
 }
 
 interface Article {
@@ -98,6 +106,24 @@ interface Article {
   is_published: boolean
   views: number
   created_at: string
+}
+
+const TAG_COLOR_CLASSES: Record<string, string> = {
+  primary: "bg-primary/15 text-primary border-primary/30",
+  green: "bg-green-400/15 text-green-400 border-green-400/30",
+  blue: "bg-blue-400/15 text-blue-400 border-blue-400/30",
+  orange: "bg-orange-400/15 text-orange-400 border-orange-400/30",
+  purple: "bg-purple-400/15 text-purple-400 border-purple-400/30",
+  red: "bg-red-400/15 text-red-400 border-red-400/30",
+}
+
+function TagBadge({ tag }: { tag: Tag }) {
+  const cls = TAG_COLOR_CLASSES[tag.color] || TAG_COLOR_CLASSES.primary
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${cls}`}>
+      {tag.name}
+    </span>
+  )
 }
 
 // ── Строка одной сборки ──
@@ -281,7 +307,7 @@ export default function Admin() {
   const navigate = useNavigate()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
-  const [tab, setTab] = useState<"orders" | "orders_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "articles" | "add_article">("orders")
+  const [tab, setTab] = useState<"orders" | "orders_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article">("orders")
 
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -304,6 +330,12 @@ export default function Admin() {
     category_id: "", name: "", description: "", price: "", old_price: "",
     image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, sort_order: "0",
   })
+
+  // Теги
+  const [tags, setTags] = useState<Tag[]>([])
+  const [buildTagIds, setBuildTagIds] = useState<number[]>([])
+  const [tagForm, setTagForm] = useState<{ id: number | null; name: string; color: string; sort_order: string }>({ id: null, name: "", color: "primary", sort_order: "0" })
+  const [tagFormOpen, setTagFormOpen] = useState(false)
 
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
@@ -409,6 +441,7 @@ export default function Admin() {
         setLoading(false)
       })
     } else if (tab === "builds" || tab === "archive" || tab === "add_build") {
+      api.tags.getAll().then(d => setTags(d.tags || []))
       Promise.all([
         api.builds.getAll().then(d => Array.isArray(d) ? d : (d.builds || [])),
         // Берём ВСЕ товары из каталога и группируем по slug категории как слот
@@ -430,6 +463,8 @@ export default function Admin() {
         setBuilds(b)
         setLoading(false)
       }).catch(() => setLoading(false))
+    } else if (tab === "tags") {
+      api.tags.getAll().then(d => { setTags(d.tags || []); setLoading(false) })
     } else if (tab === "articles" || tab === "add_article") {
       api.articles.getAll().then(d => { setArticles(d.articles || []); setLoading(false) })
     }
@@ -537,10 +572,13 @@ export default function Admin() {
       is_featured: buildForm.is_featured,
       sort_order: 0,
     }
+    let savedId = buildForm.id
     if (buildForm.id) await api.builds.update(payload)
-    else await api.builds.create(payload)
+    else { const res = await api.builds.create(payload); savedId = res.id }
+    if (savedId) await api.tags.setForBuild(savedId, buildTagIds)
     setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] })
     setBuildComponents([])
+    setBuildTagIds([])
     setTab("builds")
   }
 
@@ -557,6 +595,7 @@ export default function Admin() {
       source_id: c.source_id, name: c.name, price: c.current_price ?? c.price, qty: c.qty || 1,
       image_urls: c.image_urls || [],
     })))
+    setBuildTagIds((b.tags || []).map(t => t.id))
     setTab("add_build")
   }
 
@@ -687,6 +726,32 @@ export default function Admin() {
     setArticles(as => as.filter(a => a.id !== id))
   }
 
+  const submitTag = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const payload = { id: tagForm.id, name: tagForm.name, color: tagForm.color, sort_order: Number(tagForm.sort_order) }
+    if (tagForm.id) await api.tags.update(payload)
+    else await api.tags.create(payload)
+    const d = await api.tags.getAll()
+    setTags(d.tags || [])
+    setTagForm({ id: null, name: "", color: "primary", sort_order: "0" })
+    setTagFormOpen(false)
+  }
+
+  const deleteTag = async (id: number) => {
+    if (!confirm("Удалить тег? Он будет снят со всех сборок.")) return
+    await api.tags.delete(id)
+    setTags(ts => ts.filter(t => t.id !== id))
+  }
+
+  const TAG_COLORS = [
+    { value: "primary", label: "Акцент" },
+    { value: "green", label: "Зелёный" },
+    { value: "blue", label: "Синий" },
+    { value: "orange", label: "Оранжевый" },
+    { value: "purple", label: "Фиолетовый" },
+    { value: "red", label: "Красный" },
+  ]
+
   const tabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
@@ -695,6 +760,7 @@ export default function Admin() {
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
     { key: "archive", label: "Архив ПК", icon: "Archive" },
     { key: "add_build", label: buildForm.id ? "Ред. сборку" : "Новая сборка", icon: "Wrench" },
+    { key: "tags", label: "Теги", icon: "Tag" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
     { key: "add_article", label: articleForm.id ? "Ред. статью" : "Новая статья", icon: "FilePlus" },
   ]
@@ -1299,6 +1365,30 @@ export default function Admin() {
                 </label>
               </div>
 
+              {/* Теги */}
+              {tags.length > 0 && (
+                <div>
+                  <label className="mb-2 block text-xs text-foreground/60">Теги</label>
+                  <div className="flex flex-wrap gap-2">
+                    {tags.map(t => {
+                      const active = buildTagIds.includes(t.id)
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setBuildTagIds(ids => active ? ids.filter(i => i !== t.id) : [...ids, t.id])}
+                          className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${active ? "border-primary bg-primary/15 text-primary" : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
+                          style={{ cursor: "pointer" }}
+                        >
+                          {active && <Icon name="Check" size={11} />}
+                          {t.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
                   {buildForm.id ? "Сохранить" : "Опубликовать сборку"}
@@ -1309,6 +1399,87 @@ export default function Admin() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* ── TAGS ── */}
+        {tab === "tags" && (
+          <div className="max-w-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-light text-foreground">Теги сборок</h2>
+              <button
+                onClick={() => { setTagForm({ id: null, name: "", color: "primary", sort_order: "0" }); setTagFormOpen(true) }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={15} />Новый тег
+              </button>
+            </div>
+
+            {tagFormOpen && (
+              <form onSubmit={submitTag} className="mb-6 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <p className="text-sm font-medium text-foreground">{tagForm.id ? "Редактировать тег" : "Новый тег"}</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-foreground/60">Название *</label>
+                    <input required value={tagForm.name} onChange={e => setTagForm(f => ({ ...f, name: e.target.value }))}
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                      placeholder="Игровой" style={{ cursor: "text" }} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-foreground/60">Цвет</label>
+                    <select value={tagForm.color} onChange={e => setTagForm(f => ({ ...f, color: e.target.value }))}
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                      {TAG_COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-foreground/60">Порядок</label>
+                    <input type="number" value={tagForm.sort_order} onChange={e => setTagForm(f => ({ ...f, sort_order: e.target.value }))}
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                      style={{ cursor: "text" }} />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                    {tagForm.id ? "Сохранить" : "Создать"}
+                  </button>
+                  <button type="button" onClick={() => setTagFormOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-foreground/60 hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {loading ? (
+              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-card animate-pulse" />)}</div>
+            ) : tags.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-12 text-center">
+                <Icon name="Tag" size={32} className="mx-auto mb-3 text-foreground/20" />
+                <p className="text-sm text-foreground/40">Тегов пока нет. Создайте первый!</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tags.map(t => (
+                  <div key={t.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                    <TagBadge tag={t} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{t.name}</p>
+                      <p className="text-xs text-foreground/40">порядок: {t.sort_order}</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => { setTagForm({ id: t.id, name: t.name, color: t.color, sort_order: String(t.sort_order) }); setTagFormOpen(true) }}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="Pencil" size={12} />
+                      </button>
+                      <button onClick={() => deleteTag(t.id)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="Trash2" size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

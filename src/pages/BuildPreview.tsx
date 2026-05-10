@@ -15,12 +15,24 @@ interface Component {
   source_id?: number; image_url?: string; image_urls?: string[]; description?: string; specs?: Record<string, string>
 }
 
+interface BuildTag { id: number; name: string; color: string }
+
 interface Build {
   id: number; name: string; description: string; components: Component[]
   parts_total: number; assembly_fee: number; total_price: number
   assembly_type: string; image_urls: string[]
   is_featured?: boolean; status?: string
   client_token?: string | null; client_user_id?: number | null; parent_id?: number | null
+  tags?: BuildTag[]
+}
+
+const TAG_COLOR_MAP: Record<string, string> = {
+  primary: "border-primary/40 bg-primary/10 text-primary",
+  green: "border-green-400/40 bg-green-400/10 text-green-400",
+  blue: "border-blue-400/40 bg-blue-400/10 text-blue-400",
+  orange: "border-orange-400/40 bg-orange-400/10 text-orange-400",
+  purple: "border-purple-400/40 bg-purple-400/10 text-purple-400",
+  red: "border-red-400/40 bg-red-400/10 text-red-400",
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
@@ -275,6 +287,15 @@ export default function BuildPreview() {
                   <h1 className="mb-4 font-light leading-tight tracking-tight text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}>
                     {build.name}
                   </h1>
+                  {(build.tags || []).length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {(build.tags || []).map(t => (
+                        <span key={t.id} className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${TAG_COLOR_MAP[t.color] || TAG_COLOR_MAP.primary}`}>
+                          {t.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {build.description && (
                     <div className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground rich-content" dangerouslySetInnerHTML={{ __html: build.description }} />
                   )}
