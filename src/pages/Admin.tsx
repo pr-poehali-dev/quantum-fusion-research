@@ -1793,9 +1793,10 @@ export default function Admin() {
                       {/* Смена этапа */}
                       <select
                         value={w.stage}
-                        onChange={async e => {
-                          await api.wipBuilds.patch({ id: w.id, stage: e.target.value })
-                          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: e.target.value } : b))
+                        onChange={e => {
+                          const val = e.target.value
+                          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: val } : b))
+                          api.wipBuilds.patch({ id: w.id, stage: val })
                         }}
                         className={`rounded-full border-0 px-3 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/60"}`}
                         style={{ cursor: "pointer" }}>
@@ -1831,9 +1832,10 @@ export default function Admin() {
                               <span className="text-[10px] text-foreground/40 font-mono uppercase">{c.label}</span>
                               <select
                                 value={status}
-                                onChange={async e => {
-                                  await api.wipBuilds.patch({ id: w.id, component: c.key === "case_name" ? "case" : c.key, status: e.target.value })
-                                  setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: e.target.value } : b))
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: val } : b))
+                                  api.wipBuilds.patch({ id: w.id, component: c.key === "case_name" ? "case" : c.key, status: val })
                                 }}
                                 className={`rounded-full border-0 px-2 py-0 text-[10px] font-semibold focus:outline-none ${sCls}`}
                                 style={{ cursor: "pointer" }}>
