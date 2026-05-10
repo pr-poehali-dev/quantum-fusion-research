@@ -25,7 +25,7 @@ COMPONENT_STATUSES = ["pending", "ordered_delay", "ordered_transit", "ready", "n
 # ordered_transit = заказано, едет
 # ready = в наличии / отложено
 
-COMPONENT_FIELDS = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
+COMPONENT_FIELDS = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "case", "cooling", "extra"]
 
 def fmt_row(row):
     keys = [

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import { ImageUploader } from "@/components/image-uploader"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 
@@ -385,11 +385,29 @@ function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, du
   )
 }
 
+type AdminTab = "orders" | "orders_archive" | "wip_builds" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article"
+
+const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article"]
+
 export default function Admin() {
   const navigate = useNavigate()
+  const { tab: tabParam } = useParams<{ tab: string }>()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
-  const [tab, setTab] = useState<"orders" | "orders_archive" | "wip_builds" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article">("orders")
+
+  const currentTab = (VALID_TABS.includes(tabParam as AdminTab) ? tabParam : "orders") as AdminTab
+  const [tab, setTabState] = useState<AdminTab>(currentTab)
+
+  // Синхронизируем tab с URL при навигации браузера
+  useEffect(() => {
+    const t = (VALID_TABS.includes(tabParam as AdminTab) ? tabParam : "orders") as AdminTab
+    setTabState(t)
+  }, [tabParam])
+
+  const setTab = (t: AdminTab) => {
+    setTabState(t)
+    navigate(`/admin/${t}`, { replace: true })
+  }
 
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
