@@ -137,8 +137,6 @@ export default function Shop() {
     const params: Record<string, string> = {}
     if (activeCategory !== "all") params.category = activeCategory
     if (search) params.search = search
-    // На главной (без фильтров) показываем только рекомендуемые
-    if (activeCategory === "all" && !search) params.featured = "true"
     api.products.getAll(params).then(data => {
       setProducts(data.products || [])
       setCategories(data.categories || [])
@@ -363,13 +361,6 @@ export default function Shop() {
               </div>
             )}
 
-            {/* Подзаголовок */}
-            {activeCategory === "all" && !search && (
-              <p className="mb-4 text-sm text-foreground/50">
-                Показываем рекомендуемые товары. Выберите категорию или введите поиск для полного каталога.
-              </p>
-            )}
-
             {loading ? (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {[...Array(8)].map((_, i) => <div key={i} className="h-72 rounded-xl bg-card animate-pulse" />)}
@@ -379,22 +370,42 @@ export default function Shop() {
                 <Icon name="PackageSearch" size={48} className="mx-auto mb-4 opacity-30" />
                 <p>Товары не найдены</p>
               </div>
-            ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {products.map(p => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    onOpen={() => setSelectedProduct(p)}
-                    onAddCart={() => handleAddToCart(p)}
-                    onUpdateQty={(qty) => updateQty(p.id, qty)}
-                    cartQty={getItemQty(p.id, "product")}
-                    fmt={fmt}
-                    onNavigate={() => navigate(`/product/${p.id}`)}
-                  />
-                ))}
-              </div>
-            )}
+            ) : (() => {
+              const featured = products.filter(p => p.is_featured)
+              const rest = products.filter(p => !p.is_featured)
+              const renderCard = (p: Product) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  onOpen={() => setSelectedProduct(p)}
+                  onAddCart={() => handleAddToCart(p)}
+                  onUpdateQty={(qty) => updateQty(p.id, qty)}
+                  cartQty={getItemQty(p.id, "product")}
+                  fmt={fmt}
+                  onNavigate={() => navigate(`/product/${p.id}`)}
+                />
+              )
+              return (
+                <>
+                  {featured.length > 0 && (
+                    <>
+                      {rest.length > 0 && <p className="mb-3 text-xs font-mono uppercase tracking-widest text-foreground/40">Рекомендуем</p>}
+                      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {featured.map(renderCard)}
+                      </div>
+                    </>
+                  )}
+                  {rest.length > 0 && (
+                    <>
+                      {featured.length > 0 && <p className="mt-8 mb-3 text-xs font-mono uppercase tracking-widest text-foreground/40">Все товары</p>}
+                      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {rest.map(renderCard)}
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
           </>
         )}
 
@@ -530,8 +541,12 @@ export default function Shop() {
 function ProductImageCarousel({ images, name, inStock }: { images: string[]; name: string; inStock: boolean }) {
   const [idx, setIdx] = useState(0)
   if (!images.length) return (
-    <div className="h-full w-full flex items-center justify-center">
-      <Icon name="Monitor" size={48} className="text-foreground/20" />
+    <div className="relative h-full w-full flex flex-col items-center justify-center overflow-hidden">
+      <img src="https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/7e41fee1-74d8-448d-8412-0435e59185ae.jpg" alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" />
+      <div className="relative z-10 flex flex-col items-center gap-1.5">
+        <Icon name="ImageOff" size={20} className="text-foreground/40" />
+        <span className="text-[11px] text-foreground/40 font-medium">Фото готовятся</span>
+      </div>
     </div>
   )
   return (
