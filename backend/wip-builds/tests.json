@@ -1,0 +1,10 @@
+{
+  "tests": [
+    {
+      "name": "Get wip builds list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

@@ -108,6 +108,84 @@ interface Article {
   created_at: string
 }
 
+interface WipBuild {
+  id: number | null
+  order_number: string
+  stage: string
+  contact: string
+  delivery_type: string
+  delivery_address: string
+  received_at: string
+  issued_at: string
+  comment: string
+  cpu: string; motherboard: string; ram: string; gpu: string
+  storage: string; psu: string; case_name: string; cooling: string; extra: string
+  cpu_status: string; motherboard_status: string; ram_status: string; gpu_status: string
+  storage_status: string; psu_status: string; case_status: string; cooling_status: string; extra_status: string
+  order_id: number | null
+  created_at?: string
+  updated_at?: string
+}
+
+const EMPTY_WIP: WipBuild = {
+  id: null, order_number: "", stage: "Согласование", contact: "",
+  delivery_type: "", delivery_address: "", received_at: "", issued_at: "", comment: "",
+  cpu: "", motherboard: "", ram: "", gpu: "", storage: "", psu: "", case_name: "", cooling: "", extra: "",
+  cpu_status: "pending", motherboard_status: "pending", ram_status: "pending", gpu_status: "pending",
+  storage_status: "pending", psu_status: "pending", case_status: "pending", cooling_status: "pending", extra_status: "pending",
+  order_id: null,
+}
+
+const WIP_STAGES = [
+  "Согласование", "Заказ", "Ожидание железа", "Ожидание сборки",
+  "Сборка", "Настройка", "Тесты", "Досборать",
+  "Проверка перед выдачей", "Ожидание упаковки",
+  "Готов, можно забрать", "Отнести в сдэк", "Забрали",
+]
+
+const WIP_STAGE_COLORS: Record<string, string> = {
+  "Согласование": "bg-muted text-foreground/60",
+  "Заказ": "bg-blue-500/15 text-blue-400",
+  "Ожидание железа": "bg-yellow-500/15 text-yellow-400",
+  "Ожидание сборки": "bg-orange-500/20 text-orange-400",
+  "Сборка": "bg-blue-600/20 text-blue-300",
+  "Настройка": "bg-blue-700/20 text-blue-300",
+  "Тесты": "bg-purple-500/15 text-purple-400",
+  "Досборать": "bg-red-500/15 text-red-400",
+  "Проверка перед выдачей": "bg-teal-500/15 text-teal-400",
+  "Ожидание упаковки": "bg-cyan-500/15 text-cyan-400",
+  "Готов, можно забрать": "bg-green-600/20 text-green-400",
+  "Отнести в сдэк": "bg-green-700/20 text-green-300",
+  "Забрали": "bg-muted/50 text-foreground/30",
+}
+
+const COMP_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  pending:          { label: "—",          cls: "bg-muted/50 text-foreground/30" },
+  need_order:       { label: "Заказать",   cls: "bg-red-500/15 text-red-400" },
+  ordered_delay:    { label: "Задержка",   cls: "bg-orange-500/15 text-orange-400" },
+  ordered_transit:  { label: "Едет",       cls: "bg-yellow-500/15 text-yellow-400" },
+  ready:            { label: "Есть",       cls: "bg-green-500/20 text-green-400" },
+}
+
+const WIP_COMPONENTS: { key: string; label: string }[] = [
+  { key: "cpu", label: "Процессор" },
+  { key: "motherboard", label: "Плата" },
+  { key: "ram", label: "Память" },
+  { key: "gpu", label: "Видеокарта" },
+  { key: "storage", label: "Накопитель" },
+  { key: "psu", label: "БП" },
+  { key: "case_name", label: "Корпус" },
+  { key: "cooling", label: "Охлаждение" },
+  { key: "extra", label: "Доп." },
+]
+
+const DELIVERY_OPTIONS = [
+  "Самовывоз Беляево",
+  "Самовывоз Новокосино",
+  "СДЭК (за счёт клиента)",
+  "Курьер Яндекс по МСК (за счёт клиента)",
+]
+
 const TAG_COLOR_CLASSES: Record<string, string> = {
   primary: "bg-primary/15 text-primary border-primary/30",
   green: "bg-green-400/15 text-green-400 border-green-400/30",
@@ -337,6 +415,13 @@ export default function Admin() {
   const [tagForm, setTagForm] = useState<{ id: number | null; name: string; color: string; sort_order: string }>({ id: null, name: "", color: "primary", sort_order: "0" })
   const [tagFormOpen, setTagFormOpen] = useState(false)
 
+  // WIP builds
+  const [wipBuilds, setWipBuilds] = useState<WipBuild[]>([])
+  const [wipStages, setWipStages] = useState<string[]>([])
+  const [wipForm, setWipForm] = useState<WipBuild | null>(null)
+  const [wipFormOpen, setWipFormOpen] = useState(false)
+  const [wipPasteId, setWipPasteId] = useState<number | null>(null)
+
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
     id: null as number | null,
@@ -463,6 +548,12 @@ export default function Admin() {
         setBuilds(b)
         setLoading(false)
       }).catch(() => setLoading(false))
+    } else if (tab === "wip_builds") {
+      api.wipBuilds.getAll().then(d => {
+        setWipBuilds(d.wip_builds || [])
+        setWipStages(d.stages || WIP_STAGES)
+        setLoading(false)
+      })
     } else if (tab === "tags") {
       api.tags.getAll().then(d => { setTags(d.tags || []); setLoading(false) })
     } else if (tab === "articles" || tab === "add_article") {
@@ -1516,10 +1607,212 @@ export default function Admin() {
 
         {/* ── WIP BUILDS ── */}
         {tab === "wip_builds" && (
-          <div className="py-24 text-center text-foreground/40">
-            <Icon name="Hammer" size={48} className="mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-light">Сборки в процессе</p>
-            <p className="mt-2 text-sm">Раздел в разработке — наполнение будет добавлено позже</p>
+          <div>
+            {/* Шапка */}
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-light text-foreground">
+                Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({wipBuilds.filter(w => w.stage !== "Забрали").length})</span>
+              </h2>
+              <button
+                onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={15} />Новая сборка
+              </button>
+            </div>
+
+            {/* Форма создания/редактирования */}
+            {wipFormOpen && wipForm && (
+              <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-10" style={{ cursor: "auto" }}>
+                <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl">
+                  <button onClick={() => setWipFormOpen(false)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+                    <Icon name="X" size={18} />
+                  </button>
+                  <h3 className="mb-5 text-lg font-medium text-foreground">{wipForm.id ? `Сборка #${wipForm.order_number}` : "Новая сборка"}</h3>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Номер заказа *</label>
+                        <input value={wipForm.order_number} onChange={e => setWipForm(f => f && ({ ...f, order_number: e.target.value }))}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="например 337" style={{ cursor: "text" }} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Этап</label>
+                        <select value={wipForm.stage} onChange={e => setWipForm(f => f && ({ ...f, stage: e.target.value }))}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                          {(wipStages.length ? wipStages : WIP_STAGES).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Контакт клиента</label>
+                        <input value={wipForm.contact} onChange={e => setWipForm(f => f && ({ ...f, contact: e.target.value }))}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="@username или телефон" style={{ cursor: "text" }} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Способ получения</label>
+                        <select value={wipForm.delivery_type} onChange={e => setWipForm(f => f && ({ ...f, delivery_type: e.target.value }))}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                          <option value="">Не выбрано</option>
+                          {DELIVERY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Дата получения железа</label>
+                        <input type="date" value={wipForm.received_at} onChange={e => setWipForm(f => f && ({ ...f, received_at: e.target.value }))}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Дата выдачи</label>
+                        <input type="date" value={wipForm.issued_at} onChange={e => setWipForm(f => f && ({ ...f, issued_at: e.target.value }))}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-foreground/50">Комментарий</label>
+                      <textarea rows={2} value={wipForm.comment} onChange={e => setWipForm(f => f && ({ ...f, comment: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-xs text-foreground/50 uppercase tracking-wider">Железо</p>
+                      <div className="space-y-1.5">
+                        {WIP_COMPONENTS.map(c => (
+                          <div key={c.key} className="flex items-center gap-2">
+                            <span className="w-24 shrink-0 text-xs text-foreground/50 font-mono">{c.label}</span>
+                            <input
+                              value={(wipForm as Record<string, string>)[c.key] || ""}
+                              onChange={e => setWipForm(f => f && ({ ...f, [c.key]: e.target.value }))}
+                              className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                              placeholder={c.label + "..."}
+                              style={{ cursor: "text" }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={async () => {
+                          if (!wipForm.order_number) return
+                          if (wipForm.id) await api.wipBuilds.update(wipForm)
+                          else await api.wipBuilds.create(wipForm)
+                          const d = await api.wipBuilds.getAll()
+                          setWipBuilds(d.wip_builds || [])
+                          setWipFormOpen(false)
+                        }}
+                        className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                        {wipForm.id ? "Сохранить" : "Создать"}
+                      </button>
+                      <button onClick={() => setWipFormOpen(false)}
+                        className="rounded-lg border border-border px-5 py-2 text-sm text-foreground/60 hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Паста для менеджера */}
+            {wipPasteId !== null && (() => {
+              const w = wipBuilds.find(x => x.id === wipPasteId)
+              if (!w) return null
+              const comps = WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => `• ${c.label}: ${(w as Record<string, string>)[c.key]}`).join("\n")
+              const paste = `Здравствуйте! 👋\n\nВаша сборка #${w.order_number} готова к обсуждению.\n\nКонфигурация:\n${comps}\n\nЕсть ли пожелания по изменениям в составе?\n\nСпособ получения: ${w.delivery_type || "уточняется"}\n\nНапоминаем, что доступны варианты:\n— Самовывоз Беляево (м. Беляево)\n— Самовывоз Новокосино\n— СДЭК по всей РФ (за счёт клиента)\n— Курьер Яндекс по Москве (за счёт клиента)\n\nОжидаем вашего ответа! 🚀`
+              return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" style={{ cursor: "auto" }}>
+                  <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
+                    <button onClick={() => setWipPasteId(null)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+                      <Icon name="X" size={18} />
+                    </button>
+                    <p className="mb-1 text-xs text-foreground/40 font-mono">Контакт: <span className="text-primary">{w.contact || "—"}</span></p>
+                    <p className="mb-4 text-sm font-medium text-foreground">Паста для менеджера · #{w.order_number}</p>
+                    <pre className="mb-4 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-xs text-foreground/80 leading-relaxed">{paste}</pre>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(paste); setWipPasteId(null) }}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Copy" size={15} />Скопировать
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {loading ? (
+              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-28 rounded-xl bg-card animate-pulse" />)}</div>
+            ) : wipBuilds.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-16 text-center">
+                <Icon name="Hammer" size={36} className="mx-auto mb-3 text-foreground/20" />
+                <p className="text-sm text-foreground/40">Сборок в процессе нет</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {wipBuilds.map(w => (
+                  <div key={w.id} className={`rounded-xl border bg-card overflow-hidden transition-colors ${w.stage === "Забрали" ? "opacity-40 border-border/40" : "border-border"}`}>
+                    {/* Заголовок карточки */}
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50">
+                      <span className="font-mono font-bold text-foreground text-sm">#{w.order_number}</span>
+                      {/* Смена этапа */}
+                      <select
+                        value={w.stage}
+                        onChange={async e => {
+                          await api.wipBuilds.patch({ id: w.id, stage: e.target.value })
+                          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: e.target.value } : b))
+                        }}
+                        className={`rounded-full border-0 px-3 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/60"}`}
+                        style={{ cursor: "pointer" }}>
+                        {WIP_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <div className="flex-1" />
+                      {w.contact && <span className="text-xs text-foreground/50 font-mono">{w.contact}</span>}
+                      {w.delivery_type && <span className="text-xs text-foreground/40">{w.delivery_type}</span>}
+                      {w.issued_at && <span className="text-xs text-foreground/40">выдача: {w.issued_at}</span>}
+                      {/* Кнопки */}
+                      <button onClick={() => setWipPasteId(w.id)}
+                        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="MessageSquare" size={12} />Паста
+                      </button>
+                      <button onClick={() => { setWipForm({ ...w }); setWipFormOpen(true) }}
+                        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="Pencil" size={12} />Ред.
+                      </button>
+                    </div>
+                    {/* Компоненты */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-px bg-border/30">
+                      {WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => {
+                        const val = (w as Record<string, string>)[c.key]
+                        const statusKey = c.key === "case_name" ? "case_status" : c.key + "_status"
+                        const status = (w as Record<string, string>)[statusKey] || "pending"
+                        const { label: sLabel, cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
+                        const isReady = status === "ready"
+                        return (
+                          <div key={c.key} className={`flex flex-col gap-1 p-3 bg-card transition-colors ${isReady ? "bg-green-500/5" : ""}`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] text-foreground/40 font-mono uppercase">{c.label}</span>
+                              <select
+                                value={status}
+                                onChange={async e => {
+                                  await api.wipBuilds.patch({ id: w.id, component: c.key === "case_name" ? "case" : c.key, status: e.target.value })
+                                  setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: e.target.value } : b))
+                                }}
+                                className={`rounded-full border-0 px-2 py-0 text-[10px] font-semibold focus:outline-none ${sCls}`}
+                                style={{ cursor: "pointer" }}>
+                                {Object.entries(COMP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                              </select>
+                            </div>
+                            <p className={`text-xs leading-snug ${isReady ? "text-green-400" : "text-foreground/70"}`}>{val}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {w.comment && (
+                      <div className="px-4 py-2 border-t border-border/30">
+                        <p className="text-xs text-foreground/50">{w.comment}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

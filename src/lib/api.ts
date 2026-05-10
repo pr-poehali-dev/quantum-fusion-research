@@ -6,6 +6,7 @@ const URLS = {
   articles: "https://functions.poehali.dev/f13f1242-55c3-4265-9f6e-bb883371a574",
   syncProducts: "https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031",
   tags: "https://functions.poehali.dev/52e8165b-43fb-4ed1-a088-53cd09447d2e",
+  wipBuilds: "https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3",
 }
 
 function authHeaders(session?: string | null) {
@@ -80,6 +81,14 @@ export const api = {
     update: (data: unknown) => fetch(URLS.tags, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.tags}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
     setForBuild: (buildId: number, tagIds: number[]) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_tags", id: buildId, tag_ids: tagIds }) }).then(r => r.json()),
+  },
+  wipBuilds: {
+    getAll: () => fetch(URLS.wipBuilds).then(r => r.json()),
+    getById: (id: number) => fetch(`${URLS.wipBuilds}?id=${id}`).then(r => r.json()),
+    create: (data: unknown) => fetch(URLS.wipBuilds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: unknown) => fetch(URLS.wipBuilds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    patch: (data: unknown) => fetch(URLS.wipBuilds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.wipBuilds}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },
   auth: {
     register: (data: unknown) => fetch(`${URLS.auth}/register`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
