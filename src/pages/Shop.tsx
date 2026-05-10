@@ -600,9 +600,9 @@ function ProductCard({
           </div>
         )}
       </button>
-      <div className="flex flex-col flex-1 p-4">
+      <button onClick={onNavigate} className="flex flex-col flex-1 p-4 text-left" style={{ cursor: "pointer" }}>
         {p.category && <span className="mb-1 text-xs text-foreground/40 font-mono">{p.category.name}</span>}
-        <button onClick={onOpen} className="mb-2 text-left font-medium text-foreground leading-tight hover:text-primary transition-colors" style={{ cursor: "pointer" }}>{p.name}</button>
+        <span className="mb-2 font-medium text-foreground leading-tight group-hover:text-primary transition-colors">{p.name}</span>
         {p.description && (
           <div className="mb-3 text-xs text-foreground/60 leading-relaxed line-clamp-3 rich-content" dangerouslySetInnerHTML={{ __html: p.description }} />
         )}
@@ -613,7 +613,7 @@ function ProductCard({
             ))}
           </div>
         )}
-        <div className="mt-auto space-y-2">
+        <div className="mt-auto" onClick={e => e.stopPropagation()}>
           <div className="flex items-end justify-between gap-2">
             <div>
               <div className="text-lg font-bold text-foreground">{fmt(p.price)}</div>
@@ -639,12 +639,8 @@ function ProductCard({
               </button>
             )}
           </div>
-          <button onClick={onNavigate} className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="ExternalLink" size={12} />
-            Перейти к товару
-          </button>
         </div>
-      </div>
+      </button>
     </div>
   )
 }
