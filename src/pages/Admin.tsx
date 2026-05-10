@@ -1696,24 +1696,7 @@ export default function Admin() {
                       <textarea rows={2} value={wipForm.comment} onChange={e => setWipForm(f => f && ({ ...f, comment: e.target.value }))}
                         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
                     </div>
-                    <div>
-                      <p className="mb-2 text-xs text-foreground/50 uppercase tracking-wider">Железо</p>
-                      <div className="space-y-1.5">
-                        {WIP_COMPONENTS.map(c => (
-                          <div key={c.key} className="flex items-center gap-2">
-                            <span className="w-24 shrink-0 text-xs text-foreground/50 font-mono">{c.label}</span>
-                            <input
-                              value={(wipForm as Record<string, string>)[c.key] || ""}
-                              onChange={e => setWipForm(f => f && ({ ...f, [c.key]: e.target.value }))}
-                              className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                              placeholder={c.label + "..."}
-                              style={{ cursor: "text" }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-3 pt-2">
+                    <div className="flex flex-wrap gap-3 pt-2">
                       <button
                         onClick={async () => {
                           if (!wipForm.order_number) return
@@ -1724,8 +1707,15 @@ export default function Admin() {
                           setWipFormOpen(false)
                         }}
                         className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-                        {wipForm.id ? "Сохранить" : "Создать"}
+                        Сохранить
                       </button>
+                      {wipForm.build_id && (
+                        <button
+                          onClick={() => { setWipFormOpen(false); setTab("add_build"); const b = builds.find(x => x.id === wipForm.build_id); if (b) editBuild(b) }}
+                          className="flex items-center gap-2 rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                          <Icon name="Wrench" size={14} />Редактировать сборку
+                        </button>
+                      )}
                       <button onClick={() => setWipFormOpen(false)}
                         className="rounded-lg border border-border px-5 py-2 text-sm text-foreground/60 hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
                         Отмена
