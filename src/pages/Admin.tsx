@@ -561,13 +561,16 @@ export default function Admin() {
 
   const submitBuild = async (e: React.FormEvent) => {
     e.preventDefault()
+    const asm_fee = buildForm.assembly_type === "manual" ? parseFloat(buildForm.assembly_fee_manual) || 0 : assemblyFee
     const payload = {
       id: buildForm.id,
       name: buildForm.name, description: buildForm.description,
       image_urls: buildForm.image_urls,
       components: buildComponents,
       assembly_type: buildForm.assembly_type,
-      assembly_fee: buildForm.assembly_type === "manual" ? parseFloat(buildForm.assembly_fee_manual) || 0 : 0,
+      assembly_fee: asm_fee,
+      parts_total: partsTotal,
+      total_price: partsTotal + asm_fee,
       status: buildForm.status,
       is_featured: buildForm.is_featured,
       sort_order: 0,
