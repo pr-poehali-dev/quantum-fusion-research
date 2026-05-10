@@ -147,7 +147,7 @@ const WIP_STAGES = [
   "Согласование", "Заказ", "Ожидание железа", "Ожидание сборки",
   "Сборка", "Настройка", "Тесты", "Досборать",
   "Проверка перед выдачей", "Ожидание упаковки",
-  "Готов, можно забрать", "Отнести в сдэк", "Забрали", "Отменён",
+  "Готов, можно забрать", "Отнести в сдэк", "Забрали", "Отменён", "Архив",
 ]
 
 const WIP_STAGE_COLORS: Record<string, string> = {
@@ -165,6 +165,7 @@ const WIP_STAGE_COLORS: Record<string, string> = {
   "Отнести в сдэк": "bg-green-700/20 text-green-300",
   "Забрали": "bg-muted/50 text-foreground/30",
   "Отменён": "bg-red-900/30 text-red-400/70",
+  "Архив": "bg-muted/30 text-foreground/20",
 }
 
 // Цвет фона ячейки для каждого статуса железа
@@ -398,9 +399,9 @@ function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, du
   )
 }
 
-type AdminTab = "orders" | "orders_archive" | "wip_builds" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article"
+type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article"
 
-const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article"]
+const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article"]
 
 export default function Admin() {
   const navigate = useNavigate()
@@ -587,7 +588,7 @@ export default function Admin() {
         setBuilds(b)
         setLoading(false)
       }).catch(() => setLoading(false))
-    } else if (tab === "wip_builds") {
+    } else if (tab === "wip_builds" || tab === "wip_archive") {
       api.wipBuilds.getAll().then(d => {
         setWipBuilds(d.wip_builds || [])
         setWipStages(d.stages || WIP_STAGES)
@@ -903,6 +904,7 @@ export default function Admin() {
     { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
     { key: "DIVIDER_3" },
     { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
+    { key: "wip_archive", label: "Архив сборок", icon: "ArchiveRestore" },
   ]
 
   return (
@@ -1650,7 +1652,7 @@ export default function Admin() {
             {/* Шапка */}
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xl font-light text-foreground">
-                Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({wipBuilds.filter(w => w.stage !== "Забрали" && w.stage !== "Отменён").length})</span>
+                Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({wipBuilds.filter(w => !["Забрали","Отменён","Архив"].includes(w.stage)).length})</span>
               </h2>
               <div className="flex items-center gap-2">
                 <button
@@ -1823,13 +1825,16 @@ export default function Admin() {
 
             {loading ? (
               <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-card animate-pulse" />)}</div>
-            ) : wipBuilds.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border py-16 text-center">
-                <Icon name="Hammer" size={36} className="mx-auto mb-3 text-foreground/20" />
-                <p className="text-sm text-foreground/40">Сборок в процессе нет</p>
-              </div>
             ) : (() => {
-              const usedComps = WIP_COMPONENTS.filter(c => wipBuilds.some(w => !!(w as Record<string, string>)[c.key]))
+              const activeBuilds = wipBuilds.filter(w => !["Архив", "Отменён"].includes(w.stage))
+              if (activeBuilds.length === 0) return (
+                <div className="rounded-xl border border-dashed border-border py-16 text-center">
+                  <Icon name="Hammer" size={36} className="mx-auto mb-3 text-foreground/20" />
+                  <p className="text-sm text-foreground/40">Сборок в процессе нет</p>
+                </div>
+              )
+              const wipBuildsForTable = activeBuilds
+              const usedComps = WIP_COMPONENTS.filter(c => wipBuildsForTable.some(w => !!(w as Record<string, string>)[c.key]))
               // Строки таблицы (поля), столбцы = заказы
               const rows: { key: string; label: string }[] = [
                 { key: "_order", label: "Заказ" },
@@ -1859,7 +1864,7 @@ export default function Admin() {
                     <thead>
                       <tr className="border-b border-border bg-muted/40">
                         <th className="px-3 py-2.5 text-left font-mono text-foreground/30 uppercase tracking-wider whitespace-nowrap border-r border-border/50 w-28">Поле</th>
-                        {wipBuilds.map(w => {
+                        {wipBuildsForTable.map(w => {
                           const colId = String(w.id)
                           const colW = wipColWidths[colId] ?? DEFAULT_COL_W
                           return (
@@ -1904,7 +1909,7 @@ export default function Admin() {
                             {row.label}
                           </td>
                           {/* Ячейки для каждого заказа */}
-                          {wipBuilds.map(w => {
+                          {wipBuildsForTable.map(w => {
                             const isArchived = w.stage === "Забрали"
                             if (row.key === "_order") return (
                               <td key={w.id} className={`px-3 py-2 ${isArchived ? "opacity-40" : ""}`}>
@@ -1973,7 +1978,7 @@ export default function Admin() {
                             )
                             if (row.key === "_actions") return (
                               <td key={w.id} className="px-3 py-2 whitespace-nowrap">
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 flex-wrap">
                                   <button onClick={() => setWipPasteId(w.id)}
                                     className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground/50 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                                     <Icon name="Copy" size={11} />Паста
@@ -1982,6 +1987,17 @@ export default function Admin() {
                                     className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground/50 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                                     <Icon name="Pencil" size={11} />Ред.
                                   </button>
+                                  {w.stage === "Забрали" && (
+                                    <button
+                                      onClick={() => {
+                                        if (!confirm("Перенести сборку в архив?")) return
+                                        setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: "Архив" } : b))
+                                        api.wipBuilds.patch({ id: w.id, stage: "Архив" })
+                                      }}
+                                      className="flex items-center gap-1 rounded-lg border border-green-500/40 bg-green-500/5 px-2 py-1 text-[11px] text-green-400 hover:bg-green-500/15 transition-colors" style={{ cursor: "pointer" }}>
+                                      <Icon name="ArchiveRestore" size={11} />В архив
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             )
@@ -2032,6 +2048,64 @@ export default function Admin() {
                 </div>
               )
             })()}
+          </div>
+        )}
+
+        {/* ── WIP ARCHIVE ── */}
+        {tab === "wip_archive" && (
+          <div>
+            <div className="mb-5">
+              <h2 className="text-xl font-light text-foreground">
+                Архив сборок <span className="ml-1 text-sm text-foreground/40">({wipBuilds.filter(w => ["Архив","Отменён","Забрали"].includes(w.stage)).length})</span>
+              </h2>
+            </div>
+            {loading ? (
+              <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-lg bg-card animate-pulse" />)}</div>
+            ) : wipBuilds.filter(w => ["Архив","Отменён","Забрали"].includes(w.stage)).length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-16 text-center">
+                <Icon name="ArchiveRestore" size={36} className="mx-auto mb-3 text-foreground/20" />
+                <p className="text-sm text-foreground/40">Архив пуст</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {wipBuilds.filter(w => ["Архив","Отменён","Забрали"].includes(w.stage)).map(w => (
+                  <div key={w.id} className="flex items-center gap-4 rounded-xl border border-border/50 bg-card px-5 py-4 opacity-70">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="font-mono font-bold text-foreground text-sm">Заказ {w.order_number}</span>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}>{w.stage}</span>
+                        {w.issued_at && <span className="text-xs text-foreground/40">выдан: {new Date(w.issued_at).toLocaleDateString("ru-RU")}</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs text-foreground/50">
+                        {w.customer_name && <span className="font-medium text-foreground/70">{w.customer_name}</span>}
+                        {(w.customer_phone || w.contact) && <span className="font-mono text-primary/60">{w.customer_phone || w.contact}</span>}
+                        {w.total && <span className="font-semibold text-foreground/60">{w.total.toLocaleString("ru-RU")} ₽</span>}
+                        {w.delivery_type && <span>{w.delivery_type}</span>}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => {
+                          const val = (w as Record<string, string>)[c.key]
+                          const statusKey = c.key === "case_name" ? "case_status" : c.key + "_status"
+                          const status = (w as Record<string, string>)[statusKey] || "pending"
+                          const { cls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
+                          return (
+                            <span key={c.key} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${cls}`}>
+                              {val}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {w.client_token && (
+                      <button onClick={() => navigate(`/build?token=${w.client_token}`)}
+                        className="shrink-0 text-xs text-foreground/30 hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="ExternalLink" size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
