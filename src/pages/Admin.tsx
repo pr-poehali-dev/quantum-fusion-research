@@ -445,6 +445,9 @@ export default function Admin() {
   const [wipForm, setWipForm] = useState<WipBuild | null>(null)
   const [wipFormOpen, setWipFormOpen] = useState(false)
   const [wipPasteId, setWipPasteId] = useState<number | null>(null)
+  const [wipColWidths, setWipColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem("wip_col_widths") || "{}") } catch { return {} }
+  })
 
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
@@ -1788,25 +1791,48 @@ export default function Admin() {
                 ...usedComps.map(c => ({ key: c.key, label: c.label })),
                 { key: "_actions", label: "" },
               ]
+              const DEFAULT_COL_W = 220
+              const setColWidth = (id: string, w: number) => {
+                const next = { ...wipColWidths, [id]: Math.max(120, w) }
+                setWipColWidths(next)
+                localStorage.setItem("wip_col_widths", JSON.stringify(next))
+              }
+              const startResize = (id: string, startX: number, startW: number) => {
+                const onMove = (e: MouseEvent) => setColWidth(id, startW + e.clientX - startX)
+                const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp) }
+                document.addEventListener("mousemove", onMove)
+                document.addEventListener("mouseup", onUp)
+              }
               return (
                 <div className="overflow-x-auto rounded-xl border border-border">
                   <table className="text-xs border-collapse" style={{ minWidth: "100%" }}>
                     <thead>
                       <tr className="border-b border-border bg-muted/40">
-                        {/* Первая ячейка — пустой угол */}
                         <th className="px-3 py-2.5 text-left font-mono text-foreground/30 uppercase tracking-wider whitespace-nowrap border-r border-border/50 w-28">Поле</th>
                         {wipBuilds.map(w => {
+                          const colId = String(w.id)
+                          const colW = wipColWidths[colId] ?? DEFAULT_COL_W
                           return (
-                            <th key={w.id} className={`px-3 py-2.5 text-left whitespace-nowrap ${w.stage === "Забрали" ? "opacity-40" : ""}`}>
-                              {w.client_token ? (
-                                <button
-                                  onClick={() => navigate(`/build?token=${w.client_token}`)}
-                                  className="font-mono font-bold text-primary hover:underline" style={{ cursor: "pointer" }}>
-                                  Заказ {w.order_number}
-                                </button>
-                              ) : (
-                                <span className="font-mono font-bold text-foreground">Заказ {w.order_number}</span>
-                              )}
+                            <th key={w.id} className={`relative px-3 py-2.5 text-left whitespace-nowrap ${w.stage === "Забрали" ? "opacity-40" : ""}`}
+                              style={{ width: colW, minWidth: colW }}>
+                              <div className="flex items-center gap-2">
+                                {w.client_token ? (
+                                  <button
+                                    onClick={() => navigate(`/build?token=${w.client_token}`)}
+                                    className="font-mono font-bold text-primary hover:underline" style={{ cursor: "pointer" }}>
+                                    Заказ {w.order_number}
+                                  </button>
+                                ) : (
+                                  <span className="font-mono font-bold text-foreground">Заказ {w.order_number}</span>
+                                )}
+                              </div>
+                              {/* Resize-хэндлер */}
+                              <div
+                                onMouseDown={e => { e.preventDefault(); startResize(colId, e.clientX, colW) }}
+                                className="absolute right-0 top-0 h-full w-2 flex items-center justify-center group"
+                                style={{ cursor: "col-resize" }}>
+                                <div className="w-0.5 h-4 rounded-full bg-border group-hover:bg-primary transition-colors" />
+                              </div>
                             </th>
                           )
                         })}
