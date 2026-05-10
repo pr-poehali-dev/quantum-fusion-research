@@ -125,6 +125,7 @@ interface WipBuild {
   order_id: number | null
   build_id?: number | null
   client_token?: string | null
+  build_components?: Array<{ slot: string; name: string; qty?: number }>
   customer_name?: string
   customer_phone?: string
   total?: number
@@ -1913,30 +1914,26 @@ export default function Admin() {
                             )
                             if (row.key === "_received_at") return (
                               <td key={w.id} className={`px-3 py-2 ${isArchived ? "opacity-40" : ""}`}>
-                                <div className="flex items-center gap-1">
-                                  <input type="date" value={w.received_at || ""}
-                                    onChange={e => {
-                                      const val = e.target.value
-                                      setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, received_at: val } : b))
-                                      api.wipBuilds.patch({ id: w.id, received_at: val })
-                                    }}
-                                    className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-28"
-                                    style={{ cursor: "text" }} />
-                                </div>
+                                <input type="date" value={w.received_at || ""}
+                                  onChange={e => {
+                                    const val = e.target.value
+                                    setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, received_at: val } : b))
+                                    api.wipBuilds.patch({ id: w.id, received_at: val })
+                                  }}
+                                  className="wip-date-input rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-28"
+                                  style={{ cursor: "text" }} />
                               </td>
                             )
                             if (row.key === "_issued_at") return (
                               <td key={w.id} className={`px-3 py-2 ${isArchived ? "opacity-40" : ""}`}>
-                                <div className="flex items-center gap-1">
-                                  <input type="date" value={w.issued_at || ""}
-                                    onChange={e => {
-                                      const val = e.target.value
-                                      setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, issued_at: val } : b))
-                                      api.wipBuilds.patch({ id: w.id, issued_at: val })
-                                    }}
-                                    className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-28"
-                                    style={{ cursor: "text" }} />
-                                </div>
+                                <input type="date" value={w.issued_at || ""}
+                                  onChange={e => {
+                                    const val = e.target.value
+                                    setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, issued_at: val } : b))
+                                    api.wipBuilds.patch({ id: w.id, issued_at: val })
+                                  }}
+                                  className="wip-date-input rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none w-28"
+                                  style={{ cursor: "text" }} />
                               </td>
                             )
                             if (row.key === "_delivery") return (
@@ -1968,16 +1965,14 @@ export default function Admin() {
                                 </div>
                               </td>
                             )
-                            // Компонент — берём название и кол-во из pc_builds если есть build_id
+                            // Компонент — берём название и кол-во из build_components
                             const val = (w as Record<string, string>)[row.key] || ""
                             const statusKey = row.key === "case_name" ? "case_status" : row.key + "_status"
                             const status = (w as Record<string, string>)[statusKey] || "pending"
                             const { cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
                             const isReady = status === "ready"
-                            // Ищем qty из сборки
-                            const buildForWip = builds.find(b => b.id === w.build_id)
                             const slotKey = row.key === "case_name" ? "case" : row.key
-                            const compInBuild = buildForWip?.components.find(c => c.slot === slotKey)
+                            const compInBuild = (w.build_components || []).find(c => c.slot === slotKey)
                             const qty = compInBuild?.qty && compInBuild.qty > 1 ? compInBuild.qty : null
                             return (
                               <td key={w.id} className={`px-3 py-2 ${isReady ? "bg-green-500/5" : ""} ${isArchived ? "opacity-40" : ""}`}>

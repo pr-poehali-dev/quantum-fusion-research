@@ -139,6 +139,17 @@
   }
 }
 
+/* Акцентная иконка календаря для wip-таблицы */
+.wip-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(30%) sepia(90%) saturate(500%) hue-rotate(330deg)
+    brightness(110%);
+  cursor: pointer;
+  opacity: 0.8;
+}
+.wip-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 @layer utilities {
   .animate-in {
     animation-duration: 150ms;

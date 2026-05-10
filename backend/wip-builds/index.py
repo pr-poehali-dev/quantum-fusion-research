@@ -36,7 +36,7 @@ def fmt_row(row):
         "psu_status", "case_status", "cooling_status", "extra_status",
         "order_id", "created_at", "updated_at",
         "customer_name", "customer_phone", "total", "order_status",
-        "client_token", "build_id",
+        "client_token", "build_id", "build_components",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -78,9 +78,11 @@ def handler(event: dict, context) -> dict:
                        w.psu_status, w.case_status, w.cooling_status, w.extra_status,
                        w.order_id, w.created_at, w.updated_at,
                        o.customer_name, o.customer_phone, o.total, o.status as order_status,
-                       w.client_token, w.build_id
+                       w.client_token, w.build_id,
+                       pb.components as build_components
                 FROM wip_builds w
-                LEFT JOIN orders o ON w.order_id = o.id"""
+                LEFT JOIN orders o ON w.order_id = o.id
+                LEFT JOIN pc_builds pb ON pb.id = w.build_id"""
 
     try:
         if method == "GET":
