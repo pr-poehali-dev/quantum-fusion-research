@@ -1796,14 +1796,14 @@ export default function Admin() {
                         {/* Первая ячейка — пустой угол */}
                         <th className="px-3 py-2.5 text-left font-mono text-foreground/30 uppercase tracking-wider whitespace-nowrap border-r border-border/50 w-28">Поле</th>
                         {wipBuilds.map(w => {
-                          const buildLink = w.client_token ? `/build?token=${w.client_token}` : null
                           return (
                             <th key={w.id} className={`px-3 py-2.5 text-left whitespace-nowrap ${w.stage === "Забрали" ? "opacity-40" : ""}`}>
-                              {buildLink ? (
-                                <a href={buildLink} target="_blank" rel="noreferrer"
+                              {w.client_token ? (
+                                <button
+                                  onClick={() => navigate(`/build?token=${w.client_token}`)}
                                   className="font-mono font-bold text-primary hover:underline" style={{ cursor: "pointer" }}>
                                   Заказ {w.order_number}
-                                </a>
+                                </button>
                               ) : (
                                 <span className="font-mono font-bold text-foreground">Заказ {w.order_number}</span>
                               )}
