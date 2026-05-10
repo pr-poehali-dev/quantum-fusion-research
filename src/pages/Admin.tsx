@@ -1714,7 +1714,36 @@ export default function Admin() {
                       </button>
                       {wipForm.build_id && (
                         <button
-                          onClick={() => { setWipFormOpen(false); setTab("add_build"); const b = builds.find(x => x.id === wipForm.build_id); if (b) editBuild(b) }}
+                          onClick={async () => {
+                            setWipFormOpen(false)
+                            const buildId = wipForm.build_id!
+                            let b = builds.find(x => x.id === buildId)
+                            if (!b) {
+                              // Подгружаем сборку и все нужные данные если не загружены
+                              const [buildData, prodData] = await Promise.all([
+                                api.builds.getById(buildId),
+                                products.length ? Promise.resolve(null) : api.products.getAll(),
+                              ])
+                              if (prodData) {
+                                const prods = prodData.products || []
+                                setProducts(prods)
+                                setCategories(prodData.categories || [])
+                                const slots: Record<string, import("./admin/types").ConfigComponent[]> = {}
+                                for (const p of prods) {
+                                  const slot = p.category?.slug || "other"
+                                  if (!slots[slot]) slots[slot] = []
+                                  slots[slot].push({ id: p.id, slot, name: p.name, brand: p.category?.name, price: p.price })
+                                }
+                                setConfigSlots(slots)
+                              }
+                              if (buildData?.id) {
+                                setBuilds(bs => bs.some(x => x.id === buildData.id) ? bs : [...bs, buildData])
+                                b = buildData
+                              }
+                            }
+                            if (b) editBuild(b)
+                            setTab("add_build")
+                          }}
                           className="flex items-center gap-2 rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name="Wrench" size={14} />Редактировать сборку
                         </button>
