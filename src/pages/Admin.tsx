@@ -1736,7 +1736,7 @@ export default function Admin() {
               const comps = WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => `• ${c.label}: ${(w as Record<string, string>)[c.key]}`).join("\n")
               const clientName = w.customer_name || "клиент"
               const clientPhone = w.customer_phone || w.contact || "—"
-              const paste = `Здравствуйте, ${clientName}! 👋\n\nВаш заказ #${w.order_number} принят. Уточняем детали.\n\nКонфигурация:\n${comps}\n\nЕсть ли пожелания по изменениям в составе?\n\nГде будете забирать?\n— Самовывоз Беляево (м. Беляево)\n— Самовывоз Новокосино\n— СДЭК по всей РФ (за счёт клиента)\n— Курьер Яндекс по Москве (за счёт клиента)\n\nОжидаем вашего ответа! 🚀`
+              const paste = `Здравствуйте, ${clientName}! 👋\n\nВаш заказ #${w.order_number} принят. Уточняем детали.\n\nКонфигурация:\n${comps}\n\nЕсть ли пожелания по изменениям в составе?\n\nГде будете забирать?\nУ нас два офиса в Москве — на Новокосино и Беляево. Также доставляем курьером Яндекса по Москве и отправляем через СДЭК по всей России. Доставка за счёт получателя.`
               return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" style={{ cursor: "auto" }}>
                   <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
