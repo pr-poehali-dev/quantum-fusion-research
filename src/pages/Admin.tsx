@@ -147,7 +147,7 @@ const WIP_STAGES = [
   "Согласование", "Заказ", "Ожидание железа", "Ожидание сборки",
   "Сборка", "Настройка", "Тесты", "Досборать",
   "Проверка перед выдачей", "Ожидание упаковки",
-  "Готов, можно забрать", "Отнести в сдэк", "Забрали",
+  "Готов, можно забрать", "Отнести в сдэк", "Забрали", "Отменён",
 ]
 
 const WIP_STAGE_COLORS: Record<string, string> = {
@@ -164,6 +164,16 @@ const WIP_STAGE_COLORS: Record<string, string> = {
   "Готов, можно забрать": "bg-green-600/20 text-green-400",
   "Отнести в сдэк": "bg-green-700/20 text-green-300",
   "Забрали": "bg-muted/50 text-foreground/30",
+  "Отменён": "bg-red-900/30 text-red-400/70",
+}
+
+// Цвет фона ячейки для каждого статуса железа
+const COMP_STATUS_BG: Record<string, string> = {
+  pending:          "",
+  need_order:       "bg-red-500/8",
+  ordered_delay:    "bg-orange-500/8",
+  ordered_transit:  "bg-yellow-500/8",
+  ready:            "bg-green-500/8",
 }
 
 const COMP_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
@@ -449,6 +459,7 @@ export default function Admin() {
   const [wipColWidths, setWipColWidths] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem("wip_col_widths") || "{}") } catch { return {} }
   })
+  const [wipEditMode, setWipEditMode] = useState(false)
 
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
@@ -1639,14 +1650,23 @@ export default function Admin() {
             {/* Шапка */}
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xl font-light text-foreground">
-                Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({wipBuilds.filter(w => w.stage !== "Забрали").length})</span>
+                Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({wipBuilds.filter(w => w.stage !== "Забрали" && w.stage !== "Отменён").length})</span>
               </h2>
-              <button
-                onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={15} />Новая сборка
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setWipEditMode(v => !v)}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
+                  {wipEditMode ? "Просмотр" : "Ред. железо"}
+                </button>
+                <button
+                  onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="Plus" size={15} />Новая сборка
+                </button>
+              </div>
             </div>
 
             {/* Форма создания/редактирования */}
@@ -1969,30 +1989,37 @@ export default function Admin() {
                             const val = (w as Record<string, string>)[row.key] || ""
                             const statusKey = row.key === "case_name" ? "case_status" : row.key + "_status"
                             const status = (w as Record<string, string>)[statusKey] || "pending"
-                            const { cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
-                            const isReady = status === "ready"
+                            const { label: sLabel, cls: sCls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
+                            const cellBg = COMP_STATUS_BG[status] || ""
                             const slotKey = row.key === "case_name" ? "case" : row.key
                             const compInBuild = (w.build_components || []).find(c => c.slot === slotKey)
                             const qty = compInBuild?.qty && compInBuild.qty > 1 ? compInBuild.qty : null
+                            const textCls = status === "ready" ? "text-green-400" : status === "need_order" ? "text-red-400" : status === "ordered_delay" ? "text-orange-400" : status === "ordered_transit" ? "text-yellow-400" : "text-foreground/70"
                             return (
-                              <td key={w.id} className={`px-3 py-2 ${isReady ? "bg-green-500/5" : ""} ${isArchived ? "opacity-40" : ""}`}>
+                              <td key={w.id} className={`px-3 py-2 transition-colors ${cellBg} ${isArchived ? "opacity-40" : ""}`}>
                                 {val ? (
                                   <div className="flex flex-col gap-0.5 min-w-[120px] max-w-[200px]">
                                     <div className="flex items-start gap-1">
-                                      <span className={`leading-snug line-clamp-2 ${isReady ? "text-green-400" : "text-foreground/70"}`}>{val}</span>
+                                      <span className={`leading-snug line-clamp-2 ${textCls}`}>{val}</span>
                                       {qty && <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] font-bold text-primary">{qty}шт</span>}
                                     </div>
-                                    <select
-                                      value={status}
-                                      onChange={e => {
-                                        const v = e.target.value
-                                        setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: v } : b))
-                                        api.wipBuilds.patch({ id: w.id, component: row.key === "case_name" ? "case" : row.key, status: v })
-                                      }}
-                                      className={`rounded-full border-0 px-1.5 py-0 text-[10px] font-semibold focus:outline-none w-fit ${sCls}`}
-                                      style={{ cursor: "pointer" }}>
-                                      {Object.entries(COMP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                                    </select>
+                                    {wipEditMode ? (
+                                      <select
+                                        value={status}
+                                        onChange={e => {
+                                          const v = e.target.value
+                                          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: v } : b))
+                                          api.wipBuilds.patch({ id: w.id, component: row.key === "case_name" ? "case" : row.key, status: v })
+                                        }}
+                                        className={`rounded-full border-0 px-1.5 py-0 text-[10px] font-semibold focus:outline-none w-fit ${sCls}`}
+                                        style={{ cursor: "pointer" }}>
+                                        {Object.entries(COMP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                      </select>
+                                    ) : (
+                                      status !== "pending" && (
+                                        <span className={`rounded-full px-1.5 py-0 text-[10px] font-semibold w-fit ${sCls}`}>{sLabel}</span>
+                                      )
+                                    )}
                                   </div>
                                 ) : <span className="text-foreground/20">—</span>}
                               </td>

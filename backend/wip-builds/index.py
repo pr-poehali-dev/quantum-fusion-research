@@ -15,7 +15,7 @@ STAGES = [
     "Согласование", "Заказ", "Ожидание железа", "Ожидание сборки",
     "Сборка", "Настройка", "Тесты", "Досборать",
     "Проверка перед выдачей", "Ожидание упаковки",
-    "Готов, можно забрать", "Отнести в сдэк", "Забрали",
+    "Готов, можно забрать", "Отнести в сдэк", "Забрали", "Отменён",
 ]
 
 COMPONENT_STATUSES = ["pending", "ordered_delay", "ordered_transit", "ready", "need_order"]
@@ -178,9 +178,15 @@ def handler(event: dict, context) -> dict:
 
             # Обновить этап
             if "stage" in body:
-                # TODO: sync_crm(wip_id, body["stage"], contact)
-                # Синхронизировать новый статус в CRM по API при смене этапа
-                cur.execute("UPDATE wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s", (body["stage"], wip_id))
+                new_stage = body["stage"]
+                # TODO: sync_crm(wip_id, new_stage, contact)
+                cur.execute("UPDATE wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s", (new_stage, wip_id))
+                # При "Забрали" или "Отменён" — переносим pc_build в архив
+                if new_stage in ("Забрали", "Отменён"):
+                    cur.execute(
+                        "UPDATE pc_builds SET status='archive' WHERE id=(SELECT build_id FROM wip_builds WHERE id=%s)",
+                        (wip_id,)
+                    )
                 conn.commit()
                 return resp(200, {"ok": True})
 

@@ -188,7 +188,15 @@ def handler(event: dict, context) -> dict:
 
         elif method == "PATCH":
             body = json.loads(event.get("body") or "{}")
-            cur.execute("UPDATE orders SET status=%s, updated_at=NOW() WHERE id=%s", (body["status"], body["id"]))
+            new_status = body["status"]
+            order_id = body["id"]
+            cur.execute("UPDATE orders SET status=%s, updated_at=NOW() WHERE id=%s", (new_status, order_id))
+            # Если заказ отменён — переносим wip_build в архив со статусом "Отменён"
+            if new_status == "cancelled":
+                cur.execute(
+                    "UPDATE wip_builds SET stage='Отменён', updated_at=NOW() WHERE order_id=%s",
+                    (order_id,)
+                )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
