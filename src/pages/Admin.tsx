@@ -307,7 +307,7 @@ export default function Admin() {
   const navigate = useNavigate()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
-  const [tab, setTab] = useState<"orders" | "orders_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article">("orders")
+  const [tab, setTab] = useState<"orders" | "orders_archive" | "wip_builds" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article">("orders")
 
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -755,17 +755,24 @@ export default function Admin() {
     { value: "red", label: "Красный" },
   ]
 
-  const tabs = [
-    { key: "orders", label: "Заказы", icon: "ClipboardList" },
-    { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
+  const topTabs = [
+    { key: "builds", label: "Наши ПК", icon: "Monitor" },
+    { key: "add_build", label: buildForm.id ? "Ред. сборку" : "Новая сборка", icon: "Wrench" },
+    { key: "archive", label: "Архив ПК", icon: "Archive" },
+    { key: "tags", label: "Теги", icon: "Tag" },
+    { key: "DIVIDER_1" },
     { key: "products", label: "Товары", icon: "Package" },
     { key: "add_product", label: productForm.id ? "Ред. товар" : "Добавить товар", icon: "PlusCircle" },
-    { key: "builds", label: "Наши ПК", icon: "Monitor" },
-    { key: "archive", label: "Архив ПК", icon: "Archive" },
-    { key: "add_build", label: buildForm.id ? "Ред. сборку" : "Новая сборка", icon: "Wrench" },
-    { key: "tags", label: "Теги", icon: "Tag" },
+    { key: "DIVIDER_2" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
     { key: "add_article", label: articleForm.id ? "Ред. статью" : "Новая статья", icon: "FilePlus" },
+  ]
+
+  const bottomTabs = [
+    { key: "orders", label: "Заказы", icon: "ClipboardList" },
+    { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
+    { key: "DIVIDER_3" },
+    { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
   ]
 
   return (
@@ -786,18 +793,39 @@ export default function Admin() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key as typeof tab)}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
-              style={{ cursor: "pointer" }}
-            >
-              <Icon name={t.icon as "Package"} size={15} />
-              {t.label}
-            </button>
-          ))}
+        <div className="mb-6 border-b border-border">
+          {/* Верхняя строка: сборки, товары, статьи */}
+          <div className="flex items-center gap-0 overflow-x-auto">
+            {topTabs.map(t => t.key.startsWith("DIVIDER") ? (
+              <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
+            ) : (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key as typeof tab)}
+                className={`flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}
+              >
+                <Icon name={(t.icon || "Package") as "Package"} size={15} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {/* Нижняя строка: заказы */}
+          <div className="flex items-center gap-0 overflow-x-auto">
+            {bottomTabs.map(t => t.key.startsWith("DIVIDER") ? (
+              <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
+            ) : (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key as typeof tab)}
+                className={`flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}
+              >
+                <Icon name={(t.icon || "Package") as "Package"} size={15} />
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ORDERS */}
@@ -1483,6 +1511,15 @@ export default function Admin() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── WIP BUILDS ── */}
+        {tab === "wip_builds" && (
+          <div className="py-24 text-center text-foreground/40">
+            <Icon name="Hammer" size={48} className="mx-auto mb-4 opacity-30" />
+            <p className="text-lg font-light">Сборки в процессе</p>
+            <p className="mt-2 text-sm">Раздел в разработке — наполнение будет добавлено позже</p>
           </div>
         )}
 
