@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import psycopg2
 
 def get_conn():
@@ -107,19 +108,23 @@ def handler(event: dict, context) -> dict:
                 return result, asm_type, asm_fee_val
 
             if order_type == "pc_build":
-                build_name = f"BeGraphics, {order_id:05d}"
+                build_name = f"Заказ {order_id:05d}"
                 description = f"Заказ ПК #{order_id:05d} от {customer}"
                 has_assembly = any(it.get("assembly", True) for it in items if it.get("item_type") == "config")
                 components, asm_type, asm_fee = extract_components(items, has_assembly)
+
+                # Генерируем клиентский токен для ссылки на сборку
+                client_token = secrets.token_urlsafe(32)
+
                 cur.execute(
                     """INSERT INTO pc_builds (name, description, components, parts_total, assembly_fee,
-                       total_price, assembly_type, status, created_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, 'client', NOW()) RETURNING id""",
-                    (build_name, description, json.dumps(components), parts_total, asm_fee, parts_total, asm_type)
+                       total_price, assembly_type, status, client_token, created_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, 'client', %s, NOW()) RETURNING id""",
+                    (build_name, description, json.dumps(components), parts_total, asm_fee, parts_total, asm_type, client_token)
                 )
+                build_id = cur.fetchone()[0]
 
-                # Автоматически создаём запись в wip_builds для отслеживания сборки
-                # Раскладываем компоненты по слотам
+                # Раскладываем компоненты по слотам для wip_builds
                 slot_map = {}
                 for c in components:
                     slot = c.get("slot", "other")
@@ -135,13 +140,13 @@ def handler(event: dict, context) -> dict:
                     else: slot_map.setdefault("extra", name)
 
                 cur.execute(
-                    """INSERT INTO wip_builds (order_number, stage, order_id,
+                    """INSERT INTO wip_builds (order_number, stage, order_id, build_id, client_token,
                        cpu, motherboard, ram, gpu, storage, psu, case_name, cooling, extra,
                        cpu_status, motherboard_status, ram_status, gpu_status, storage_status,
                        psu_status, case_status, cooling_status, extra_status, updated_at)
-                       VALUES (%s, 'Согласование', %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,
+                       VALUES (%s, 'Согласование', %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,
                        'pending','pending','pending','pending','pending','pending','pending','pending','pending', NOW())""",
-                    (str(order_id), order_id,
+                    (f"{order_id:05d}", order_id, build_id, client_token,
                      slot_map.get("cpu"), slot_map.get("motherboard"), slot_map.get("ram"),
                      slot_map.get("gpu"), slot_map.get("storage"), slot_map.get("psu"),
                      slot_map.get("case_name"), slot_map.get("cooling"), slot_map.get("extra"))
