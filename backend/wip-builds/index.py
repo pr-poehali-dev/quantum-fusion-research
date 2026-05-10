@@ -35,6 +35,7 @@ def fmt_row(row):
         "cpu_status", "motherboard_status", "ram_status", "gpu_status", "storage_status",
         "psu_status", "case_status", "cooling_status", "extra_status",
         "order_id", "created_at", "updated_at",
+        "customer_name", "customer_phone", "total", "order_status",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -43,6 +44,8 @@ def fmt_row(row):
     for k in ["created_at", "updated_at"]:
         if d[k]:
             d[k] = d[k].isoformat()
+    if d.get("total") is not None:
+        d["total"] = float(d["total"])
     return d
 
 def resp(status, data):
@@ -67,24 +70,26 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
 
-    SELECT = """SELECT id, order_number, stage, contact, delivery_type, delivery_address,
-                       received_at, issued_at, comment,
-                       cpu, motherboard, ram, gpu, storage, psu, case_name, cooling, extra,
-                       cpu_status, motherboard_status, ram_status, gpu_status, storage_status,
-                       psu_status, case_status, cooling_status, extra_status,
-                       order_id, created_at, updated_at
-                FROM wip_builds"""
+    SELECT = """SELECT w.id, w.order_number, w.stage, w.contact, w.delivery_type, w.delivery_address,
+                       w.received_at, w.issued_at, w.comment,
+                       w.cpu, w.motherboard, w.ram, w.gpu, w.storage, w.psu, w.case_name, w.cooling, w.extra,
+                       w.cpu_status, w.motherboard_status, w.ram_status, w.gpu_status, w.storage_status,
+                       w.psu_status, w.case_status, w.cooling_status, w.extra_status,
+                       w.order_id, w.created_at, w.updated_at,
+                       o.customer_name, o.customer_phone, o.total, o.status as order_status
+                FROM wip_builds w
+                LEFT JOIN orders o ON w.order_id = o.id"""
 
     try:
         if method == "GET":
             wip_id = params.get("id")
             if wip_id:
-                cur.execute(SELECT + " WHERE id = %s", (wip_id,))
+                cur.execute(SELECT + " WHERE w.id = %s", (wip_id,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
                 return resp(200, fmt_row(row))
-            cur.execute(SELECT + " ORDER BY id DESC")
+            cur.execute(SELECT + " ORDER BY w.id DESC")
             return resp(200, {"wip_builds": [fmt_row(r) for r in cur.fetchall()], "stages": STAGES})
 
         elif method == "POST":

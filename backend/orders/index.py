@@ -118,6 +118,38 @@ def handler(event: dict, context) -> dict:
                     (build_name, description, json.dumps(components), parts_total, asm_fee, parts_total, asm_type)
                 )
 
+                # Автоматически создаём запись в wip_builds для отслеживания сборки
+                # Раскладываем компоненты по слотам
+                slot_map = {}
+                for c in components:
+                    slot = c.get("slot", "other")
+                    name = c.get("name", "")
+                    if slot == "cpu": slot_map["cpu"] = name
+                    elif slot == "gpu": slot_map["gpu"] = name
+                    elif slot == "ram": slot_map["ram"] = name
+                    elif slot == "storage": slot_map["storage"] = name
+                    elif slot == "psu": slot_map["psu"] = name
+                    elif slot == "case": slot_map["case_name"] = name
+                    elif slot == "motherboard": slot_map["motherboard"] = name
+                    elif slot == "cooling": slot_map["cooling"] = name
+                    else: slot_map.setdefault("extra", name)
+
+                cur.execute(
+                    """INSERT INTO wip_builds (order_number, stage, order_id,
+                       cpu, motherboard, ram, gpu, storage, psu, case_name, cooling, extra,
+                       cpu_status, motherboard_status, ram_status, gpu_status, storage_status,
+                       psu_status, case_status, cooling_status, extra_status, updated_at)
+                       VALUES (%s, 'Согласование', %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,
+                       'pending','pending','pending','pending','pending','pending','pending','pending','pending', NOW())""",
+                    (str(order_id), order_id,
+                     slot_map.get("cpu"), slot_map.get("motherboard"), slot_map.get("ram"),
+                     slot_map.get("gpu"), slot_map.get("storage"), slot_map.get("psu"),
+                     slot_map.get("case_name"), slot_map.get("cooling"), slot_map.get("extra"))
+                )
+
+                # TODO: notify_telegram(order_id, body["customer_name"], body["customer_phone"])
+                # Отправить уведомление менеджеру в Telegram о новом заказе ПК
+
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
 

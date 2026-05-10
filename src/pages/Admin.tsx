@@ -123,6 +123,10 @@ interface WipBuild {
   cpu_status: string; motherboard_status: string; ram_status: string; gpu_status: string
   storage_status: string; psu_status: string; case_status: string; cooling_status: string; extra_status: string
   order_id: number | null
+  customer_name?: string
+  customer_phone?: string
+  total?: number
+  order_status?: string
   created_at?: string
   updated_at?: string
 }
@@ -1717,15 +1721,32 @@ export default function Admin() {
               const w = wipBuilds.find(x => x.id === wipPasteId)
               if (!w) return null
               const comps = WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => `• ${c.label}: ${(w as Record<string, string>)[c.key]}`).join("\n")
-              const paste = `Здравствуйте! 👋\n\nВаша сборка #${w.order_number} готова к обсуждению.\n\nКонфигурация:\n${comps}\n\nЕсть ли пожелания по изменениям в составе?\n\nСпособ получения: ${w.delivery_type || "уточняется"}\n\nНапоминаем, что доступны варианты:\n— Самовывоз Беляево (м. Беляево)\n— Самовывоз Новокосино\n— СДЭК по всей РФ (за счёт клиента)\n— Курьер Яндекс по Москве (за счёт клиента)\n\nОжидаем вашего ответа! 🚀`
+              const clientName = w.customer_name || "клиент"
+              const clientPhone = w.customer_phone || w.contact || "—"
+              const paste = `Здравствуйте, ${clientName}! 👋\n\nВаш заказ #${w.order_number} принят. Уточняем детали.\n\nКонфигурация:\n${comps}\n\nЕсть ли пожелания по изменениям в составе?\n\nГде будете забирать?\n— Самовывоз Беляево (м. Беляево)\n— Самовывоз Новокосино\n— СДЭК по всей РФ (за счёт клиента)\n— Курьер Яндекс по Москве (за счёт клиента)\n\nОжидаем вашего ответа! 🚀`
               return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" style={{ cursor: "auto" }}>
                   <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
                     <button onClick={() => setWipPasteId(null)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
                       <Icon name="X" size={18} />
                     </button>
-                    <p className="mb-1 text-xs text-foreground/40 font-mono">Контакт: <span className="text-primary">{w.contact || "—"}</span></p>
-                    <p className="mb-4 text-sm font-medium text-foreground">Паста для менеджера · #{w.order_number}</p>
+                    <div className="mb-4 flex items-center gap-4 rounded-xl bg-muted/50 px-4 py-3">
+                      <div>
+                        <p className="text-xs text-foreground/40">Клиент</p>
+                        <p className="text-sm font-medium text-foreground">{w.customer_name || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-foreground/40">Телефон</p>
+                        <p className="text-sm font-medium text-primary">{clientPhone}</p>
+                      </div>
+                      {w.contact && (
+                        <div>
+                          <p className="text-xs text-foreground/40">TG / контакт</p>
+                          <p className="text-sm font-medium text-foreground">{w.contact}</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mb-2 text-sm font-medium text-foreground">Паста · Заказ #{w.order_number}</p>
                     <pre className="mb-4 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-xs text-foreground/80 leading-relaxed">{paste}</pre>
                     <button
                       onClick={() => { navigator.clipboard.writeText(paste); setWipPasteId(null) }}
@@ -1763,7 +1784,9 @@ export default function Admin() {
                         {WIP_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                       <div className="flex-1" />
-                      {w.contact && <span className="text-xs text-foreground/50 font-mono">{w.contact}</span>}
+                      {w.customer_name && <span className="text-xs text-foreground/70 font-medium">{w.customer_name}</span>}
+                      {w.customer_phone && <span className="text-xs text-primary font-mono">{w.customer_phone}</span>}
+                      {w.contact && <span className="text-xs text-foreground/40 font-mono">{w.contact}</span>}
                       {w.delivery_type && <span className="text-xs text-foreground/40">{w.delivery_type}</span>}
                       {w.issued_at && <span className="text-xs text-foreground/40">выдача: {w.issued_at}</span>}
                       {/* Кнопки */}
