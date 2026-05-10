@@ -86,6 +86,7 @@ def handler(event: dict, context) -> dict:
         if method == "GET":
             wip_id = params.get("id")
             order_id = params.get("order_id")
+            client_token = params.get("client_token")
             if wip_id:
                 cur.execute(SELECT + " WHERE w.id = %s", (wip_id,))
                 row = cur.fetchone()
@@ -94,6 +95,12 @@ def handler(event: dict, context) -> dict:
                 return resp(200, fmt_row(row))
             if order_id:
                 cur.execute(SELECT + " WHERE w.order_id = %s", (order_id,))
+                row = cur.fetchone()
+                if not row:
+                    return resp(404, {"error": "Не найдено"})
+                return resp(200, fmt_row(row))
+            if client_token:
+                cur.execute(SELECT + " WHERE w.client_token = %s", (client_token,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})

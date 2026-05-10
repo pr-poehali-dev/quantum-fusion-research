@@ -145,6 +145,10 @@ export default function BuildPreview() {
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
+    // Подгружаем статус сборки в процессе по токену
+    api.wipBuilds.getByClientToken(token).then(d => {
+      if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type })
+    }).catch(() => {})
   }, [token, isTokenMode, user])
 
   // При смене варианта

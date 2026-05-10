@@ -86,6 +86,7 @@ export const api = {
     getAll: () => fetch(URLS.wipBuilds).then(r => r.json()),
     getById: (id: number) => fetch(`${URLS.wipBuilds}?id=${id}`).then(r => r.json()),
     getByOrderId: (orderId: number) => fetch(`${URLS.wipBuilds}?order_id=${orderId}`).then(r => r.json()),
+    getByClientToken: (token: string) => fetch(`${URLS.wipBuilds}?client_token=${encodeURIComponent(token)}`).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.wipBuilds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.wipBuilds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.wipBuilds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
