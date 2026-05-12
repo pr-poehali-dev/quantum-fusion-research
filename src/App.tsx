@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigation } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense } from "react";
 
@@ -31,16 +31,6 @@ const queryClient = new QueryClient({
   },
 });
 
-function PageLoader() {
-  const navigation = useNavigation();
-  if (navigation.state === "idle") return null;
-  return (
-    <div className="fixed top-0 left-0 w-full h-1 z-[9999] bg-primary/20">
-      <div className="h-full bg-primary animate-[progress_1s_ease-in-out_infinite]" style={{ width: "60%" }} />
-    </div>
-  );
-}
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -48,7 +38,6 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <PageLoader />
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen">
               <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
