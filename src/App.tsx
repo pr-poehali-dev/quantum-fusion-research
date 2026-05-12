@@ -3,22 +3,43 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigation } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
-import Index from "./pages/Index";
-import Shop from "./pages/Shop";
-import Configurator from "./pages/Configurator";
-import Cart from "./pages/Cart";
-import Admin from "./pages/Admin";
-import AuthPage from "./pages/AuthPage";
-import Profile from "./pages/Profile";
-import BuildPreview from "./pages/BuildPreview";
-import OrderSheet from "./pages/OrderSheet";
-import ArticlePage from "./pages/ArticlePage";
-import ProductPage from "./pages/ProductPage";
-import NotFound from "./pages/NotFound";
+import { lazy, Suspense } from "react";
 
-const queryClient = new QueryClient();
+const Index = lazy(() => import("./pages/Index"));
+const Shop = lazy(() => import("./pages/Shop"));
+const Configurator = lazy(() => import("./pages/Configurator"));
+const Cart = lazy(() => import("./pages/Cart"));
+const Admin = lazy(() => import("./pages/Admin"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const Profile = lazy(() => import("./pages/Profile"));
+const BuildPreview = lazy(() => import("./pages/BuildPreview"));
+const OrderSheet = lazy(() => import("./pages/OrderSheet"));
+const ArticlePage = lazy(() => import("./pages/ArticlePage"));
+const ProductPage = lazy(() => import("./pages/ProductPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 3 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+function PageLoader() {
+  const navigation = useNavigation();
+  if (navigation.state === "idle") return null;
+  return (
+    <div className="fixed top-0 left-0 w-full h-1 z-[9999] bg-primary/20">
+      <div className="h-full bg-primary animate-[progress_1s_ease-in-out_infinite]" style={{ width: "60%" }} />
+    </div>
+  );
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -27,23 +48,30 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/shop" element={<Shop />} />
-            <Route path="/configurator" element={<Configurator />} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/admin/:tab" element={<Admin />} />
-            <Route path="/auth" element={<AuthPage />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/build" element={<BuildPreview />} />
-            <Route path="/build-preview/:id" element={<BuildPreview />} />
-            <Route path="/order-sheet/:id" element={<OrderSheet />} />
-            <Route path="/articles/:id" element={<ArticlePage />} />
-            <Route path="/product/:id" element={<ProductPage />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <PageLoader />
+          <Suspense fallback={
+            <div className="flex items-center justify-center min-h-screen">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          }>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/shop" element={<Shop />} />
+              <Route path="/configurator" element={<Configurator />} />
+              <Route path="/cart" element={<Cart />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/:tab" element={<Admin />} />
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/build" element={<BuildPreview />} />
+              <Route path="/build-preview/:id" element={<BuildPreview />} />
+              <Route path="/order-sheet/:id" element={<OrderSheet />} />
+              <Route path="/articles/:id" element={<ArticlePage />} />
+              <Route path="/product/:id" element={<ProductPage />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
