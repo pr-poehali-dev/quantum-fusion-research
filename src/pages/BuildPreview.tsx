@@ -459,15 +459,16 @@ export default function BuildPreview() {
                     const statusInfo = statusKey ? COMPONENT_STATUS_LABELS[statusKey] : null
                     const qty = c.qty && c.qty > 1 ? c.qty : null
                     return (
-                      <div key={i} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-5 h-5 shrink-0 rounded flex items-center justify-center bg-primary/10 text-primary">
+                      <div key={i} className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 min-w-0 flex-1">
+                          <span className="w-5 h-5 mt-0.5 shrink-0 rounded flex items-center justify-center bg-primary/10 text-primary">
                             <ComponentIcon slot={c.slot} />
                           </span>
                           <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground leading-none mb-0.5 truncate">{SLOT_NAMES[c.slot] || c.slot}</p>
-                            <p className="text-sm text-foreground truncate">
-                              {c.name}{qty ? <span className="text-muted-foreground"> ×{qty}</span> : null}
+                            <p className="text-xs text-muted-foreground leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
+                            <p className="text-sm text-foreground leading-snug break-words">
+                              {c.name}
+                              {qty ? <span className="text-muted-foreground font-semibold"> ×{qty}</span> : null}
                             </p>
                             {statusInfo && (
                               <span className={`inline-block mt-0.5 rounded-full px-2 py-px text-[10px] font-medium ${statusInfo.cls}`}>
@@ -476,7 +477,7 @@ export default function BuildPreview() {
                             )}
                           </div>
                         </div>
-                        <span className="shrink-0 text-sm font-medium text-foreground">{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
+                        <span className="shrink-0 text-sm font-medium text-foreground text-right">{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
                       </div>
                     )
                   })}
