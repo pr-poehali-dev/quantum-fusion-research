@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
 import { ImageUploader } from "@/components/image-uploader"
 import RichTextEditor from "@/components/ui/rich-text-editor"
+import { CableBody } from "@/components/cable-configurator"
 
 const ADMIN_PASSWORD = "begraphics2024"
 
@@ -225,15 +226,18 @@ function TagBadge({ tag }: { tag: Tag }) {
 // ── Вкладка Кабели ──
 function CablesTab() {
   const navigate = useNavigate()
-  const [cables, setCables] = useState<{id: number; name: string; cpu_type: string; gpu_type: string; client_token: string | null; created_at: string}[]>([])
+  const [cables, setCables] = useState<{id: number; name: string; cpu_type: string; gpu_type: string; pin_colors: Record<string,string>; client_token: string | null; created_at: string}[]>([])
   const [loading, setLoading] = useState(true)
   const [generatingId, setGeneratingId] = useState<number | null>(null)
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState("")
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [savedId, setSavedId] = useState<number | null>(null)
 
   useEffect(() => {
-    api.cables.getAll().then(d => {
+    api.cables.getAll().then(raw => {
+      const d = typeof raw === "string" ? JSON.parse(raw) : raw
       setCables(d.cables || [])
       setLoading(false)
     })
@@ -241,9 +245,15 @@ function CablesTab() {
 
   const generateLink = async (id: number) => {
     setGeneratingId(id)
-    const res = await api.cables.generateClientLink(id)
-    if (res.client_token) {
-      setCables(prev => prev.map(c => c.id === id ? { ...c, client_token: res.client_token } : c))
+    try {
+      const raw = await api.cables.generateClientLink(id)
+      const res = typeof raw === "string" ? JSON.parse(raw) : raw
+      const token = res.client_token ?? res?.client_token
+      if (token) {
+        setCables(prev => prev.map(c => c.id === id ? { ...c, client_token: token } : c))
+      }
+    } catch (e) {
+      console.error("generateLink error", e)
     }
     setGeneratingId(null)
   }
@@ -352,12 +362,18 @@ function CablesTab() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${expandedId === c.id ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-primary"}`}
+                    style={{ cursor: "pointer" }}>
+                    <Icon name={expandedId === c.id ? "ChevronUp" : "Settings2"} size={13} />
+                    {expandedId === c.id ? "Свернуть" : "Редактировать"}
+                  </button>
                   {c.client_token ? (
                     <button onClick={() => copyLink(c.client_token!, c.id)}
                       className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${copiedId === c.id ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-border text-foreground/60 hover:border-primary hover:text-primary"}`}
                       style={{ cursor: "pointer" }}>
                       <Icon name={copiedId === c.id ? "Check" : "Copy"} size={13} />
-                      {copiedId === c.id ? "Скопировано!" : "Скопировать ссылку"}
+                      {copiedId === c.id ? "Скопировано!" : "Ссылка"}
                     </button>
                   ) : (
                     <button onClick={() => generateLink(c.id)} disabled={generatingId === c.id}
@@ -374,6 +390,26 @@ function CablesTab() {
                   </button>
                 </div>
               </div>
+
+              {/* Редактор конфигурации */}
+              {expandedId === c.id && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <CableBody
+                    addToCart={() => {}}
+                    added={false}
+                    initialCpuType={c.cpu_type as "8-pin" | "8+4-pin" | "8+8-pin"}
+                    initialGpuType={c.gpu_type as "8-pin" | "8+8-pin" | "8+8+8-pin" | "12V-2x6"}
+                    initialPinColors={c.pin_colors}
+                    saveLabel={savedId === c.id ? "Сохранено!" : "Сохранить изменения"}
+                    onSave={async (pinColors, cpuType, gpuType) => {
+                      await api.cables.update({ id: c.id, name: c.name, cpu_type: cpuType, gpu_type: gpuType, pin_colors: pinColors })
+                      setCables(prev => prev.map(x => x.id === c.id ? { ...x, cpu_type: cpuType, gpu_type: gpuType, pin_colors: pinColors } : x))
+                      setSavedId(c.id)
+                      setTimeout(() => setSavedId(null), 2000)
+                    }}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

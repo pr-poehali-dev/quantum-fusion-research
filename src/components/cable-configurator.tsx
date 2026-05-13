@@ -225,9 +225,19 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
 }
 
 // ─── CableBody ────────────────────────────────────────────────────────────────
-function CableBody({ addToCart, added }: { addToCart: (name: string, summary: string, pinColors: PinColors, cpuType: string, gpuType: string) => void; added: boolean }) {
-  const [cpuType, setCpuType] = useState<CpuType>("8-pin")
-  const [gpuType, setGpuType] = useState<GpuType>("8-pin")
+interface CableBodyProps {
+  addToCart: (name: string, summary: string, pinColors: PinColors, cpuType: string, gpuType: string) => void
+  added: boolean
+  initialCpuType?: CpuType
+  initialGpuType?: GpuType
+  initialPinColors?: PinColors
+  onSave?: (pinColors: PinColors, cpuType: string, gpuType: string) => void
+  saveLabel?: string
+}
+
+export function CableBody({ addToCart, added, initialCpuType, initialGpuType, initialPinColors, onSave, saveLabel }: CableBodyProps) {
+  const [cpuType, setCpuType] = useState<CpuType>(initialCpuType ?? "8-pin")
+  const [gpuType, setGpuType] = useState<GpuType>(initialGpuType ?? "8-pin")
   const [showNameDialog, setShowNameDialog] = useState(false)
   const [cableName, setCableName] = useState("")
 
@@ -240,6 +250,7 @@ function CableBody({ addToCart, added }: { addToCart: (name: string, summary: st
     ...initPins("cpu", 16),
     ...initPins("atx", ATX_PINS),
     ...initPins("gpu", 24),
+    ...(initialPinColors ?? {}),
   }))
 
   // Множественное выделение
@@ -575,16 +586,27 @@ function CableBody({ addToCart, added }: { addToCart: (name: string, summary: st
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => added ? null : setShowNameDialog(true)}
-            className={`w-full rounded-xl py-3 text-sm font-medium transition-all ${added
-              ? "bg-green-600/20 text-green-400 border border-green-500/30"
-              : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
-            style={{ cursor: added ? "default" : "pointer" }}>
-            {added
-              ? <span className="flex items-center justify-center gap-2"><Icon name="Check" size={15} />Добавлено в корзину</span>
-              : <span className="flex items-center justify-center gap-2"><Icon name="ShoppingCart" size={15} />Добавить к заказу</span>}
-          </button>
+          <div className="flex gap-2">
+            {onSave && (
+              <button onClick={() => onSave(pinColors, cpuType, gpuType)}
+                className="flex-1 rounded-xl py-3 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-all"
+                style={{ cursor: "pointer" }}>
+                <span className="flex items-center justify-center gap-2">
+                  <Icon name="Save" size={15} />{saveLabel ?? "Сохранить"}
+                </span>
+              </button>
+            )}
+            <button
+              onClick={() => added ? null : setShowNameDialog(true)}
+              className={`flex-1 rounded-xl py-3 text-sm font-medium transition-all ${added
+                ? "bg-green-600/20 text-green-400 border border-green-500/30"
+                : "bg-card border border-border text-foreground/70 hover:border-primary hover:text-foreground"}`}
+              style={{ cursor: added ? "default" : "pointer" }}>
+              {added
+                ? <span className="flex items-center justify-center gap-2"><Icon name="Check" size={15} />Добавлено в корзину</span>
+                : <span className="flex items-center justify-center gap-2"><Icon name="ShoppingCart" size={15} />В корзину</span>}
+            </button>
+          </div>
         )}
       </div>
     </div>
