@@ -46,7 +46,7 @@ export function WorkSection() {
         category: b.components.slice(0, 2).map(c => c.name).join(" · "),
         price: fmt(b.total_price),
         direction: i % 2 === 0 ? "left" : "right",
-        onClick: () => navigate(`/shop?build=${b.id}`),
+        onClick: () => navigate(`/build-preview/${b.id}`),
       }))
     : products.map((p, i) => ({
         number: String(i + 1).padStart(2, "0"),
