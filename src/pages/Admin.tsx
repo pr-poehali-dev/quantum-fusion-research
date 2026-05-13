@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
@@ -678,6 +678,9 @@ export default function Admin() {
   }>>([])
   const [expandedComponent, setExpandedComponent] = useState<number | null>(null)
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
+  const [componentSearch, setComponentSearch] = useState("")
+  const [componentSearchIdx, setComponentSearchIdx] = useState(0)
+  const componentSearchRef = useRef<HTMLInputElement>(null)
   const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
   const [dupeLoading, setDupeLoading] = useState<number | null>(null)
   const [expandedVariants, setExpandedVariants] = useState<number | null>(null)
@@ -1594,6 +1597,75 @@ export default function Admin() {
                   <h3 className="text-sm font-medium text-foreground">Состав сборки</h3>
                   <p className="text-xs text-foreground/40">Выбирайте товары из каталога по категориям</p>
                 </div>
+
+                {/* Быстрый поиск по каталогу */}
+                {(() => {
+                  const allComps = Object.entries(configSlots).flatMap(([slot, comps]) => comps.map(c => ({ ...c, slot })))
+                  const q = componentSearch.trim().toLowerCase()
+                  const results = q.length >= 1
+                    ? allComps.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10)
+                    : []
+                  const safeIdx = Math.min(componentSearchIdx, results.length - 1)
+                  const addComp = (comp: ConfigComponent & { slot: string }) => {
+                    addCatalogComponent(comp.slot, comp)
+                    setComponentSearch("")
+                    setComponentSearchIdx(0)
+                    setTimeout(() => componentSearchRef.current?.focus(), 0)
+                  }
+                  return (
+                    <div className="relative mb-4">
+                      <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 focus-within:border-primary transition-colors">
+                        <Icon name="Search" size={15} className="text-foreground/40 shrink-0" />
+                        <input
+                          ref={componentSearchRef}
+                          type="text"
+                          value={componentSearch}
+                          onChange={e => { setComponentSearch(e.target.value); setComponentSearchIdx(0) }}
+                          onKeyDown={e => {
+                            if (e.key === "ArrowDown") { e.preventDefault(); setComponentSearchIdx(i => Math.min(i + 1, results.length - 1)) }
+                            else if (e.key === "ArrowUp") { e.preventDefault(); setComponentSearchIdx(i => Math.max(i - 1, 0)) }
+                            else if (e.key === "Enter") { e.preventDefault(); if (results[safeIdx]) addComp(results[safeIdx]) }
+                            else if (e.key === "Escape") { setComponentSearch(""); setComponentSearchIdx(0) }
+                          }}
+                          placeholder="Быстрый поиск по каталогу..."
+                          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+                          style={{ cursor: "text" }}
+                        />
+                        {componentSearch && (
+                          <button type="button" onClick={() => { setComponentSearch(""); setComponentSearchIdx(0); componentSearchRef.current?.focus() }} className="text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}>
+                            <Icon name="X" size={13} />
+                          </button>
+                        )}
+                      </div>
+                      {results.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+                          {results.map((c, i) => {
+                            const isAdded = buildComponents.some(bc => bc.source_id === c.id)
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => addComp(c)}
+                                className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${i === safeIdx ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"}`}
+                                style={{ cursor: "pointer" }}
+                              >
+                                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-foreground/50">{c.slot}</span>
+                                <span className="flex-1 truncate font-medium">{c.name}</span>
+                                <span className="shrink-0 text-xs font-bold text-accent">{c.price ? c.price.toLocaleString("ru-RU") + " ₽" : "—"}</span>
+                                {isAdded && <Icon name="Check" size={12} className="text-primary shrink-0" />}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {q.length >= 1 && results.length === 0 && (
+                        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-4 py-3 text-xs text-foreground/40 shadow-xl">
+                          Ничего не найдено
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Уже добавленные компоненты */}
                 {buildComponents.length > 0 && (
