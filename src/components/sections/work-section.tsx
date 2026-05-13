@@ -85,7 +85,7 @@ export function WorkSection() {
           style={{ transitionDelay: "600ms" }}
         >
           <button
-            onClick={() => navigate("/shop")}
+            onClick={() => navigate("/builds")}
             className="font-mono text-sm text-foreground/50 hover:text-foreground transition-colors border-b border-foreground/20 hover:border-foreground/50 pb-0.5"
           >
             Смотреть все сборки →
