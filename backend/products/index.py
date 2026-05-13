@@ -25,7 +25,7 @@ def handler(event: dict, context) -> dict:
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
     }
     if event.get("httpMethod") == "OPTIONS":
