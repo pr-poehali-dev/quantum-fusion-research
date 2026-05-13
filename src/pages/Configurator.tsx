@@ -5,7 +5,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { CableConfigurator } from "@/components/cable-configurator"
+
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
   cpu:     { label: "Процессор",        icon: "Cpu",        required: true  },
@@ -535,7 +535,22 @@ export default function Configurator() {
             </div>
 
             {/* ── Кастомные кабели ── */}
-            <CableConfigurator />
+            <button
+              onClick={() => navigate("/cables")}
+              className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-5 hover:border-primary/50 transition-colors group"
+              style={{ cursor: "pointer" }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon name="Cable" size={16} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-foreground">Кастомные кабели</p>
+                  <p className="text-xs text-foreground/50">C-Cables · настрой цвет и разъёмы</p>
+                </div>
+              </div>
+              <Icon name="ArrowRight" size={16} className="text-foreground/30 group-hover:text-primary transition-colors" />
+            </button>
 
           </div>
         </div>

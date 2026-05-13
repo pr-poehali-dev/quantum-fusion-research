@@ -19,6 +19,7 @@ const OrderSheet = lazy(() => import("./pages/OrderSheet"));
 const ArticlePage = lazy(() => import("./pages/ArticlePage"));
 const ProductPage = lazy(() => import("./pages/ProductPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const CablePage = lazy(() => import("./pages/CablePage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,6 +58,7 @@ const App = () => (
               <Route path="/order-sheet/:id" element={<OrderSheet />} />
               <Route path="/articles/:id" element={<ArticlePage />} />
               <Route path="/product/:id" element={<ProductPage />} />
+              <Route path="/cables" element={<CablePage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
