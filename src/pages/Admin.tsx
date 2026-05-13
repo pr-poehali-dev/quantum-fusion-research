@@ -1600,7 +1600,25 @@ export default function Admin() {
                               <Icon name="Plus" size={10} />
                             </button>
                           </div>
-                          <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(c.price * (c.qty || 1))}</span>
+                          {c.price === 0 ? (
+                            <div className="flex items-center gap-0.5 shrink-0 w-28">
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder="цена"
+                                value={c.price === 0 ? "" : c.price}
+                                onChange={e => {
+                                  const val = Number(e.target.value) || 0
+                                  setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, price: val } : comp))
+                                }}
+                                className="w-full rounded border border-border bg-background px-2 py-0.5 text-xs text-primary font-bold text-right focus:border-primary focus:outline-none"
+                                style={{ cursor: "text" }}
+                              />
+                              <span className="text-xs text-foreground/40 shrink-0">₽</span>
+                            </div>
+                          ) : (
+                            <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(c.price * (c.qty || 1))}</span>
+                          )}
                           <button type="button" onClick={() => setExpandedComponent(expandedComponent === i ? null : i)}
                             className="text-foreground/30 hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
                             <Icon name={expandedComponent === i ? "ChevronUp" : "Image"} size={13} />
