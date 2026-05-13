@@ -1745,9 +1745,22 @@ export default function Admin() {
               </div>
 
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
-                  <input type="checkbox" checked={buildForm.is_featured} onChange={e => setBuildForm(f => ({ ...f, is_featured: e.target.checked }))} className="rounded" />
+                <label
+                  className={`flex items-center gap-2 text-sm transition-opacity ${buildForm.status === "catalog" ? "text-foreground/70 cursor-pointer" : "text-foreground/30 cursor-not-allowed"}`}
+                  style={{ cursor: buildForm.status === "catalog" ? "pointer" : "not-allowed" }}
+                  title={buildForm.status !== "catalog" ? "Доступно только для сборок со статусом «На сайте»" : undefined}
+                >
+                  <input
+                    type="checkbox"
+                    checked={buildForm.is_featured}
+                    disabled={buildForm.status !== "catalog"}
+                    onChange={e => setBuildForm(f => ({ ...f, is_featured: e.target.checked }))}
+                    className="rounded disabled:opacity-40"
+                  />
                   Рекомендуемая сборка
+                  {buildForm.status !== "catalog" && (
+                    <span className="text-xs text-foreground/30">(только для «На сайте»)</span>
+                  )}
                 </label>
               </div>
 
