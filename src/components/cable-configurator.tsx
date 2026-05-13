@@ -2,149 +2,264 @@ import { useState } from "react"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
 
+// ─── Палитра ─────────────────────────────────────────────────────────────────
 const PALETTE = [
-  { id: "black",              label: "Чёрный",             hex: "#1a1a1a" },
-  { id: "white",              label: "Белый",              hex: "#f0f0f0" },
-  { id: "gray",               label: "Серый",              hex: "#6b7280" },
-  { id: "red",                label: "Красный",            hex: "#dc2626" },
-  { id: "crimson",            label: "Бордовый",           hex: "#7f1d1d" },
-  { id: "orange",             label: "Оранжевый",          hex: "#ea580c" },
-  { id: "yellow",             label: "Жёлтый",             hex: "#ca8a04" },
-  { id: "green",              label: "Зелёный",            hex: "#16a34a" },
-  { id: "teal",               label: "Бирюзовый",          hex: "#0d9488" },
-  { id: "blue",               label: "Синий",              hex: "#2563eb" },
-  { id: "indigo",             label: "Индиго",             hex: "#4f46e5" },
-  { id: "purple",             label: "Фиолетовый",         hex: "#7c3aed" },
-  { id: "pink",               label: "Розовый",            hex: "#db2777" },
-  { id: "sleeved-white-black",label: "Бело-чёрная оплётка",hex: "#d4d4d4", pattern: true },
-  { id: "sleeved-red-black",  label: "Красно-чёрная оплётка", hex: "#b91c1c", pattern: true },
+  { id: "black",               label: "Чёрный",              hex: "#1a1a1a" },
+  { id: "white",               label: "Белый",               hex: "#efefef" },
+  { id: "gray",                label: "Серый",               hex: "#6b7280" },
+  { id: "red",                 label: "Красный",             hex: "#dc2626" },
+  { id: "crimson",             label: "Бордовый",            hex: "#7f1d1d" },
+  { id: "orange",              label: "Оранжевый",           hex: "#ea580c" },
+  { id: "yellow",              label: "Жёлтый",              hex: "#ca8a04" },
+  { id: "green",               label: "Зелёный",             hex: "#16a34a" },
+  { id: "teal",                label: "Бирюзовый",           hex: "#0d9488" },
+  { id: "blue",                label: "Синий",               hex: "#2563eb" },
+  { id: "indigo",              label: "Индиго",              hex: "#4f46e5" },
+  { id: "purple",              label: "Фиолетовый",          hex: "#7c3aed" },
+  { id: "pink",                label: "Розовый",             hex: "#db2777" },
+  { id: "sleeved-white-black", label: "Бело-чёрная оплётка", hex: "#c8c8c8" },
+  { id: "sleeved-red-black",   label: "Красно-чёрная оплётка", hex: "#b91c1c" },
 ]
 
 const PALETTE_12V = [
   { id: "black",  label: "Чёрный",  hex: "#1a1a1a" },
-  { id: "white",  label: "Белый",   hex: "#f0f0f0" },
+  { id: "white",  label: "Белый",   hex: "#efefef" },
   { id: "gray",   label: "Серый",   hex: "#6b7280" },
   { id: "yellow", label: "Жёлтый", hex: "#ca8a04" },
   { id: "green",  label: "Зелёный", hex: "#16a34a" },
 ]
 
+const DEFAULT_COLOR = "black"
+const DEFAULT_HEX = "#1a1a1a"
+
+const getHex = (id: string, pal: typeof PALETTE = PALETTE) =>
+  pal.find(p => p.id === id)?.hex ?? DEFAULT_HEX
+
+// ─── Типы ────────────────────────────────────────────────────────────────────
 const CPU_TYPES = ["8-pin", "8+4-pin", "8+8-pin"] as const
 const GPU_TYPES = ["8-pin", "8+8-pin", "8+8+8-pin", "12V-2x6"] as const
-
 type CpuType = typeof CPU_TYPES[number]
 type GpuType = typeof GPU_TYPES[number]
 
-interface CableState {
-  cpu: CpuType; gpu: GpuType
-  cpuColor: string; gpuColor: string; atxColor: string
+// Количество видимых (передних) пинов для каждого типа
+const CPU_PINS: Record<CpuType, number> = { "8-pin": 8, "8+4-pin": 12, "8+8-pin": 16 }
+const GPU_PINS: Record<GpuType, number> = { "8-pin": 8, "8+8-pin": 16, "8+8+8-pin": 24, "12V-2x6": 6 }
+const ATX_PINS = 12
+
+// Размеры пина
+const PIN_W = 22
+const PIN_H = 34
+const PIN_GAP = 6
+const WIRE_LEN = 80
+
+type PinColors = Record<string, string> // pinKey → colorId
+
+// ─── Утилиты ─────────────────────────────────────────────────────────────────
+function makePinKey(cable: string, idx: number) { return `${cable}:${idx}` }
+
+function initPins(keys: string[]): PinColors {
+  return Object.fromEntries(keys.map(k => [k, DEFAULT_COLOR]))
 }
 
-function CableConnector({ label, color, pattern }: { label: string; color: string; pattern?: boolean }) {
-  return (
+function pinKeys(prefix: string, count: number) {
+  return Array.from({ length: count }, (_, i) => makePinKey(prefix, i))
+}
+
+// ─── SVG: один ряд пинов в линию ─────────────────────────────────────────────
+interface PinStripProps {
+  prefix: string
+  count: number
+  pinColors: PinColors
+  activePin: string | null
+  onPinClick: (key: string) => void
+  palette: typeof PALETTE
+  direction: "up" | "down" | "left"
+  label: string
+}
+
+function PinStrip({ prefix, count, pinColors, activePin, onPinClick, palette, direction, label }: PinStripProps) {
+  const totalW = count * (PIN_W + PIN_GAP) - PIN_GAP
+  const connH = PIN_H + 8
+
+  // Корпус разъёма
+  const body = (
     <g>
-      <rect width={36} height={14} rx={3} fill={color} opacity={0.95} />
-      {pattern && <rect width={36} height={14} rx={3} fill="url(#stripe)" opacity={0.3} />}
-      <rect width={36} height={14} rx={3} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={0.8} />
-      <text x={18} y={9.5} textAnchor="middle" fontSize={5.5} fill="rgba(255,255,255,0.7)" fontFamily="monospace">{label}</text>
+      <rect x={0} y={0} width={totalW} height={connH} rx={5}
+        fill="#1e293b" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+      {/* Пины */}
+      {Array.from({ length: count }, (_, i) => {
+        const key = makePinKey(prefix, i)
+        const colorId = pinColors[key] ?? DEFAULT_COLOR
+        const hex = getHex(colorId, palette)
+        const isActive = activePin === key
+        const x = i * (PIN_W + PIN_GAP) + 2
+        const y = 4
+        return (
+          <g key={i} onClick={() => onPinClick(key)} style={{ cursor: "pointer" }}>
+            {/* Провод/жила */}
+            <rect x={x + PIN_W / 2 - 3} y={y} width={6} height={PIN_H - 4} rx={2}
+              fill={hex} opacity={0.85} />
+            {/* Корпус пина */}
+            <rect x={x} y={y} width={PIN_W} height={PIN_H} rx={3}
+              fill={hex} opacity={isActive ? 1 : 0.82}
+              stroke={isActive ? "white" : "rgba(255,255,255,0.18)"}
+              strokeWidth={isActive ? 2 : 0.8} />
+            {/* Блик */}
+            <rect x={x + 3} y={y + 3} width={PIN_W - 6} height={5} rx={1.5}
+              fill="rgba(255,255,255,0.18)" />
+          </g>
+        )
+      })}
+      {/* Лейбл */}
+      <text x={totalW / 2} y={connH + 11} textAnchor="middle" fontSize={9}
+        fill="rgba(255,255,255,0.35)" fontFamily="monospace">{label}</text>
     </g>
   )
-}
 
-function CpuCables({ type, hexColor, onClick }: { type: CpuType; hexColor: string; onClick: () => void }) {
-  const cables = type === "8-pin" ? ["8-pin"] : type === "8+4-pin" ? ["8-pin", "4-pin"] : ["8-pin", "8-pin"]
-  return (
-    <g onClick={onClick} style={{ cursor: "pointer" }} className="group">
-      {cables.map((label, i) => (
-        <g key={i} transform={`translate(${i * 44}, 0)`}>
-          <line x1={18} y1={0} x2={18} y2={-28} stroke={hexColor} strokeWidth={4} strokeLinecap="round" opacity={0.8} />
-          <line x1={22} y1={0} x2={22} y2={-28} stroke={hexColor} strokeWidth={2.5} strokeLinecap="round" opacity={0.5} />
-          <CableConnector label={label} color={hexColor} />
-        </g>
-      ))}
-      <rect x={-4} y={-32} width={cables.length === 1 ? 44 : 88} height={50}
-        rx={6} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeDasharray="4 3"
-        opacity={0} className="group-hover:opacity-60 transition-opacity" />
-    </g>
-  )
-}
-
-function AtxCable({ hexColor, onClick }: { hexColor: string; onClick: () => void }) {
-  return (
-    <g onClick={onClick} style={{ cursor: "pointer" }} className="group">
-      {[0, 5, 10, 15, 20, 25].map((offset, i) => (
-        <line key={i} x1={0} y1={offset + 5} x2={-36} y2={offset + 5}
-          stroke={hexColor} strokeWidth={3} strokeLinecap="round" opacity={0.7 - i * 0.05} />
-      ))}
-      <g transform="translate(-72, 0)">
-        <rect width={36} height={44} rx={3} fill={hexColor} opacity={0.95} />
-        <rect width={36} height={44} rx={3} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={0.8} />
-        <text x={18} y={26} textAnchor="middle" fontSize={5.5} fill="rgba(255,255,255,0.7)" fontFamily="monospace">24-pin</text>
+  if (direction === "up") {
+    return (
+      <g>
+        {/* Провода вверх */}
+        {Array.from({ length: count }, (_, i) => {
+          const key = makePinKey(prefix, i)
+          const hex = getHex(pinColors[key] ?? DEFAULT_COLOR, palette)
+          const cx = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
+          return (
+            <line key={i} x1={cx} y1={0} x2={cx} y2={-WIRE_LEN}
+              stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+          )
+        })}
+        <g transform={`translate(0, 0)`}>{body}</g>
       </g>
-      <rect x={-76} y={-4} width={80} height={52} rx={6} fill="none"
-        stroke="hsl(var(--primary))" strokeWidth={1.5} strokeDasharray="4 3"
-        opacity={0} className="group-hover:opacity-60 transition-opacity" />
-    </g>
-  )
-}
-
-function GpuCables({ type, hexColor, onClick }: { type: GpuType; hexColor: string; onClick: () => void }) {
-  const is12v = type === "12V-2x6"
-  const cables = type === "8-pin" ? ["8-pin"] : type === "8+8-pin" ? ["8-pin", "8-pin"]
-    : type === "8+8+8-pin" ? ["8-pin", "8-pin", "8-pin"] : ["12V-2x6"]
-  return (
-    <g onClick={onClick} style={{ cursor: "pointer" }} className="group">
-      {cables.map((label, i) => (
-        <g key={i} transform={`translate(${i * 44}, 0)`}>
-          <line x1={18} y1={14} x2={18} y2={44} stroke={hexColor} strokeWidth={4} strokeLinecap="round" opacity={0.8} />
-          <line x1={22} y1={14} x2={22} y2={44} stroke={hexColor} strokeWidth={2.5} strokeLinecap="round" opacity={0.5} />
-          <CableConnector label={is12v ? "12V-2x6" : label} color={hexColor} />
-          <rect x={2} y={40} width={32} height={8} rx={2} fill="rgba(255,255,255,0.08)" />
-        </g>
-      ))}
-      <rect x={-4} y={-4} width={cables.length === 1 ? 44 : cables.length === 2 ? 88 : 132} height={56}
-        rx={6} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeDasharray="4 3"
-        opacity={0} className="group-hover:opacity-60 transition-opacity" />
-    </g>
-  )
-}
-
-function CableBody({
-  cables, activeCable, setActiveCable, addToCart, added, setCables,
-}: {
-  cables: CableState
-  activeCable: "cpu" | "gpu" | "atx" | null
-  setActiveCable: (v: "cpu" | "gpu" | "atx" | null) => void
-  addToCart: () => void
-  added: boolean
-  setCables: React.Dispatch<React.SetStateAction<CableState>>
-}) {
-  const getPalette = () => activeCable === "gpu" && cables.gpu === "12V-2x6" ? PALETTE_12V : PALETTE
-  const getHex = (colorId: string, pal = PALETTE) => pal.find(p => p.id === colorId)?.hex ?? "#1a1a1a"
-
-  const cpuHex = getHex(cables.cpuColor)
-  const gpuHex = getHex(cables.gpuColor, cables.gpu === "12V-2x6" ? PALETTE_12V : PALETTE)
-  const atxHex = getHex(cables.atxColor)
-
-  const activeColorKey = activeCable === "cpu" ? "cpuColor" : activeCable === "gpu" ? "gpuColor" : activeCable === "atx" ? "atxColor" : null
-
-  const setColor = (colorId: string) => {
-    if (!activeCable) return
-    const key = activeCable === "cpu" ? "cpuColor" : activeCable === "gpu" ? "gpuColor" : "atxColor"
-    setCables(prev => ({ ...prev, [key]: colorId }))
+    )
   }
 
-  const gpuCableCount = cables.gpu === "8-pin" ? 1 : cables.gpu === "8+8-pin" ? 2 : cables.gpu === "8+8+8-pin" ? 3 : 1
-  const svgWidth = Math.max(240, 60 + gpuCableCount * 44 + 80)
+  if (direction === "down") {
+    return (
+      <g>
+        <g transform={`translate(0, 0)`}>{body}</g>
+        {/* Провода вниз */}
+        {Array.from({ length: count }, (_, i) => {
+          const key = makePinKey(prefix, i)
+          const hex = getHex(pinColors[key] ?? DEFAULT_COLOR, palette)
+          const cx = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
+          return (
+            <line key={i} x1={cx} y1={connH} x2={cx} y2={connH + WIRE_LEN}
+              stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+          )
+        })}
+      </g>
+    )
+  }
+
+  // direction === "left" (ATX — провода идут влево)
+  return (
+    <g>
+      {/* Провода влево */}
+      {Array.from({ length: count }, (_, i) => {
+        const key = makePinKey(prefix, i)
+        const hex = getHex(pinColors[key] ?? DEFAULT_COLOR, palette)
+        const cy = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
+        return (
+          <line key={i} x1={0} y1={cy} x2={-WIRE_LEN} y2={cy}
+            stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+        )
+      })}
+      {/* ATX — вертикальный разъём */}
+      <g transform="translate(0, 0)">
+        <rect x={0} y={0} width={connH} height={totalW} rx={5}
+          fill="#1e293b" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        {Array.from({ length: count }, (_, i) => {
+          const key = makePinKey(prefix, i)
+          const colorId = pinColors[key] ?? DEFAULT_COLOR
+          const hex = getHex(colorId, palette)
+          const isActive = activePin === key
+          const y = i * (PIN_W + PIN_GAP) + 2
+          return (
+            <g key={i} onClick={() => onPinClick(key)} style={{ cursor: "pointer" }}>
+              <rect x={4} y={y + PIN_W / 2 - 3} width={PIN_H - 4} height={6} rx={2}
+                fill={hex} opacity={0.85} />
+              <rect x={4} y={y} width={PIN_H} height={PIN_W} rx={3}
+                fill={hex} opacity={isActive ? 1 : 0.82}
+                stroke={isActive ? "white" : "rgba(255,255,255,0.18)"}
+                strokeWidth={isActive ? 2 : 0.8} />
+              <rect x={7} y={y + 3} width={5} height={PIN_W - 6} rx={1.5}
+                fill="rgba(255,255,255,0.18)" />
+            </g>
+          )
+        })}
+        <text x={connH / 2} y={totalW + 12} textAnchor="middle" fontSize={9}
+          fill="rgba(255,255,255,0.35)" fontFamily="monospace">24-pin ATX</text>
+      </g>
+    </g>
+  )
+}
+
+// ─── Главный компонент ────────────────────────────────────────────────────────
+function CableBody({
+  addToCart, added,
+}: {
+  addToCart: (summary: string) => void
+  added: boolean
+}) {
+  const [cpuType, setCpuType] = useState<CpuType>("8-pin")
+  const [gpuType, setGpuType] = useState<GpuType>("8-pin")
+  const [activePin, setActivePin] = useState<string | null>(null)
+
+  const cpuCount = CPU_PINS[cpuType]
+  const gpuCount = GPU_PINS[gpuType]
+  const is12v = gpuType === "12V-2x6"
+  const gpuPalette = is12v ? PALETTE_12V : PALETTE
+
+  const [pinColors, setPinColors] = useState<PinColors>(() => ({
+    ...initPins(pinKeys("cpu", 16)),
+    ...initPins(pinKeys("atx", ATX_PINS)),
+    ...initPins(pinKeys("gpu", 24)),
+  }))
+
+  const handlePinClick = (key: string) => {
+    setActivePin(prev => prev === key ? null : key)
+  }
+
+  const handleColorPick = (colorId: string) => {
+    if (!activePin) return
+    setPinColors(prev => ({ ...prev, [activePin]: colorId }))
+  }
+
+  const activePinGroup = activePin?.split(":")[0] as "cpu" | "atx" | "gpu" | undefined
+  const activePalette = activePinGroup === "gpu" && is12v ? PALETTE_12V : PALETTE
+  const activePinColor = activePin ? pinColors[activePin] ?? DEFAULT_COLOR : null
+
+  // Размеры SVG
+  const PAD = 24
+  const cpuW = cpuCount * (PIN_W + PIN_GAP) - PIN_GAP
+  const gpuW = gpuCount * (PIN_W + PIN_GAP) - PIN_GAP
+  const atxH = ATX_PINS * (PIN_W + PIN_GAP) - PIN_GAP
+  const boardW = Math.max(cpuW, gpuW) + PAD * 2
+  const boardH = 180
+  const svgW = boardW + WIRE_LEN + PIN_H + PAD + 20
+  const svgH = WIRE_LEN + boardH + WIRE_LEN + PIN_H + 40
+
+  const boardX = 0
+  const boardY = WIRE_LEN + 10
+  const cpuX = boardX + PAD
+  const gpuX = boardX + PAD
+  const atxX = boardX + boardW
+  const atxY = boardY + 20
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-3">
+    <div className="space-y-6">
+      {/* Тип кабелей */}
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="text-xs text-foreground/50 mb-1.5">CPU кабель</p>
+          <p className="text-xs text-foreground/50 mb-2">CPU кабель</p>
           <div className="flex flex-wrap gap-1.5">
             {CPU_TYPES.map(t => (
-              <button key={t} onClick={() => setCables(p => ({ ...p, cpu: t }))}
-                className={`rounded-lg border px-3 py-1 text-xs transition-all ${cables.cpu === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
+              <button key={t} onClick={() => {
+                setCpuType(t)
+                setActivePin(null)
+              }}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${cpuType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
                 style={{ cursor: "pointer" }}>
                 {t}
               </button>
@@ -152,118 +267,156 @@ function CableBody({
           </div>
         </div>
         <div>
-          <p className="text-xs text-foreground/50 mb-1.5">GPU кабель</p>
+          <p className="text-xs text-foreground/50 mb-2">GPU кабель</p>
           <div className="flex flex-wrap gap-1.5">
             {GPU_TYPES.map(t => (
-              <button key={t} onClick={() => setCables(p => ({
-                ...p, gpu: t,
-                gpuColor: t === "12V-2x6" && !PALETTE_12V.find(c => c.id === p.gpuColor) ? "black" : p.gpuColor,
-              }))}
-                className={`rounded-lg border px-3 py-1 text-xs transition-all ${cables.gpu === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
+              <button key={t} onClick={() => {
+                setGpuType(t)
+                setActivePin(null)
+              }}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${gpuType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
                 style={{ cursor: "pointer" }}>
                 {t}
               </button>
             ))}
           </div>
-          {cables.gpu === "12V-2x6" && (
-            <p className="mt-1.5 text-[10px] text-yellow-400/80">⚡ Специальный кабель — своя палитра цветов</p>
-          )}
+          {is12v && <p className="mt-1.5 text-[10px] text-yellow-400/80">⚡ Своя палитра цветов</p>}
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/60 bg-background/40 p-3">
-        <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-foreground/30 text-center">Кликни на кабель для смены цвета</p>
-        <div className="flex justify-center overflow-x-auto">
-          <svg width={svgWidth} height={220} viewBox={`0 0 ${svgWidth} 220`} style={{ maxWidth: "100%" }}>
+      {/* SVG-схема */}
+      <div className="rounded-xl border border-border/60 bg-background/60 overflow-x-auto">
+        <div className="min-w-[420px]">
+          <svg
+            width="100%"
+            viewBox={`-${PAD} -10 ${svgW + PAD * 2} ${svgH + 20}`}
+            style={{ display: "block" }}
+          >
             <defs>
-              <pattern id="stripe" patternUnits="userSpaceOnUse" width={6} height={6} patternTransform="rotate(45)">
-                <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(255,255,255,0.4)" strokeWidth={2} />
-              </pattern>
-              <pattern id="board" patternUnits="userSpaceOnUse" width={10} height={10}>
-                <rect width={10} height={10} fill="#1c2332" />
-                <rect width={10} height={10} fill="none" stroke="#263147" strokeWidth={0.5} />
+              <pattern id="pcb" patternUnits="userSpaceOnUse" width={16} height={16}>
+                <rect width={16} height={16} fill="#0f1a2e" />
+                <rect width={16} height={16} fill="none" stroke="#1a2d4a" strokeWidth={0.5} />
               </pattern>
             </defs>
 
-            <rect x={20} y={60} width={svgWidth - 40} height={100} rx={8}
-              fill="url(#board)" stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
-            <text x={svgWidth / 2} y={115} textAnchor="middle" fontSize={7}
-              fill="rgba(255,255,255,0.15)" fontFamily="monospace">MOTHERBOARD</text>
+            {/* Плата */}
+            <rect x={boardX} y={boardY} width={boardW} height={boardH} rx={10}
+              fill="url(#pcb)" stroke="rgba(255,255,255,0.07)" strokeWidth={1.5} />
+            <text x={boardX + boardW / 2} y={boardY + boardH / 2 + 5} textAnchor="middle"
+              fontSize={10} fill="rgba(255,255,255,0.08)" fontFamily="monospace" letterSpacing={3}>
+              MOTHERBOARD
+            </text>
 
-            <g transform="translate(36, 90)">
-              <CpuCables type={cables.cpu} hexColor={cpuHex}
-                onClick={() => setActiveCable(activeCable === "cpu" ? null : "cpu")} />
-              {activeCable === "cpu" && (
-                <rect x={-6} y={-35} width={cables.cpu === "8-pin" ? 50 : 96} height={55}
-                  rx={6} fill="hsl(var(--primary))" opacity={0.07} />
-              )}
-              <rect x={2} y={10} width={cables.cpu === "8-pin" ? 32 : 76} height={8} rx={2} fill="rgba(255,255,255,0.08)" />
+            {/* CPU — сверху, провода вверх */}
+            <g transform={`translate(${cpuX}, ${boardY})`}>
+              <PinStrip
+                prefix="cpu" count={cpuCount}
+                pinColors={pinColors} activePin={activePin}
+                onPinClick={handlePinClick}
+                palette={PALETTE} direction="up" label={cpuType}
+              />
             </g>
 
-            <g transform={`translate(${svgWidth - 20}, 80)`}>
-              <AtxCable hexColor={atxHex}
-                onClick={() => setActiveCable(activeCable === "atx" ? null : "atx")} />
-              {activeCable === "atx" && (
-                <rect x={-78} y={-6} width={82} height={54} rx={6} fill="hsl(var(--primary))" opacity={0.07} />
-              )}
+            {/* GPU — снизу, провода вниз */}
+            <g transform={`translate(${gpuX}, ${boardY + boardH - PIN_H - 8})`}>
+              <PinStrip
+                prefix="gpu" count={gpuCount}
+                pinColors={pinColors} activePin={activePin}
+                onPinClick={handlePinClick}
+                palette={gpuPalette} direction="down" label={gpuType}
+              />
             </g>
 
-            <g transform={`translate(${svgWidth / 2 - (gpuCableCount * 44) / 2}, 122)`}>
-              <GpuCables type={cables.gpu} hexColor={gpuHex}
-                onClick={() => setActiveCable(activeCable === "gpu" ? null : "gpu")} />
-              {activeCable === "gpu" && (
-                <rect x={-6} y={-6} width={gpuCableCount * 44 + 12} height={58}
-                  rx={6} fill="hsl(var(--primary))" opacity={0.07} />
-              )}
+            {/* ATX — справа, провода влево */}
+            <g transform={`translate(${atxX}, ${atxY})`}>
+              <PinStrip
+                prefix="atx" count={ATX_PINS}
+                pinColors={pinColors} activePin={activePin}
+                onPinClick={handlePinClick}
+                palette={PALETTE} direction="left" label=""
+              />
             </g>
-
-            {activeCable && (
-              <text x={svgWidth / 2} y={210} textAnchor="middle" fontSize={8}
-                fill="hsl(var(--primary))" fontFamily="monospace" opacity={0.8}>
-                {activeCable === "cpu" ? `CPU · ${cables.cpu}` : activeCable === "gpu" ? `GPU · ${cables.gpu}` : "ATX 24-pin"}
-                {" — выбери цвет ↓"}
-              </text>
-            )}
           </svg>
         </div>
       </div>
 
-      {activeCable ? (
-        <div>
-          <p className="text-xs text-foreground/50 mb-2">
-            Цвет — <span className="text-foreground/70">
-              {activeCable === "cpu" ? `CPU ${cables.cpu}` : activeCable === "gpu" ? `GPU ${cables.gpu}` : "ATX 24-pin"}
-            </span>
+      {/* Подсказка / активный пин */}
+      <div className="min-h-[28px]">
+        {activePin ? (
+          <p className="text-xs text-primary font-mono">
+            {activePinGroup === "cpu" ? `CPU ${cpuType}` : activePinGroup === "gpu" ? `GPU ${gpuType}` : "ATX 24-pin"}
+            {" · пин "}{Number(activePin.split(":")[1]) + 1}
+            {" — "}{activePalette.find(p => p.id === activePinColor)?.label ?? ""}
           </p>
-          <div className="flex flex-wrap gap-2">
-            {getPalette().map(color => {
-              const isActive = activeColorKey ? cables[activeColorKey as keyof CableState] === color.id : false
+        ) : (
+          <p className="text-xs text-foreground/30">Кликни на пин чтобы выбрать цвет</p>
+        )}
+      </div>
+
+      {/* Палитра */}
+      {activePin && (
+        <div>
+          <p className="text-xs text-foreground/50 mb-2.5">Цвет оплётки</p>
+          <div className="flex flex-wrap gap-2.5">
+            {activePalette.map(color => {
+              const isActive = activePinColor === color.id
               return (
-                <button key={color.id} title={color.label} onClick={() => setColor(color.id)}
-                  className={`h-7 w-7 rounded-full border-2 transition-all ${isActive ? "border-primary scale-110" : "border-transparent hover:border-white/30"}`}
-                  style={{ backgroundColor: color.hex, cursor: "pointer" }} />
+                <button
+                  key={color.id}
+                  title={color.label}
+                  onClick={() => handleColorPick(color.id)}
+                  className={`h-8 w-8 rounded-full border-2 transition-all hover:scale-110 ${isActive ? "border-white scale-110 shadow-lg" : "border-transparent opacity-80"}`}
+                  style={{ backgroundColor: color.hex, cursor: "pointer",
+                    boxShadow: isActive ? `0 0 0 3px hsl(var(--primary))` : undefined }}
+                />
               )
             })}
           </div>
-          <p className="mt-1.5 text-[10px] text-foreground/30">
-            {getPalette().find(p => p.id === (activeColorKey ? cables[activeColorKey as keyof CableState] : ""))?.label}
-          </p>
+
+          {/* Быстрые действия */}
+          <div className="mt-3 flex gap-2 flex-wrap">
+            <button onClick={() => {
+              if (!activePinGroup) return
+              const color = activePinColor ?? DEFAULT_COLOR
+              const prefix = activePinGroup
+              const count = prefix === "cpu" ? cpuCount : prefix === "gpu" ? gpuCount : ATX_PINS
+              const updates: PinColors = {}
+              for (let i = 0; i < count; i++) updates[makePinKey(prefix, i)] = color
+              setPinColors(prev => ({ ...prev, ...updates }))
+            }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+              style={{ cursor: "pointer" }}>
+              Применить ко всему кабелю
+            </button>
+            <button onClick={() => {
+              const updates: PinColors = {}
+              pinKeys("cpu", cpuCount).forEach(k => updates[k] = DEFAULT_COLOR)
+              pinKeys("gpu", gpuCount).forEach(k => updates[k] = DEFAULT_COLOR)
+              pinKeys("atx", ATX_PINS).forEach(k => updates[k] = DEFAULT_COLOR)
+              setPinColors(prev => ({ ...prev, ...updates }))
+              setActivePin(null)
+            }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-red-500/50 hover:text-red-400 transition-colors"
+              style={{ cursor: "pointer" }}>
+              Сбросить всё
+            </button>
+          </div>
         </div>
-      ) : (
-        <p className="text-xs text-foreground/30 text-center py-1">Кликни на кабель чтобы изменить цвет</p>
       )}
 
-      <div className="space-y-2">
-        <div className="flex gap-2 text-xs text-foreground/50">
-          <span className="flex-1">CPU: <span className="text-foreground/70">{cables.cpu} · {PALETTE.find(p => p.id === cables.cpuColor)?.label}</span></span>
-          <span className="flex-1">ATX: <span className="text-foreground/70">{PALETTE.find(p => p.id === cables.atxColor)?.label}</span></span>
+      {/* Итог */}
+      <div className="space-y-3 pt-2 border-t border-border">
+        <div className="text-xs text-foreground/40 space-y-0.5">
+          <p>CPU: <span className="text-foreground/60">{cpuType} · {cpuCount} пинов</span></p>
+          <p>GPU: <span className="text-foreground/60">{gpuType} · {gpuCount} пинов</span></p>
+          <p>ATX: <span className="text-foreground/60">24-pin · {ATX_PINS} видимых</span></p>
+          <p className="text-[10px] pt-1">Партнёр: C-Cables · цена согласовывается после оформления</p>
         </div>
-        <div className="text-xs text-foreground/50">
-          GPU: <span className="text-foreground/70">{cables.gpu} · {(cables.gpu === "12V-2x6" ? PALETTE_12V : PALETTE).find(p => p.id === cables.gpuColor)?.label}</span>
-        </div>
-        <p className="text-[10px] text-foreground/30">Партнёр: C-Cables · цена согласовывается после заказа</p>
-        <button onClick={addToCart}
-          className={`w-full rounded-lg py-2.5 text-sm font-medium transition-all ${added ? "bg-green-600/20 text-green-400 border border-green-500/30" : "bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20"}`}
+        <button
+          onClick={() => addToCart(`CPU ${cpuType} / GPU ${gpuType} / ATX 24-pin`)}
+          className={`w-full rounded-xl py-3 text-sm font-medium transition-all ${added
+            ? "bg-green-600/20 text-green-400 border border-green-500/30"
+            : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
           style={{ cursor: "pointer" }}>
           {added
             ? <span className="flex items-center justify-center gap-2"><Icon name="Check" size={15} />Добавлено в корзину</span>
@@ -274,29 +427,20 @@ function CableBody({
   )
 }
 
+// ─── Экспортируемый компонент ─────────────────────────────────────────────────
 export function CableConfigurator({ standalone = false }: { standalone?: boolean }) {
   const { addItem } = useCart()
   const [open, setOpen] = useState(false)
   const [added, setAdded] = useState(false)
-  const [cables, setCables] = useState<CableState>({
-    cpu: "8-pin", gpu: "8-pin", cpuColor: "black", gpuColor: "black", atxColor: "black",
-  })
-  const [activeCable, setActiveCable] = useState<"cpu" | "gpu" | "atx" | null>(null)
 
-  const addToCart = () => {
-    const cpuLabel = `CPU ${cables.cpu} — ${PALETTE.find(p => p.id === cables.cpuColor)?.label}`
-    const gpuLabel = `GPU ${cables.gpu} — ${(cables.gpu === "12V-2x6" ? PALETTE_12V : PALETTE).find(p => p.id === cables.gpuColor)?.label}`
-    const atxLabel = `ATX 24-pin — ${PALETTE.find(p => p.id === cables.atxColor)?.label}`
-    addItem({ id: Date.now(), name: `Кастомные кабели C-Cables: ${cpuLabel} / ${gpuLabel} / ${atxLabel}`, price: 0, type: "config" })
+  const handleAddToCart = (summary: string) => {
+    addItem({ id: Date.now(), name: `Кастомные кабели C-Cables: ${summary}`, price: 0, type: "config" })
     setAdded(true)
     setTimeout(() => setAdded(false), 3000)
   }
 
   if (standalone) {
-    return (
-      <CableBody cables={cables} activeCable={activeCable} setActiveCable={setActiveCable}
-        addToCart={addToCart} added={added} setCables={setCables} />
-    )
+    return <CableBody addToCart={handleAddToCart} added={added} />
   }
 
   return (
@@ -309,15 +453,14 @@ export function CableConfigurator({ standalone = false }: { standalone?: boolean
           </div>
           <div className="text-left">
             <p className="text-sm font-medium text-foreground">Кастомные кабели</p>
-            <p className="text-xs text-foreground/50">C-Cables · цена согласовывается</p>
+            <p className="text-xs text-foreground/50">C-Cables · настрой каждый пин</p>
           </div>
         </div>
         <Icon name={open ? "ChevronUp" : "ChevronDown"} size={16} className="text-foreground/40" />
       </button>
       {open && (
         <div className="border-t border-border px-5 pb-5 pt-4">
-          <CableBody cables={cables} activeCable={activeCable} setActiveCable={setActiveCable}
-            addToCart={addToCart} added={added} setCables={setCables} />
+          <CableBody addToCart={handleAddToCart} added={added} />
         </div>
       )}
     </div>
