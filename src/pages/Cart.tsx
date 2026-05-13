@@ -179,18 +179,14 @@ export default function Cart() {
                       </button>
                     ))}
                   </div>
-                  <input
-                    type={form.contact_type === "max" ? "tel" : "text"}
+                  {form.contact_type !== "max" && <input
+                    type="text"
                     value={form.contact_value}
                     onChange={e => setForm(f => ({ ...f, contact_value: e.target.value }))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                    placeholder={
-                      form.contact_type === "tg" ? "https://t.me/username" :
-                      form.contact_type === "vk" ? "https://vk.com/username" :
-                      "+7 (___) ___-__-__"
-                    }
+                    placeholder={form.contact_type === "tg" ? "https://t.me/username" : "https://vk.com/username"}
                     style={{ cursor: "text" }}
-                  />
+                  />}
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-foreground/60">Комментарий</label>
