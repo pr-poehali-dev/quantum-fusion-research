@@ -471,7 +471,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
       </div>
 
       {/* Итог */}
-      <div className="space-y-3 pt-2 border-t border-border max-w-2xl">
+      <div className="space-y-3 pt-2 border-t border-border w-full max-w-2xl ml-0">
         {/* Сводка по цветам */}
         <div className="space-y-2">
           {[
