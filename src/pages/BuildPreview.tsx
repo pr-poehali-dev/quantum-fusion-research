@@ -8,10 +8,26 @@ import Icon from "@/components/ui/icon"
 const SLOT_NAMES: Record<string, string> = {
   cpu: "Процессор", gpu: "Видеокарта", ram: "Оперативная память",
   storage: "Накопитель", psu: "Блок питания", case: "Корпус", motherboard: "Материнская плата",
+  cooling: "Охлаждение", extra: "Доп. комплектующие",
+}
+
+// Маппинг слот → поле статуса в wip_builds
+const SLOT_TO_WIP: Record<string, string> = {
+  cpu: "cpu", gpu: "gpu", ram: "ram", storage: "storage",
+  psu: "psu", case: "case", motherboard: "motherboard",
+  cooling: "cooling", extra: "extra",
+}
+
+const COMPONENT_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  pending:         { label: "Обрабатывается",     cls: "bg-muted/60 text-foreground/50" },
+  need_order:      { label: "Надо заказать",       cls: "bg-orange-500/15 text-orange-400" },
+  ordered_delay:   { label: "Заказано, задержка",  cls: "bg-yellow-500/15 text-yellow-400" },
+  ordered_transit: { label: "Едет к нам",          cls: "bg-blue-500/15 text-blue-400" },
+  ready:           { label: "Готово / в наличии",  cls: "bg-green-600/20 text-green-400" },
 }
 
 interface Component {
-  slot: string; name: string; price: number; current_price?: number
+  slot: string; name: string; price: number; current_price?: number; qty?: number
   source_id?: number; image_url?: string; image_urls?: string[]; description?: string; specs?: Record<string, string>
 }
 
@@ -22,6 +38,8 @@ interface WipInfo {
   received_at?: string
   issued_at?: string
   delivery_type?: string
+  cpu_status?: string; motherboard_status?: string; ram_status?: string; gpu_status?: string
+  storage_status?: string; psu_status?: string; case_status?: string; cooling_status?: string; extra_status?: string
 }
 
 interface Build {
@@ -124,7 +142,9 @@ export default function BuildPreview() {
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
     // Подгружаем статус сборки в процессе (если есть)
     api.wipBuilds.getByOrderId(Number(id)).then(d => {
-      if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type })
+      if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
+        cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
+        storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status })
     }).catch(() => {})
   }, [id, isTokenMode])
 
@@ -147,7 +167,9 @@ export default function BuildPreview() {
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
     // Подгружаем статус сборки в процессе по токену
     api.wipBuilds.getByClientToken(token).then(d => {
-      if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type })
+      if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
+        cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
+        storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status })
     }).catch(() => {})
   }, [token, isTokenMode, user])
 
@@ -367,6 +389,32 @@ export default function BuildPreview() {
                           </div>
                         )
                       })()}
+                      {/* Статусы по каждой железке */}
+                      {(() => {
+                        const rows = components.map(c => {
+                          const wipField = SLOT_TO_WIP[c.slot]
+                          if (!wipField) return null
+                          const statusKey = wipInfo[`${wipField}_status` as keyof WipInfo] as string | undefined
+                          if (!statusKey || statusKey === "pending") return null
+                          const info = COMPONENT_STATUS_LABELS[statusKey]
+                          if (!info) return null
+                          return { c, info }
+                        }).filter(Boolean)
+                        if (!rows.length) return null
+                        return (
+                          <div className="pt-1 border-t border-border/40">
+                            <p className="text-xs text-muted-foreground mb-2">Статус комплектующих</p>
+                            <div className="space-y-1.5">
+                              {rows.map((row, i) => row && (
+                                <div key={i} className="flex items-center justify-between gap-2">
+                                  <span className="text-xs text-foreground/70 truncate">{row.c.name}</span>
+                                  <span className={`shrink-0 rounded-full px-2 py-px text-[10px] font-medium ${row.info.cls}`}>{row.info.label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                   {build.description && (
@@ -405,20 +453,33 @@ export default function BuildPreview() {
               <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                 <p className="mb-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">Состав</p>
                 <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
-                  {components.map((c, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-5 h-5 shrink-0 rounded flex items-center justify-center bg-primary/10 text-primary">
-                          <ComponentIcon slot={c.slot} />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground leading-none mb-0.5 truncate">{SLOT_NAMES[c.slot] || c.slot}</p>
-                          <p className="text-sm text-foreground truncate">{c.name}</p>
+                  {components.map((c, i) => {
+                    const wipField = SLOT_TO_WIP[c.slot]
+                    const statusKey = wipField ? wipInfo?.[`${wipField}_status` as keyof WipInfo] as string | undefined : undefined
+                    const statusInfo = statusKey ? COMPONENT_STATUS_LABELS[statusKey] : null
+                    const qty = c.qty && c.qty > 1 ? c.qty : null
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 shrink-0 rounded flex items-center justify-center bg-primary/10 text-primary">
+                            <ComponentIcon slot={c.slot} />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground leading-none mb-0.5 truncate">{SLOT_NAMES[c.slot] || c.slot}</p>
+                            <p className="text-sm text-foreground truncate">
+                              {c.name}{qty ? <span className="text-muted-foreground"> ×{qty}</span> : null}
+                            </p>
+                            {statusInfo && (
+                              <span className={`inline-block mt-0.5 rounded-full px-2 py-px text-[10px] font-medium ${statusInfo.cls}`}>
+                                {statusInfo.label}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        <span className="shrink-0 text-sm font-medium text-foreground">{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
                       </div>
-                      <span className="shrink-0 text-sm font-medium text-foreground">{fmt(c.current_price ?? c.price)}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
