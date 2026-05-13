@@ -253,7 +253,6 @@ export default function Shop() {
         <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto">
           {[
             { key: "catalog", label: "Каталог товаров", icon: "Package" },
-            { key: "builds", label: "Наши ПК", icon: "Monitor" },
             { key: "community", label: "Сборки сообщества", icon: "Users" },
           ].map(t => (
             <button
@@ -266,6 +265,14 @@ export default function Shop() {
               {t.label}
             </button>
           ))}
+          <button
+            onClick={() => navigate("/builds")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Monitor" size={15} />
+            Наши ПК
+          </button>
         </div>
       </div>
 
