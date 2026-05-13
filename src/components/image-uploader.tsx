@@ -69,16 +69,16 @@ export function ImageUploader({ images, onChange, folder = "builds", maxImages =
               )}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
                 <div className="flex gap-1">
-                  <button onClick={(e) => moveLeft(i, e)} style={{ cursor: "pointer" }}
+                  <button type="button" onClick={(e) => moveLeft(i, e)} style={{ cursor: "pointer" }}
                     className="flex h-6 w-6 items-center justify-center rounded bg-white/20 text-white hover:bg-white/40">
                     <Icon name="ChevronLeft" size={12} />
                   </button>
-                  <button onClick={(e) => moveRight(i, e)} style={{ cursor: "pointer" }}
+                  <button type="button" onClick={(e) => moveRight(i, e)} style={{ cursor: "pointer" }}
                     className="flex h-6 w-6 items-center justify-center rounded bg-white/20 text-white hover:bg-white/40">
                     <Icon name="ChevronRight" size={12} />
                   </button>
                 </div>
-                <button onClick={(e) => remove(i, e)} style={{ cursor: "pointer" }}
+                <button type="button" onClick={(e) => remove(i, e)} style={{ cursor: "pointer" }}
                   className="flex h-6 w-6 items-center justify-center rounded bg-red-500/70 text-white hover:bg-red-500">
                   <Icon name="Trash2" size={12} />
                 </button>
@@ -119,7 +119,7 @@ export function ImageUploader({ images, onChange, folder = "builds", maxImages =
           className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
           style={{ cursor: "text" }}
         />
-        <button onClick={addUrl} disabled={!uploadUrl.trim()} style={{ cursor: "pointer" }}
+        <button type="button" onClick={addUrl} disabled={!uploadUrl.trim()} style={{ cursor: "pointer" }}
           className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground/60 hover:text-foreground disabled:opacity-40 transition-colors">
           <Icon name="Plus" size={14} />
         </button>
