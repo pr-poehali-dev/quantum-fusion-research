@@ -246,12 +246,11 @@ function CablesTab() {
   const generateLink = async (id: number) => {
     setGeneratingId(id)
     try {
-      const raw = await api.cables.generateClientLink(id)
-      const res = typeof raw === "string" ? JSON.parse(raw) : raw
-      const token = res.client_token ?? res?.client_token
-      if (token) {
-        setCables(prev => prev.map(c => c.id === id ? { ...c, client_token: token } : c))
-      }
+      await api.cables.generateClientLink(id)
+      // Перезагружаем список чтобы гарантированно получить свежий токен
+      const raw = await api.cables.getAll()
+      const d = typeof raw === "string" ? JSON.parse(raw) : raw
+      setCables(d.cables || [])
     } catch (e) {
       console.error("generateLink error", e)
     }
@@ -356,9 +355,15 @@ function CablesTab() {
                     CPU: {c.cpu_type} · GPU: {c.gpu_type} · {new Date(c.created_at).toLocaleDateString("ru-RU")}
                   </p>
                   {c.client_token && (
-                    <p className="text-[10px] text-foreground/30 mt-0.5 font-mono truncate">
-                      /cables?token={c.client_token}
-                    </p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <input
+                        readOnly
+                        value={`${window.location.origin}/cables?token=${c.client_token}`}
+                        onClick={e => (e.target as HTMLInputElement).select()}
+                        className="flex-1 rounded border border-border bg-muted/30 px-2 py-0.5 text-[10px] font-mono text-foreground/50 focus:outline-none focus:border-primary"
+                        style={{ cursor: "text" }}
+                      />
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
