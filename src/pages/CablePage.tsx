@@ -37,7 +37,7 @@ export default function CablePage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-2xl px-6 py-10">
+      <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8">
           <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">C-Cables · партнёр</p>
           <h1 className="mb-2 text-3xl font-light text-foreground">Кастомные кабели</h1>
