@@ -43,8 +43,8 @@ type GpuType = typeof GPU_TYPES[number]
 
 // Количество видимых (передних) пинов для каждого типа — половина реального
 const CPU_PINS: Record<CpuType, number> = { "8-pin": 4, "8+4-pin": 6, "8+8-pin": 8 }
-const GPU_PINS: Record<GpuType, number> = { "8-pin": 4, "8+8-pin": 8, "8+8+8-pin": 12, "12V-2x6": 3 }
-const ATX_PINS = 6
+const GPU_PINS: Record<GpuType, number> = { "8-pin": 4, "8+8-pin": 8, "8+8+8-pin": 12, "12V-2x6": 6 }
+const ATX_PINS = 12
 
 // Размеры пина
 const PIN_W = 22
@@ -152,19 +152,9 @@ function PinStrip({ prefix, count, pinColors, activePin, onPinClick, palette, di
     )
   }
 
-  // direction === "left" (ATX — провода идут влево)
+  // direction === "left" (ATX — развёрнут, провода идут вправо)
   return (
     <g>
-      {/* Провода влево */}
-      {Array.from({ length: count }, (_, i) => {
-        const key = makePinKey(prefix, i)
-        const hex = getHex(pinColors[key] ?? DEFAULT_COLOR, palette)
-        const cy = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
-        return (
-          <line key={i} x1={0} y1={cy} x2={-WIRE_LEN} y2={cy}
-            stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
-        )
-      })}
       {/* ATX — вертикальный разъём */}
       <g transform="translate(0, 0)">
         <rect x={0} y={0} width={connH} height={totalW} rx={5}
@@ -191,6 +181,16 @@ function PinStrip({ prefix, count, pinColors, activePin, onPinClick, palette, di
         <text x={connH / 2} y={totalW + 12} textAnchor="middle" fontSize={9}
           fill="rgba(255,255,255,0.35)" fontFamily="monospace">24-pin ATX</text>
       </g>
+      {/* Провода вправо (развёрнут на 180°) */}
+      {Array.from({ length: count }, (_, i) => {
+        const key = makePinKey(prefix, i)
+        const hex = getHex(pinColors[key] ?? DEFAULT_COLOR, palette)
+        const cy = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
+        return (
+          <line key={i} x1={connH} y1={cy} x2={connH + WIRE_LEN} y2={cy}
+            stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+        )
+      })}
     </g>
   )
 }
@@ -237,7 +237,7 @@ function CableBody({
   const atxH = ATX_PINS * (PIN_W + PIN_GAP) - PIN_GAP
   const boardW = Math.max(cpuW, gpuW) + PAD * 2
   const boardH = 180
-  const svgW = boardW + WIRE_LEN + PIN_H + PAD + 60
+  const svgW = boardW + WIRE_LEN + PIN_H + PAD + 60 + WIRE_LEN
   const svgH = WIRE_LEN + boardH + WIRE_LEN + PIN_H + 40
 
   const boardX = 0
