@@ -306,7 +306,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
   const svgW = boardW + WIRE_LEN + PIN_H + PAD + 60 + WIRE_LEN
   const svgH = WIRE_LEN + boardH + WIRE_LEN + PIN_H + 40
 
-  const boardX = 0
+  const boardX = 40
   const boardY = WIRE_LEN + 10
   const cpuX = boardX + PAD
   const gpuX = boardX + PAD
@@ -315,31 +315,6 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
 
   return (
     <div className="space-y-6">
-      {/* Тип кабелей */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-xs text-foreground/50 mb-2">CPU кабель</p>
-          <div className="flex flex-wrap gap-1.5">
-            {CPU_TYPES.map(t => (
-              <button key={t} onClick={() => { setCpuType(t); setSelectedPins(new Set()) }}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${cpuType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
-                style={{ cursor: "pointer" }}>{t}</button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="text-xs text-foreground/50 mb-2">GPU кабель</p>
-          <div className="flex flex-wrap gap-1.5">
-            {GPU_TYPES.map(t => (
-              <button key={t} onClick={() => { setGpuType(t); setSelectedPins(new Set()) }}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${gpuType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
-                style={{ cursor: "pointer" }}>{t}</button>
-            ))}
-          </div>
-          {is12v && <p className="mt-1.5 text-[10px] text-yellow-400/80">⚡ Своя палитра цветов</p>}
-        </div>
-      </div>
-
       {/* SVG + Палитра — две колонки */}
       <div className="flex gap-4 items-stretch justify-end">
         <div className="overflow-x-auto flex-1 min-w-0">
@@ -362,8 +337,6 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
             {/* Плата */}
             <rect x={boardX} y={boardY} width={boardW} height={boardH} rx={10}
               fill="url(#pcb)" stroke="rgba(255,255,255,0.07)" strokeWidth={1.5} />
-            <text x={boardX + boardW / 2} y={boardY + boardH / 2 + 5} textAnchor="middle"
-              fontSize={10} fill="rgba(255,255,255,0.08)" fontFamily="monospace" letterSpacing={3}>MOTHERBOARD</text>
 
             {/* CPU */}
             <g transform={`translate(${cpuX}, ${boardY})`}>
@@ -395,8 +368,36 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
         </div>
         </div>
 
-        {/* Палитра — правая колонка */}
-        <div className="w-52 shrink-0 flex flex-col gap-3 pt-1 border-l border-border/40 pl-4">
+        {/* Правая колонка — выбор типов + палитра */}
+        <div className="w-56 shrink-0 flex flex-col gap-4 pt-1 border-l border-border/40 pl-4">
+
+          {/* Выбор типа кабелей */}
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-foreground/50 mb-1.5">CPU кабель</p>
+              <div className="flex flex-wrap gap-1">
+                {CPU_TYPES.map(t => (
+                  <button key={t} onClick={() => { setCpuType(t); setSelectedPins(new Set()) }}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-all ${cpuType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
+                    style={{ cursor: "pointer" }}>{t}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-foreground/50 mb-1.5">GPU кабель</p>
+              <div className="flex flex-wrap gap-1">
+                {GPU_TYPES.map(t => (
+                  <button key={t} onClick={() => { setGpuType(t); setSelectedPins(new Set()) }}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-all ${gpuType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
+                    style={{ cursor: "pointer" }}>{t}</button>
+                ))}
+              </div>
+              {is12v && <p className="mt-1 text-[10px] text-yellow-400/80">⚡ Своя палитра</p>}
+            </div>
+          </div>
+
+          <div className="border-t border-border/30" />
+
           {/* Статус */}
           <div className="min-h-[18px]">
             {selectedPins.size > 0 ? (
