@@ -2,36 +2,84 @@ import { useState, useRef, useCallback } from "react"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
 
-// ─── Палитра ─────────────────────────────────────────────────────────────────
-const PALETTE = [
-  { id: "black",               label: "Чёрный",               hex: "#1a1a1a" },
-  { id: "white",               label: "Белый",                hex: "#efefef" },
-  { id: "gray",                label: "Серый",                hex: "#6b7280" },
-  { id: "red",                 label: "Красный",              hex: "#dc2626" },
-  { id: "crimson",             label: "Бордовый",             hex: "#7f1d1d" },
-  { id: "orange",              label: "Оранжевый",            hex: "#ea580c" },
-  { id: "yellow",              label: "Жёлтый",               hex: "#ca8a04" },
-  { id: "green",               label: "Зелёный",              hex: "#16a34a" },
-  { id: "teal",                label: "Бирюзовый",            hex: "#0d9488" },
-  { id: "blue",                label: "Синий",                hex: "#2563eb" },
-  { id: "indigo",              label: "Индиго",               hex: "#4f46e5" },
-  { id: "purple",              label: "Фиолетовый",           hex: "#7c3aed" },
-  { id: "pink",                label: "Розовый",              hex: "#db2777" },
-  { id: "sleeved-white-black", label: "Бело-чёрная оплётка",  hex: "#c8c8c8" },
-  { id: "sleeved-red-black",   label: "Красно-чёрная оплётка",hex: "#b91c1c" },
+// ─── Палитра C-Cables PET 4мм (все кабели кроме 12V-2x6) ─────────────────────
+const PALETTE: { id: string; label: string; en: string; hex: string; uv?: boolean }[] = [
+  // Белые / серые / чёрные
+  { id: "perl-white",          label: "Жемчужно-белый",       en: "Perl White",           hex: "#f5f0eb" },
+  { id: "white",               label: "Белый",                en: "White",                hex: "#f2f2f2" },
+  { id: "light-gray",          label: "Светло-серый",         en: "Light gray (Silver)",  hex: "#b8bfc8" },
+  { id: "billet-gray",         label: "Базовый серый",        en: "Billet gray",          hex: "#8a9099" },
+  { id: "dark-gray",           label: "Темно-серый",          en: "Dark gray",            hex: "#555c63" },
+  { id: "carbon-gray",         label: "Карбоновый серый",     en: "Carbon gray",          hex: "#3d4147" },
+  { id: "gunmetal",            label: "Графит",               en: "Gunmetal",             hex: "#2e3238" },
+  { id: "black",               label: "Черный",               en: "Black",                hex: "#1a1a1a" },
+  { id: "light-carbon",        label: "Светлый карбон",       en: "Light Carbon",         hex: "#2d3035" },
+  { id: "carbon",              label: "Карбон",               en: "Carbon",               hex: "#1e2125" },
+  { id: "bw-mix",              label: "Черно-белый микс",     en: "Black & White mix",    hex: "#888888" },
+  { id: "white-lines-carbon",  label: "Карбон с белыми стежками", en: "White Lines Carbon", hex: "#252830" },
+  // Желтые / оранжевые
+  { id: "citron",              label: "Цитрон",               en: "Citron",               hex: "#c8d400", uv: true },
+  { id: "yellow",              label: "Желтый",               en: "Yellow",               hex: "#f5c800" },
+  { id: "gold",                label: "Золотой",              en: "Gold",                 hex: "#c8920a" },
+  { id: "terracotta",          label: "Терракотовый",         en: "Terracotta",           hex: "#b5633a" },
+  { id: "acid-orange",         label: "Кислотно-оранжевый",   en: "Acid orange",          hex: "#ff8c00", uv: true },
+  { id: "orange",              label: "Оранж",                en: "Orange",               hex: "#f07000", uv: true },
+  { id: "pumpkin",             label: "Тыква",                en: "Pumpkin orange",       hex: "#d45f10" },
+  { id: "orange-bk-mix",       label: "Оранжево-черный микс", en: "Orange & Black mix",   hex: "#a03a00" },
+  // Красные / бордо
+  { id: "bordo",               label: "Бордовый",             en: "Bordo",                hex: "#7a1030" },
+  { id: "bordo-bk-mix",        label: "Черно-бордовый микс",  en: "Bordo & Black mix",    hex: "#4a0a1a" },
+  { id: "red",                 label: "Красный",              en: "Red",                  hex: "#cc1515" },
+  { id: "scarlet",             label: "Алый (красный)",       en: "Scarlet",              hex: "#e02020" },
+  { id: "pink",                label: "Розовый",              en: "Pink",                 hex: "#e8207a" },
+  { id: "candy-cane",          label: "Карамельная трость",   en: "Candy cane",           hex: "#d44060" },
+  { id: "midnight-red",        label: "Полночный красный",    en: "Midnight Red",         hex: "#5a0a20", uv: true },
+  // Синие
+  { id: "peri-blue",           label: "Перламутровый голубой",en: "Peri Blue",            hex: "#90b8e0" },
+  { id: "aqua-blue",           label: "Аква",                 en: "Aqua blue",            hex: "#30c0e0" },
+  { id: "aquaterra",           label: "Акватерра",            en: "Aquaterra",            hex: "#00b0d0" },
+  { id: "navy-blue",           label: "Темно-синий",          en: "Navy blue",            hex: "#1040a0" },
+  { id: "meteor-shower",       label: "Метеоритный дождь",    en: "Meteor shower",        hex: "#1a3060" },
+  // Фиолетовые / зеленые
+  { id: "lavender",            label: "Лавандовый",           en: "Lavender",             hex: "#8868c8" },
+  { id: "purple",              label: "Фиолетовый",           en: "Purple",               hex: "#6030a8" },
+  { id: "purple-bk-mix",       label: "Фиолетово-черный микс",en: "Purple & Black mix",   hex: "#30104a" },
+  { id: "army-green",          label: "Армейский зеленый",    en: "Army Green",           hex: "#3a5030" },
+  { id: "nvidia-green",        label: "Зеленый NV",           en: "NVIDIA green",         hex: "#76b900" },
+  { id: "acid-green",          label: "Кислотно-зеленый",     en: "Acid green",           hex: "#50e000", uv: true },
+  { id: "toxic-rain",          label: "Кислотный дождь",      en: "Toxic Rain",           hex: "#2a4010" },
 ]
 
-const PALETTE_12V = [
-  { id: "black",  label: "Чёрный",  hex: "#1a1a1a" },
-  { id: "white",  label: "Белый",   hex: "#efefef" },
-  { id: "gray",   label: "Серый",   hex: "#6b7280" },
-  { id: "yellow", label: "Жёлтый",  hex: "#ca8a04" },
-  { id: "green",  label: "Зелёный", hex: "#16a34a" },
+// ─── Палитра C-Cables PET 2мм (только 12V-2x6) ───────────────────────────────
+const PALETTE_12V: { id: string; label: string; en: string; hex: string; uv?: boolean }[] = [
+  { id: "white",         label: "Белый",                en: "White",              hex: "#f2f2f2" },
+  { id: "light-gray",    label: "Светло-серый",         en: "Light gray (Silver)", hex: "#b8bfc8" },
+  { id: "dark-gray",     label: "Темно-серый",          en: "Dark gray",          hex: "#555c63" },
+  { id: "carbon-gray",   label: "Карбоновый серый",     en: "Carbon gray",        hex: "#3d4147" },
+  { id: "gunmetal",      label: "Графит",               en: "Gunmetal",           hex: "#2e3238" },
+  { id: "black",         label: "Черный",               en: "Black",              hex: "#1a1a1a" },
+  { id: "carbon",        label: "Карбон",               en: "Carbon",             hex: "#1e2125" },
+  { id: "citron",        label: "Цитрон",               en: "Citron",             hex: "#c8d400", uv: true },
+  { id: "yellow",        label: "Желтый",               en: "Yellow",             hex: "#f5c800" },
+  { id: "gold",          label: "Золотой",              en: "Gold",               hex: "#c8920a" },
+  { id: "terracotta",    label: "Терракотовый",         en: "Terracotta",         hex: "#b5633a" },
+  { id: "orange",        label: "Оранж",                en: "Orange",             hex: "#f07000", uv: true },
+  { id: "red",           label: "Красный",              en: "Red",                hex: "#cc1515" },
+  { id: "scarlet",       label: "Алый (красный)",       en: "Scarlet",            hex: "#e02020" },
+  { id: "pink",          label: "Розовый",              en: "Pink",               hex: "#e8207a" },
+  { id: "aqua-blue",     label: "Аква",                 en: "Aqua blue",          hex: "#30c0e0" },
+  { id: "aquaterra",     label: "Акватерра",            en: "Aquaterra",          hex: "#00b0d0" },
+  { id: "navy-blue",     label: "Темно-синий",          en: "Navy blue",          hex: "#1040a0" },
+  { id: "meteor-shower", label: "Метеоритный дождь",    en: "Meteor shower",      hex: "#1a3060" },
+  { id: "purple",        label: "Фиолетовый",           en: "Purple",             hex: "#6030a8" },
+  { id: "acid-green",    label: "Кислотно-зеленый",     en: "Acid green",         hex: "#50e000", uv: true },
 ]
 
 const DEFAULT_COLOR = "black"
 const DEFAULT_HEX = "#1a1a1a"
-const getHex = (id: string, pal: typeof PALETTE = PALETTE) => pal.find(p => p.id === id)?.hex ?? DEFAULT_HEX
+const getHex = (id: string, pal: typeof PALETTE = PALETTE) => (pal as typeof PALETTE).find(p => p.id === id)?.hex ?? DEFAULT_HEX
+const getLabel = (id: string, pal: typeof PALETTE = PALETTE) => (pal as typeof PALETTE).find(p => p.id === id)?.label ?? id
+const getEn = (id: string, pal: typeof PALETTE = PALETTE) => (pal as typeof PALETTE).find(p => p.id === id)?.en ?? id
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 const CPU_TYPES = ["8-pin", "8+4-pin", "8+8-pin"] as const
@@ -361,15 +409,28 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
       {/* Палитра */}
       {selectedPins.size > 0 && (
         <div>
-          <p className="text-xs text-foreground/50 mb-2.5">Цвет оплётки</p>
-          <div className="flex flex-wrap gap-2.5">
+          <p className="text-xs text-foreground/50 mb-2.5">
+            Цвет оплётки <span className="text-foreground/30">· {is12v ? "PET 2мм (12V-2x6)" : "PET 4мм"}</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
             {activePalette.map(color => {
               const isActive = firstColor === color.id
               return (
-                <button key={color.id} title={color.label} onClick={() => applyColor(color.id)}
-                  className={`h-8 w-8 rounded-full border-2 transition-all hover:scale-110 ${isActive ? "border-white scale-110" : "border-transparent opacity-80"}`}
-                  style={{ backgroundColor: color.hex, cursor: "pointer",
-                    boxShadow: isActive ? "0 0 0 3px hsl(var(--primary))" : undefined }} />
+                <div key={color.id} className="relative group">
+                  <button title={color.label} onClick={() => applyColor(color.id)}
+                    className={`h-7 w-7 rounded-full border-2 transition-all hover:scale-110 ${isActive ? "border-white scale-110" : "border-transparent opacity-85"}`}
+                    style={{ backgroundColor: color.hex, cursor: "pointer",
+                      boxShadow: isActive ? "0 0 0 3px hsl(var(--primary))" : undefined }} />
+                  {color.uv && (
+                    <span className="absolute -top-1 -right-1 text-[8px] leading-none bg-purple-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold pointer-events-none">U</span>
+                  )}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 pointer-events-none">
+                    <div className="bg-popover border border-border rounded-lg px-2 py-1 text-[10px] text-foreground whitespace-nowrap shadow-lg">
+                      {color.label}
+                      <span className="block text-foreground/40">{color.en}</span>
+                    </div>
+                  </div>
+                </div>
               )
             })}
           </div>
@@ -405,13 +466,56 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
 
       {/* Итог */}
       <div className="space-y-3 pt-2 border-t border-border">
-        <div className="text-xs text-foreground/40 space-y-0.5">
-          <p>CPU: <span className="text-foreground/60">{cpuType} · {cpuCount} пинов</span></p>
-          <p>GPU: <span className="text-foreground/60">{gpuType} · {gpuCount} пинов</span></p>
-          <p>ATX: <span className="text-foreground/60">24-pin · {ATX_PINS} видимых</span></p>
-          <p className="text-[10px] pt-1">Партнёр: C-Cables · цена согласовывается после оформления</p>
+        {/* Сводка по цветам */}
+        <div className="space-y-2">
+          {[
+            { prefix: "cpu", label: `CPU ${cpuType} (PET 4мм)`, count: cpuCount, pal: PALETTE },
+            { prefix: "gpu", label: `GPU ${gpuType} (${is12v ? "PET 2мм" : "PET 4мм"})`, count: gpuCount, pal: is12v ? PALETTE_12V : PALETTE },
+            { prefix: "atx", label: "ATX 24-pin (PET 4мм)", count: ATX_PINS, pal: PALETTE },
+          ].map(({ prefix, label, count, pal }) => {
+            const colorGroups: Record<string, number> = {}
+            pinKeys(prefix, count).forEach(k => {
+              const c = pinColors[k] ?? DEFAULT_COLOR
+              colorGroups[c] = (colorGroups[c] ?? 0) + 1
+            })
+            return (
+              <div key={prefix} className="text-xs text-foreground/50">
+                <span className="text-foreground/70 font-medium">{label}:</span>{" "}
+                {Object.entries(colorGroups).map(([cid, cnt], i) => (
+                  <span key={cid}>
+                    {i > 0 && ", "}
+                    <span className="inline-flex items-center gap-1">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full border border-white/20"
+                        style={{ backgroundColor: getHex(cid, pal as typeof PALETTE) }} />
+                      {getLabel(cid, pal as typeof PALETTE)}{cnt > 1 ? ` ×${cnt}` : ""}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )
+          })}
         </div>
-        <button onClick={() => addToCart(`CPU ${cpuType} / GPU ${gpuType} / ATX 24-pin`)}
+        <p className="text-[10px] text-foreground/30">Партнёр: C-Cables · цена согласовывается после оформления</p>
+        <button onClick={() => {
+          // Формируем детальное описание для заказа
+          const buildSummary = (prefix: string, count: number, pal: typeof PALETTE) => {
+            const groups: Record<string, number[]> = {}
+            pinKeys(prefix, count).forEach((k, i) => {
+              const c = pinColors[k] ?? DEFAULT_COLOR
+              if (!groups[c]) groups[c] = []
+              groups[c].push(i + 1)
+            })
+            return Object.entries(groups).map(([cid, idxs]) =>
+              `${getEn(cid, pal)} (пины: ${idxs.join(",")})`
+            ).join("; ")
+          }
+          const detail = [
+            `CPU ${cpuType} PET4mm: ${buildSummary("cpu", cpuCount, PALETTE)}`,
+            `GPU ${gpuType} ${is12v ? "PET2mm" : "PET4mm"}: ${buildSummary("gpu", gpuCount, is12v ? PALETTE_12V as typeof PALETTE : PALETTE)}`,
+            `ATX 24pin PET4mm: ${buildSummary("atx", ATX_PINS, PALETTE)}`,
+          ].join(" | ")
+          addToCart(detail)
+        }}
           className={`w-full rounded-xl py-3 text-sm font-medium transition-all ${added
             ? "bg-green-600/20 text-green-400 border border-green-500/30"
             : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
