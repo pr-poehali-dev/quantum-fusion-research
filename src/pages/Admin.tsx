@@ -229,6 +229,8 @@ function CablesTab() {
   const [loading, setLoading] = useState(true)
   const [generatingId, setGeneratingId] = useState<number | null>(null)
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editName, setEditName] = useState("")
 
   useEffect(() => {
     api.cables.getAll().then(d => {
@@ -247,14 +249,42 @@ function CablesTab() {
   }
 
   const copyLink = (token: string, id: number) => {
-    navigator.clipboard.writeText(`${window.location.origin}/cables?token=${token}`)
+    const url = `${window.location.origin}/cables?token=${token}`
+    try {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedId(id)
+        setTimeout(() => setCopiedId(null), 2000)
+      }).catch(() => fallbackCopy(url, id))
+    } catch {
+      fallbackCopy(url, id)
+    }
+  }
+
+  const fallbackCopy = (text: string, id: number) => {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    ta.style.position = "fixed"
+    ta.style.opacity = "0"
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    try { document.execCommand("copy") } catch (e) { console.warn("copy failed", e) }
+    document.body.removeChild(ta)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2000)
   }
 
   const deleteCable = async (id: number) => {
+    if (!confirm("Удалить конфигурацию?")) return
     await api.cables.delete(id)
     setCables(prev => prev.filter(c => c.id !== id))
+  }
+
+  const saveName = async (c: typeof cables[0]) => {
+    if (!editName.trim()) return
+    await api.cables.update({ id: c.id, name: editName.trim(), cpu_type: c.cpu_type, gpu_type: c.gpu_type, pin_colors: {} })
+    setCables(prev => prev.map(x => x.id === c.id ? { ...x, name: editName.trim() } : x))
+    setEditingId(null)
   }
 
   return (
@@ -282,34 +312,67 @@ function CablesTab() {
       ) : (
         <div className="space-y-2">
           {cables.map(c => (
-            <div key={c.id} className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{c.name}</p>
-                <p className="text-xs text-foreground/40 mt-0.5">
-                  CPU: {c.cpu_type} · GPU: {c.gpu_type} · {new Date(c.created_at).toLocaleDateString("ru-RU")}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {c.client_token ? (
-                  <button onClick={() => copyLink(c.client_token!, c.id)}
-                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+            <div key={c.id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  {editingId === c.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveName(c); if (e.key === "Escape") setEditingId(null) }}
+                        className="flex-1 rounded-lg border border-primary bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none"
+                        style={{ cursor: "text" }}
+                      />
+                      <button onClick={() => saveName(c)}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground"
+                        style={{ cursor: "pointer" }}>Сохранить</button>
+                      <button onClick={() => setEditingId(null)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60"
+                        style={{ cursor: "pointer" }}>Отмена</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group">
+                      <p className="text-sm font-medium text-foreground">{c.name}</p>
+                      <button onClick={() => { setEditingId(c.id); setEditName(c.name) }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-foreground/30 hover:text-foreground"
+                        style={{ cursor: "pointer" }}>
+                        <Icon name="Pencil" size={12} />
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-xs text-foreground/40 mt-0.5">
+                    CPU: {c.cpu_type} · GPU: {c.gpu_type} · {new Date(c.created_at).toLocaleDateString("ru-RU")}
+                  </p>
+                  {c.client_token && (
+                    <p className="text-[10px] text-foreground/30 mt-0.5 font-mono truncate">
+                      /cables?token={c.client_token}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {c.client_token ? (
+                    <button onClick={() => copyLink(c.client_token!, c.id)}
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${copiedId === c.id ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-border text-foreground/60 hover:border-primary hover:text-primary"}`}
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={copiedId === c.id ? "Check" : "Copy"} size={13} />
+                      {copiedId === c.id ? "Скопировано!" : "Скопировать ссылку"}
+                    </button>
+                  ) : (
+                    <button onClick={() => generateLink(c.id)} disabled={generatingId === c.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name="Link" size={13} />
+                      {generatingId === c.id ? "Создаю..." : "Создать ссылку"}
+                    </button>
+                  )}
+                  <button onClick={() => deleteCable(c.id)}
+                    className="rounded-lg border border-border p-1.5 text-foreground/40 hover:border-red-500/50 hover:text-red-400 transition-colors"
                     style={{ cursor: "pointer" }}>
-                    <Icon name={copiedId === c.id ? "Check" : "Link"} size={13} />
-                    {copiedId === c.id ? "Скопировано" : "Ссылка"}
+                    <Icon name="Trash2" size={14} />
                   </button>
-                ) : (
-                  <button onClick={() => generateLink(c.id)} disabled={generatingId === c.id}
-                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
-                    style={{ cursor: "pointer" }}>
-                    <Icon name="Link" size={13} />
-                    {generatingId === c.id ? "..." : "Создать ссылку"}
-                  </button>
-                )}
-                <button onClick={() => deleteCable(c.id)}
-                  className="rounded-lg border border-border p-1.5 text-foreground/40 hover:border-red-500/50 hover:text-red-400 transition-colors"
-                  style={{ cursor: "pointer" }}>
-                  <Icon name="Trash2" size={14} />
-                </button>
+                </div>
               </div>
             </div>
           ))}
