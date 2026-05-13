@@ -74,7 +74,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
           {images.map((url, i) => (
             <img key={i} src={url} alt={b.name}
               className="absolute inset-0 h-full w-full object-cover"
-              style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease" }}
+              style={{ opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease" }}
             />
           ))}
         </div>
