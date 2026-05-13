@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useCart } from "@/store/cart"
+import { useCart, CartItem } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
@@ -62,6 +62,56 @@ function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => v
       >
         <Icon name="Plus" size={11} />
       </button>
+    </div>
+  )
+}
+
+function ExtrasSection() {
+  const { items, removeItem } = useCart()
+  const navigate = useNavigate()
+
+  const cableItems = items.filter((i: CartItem) => i.type === "config" && i.name.startsWith("Кастомные кабели"))
+
+  return (
+    <div className={`rounded-xl border bg-card transition-all duration-200 ${cableItems.length > 0 ? "border-primary/40" : "border-border"}`}>
+      <div className="flex items-center gap-3 p-4">
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${cableItems.length > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
+          <Icon name="Cable" size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">Прочее</p>
+          {cableItems.length === 0 && <p className="text-xs text-foreground/30">Кастомные кабели и другие аксессуары</p>}
+        </div>
+        <button onClick={() => navigate("/cables")}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+          style={{ cursor: "pointer" }}>
+          <Icon name="Plus" size={13} />
+          Добавить кабели
+        </button>
+      </div>
+
+      {cableItems.length > 0 && (
+        <div className="border-t border-border px-4 pb-4 pt-3 space-y-2">
+          {cableItems.map((item: CartItem) => (
+            <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 px-3 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Icon name="Cable" size={14} className="text-primary shrink-0" />
+                <p className="text-sm text-foreground truncate">
+                  {item.name.replace("Кастомные кабели C-Cables: ", "")}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-foreground/40">C-Cables</span>
+                <button onClick={() => removeItem(item.id)}
+                  className="text-foreground/30 hover:text-red-400 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="X" size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -360,6 +410,9 @@ export default function Configurator() {
                 )
               })
             }
+
+            {/* ── Прочее: кастомные кабели ── */}
+            <ExtrasSection />
           </div>
 
           {/* ── Summary panel ── */}
