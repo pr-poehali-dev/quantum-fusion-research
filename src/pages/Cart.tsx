@@ -9,7 +9,7 @@ export default function Cart() {
   const { items, removeItem, updateQty, clearCart, total, count } = useCart()
   const { sessionId } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: "", phone: "", email: "", comment: "" })
+  const [form, setForm] = useState({ name: "", phone: "", contact_type: "tg" as "tg" | "vk" | "max", contact_value: "", comment: "" })
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -25,7 +25,7 @@ export default function Cart() {
     await api.orders.createWithSession({
       customer_name: form.name,
       customer_phone: form.phone,
-      customer_email: form.email || undefined,
+      customer_email: form.contact_value ? `${form.contact_type}:${form.contact_value}` : undefined,
       order_type: orderType,
       items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type, assembly: i.assembly, components: i.components })),
       total: total(),
@@ -161,13 +161,34 @@ export default function Cart() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-foreground/60">Email</label>
+                  <label className="mb-1 block text-xs text-foreground/60">Как с вами связаться?</label>
+                  <div className="flex gap-1.5 mb-2">
+                    {([
+                      { key: "tg", label: "Telegram" },
+                      { key: "vk", label: "ВКонтакте" },
+                      { key: "max", label: "Макс" },
+                    ] as const).map(s => (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, contact_type: s.key, contact_value: "" }))}
+                        className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${form.contact_type === s.key ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
                   <input
-                    type="email"
-                    value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    type={form.contact_type === "max" ? "tel" : "text"}
+                    value={form.contact_value}
+                    onChange={e => setForm(f => ({ ...f, contact_value: e.target.value }))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                    placeholder="your@email.com"
+                    placeholder={
+                      form.contact_type === "tg" ? "https://t.me/username" :
+                      form.contact_type === "vk" ? "https://vk.com/username" :
+                      "+7 (___) ___-__-__"
+                    }
                     style={{ cursor: "text" }}
                   />
                 </div>
