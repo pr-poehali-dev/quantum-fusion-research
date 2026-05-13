@@ -245,7 +245,7 @@ function CableBody({
   const cpuX = boardX + PAD
   const gpuX = boardX + PAD
   const atxX = boardX + boardW + 40
-  const atxY = boardY + 20
+  const atxY = boardY - 60
 
   return (
     <div className="space-y-6">
