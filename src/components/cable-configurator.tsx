@@ -41,10 +41,10 @@ const GPU_TYPES = ["8-pin", "8+8-pin", "8+8+8-pin", "12V-2x6"] as const
 type CpuType = typeof CPU_TYPES[number]
 type GpuType = typeof GPU_TYPES[number]
 
-// Количество видимых (передних) пинов для каждого типа
-const CPU_PINS: Record<CpuType, number> = { "8-pin": 8, "8+4-pin": 12, "8+8-pin": 16 }
-const GPU_PINS: Record<GpuType, number> = { "8-pin": 8, "8+8-pin": 16, "8+8+8-pin": 24, "12V-2x6": 6 }
-const ATX_PINS = 12
+// Количество видимых (передних) пинов для каждого типа — половина реального
+const CPU_PINS: Record<CpuType, number> = { "8-pin": 4, "8+4-pin": 6, "8+8-pin": 8 }
+const GPU_PINS: Record<GpuType, number> = { "8-pin": 4, "8+8-pin": 8, "8+8+8-pin": 12, "12V-2x6": 3 }
+const ATX_PINS = 6
 
 // Размеры пина
 const PIN_W = 22
@@ -237,14 +237,14 @@ function CableBody({
   const atxH = ATX_PINS * (PIN_W + PIN_GAP) - PIN_GAP
   const boardW = Math.max(cpuW, gpuW) + PAD * 2
   const boardH = 180
-  const svgW = boardW + WIRE_LEN + PIN_H + PAD + 20
+  const svgW = boardW + WIRE_LEN + PIN_H + PAD + 60
   const svgH = WIRE_LEN + boardH + WIRE_LEN + PIN_H + 40
 
   const boardX = 0
   const boardY = WIRE_LEN + 10
   const cpuX = boardX + PAD
   const gpuX = boardX + PAD
-  const atxX = boardX + boardW
+  const atxX = boardX + boardW + 40
   const atxY = boardY + 20
 
   return (
@@ -318,7 +318,7 @@ function CableBody({
             </g>
 
             {/* GPU — снизу, провода вниз */}
-            <g transform={`translate(${gpuX}, ${boardY + boardH - PIN_H - 8})`}>
+            <g transform={`translate(${gpuX}, ${boardY + boardH - 4})`}>
               <PinStrip
                 prefix="gpu" count={gpuCount}
                 pinColors={pinColors} activePin={activePin}
