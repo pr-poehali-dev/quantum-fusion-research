@@ -149,11 +149,13 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
 
   const body = (
     <g>
+      {label && (
+        <text x={totalW / 2} y={-8} textAnchor="middle" fontSize={9}
+          fill="rgba(255,255,255,0.45)" fontFamily="monospace">{label}</text>
+      )}
       <rect x={0} y={0} width={totalW} height={connH} rx={5}
         fill="#1e293b" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
       {Array.from({ length: count }, (_, i) => renderPin(i, i * (PIN_W + PIN_GAP) + 2, 4))}
-      <text x={totalW / 2} y={connH + 11} textAnchor="middle" fontSize={9}
-        fill="rgba(255,255,255,0.35)" fontFamily="monospace">{label}</text>
     </g>
   )
 
@@ -207,11 +209,11 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
 
   return (
     <g>
+      <text x={connH / 2} y={-8} textAnchor="middle" fontSize={9}
+        fill="rgba(255,255,255,0.45)" fontFamily="monospace">ATX 24-pin</text>
       <rect x={0} y={0} width={connH} height={totalW} rx={5}
         fill="#1e293b" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
       {Array.from({ length: count }, (_, i) => renderPinV(i))}
-      <text x={connH / 2} y={totalW + 12} textAnchor="middle" fontSize={9}
-        fill="rgba(255,255,255,0.35)" fontFamily="monospace">24-pin ATX</text>
       {Array.from({ length: count }, (_, i) => {
         const hex = getHex(pinColors[makePinKey(prefix, i)] ?? DEFAULT_COLOR, palette)
         const cy = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
@@ -342,7 +344,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
                 selectedPins={selectedPins}
                 onPinPointerDown={handlePinPointerDown}
                 onPinPointerEnter={handlePinPointerEnter}
-                palette={PALETTE} direction="up" label={cpuType} />
+                palette={PALETTE} direction="up" label={`CPU · ${cpuType}`} />
             </g>
 
             {/* GPU */}
@@ -351,7 +353,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
                 selectedPins={selectedPins}
                 onPinPointerDown={handlePinPointerDown}
                 onPinPointerEnter={handlePinPointerEnter}
-                palette={gpuPalette} direction="down" label={gpuType} />
+                palette={gpuPalette} direction="down" label={`GPU · ${gpuType}`} />
             </g>
 
             {/* ATX */}
