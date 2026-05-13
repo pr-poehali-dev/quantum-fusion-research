@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import { CableConfigurator } from "@/components/cable-configurator"
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
   cpu:     { label: "Процессор",        icon: "Cpu",        required: true  },
@@ -532,6 +533,9 @@ export default function Configurator() {
                 </div>
               )}
             </div>
+
+            {/* ── Кастомные кабели ── */}
+            <CableConfigurator />
 
           </div>
         </div>
