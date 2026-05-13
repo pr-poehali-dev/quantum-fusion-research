@@ -133,16 +133,16 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
         onPointerDown={(e) => onPinPointerDown(key, e)}
         onPointerEnter={() => onPinPointerEnter(key)}
         style={{ cursor: "pointer" }}>
-        <rect x={x + PIN_W / 2 - 3} y={y} width={6} height={PIN_H - 4} rx={2} fill={hex} opacity={0.85} />
+        <rect x={x + PIN_W / 2 - 3} y={y} width={6} height={PIN_H - 4} rx={2} fill={hex} />
         <rect x={x} y={y} width={PIN_W} height={PIN_H} rx={3}
-          fill={hex} opacity={isSelected ? 1 : 0.82}
+          fill={hex}
           stroke={isSelected ? "white" : "rgba(255,255,255,0.18)"}
           strokeWidth={isSelected ? 2.5 : 0.8} />
         {isSelected && (
           <rect x={x} y={y} width={PIN_W} height={PIN_H} rx={3}
-            fill="none" stroke="hsl(var(--primary))" strokeWidth={2} opacity={0.9} />
+            fill="none" stroke="hsl(var(--primary))" strokeWidth={2} />
         )}
-        <rect x={x + 3} y={y + 3} width={PIN_W - 6} height={5} rx={1.5} fill="rgba(255,255,255,0.18)" />
+        <rect x={x + 3} y={y + 3} width={PIN_W - 6} height={5} rx={1.5} fill="rgba(255,255,255,0.2)" />
       </g>
     )
   }
@@ -162,7 +162,7 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
       {Array.from({ length: count }, (_, i) => {
         const hex = getHex(pinColors[makePinKey(prefix, i)] ?? DEFAULT_COLOR, palette)
         const cx = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
-        return <line key={i} x1={cx} y1={0} x2={cx} y2={-WIRE_LEN} stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+        return <line key={i} x1={cx} y1={0} x2={cx} y2={-WIRE_LEN} stroke={hex} strokeWidth={3.5} strokeLinecap="round" />
       })}
       {body}
     </g>
@@ -174,7 +174,7 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
       {Array.from({ length: count }, (_, i) => {
         const hex = getHex(pinColors[makePinKey(prefix, i)] ?? DEFAULT_COLOR, palette)
         const cx = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
-        return <line key={i} x1={cx} y1={connH} x2={cx} y2={connH + WIRE_LEN} stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+        return <line key={i} x1={cx} y1={connH} x2={cx} y2={connH + WIRE_LEN} stroke={hex} strokeWidth={3.5} strokeLinecap="round" />
       })}
     </g>
   )
@@ -191,16 +191,16 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
         onPointerDown={(e) => onPinPointerDown(key, e)}
         onPointerEnter={() => onPinPointerEnter(key)}
         style={{ cursor: "pointer" }}>
-        <rect x={4} y={y + PIN_W / 2 - 3} width={PIN_H - 4} height={6} rx={2} fill={hex} opacity={0.85} />
+        <rect x={4} y={y + PIN_W / 2 - 3} width={PIN_H - 4} height={6} rx={2} fill={hex} />
         <rect x={4} y={y} width={PIN_H} height={PIN_W} rx={3}
-          fill={hex} opacity={isSelected ? 1 : 0.82}
+          fill={hex}
           stroke={isSelected ? "white" : "rgba(255,255,255,0.18)"}
           strokeWidth={isSelected ? 2.5 : 0.8} />
         {isSelected && (
           <rect x={4} y={y} width={PIN_H} height={PIN_W} rx={3}
-            fill="none" stroke="hsl(var(--primary))" strokeWidth={2} opacity={0.9} />
+            fill="none" stroke="hsl(var(--primary))" strokeWidth={2} />
         )}
-        <rect x={7} y={y + 3} width={5} height={PIN_W - 6} rx={1.5} fill="rgba(255,255,255,0.18)" />
+        <rect x={7} y={y + 3} width={5} height={PIN_W - 6} rx={1.5} fill="rgba(255,255,255,0.2)" />
       </g>
     )
   }
@@ -215,7 +215,7 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
       {Array.from({ length: count }, (_, i) => {
         const hex = getHex(pinColors[makePinKey(prefix, i)] ?? DEFAULT_COLOR, palette)
         const cy = i * (PIN_W + PIN_GAP) + 2 + PIN_W / 2
-        return <line key={i} x1={connH} y1={cy} x2={connH + WIRE_LEN} y2={cy} stroke={hex} strokeWidth={3.5} strokeLinecap="round" opacity={0.75} />
+        return <line key={i} x1={connH} y1={cy} x2={connH + WIRE_LEN} y2={cy} stroke={hex} strokeWidth={3.5} strokeLinecap="round" />
       })}
     </g>
   )
@@ -340,9 +340,10 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
         </div>
       </div>
 
-      {/* SVG */}
-      <div className="overflow-x-auto">
-        <div className="min-w-[420px]">
+      {/* SVG + Палитра — две колонки */}
+      <div className="flex gap-4 items-start">
+        <div className="overflow-x-auto flex-1 min-w-0">
+        <div className="min-w-[320px]">
           <svg width="100%" viewBox={`-${PAD} -10 ${svgW + PAD * 2} ${svgH + 20}`}
             style={{ display: "block", touchAction: "none" }}
             onPointerUp={handleSvgPointerUp}
@@ -392,27 +393,28 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
             </g>
           </svg>
         </div>
-      </div>
+        </div>
 
-      {/* Статус */}
-      <div className="min-h-[20px]">
-        {selectedPins.size > 0 ? (
-          <p className="text-xs text-primary font-mono">
-            Выделено {selectedPins.size} {selectedPins.size === 1 ? "пин" : selectedPins.size < 5 ? "пина" : "пинов"}
-            {firstColor && ` · ${activePalette.find(p => p.id === firstColor)?.label ?? ""}`}
-          </p>
-        ) : (
-          <p className="text-xs text-foreground/30">Кликни или зажми и веди по пинам для выделения</p>
-        )}
-      </div>
+        {/* Палитра — правая колонка */}
+        <div className="w-52 shrink-0 space-y-3 pt-1">
+          {/* Статус */}
+          <div className="min-h-[18px]">
+            {selectedPins.size > 0 ? (
+              <p className="text-xs text-primary font-mono">
+                {selectedPins.size} {selectedPins.size === 1 ? "пин" : selectedPins.size < 5 ? "пина" : "пинов"}
+                {firstColor && ` · ${activePalette.find(p => p.id === firstColor)?.label ?? ""}`}
+              </p>
+            ) : (
+              <p className="text-xs text-foreground/30">Кликни или веди по пинам</p>
+            )}
+          </div>
 
-      {/* Палитра */}
-      {selectedPins.size > 0 && (
-        <div>
-          <p className="text-xs text-foreground/50 mb-2.5">
-            Цвет оплётки <span className="text-foreground/30">· {is12v ? "PET 2мм (12V-2x6)" : "PET 4мм"}</span>
+          {/* Палитра */}
+          <div>
+          <p className="text-xs text-foreground/50 mb-2">
+            {is12v ? "PET 2мм (12V-2x6)" : "PET 4мм"}
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {activePalette.map(color => {
               const isActive = firstColor === color.id
               return (
@@ -435,34 +437,37 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
             })}
           </div>
 
-          <div className="mt-3 flex gap-2 flex-wrap">
-            <button onClick={() => {
-              if (!selectedGroup) return
-              const color = firstColor ?? DEFAULT_COLOR
-              const count = selectedGroup === "cpu" ? cpuCount : selectedGroup === "gpu" ? gpuCount : ATX_PINS
-              const updates: PinColors = {}
-              pinKeys(selectedGroup, count).forEach(k => { updates[k] = color })
-              setPinColors(prev => ({ ...prev, ...updates }))
-            }}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-              style={{ cursor: "pointer" }}>
-              Весь кабель
-            </button>
-            <button onClick={() => {
-              const updates: PinColors = {}
-              pinKeys("cpu", cpuCount).forEach(k => { updates[k] = DEFAULT_COLOR })
-              pinKeys("gpu", gpuCount).forEach(k => { updates[k] = DEFAULT_COLOR })
-              pinKeys("atx", ATX_PINS).forEach(k => { updates[k] = DEFAULT_COLOR })
-              setPinColors(prev => ({ ...prev, ...updates }))
-              setSelectedPins(new Set())
-            }}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-red-500/50 hover:text-red-400 transition-colors"
-              style={{ cursor: "pointer" }}>
-              Сбросить всё
-            </button>
+          {selectedPins.size > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <button onClick={() => {
+                if (!selectedGroup) return
+                const color = firstColor ?? DEFAULT_COLOR
+                const count = selectedGroup === "cpu" ? cpuCount : selectedGroup === "gpu" ? gpuCount : ATX_PINS
+                const updates: PinColors = {}
+                pinKeys(selectedGroup, count).forEach(k => { updates[k] = color })
+                setPinColors(prev => ({ ...prev, ...updates }))
+              }}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                Весь кабель
+              </button>
+              <button onClick={() => {
+                const updates: PinColors = {}
+                pinKeys("cpu", cpuCount).forEach(k => { updates[k] = DEFAULT_COLOR })
+                pinKeys("gpu", gpuCount).forEach(k => { updates[k] = DEFAULT_COLOR })
+                pinKeys("atx", ATX_PINS).forEach(k => { updates[k] = DEFAULT_COLOR })
+                setPinColors(prev => ({ ...prev, ...updates }))
+                setSelectedPins(new Set())
+              }}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-red-500/50 hover:text-red-400 transition-colors"
+                style={{ cursor: "pointer" }}>
+                Сбросить всё
+              </button>
+            </div>
+          )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Итог */}
       <div className="space-y-3 pt-2 border-t border-border">
