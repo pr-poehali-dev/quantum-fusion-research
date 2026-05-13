@@ -372,8 +372,9 @@ export default function Shop() {
                 <p>Товары не найдены</p>
               </div>
             ) : (() => {
-              const featured = products.filter(p => p.is_featured)
-              const rest = products.filter(p => !p.is_featured)
+              const sorted = [...products].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+              const featured = sorted.filter(p => p.is_featured)
+              const rest = sorted.filter(p => !p.is_featured)
               const renderCard = (p: Product) => (
                 <ProductCard
                   key={p.id}
