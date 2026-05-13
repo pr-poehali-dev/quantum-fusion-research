@@ -222,6 +222,103 @@ function TagBadge({ tag }: { tag: Tag }) {
   )
 }
 
+// ── Вкладка Кабели ──
+function CablesTab() {
+  const navigate = useNavigate()
+  const [cables, setCables] = useState<{id: number; name: string; cpu_type: string; gpu_type: string; client_token: string | null; created_at: string}[]>([])
+  const [loading, setLoading] = useState(true)
+  const [generatingId, setGeneratingId] = useState<number | null>(null)
+  const [copiedId, setCopiedId] = useState<number | null>(null)
+
+  useEffect(() => {
+    api.cables.getAll().then(d => {
+      setCables(d.cables || [])
+      setLoading(false)
+    })
+  }, [])
+
+  const generateLink = async (id: number) => {
+    setGeneratingId(id)
+    const res = await api.cables.generateClientLink(id)
+    if (res.client_token) {
+      setCables(prev => prev.map(c => c.id === id ? { ...c, client_token: res.client_token } : c))
+    }
+    setGeneratingId(null)
+  }
+
+  const copyLink = (token: string, id: number) => {
+    navigator.clipboard.writeText(`${window.location.origin}/cables?token=${token}`)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const deleteCable = async (id: number) => {
+    await api.cables.delete(id)
+    setCables(prev => prev.filter(c => c.id !== id))
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-xl font-light text-foreground">Кастомные кабели</h2>
+        <button onClick={() => navigate("/cables")}
+          className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary hover:bg-primary/20 transition-colors"
+          style={{ cursor: "pointer" }}>
+          <Icon name="Cable" size={15} />
+          Открыть конфигуратор
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-card animate-pulse" />)}
+        </div>
+      ) : cables.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-10 text-center">
+          <Icon name="Cable" size={32} className="mx-auto mb-3 text-foreground/20" />
+          <p className="text-foreground/50 text-sm">Нет сохранённых конфигураций</p>
+          <p className="text-foreground/30 text-xs mt-1">Конфигурации создаются клиентами в конфигураторе кабелей</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {cables.map(c => (
+            <div key={c.id} className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">{c.name}</p>
+                <p className="text-xs text-foreground/40 mt-0.5">
+                  CPU: {c.cpu_type} · GPU: {c.gpu_type} · {new Date(c.created_at).toLocaleDateString("ru-RU")}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {c.client_token ? (
+                  <button onClick={() => copyLink(c.client_token!, c.id)}
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name={copiedId === c.id ? "Check" : "Link"} size={13} />
+                    {copiedId === c.id ? "Скопировано" : "Ссылка"}
+                  </button>
+                ) : (
+                  <button onClick={() => generateLink(c.id)} disabled={generatingId === c.id}
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="Link" size={13} />
+                    {generatingId === c.id ? "..." : "Создать ссылку"}
+                  </button>
+                )}
+                <button onClick={() => deleteCable(c.id)}
+                  className="rounded-lg border border-border p-1.5 text-foreground/40 hover:border-red-500/50 hover:text-red-400 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="Trash2" size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Строка одной сборки ──
 function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }: {
   b: PCBuild
@@ -889,6 +986,7 @@ export default function Admin() {
   const topTabs = [
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
     { key: "add_build", label: buildForm.id ? "Ред. сборку" : "Новая сборка", icon: "Wrench" },
+    { key: "cables", label: "Кабели", icon: "Cable" },
     { key: "archive", label: "Архив ПК", icon: "Archive" },
     { key: "tags", label: "Теги", icon: "Tag" },
     { key: "DIVIDER_1" },
@@ -1308,6 +1406,9 @@ export default function Admin() {
           onDelete={deleteBuild}
           isArchive={false}
         />}
+
+        {/* CABLES */}
+        {tab === "cables" && <CablesTab />}
 
         {/* ARCHIVE */}
         {tab === "archive" && <BuildsList

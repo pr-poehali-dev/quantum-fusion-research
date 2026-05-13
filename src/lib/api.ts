@@ -7,6 +7,7 @@ const URLS = {
   syncProducts: "https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031",
   tags: "https://functions.poehali.dev/52e8165b-43fb-4ed1-a088-53cd09447d2e",
   wipBuilds: "https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3",
+  cables: "https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63",
 }
 
 function authHeaders(session?: string | null) {
@@ -102,5 +103,15 @@ export const api = {
     getBuildByToken: (token: string) => fetch(`${URLS.auth}/builds?token=${token}`).then(r => r.json()),
     saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}/builds`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}/builds`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
+  },
+  cables: {
+    getAll: () => fetch(URLS.cables).then(r => r.json()),
+    getById: (id: number) => fetch(`${URLS.cables}?id=${id}`).then(r => r.json()),
+    getByClientToken: (token: string) => fetch(`${URLS.cables}?client_token=${token}`).then(r => r.json()),
+    create: (data: unknown) => fetch(URLS.cables, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: unknown) => fetch(URLS.cables, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    generateClientLink: (id: number) => fetch(URLS.cables, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate_client_link", id }) }).then(r => r.json()),
+    revokeClientLink: (id: number) => fetch(URLS.cables, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "revoke_client_link", id }) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.cables}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },
 }

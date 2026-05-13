@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
+import { api } from "@/lib/api"
 
 // ─── Палитра C-Cables PET 4мм (все кабели кроме 12V-2x6) ─────────────────────
 const PALETTE: { id: string; label: string; en: string; hex: string; uv?: boolean }[] = [
@@ -224,9 +225,11 @@ function PinStrip({ prefix, count, pinColors, selectedPins, onPinPointerDown, on
 }
 
 // ─── CableBody ────────────────────────────────────────────────────────────────
-function CableBody({ addToCart, added }: { addToCart: (summary: string) => void; added: boolean }) {
+function CableBody({ addToCart, added }: { addToCart: (name: string, summary: string, pinColors: PinColors, cpuType: string, gpuType: string) => void; added: boolean }) {
   const [cpuType, setCpuType] = useState<CpuType>("8-pin")
   const [gpuType, setGpuType] = useState<GpuType>("8-pin")
+  const [showNameDialog, setShowNameDialog] = useState(false)
+  const [cableName, setCableName] = useState("")
 
   const cpuCount = CPU_PINS[cpuType]
   const gpuCount = GPU_PINS[gpuType]
@@ -502,34 +505,87 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
           })}
         </div>
         <p className="text-[10px] text-foreground/30">Партнёр: C-Cables · цена согласовывается после оформления</p>
-        <button onClick={() => {
-          // Формируем детальное описание для заказа
-          const buildSummary = (prefix: string, count: number, pal: typeof PALETTE) => {
-            const groups: Record<string, number[]> = {}
-            pinKeys(prefix, count).forEach((k, i) => {
-              const c = pinColors[k] ?? DEFAULT_COLOR
-              if (!groups[c]) groups[c] = []
-              groups[c].push(i + 1)
-            })
-            return Object.entries(groups).map(([cid, idxs]) =>
-              `${getEn(cid, pal)} (пины: ${idxs.join(",")})`
-            ).join("; ")
-          }
-          const detail = [
-            `CPU ${cpuType} PET4mm: ${buildSummary("cpu", cpuCount, PALETTE)}`,
-            `GPU ${gpuType} ${is12v ? "PET2mm" : "PET4mm"}: ${buildSummary("gpu", gpuCount, is12v ? PALETTE_12V as typeof PALETTE : PALETTE)}`,
-            `ATX 24pin PET4mm: ${buildSummary("atx", ATX_PINS, PALETTE)}`,
-          ].join(" | ")
-          addToCart(detail)
-        }}
-          className={`w-full rounded-xl py-3 text-sm font-medium transition-all ${added
-            ? "bg-green-600/20 text-green-400 border border-green-500/30"
-            : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
-          style={{ cursor: "pointer" }}>
-          {added
-            ? <span className="flex items-center justify-center gap-2"><Icon name="Check" size={15} />Добавлено в корзину</span>
-            : <span className="flex items-center justify-center gap-2"><Icon name="ShoppingCart" size={15} />Добавить к заказу</span>}
-        </button>
+
+        {/* Диалог названия */}
+        {showNameDialog ? (
+          <div className="space-y-2">
+            <p className="text-xs text-foreground/60">Дай название набору кабелей:</p>
+            <input
+              autoFocus
+              type="text"
+              value={cableName}
+              onChange={e => setCableName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && cableName.trim()) {
+                  const buildSummary = (prefix: string, count: number, pal: typeof PALETTE) => {
+                    const groups: Record<string, number[]> = {}
+                    pinKeys(prefix, count).forEach((k, i) => {
+                      const c = pinColors[k] ?? DEFAULT_COLOR
+                      if (!groups[c]) groups[c] = []
+                      groups[c].push(i + 1)
+                    })
+                    return Object.entries(groups).map(([cid, idxs]) => `${getEn(cid, pal)} (пины: ${idxs.join(",")})`).join("; ")
+                  }
+                  const detail = [
+                    `CPU ${cpuType} PET4mm: ${buildSummary("cpu", cpuCount, PALETTE)}`,
+                    `GPU ${gpuType} ${is12v ? "PET2mm" : "PET4mm"}: ${buildSummary("gpu", gpuCount, is12v ? PALETTE_12V as typeof PALETTE : PALETTE)}`,
+                    `ATX 24pin PET4mm: ${buildSummary("atx", ATX_PINS, PALETTE)}`,
+                  ].join(" | ")
+                  addToCart(cableName.trim(), detail, pinColors, cpuType, gpuType)
+                  setShowNameDialog(false)
+                  setCableName("")
+                }
+              }}
+              placeholder="Например: Чёрно-красный"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              style={{ cursor: "text" }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (!cableName.trim()) return
+                  const buildSummary = (prefix: string, count: number, pal: typeof PALETTE) => {
+                    const groups: Record<string, number[]> = {}
+                    pinKeys(prefix, count).forEach((k, i) => {
+                      const c = pinColors[k] ?? DEFAULT_COLOR
+                      if (!groups[c]) groups[c] = []
+                      groups[c].push(i + 1)
+                    })
+                    return Object.entries(groups).map(([cid, idxs]) => `${getEn(cid, pal)} (пины: ${idxs.join(",")})`).join("; ")
+                  }
+                  const detail = [
+                    `CPU ${cpuType} PET4mm: ${buildSummary("cpu", cpuCount, PALETTE)}`,
+                    `GPU ${gpuType} ${is12v ? "PET2mm" : "PET4mm"}: ${buildSummary("gpu", gpuCount, is12v ? PALETTE_12V as typeof PALETTE : PALETTE)}`,
+                    `ATX 24pin PET4mm: ${buildSummary("atx", ATX_PINS, PALETTE)}`,
+                  ].join(" | ")
+                  addToCart(cableName.trim(), detail, pinColors, cpuType, gpuType)
+                  setShowNameDialog(false)
+                  setCableName("")
+                }}
+                disabled={!cableName.trim()}
+                className="flex-1 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                style={{ cursor: "pointer" }}>
+                Сохранить и добавить
+              </button>
+              <button onClick={() => { setShowNameDialog(false); setCableName("") }}
+                className="rounded-lg border border-border px-3 py-2 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => added ? null : setShowNameDialog(true)}
+            className={`w-full rounded-xl py-3 text-sm font-medium transition-all ${added
+              ? "bg-green-600/20 text-green-400 border border-green-500/30"
+              : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
+            style={{ cursor: added ? "default" : "pointer" }}>
+            {added
+              ? <span className="flex items-center justify-center gap-2"><Icon name="Check" size={15} />Добавлено в корзину</span>
+              : <span className="flex items-center justify-center gap-2"><Icon name="ShoppingCart" size={15} />Добавить к заказу</span>}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -541,8 +597,14 @@ export function CableConfigurator({ standalone = false }: { standalone?: boolean
   const [open, setOpen] = useState(false)
   const [added, setAdded] = useState(false)
 
-  const handleAddToCart = (summary: string) => {
-    addItem({ id: Date.now(), name: `Кастомные кабели C-Cables: ${summary}`, price: 0, type: "config" })
+  const handleAddToCart = async (name: string, summary: string, pinColors: PinColors, cpuType: string, gpuType: string) => {
+    // Сохраняем конфигурацию в БД
+    try {
+      await api.cables.create({ name, cpu_type: cpuType, gpu_type: gpuType, pin_colors: pinColors })
+    } catch {
+      // Не блокируем добавление в корзину если БД недоступна
+    }
+    addItem({ id: Date.now(), name: `Кастомные кабели C-Cables: ${name}`, price: 0, type: "config" })
     setAdded(true)
     setTimeout(() => setAdded(false), 3000)
   }
