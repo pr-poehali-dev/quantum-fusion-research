@@ -334,9 +334,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
             <rect x={-PAD} y={-10} width={svgW + PAD * 2} height={svgH + 20}
               fill="transparent" onClick={handleSvgBgClick} style={{ cursor: "default" }} />
 
-            {/* Плата */}
-            <rect x={boardX} y={boardY} width={boardW} height={boardH} rx={10}
-              fill="url(#pcb)" stroke="rgba(255,255,255,0.07)" strokeWidth={1.5} />
+
 
             {/* CPU */}
             <g transform={`translate(${cpuX}, ${boardY})`}>
