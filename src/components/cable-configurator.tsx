@@ -341,7 +341,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
       </div>
 
       {/* SVG + Палитра — две колонки */}
-      <div className="flex gap-4 items-start">
+      <div className="flex gap-4 items-stretch justify-end">
         <div className="overflow-x-auto flex-1 min-w-0">
         <div className="min-w-[320px]">
           <svg width="100%" viewBox={`-${PAD} -10 ${svgW + PAD * 2} ${svgH + 20}`}
@@ -396,7 +396,7 @@ function CableBody({ addToCart, added }: { addToCart: (summary: string) => void;
         </div>
 
         {/* Палитра — правая колонка */}
-        <div className="w-52 shrink-0 space-y-3 pt-1">
+        <div className="w-52 shrink-0 flex flex-col gap-3 pt-1 border-l border-border/40 pl-4">
           {/* Статус */}
           <div className="min-h-[18px]">
             {selectedPins.size > 0 ? (
