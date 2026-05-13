@@ -285,7 +285,7 @@ function CableBody({
       </div>
 
       {/* SVG-схема */}
-      <div className="rounded-xl border border-border/60 bg-background/60 overflow-x-auto">
+      <div className="overflow-x-auto">
         <div className="min-w-[420px]">
           <svg
             width="100%"
@@ -318,7 +318,7 @@ function CableBody({
             </g>
 
             {/* GPU — снизу, провода вниз */}
-            <g transform={`translate(${gpuX}, ${boardY + boardH - 4})`}>
+            <g transform={`translate(${gpuX}, ${boardY + boardH + 30})`}>
               <PinStrip
                 prefix="gpu" count={gpuCount}
                 pinColors={pinColors} activePin={activePin}
