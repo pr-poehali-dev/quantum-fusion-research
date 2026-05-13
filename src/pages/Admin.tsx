@@ -630,6 +630,7 @@ export default function Admin() {
   const [categories, setCategories] = useState<Category[]>([])
   const [productCatFilter, setProductCatFilter] = useState("all")
   const [productFillFilter, setProductFillFilter] = useState<"all" | "new" | "filled">("all")
+  const [productSearch, setProductSearch] = useState("")
   const [configSlots, setConfigSlots] = useState<Record<string, ConfigComponent[]>>({})
   const [builds, setBuilds] = useState<PCBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
@@ -1242,10 +1243,29 @@ export default function Admin() {
           const filtered = products
             .filter(p => productCatFilter === "all" || p.category?.name === productCatFilter)
             .filter(p => productFillFilter === "all" ? true : productFillFilter === "new" ? isNew(p) : !isNew(p))
+            .filter(p => !productSearch.trim() || p.name.toLowerCase().includes(productSearch.toLowerCase()))
           return (
             <div>
               <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
                 <h2 className="text-xl font-light text-foreground">Товары ({filtered.length})</h2>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Icon name="Search" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40" />
+                    <input
+                      type="text"
+                      placeholder="Поиск по названию..."
+                      value={productSearch}
+                      onChange={e => setProductSearch(e.target.value)}
+                      className="rounded-lg border border-border bg-card pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-foreground/40 focus:border-primary focus:outline-none w-48"
+                      style={{ cursor: "text" }}
+                    />
+                    {productSearch && (
+                      <button onClick={() => setProductSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+                        <Icon name="X" size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   {/* Фильтр по категориям */}
                   <div className="flex flex-wrap gap-1.5">
