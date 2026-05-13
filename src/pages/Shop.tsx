@@ -47,6 +47,7 @@ interface Build {
   image_urls: string[]
   status: string
   is_featured: boolean
+  in_stock: boolean
   parent_id: number | null
   client_token: string | null
   tags?: BuildTag[]
@@ -452,7 +453,10 @@ export default function Shop() {
                 ? builds
                 : builds.filter(b => activeTagIds.every(tid => (b.tags || []).some(t => t.id === tid))))
                 .slice()
-                .sort((a, b) => (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0))
+                .sort((a, b) => {
+                  if (b.in_stock !== a.in_stock) return (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0)
+                  return (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0)
+                })
               return filtered.length === 0 ? (
                 <div className="py-24 text-center text-foreground/50">
                   <Icon name="Monitor" size={48} className="mx-auto mb-4 opacity-30" />
@@ -731,17 +735,25 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
         ))}
       </div>
 
-      {/* Бейдж «Рекомендуем» — правый верхний угол */}
-      {b.is_featured && (
-        <div className="absolute top-3 right-3 z-30 flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-lg">
-          <Icon name="Star" size={10} />
-          Рекомендуем
-        </div>
-      )}
+      {/* Бейджи — правый верхний угол */}
+      <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1.5">
+        {b.in_stock && (
+          <div className="flex items-center gap-1 rounded-full bg-green-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
+            <Icon name="CheckCircle" size={10} />
+            В наличии
+          </div>
+        )}
+        {b.is_featured && (
+          <div className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-lg">
+            <Icon name="Star" size={10} />
+            Рекомендуем
+          </div>
+        )}
+      </div>
 
       {/* Стрелки карусели — справа сверху, только если >1 фото */}
       {images.length > 1 && (
-        <div className={`absolute z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${b.is_featured ? "top-10 right-3" : "top-3 right-3"}`}>
+        <div className={`absolute z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${(b.in_stock || b.is_featured) ? "top-16 right-3" : "top-3 right-3"}`}>
           <button onClick={(e) => goImg(e, -1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="ChevronLeft" size={12} />
           </button>

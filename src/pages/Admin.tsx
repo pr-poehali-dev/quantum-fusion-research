@@ -91,6 +91,7 @@ interface PCBuild {
   total_price: number
   status: string
   is_featured: boolean
+  in_stock: boolean
   client_token: string | null
   client_user_id: number | null
   parent_id: number | null
@@ -666,7 +667,7 @@ export default function Admin() {
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
     id: null as number | null,
-    name: "", description: "", status: "catalog", is_featured: false,
+    name: "", description: "", status: "catalog", is_featured: false, in_stock: false,
     assembly_type: "percent" as "percent" | "manual",
     assembly_fee_manual: "",
     image_urls: [] as string[],
@@ -905,13 +906,14 @@ export default function Admin() {
       total_price: partsTotal + asm_fee,
       status: buildForm.status,
       is_featured: buildForm.is_featured,
+      in_stock: buildForm.in_stock,
       sort_order: 0,
     }
     let savedId = buildForm.id
     if (buildForm.id) await api.builds.update(payload)
     else { const res = await api.builds.create(payload); savedId = res.id }
     if (savedId) await api.tags.setForBuild(savedId, buildTagIds)
-    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] })
+    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] })
     setBuildComponents([])
     setBuildTagIds([])
     setTab("builds")
@@ -920,7 +922,7 @@ export default function Admin() {
   const editBuild = (b: PCBuild) => {
     setBuildForm({
       id: b.id, name: b.name, description: b.description || "",
-      status: b.status, is_featured: b.is_featured,
+      status: b.status, is_featured: b.is_featured, in_stock: b.in_stock ?? false,
       assembly_type: b.assembly_type as "percent" | "manual",
       assembly_fee_manual: b.assembly_type === "manual" ? String(b.assembly_fee) : "",
       image_urls: b.image_urls || [],
@@ -1744,7 +1746,24 @@ export default function Admin() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
+                <label
+                  className={`flex items-center gap-2 text-sm transition-opacity ${buildForm.status === "catalog" ? "text-foreground/70 cursor-pointer" : "text-foreground/30 cursor-not-allowed"}`}
+                  style={{ cursor: buildForm.status === "catalog" ? "pointer" : "not-allowed" }}
+                  title={buildForm.status !== "catalog" ? "Доступно только для сборок со статусом «На сайте»" : undefined}
+                >
+                  <input
+                    type="checkbox"
+                    checked={buildForm.in_stock}
+                    disabled={buildForm.status !== "catalog"}
+                    onChange={e => setBuildForm(f => ({ ...f, in_stock: e.target.checked }))}
+                    className="rounded disabled:opacity-40"
+                  />
+                  В наличии
+                  {buildForm.status !== "catalog" && (
+                    <span className="text-xs text-foreground/30">(только для «На сайте»)</span>
+                  )}
+                </label>
                 <label
                   className={`flex items-center gap-2 text-sm transition-opacity ${buildForm.status === "catalog" ? "text-foreground/70 cursor-pointer" : "text-foreground/30 cursor-not-allowed"}`}
                   style={{ cursor: buildForm.status === "catalog" ? "pointer" : "not-allowed" }}
@@ -1758,9 +1777,6 @@ export default function Admin() {
                     className="rounded disabled:opacity-40"
                   />
                   Рекомендуемая сборка
-                  {buildForm.status !== "catalog" && (
-                    <span className="text-xs text-foreground/30">(только для «На сайте»)</span>
-                  )}
                 </label>
               </div>
 
