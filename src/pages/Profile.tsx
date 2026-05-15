@@ -4,6 +4,7 @@ import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import RichTextEditor from "@/components/ui/rich-text-editor"
 
 interface UserBuild {
   id: number
@@ -410,13 +411,10 @@ export default function Profile() {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs text-foreground/60">О себе</label>
-                      <textarea
-                        rows={3}
+                      <RichTextEditor
                         value={profileForm.bio}
-                        onChange={e => setProfileForm(f => ({ ...f, bio: e.target.value }))}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none"
+                        onChange={v => setProfileForm(f => ({ ...f, bio: v }))}
                         placeholder="Расскажи немного о себе..."
-                        style={{ cursor: "text" }}
                       />
                     </div>
                   </div>
