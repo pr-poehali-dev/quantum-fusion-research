@@ -32,9 +32,9 @@ def get_user(cur, session_id):
 def handler(event: dict, context) -> dict:
     """
     Авторизация пользователей.
-    POST /register, POST /login, GET /me, POST /logout
-    GET /builds, GET /builds/community, GET /builds/shared?token=
-    POST /builds, PUT /builds
+    POST ?action=register, POST ?action=login, GET ?action=me, POST ?action=logout
+    GET ?action=builds, GET ?action=community, GET ?action=build&token=...
+    POST ?action=save_build, PUT ?action=update_build
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
@@ -45,10 +45,10 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": 200, "headers": cors, "body": ""}
 
     method = event.get("httpMethod", "GET")
-    path = event.get("path", "")
     params = event.get("queryStringParameters") or {}
     headers = event.get("headers") or {}
     session_id = headers.get("X-Session-Id") or headers.get("x-session-id")
+    action = params.get("action", "")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -66,7 +66,7 @@ def handler(event: dict, context) -> dict:
         }
 
     try:
-        if "/register" in path and method == "POST":
+        if action == "register" and method == "POST":
             body = json.loads(event.get("body") or "{}")
             email = body.get("email", "").strip().lower()
             username = body.get("username", "").strip()
@@ -91,7 +91,7 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"session_id": sid, "user": {"id": user_id, "email": email, "username": username}})}
 
-        elif "/login" in path and method == "POST":
+        elif action == "login" and method == "POST":
             body = json.loads(event.get("body") or "{}")
             email = body.get("email", "").strip().lower()
             password = body.get("password", "")
@@ -108,94 +108,91 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"session_id": sid, "user": {"id": user[0], "email": user[1], "username": user[2]}})}
 
-        elif "/me" in path and method == "GET":
+        elif action == "me" and method == "GET":
             user = get_user(cur, session_id)
             if not user:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": {"id": user[0], "email": user[1], "username": user[2]}})}
 
-        elif "/logout" in path and method == "POST":
+        elif action == "logout" and method == "POST":
             if session_id:
                 cur.execute(f"UPDATE user_sessions SET expires_at = NOW() WHERE id = {esc(session_id)}")
                 conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
-        elif "/builds" in path:
-            if method == "GET":
-                if "community" in path:
-                    cur.execute(
-                        "SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM user_builds b JOIN users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
-                    )
-                    rows = cur.fetchall()
-                    builds = []
-                    for row in rows:
-                        b = fmt_build(row)
-                        b["username"] = row[10]
-                        builds.append(b)
-                    return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": builds})}
+        elif action == "community" and method == "GET":
+            cur.execute(
+                "SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM user_builds b JOIN users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
+            )
+            rows = cur.fetchall()
+            builds = []
+            for row in rows:
+                b = fmt_build(row)
+                b["username"] = row[10]
+                builds.append(b)
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": builds})}
 
-                token = params.get("token")
-                if token:
-                    cur.execute(
-                        f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM user_builds b JOIN users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
-                    )
-                    row = cur.fetchone()
-                    if not row:
-                        return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка не найдена"})}
-                    b = fmt_build(row)
-                    b["username"] = row[10]
-                    return {"statusCode": 200, "headers": cors, "body": json.dumps(b)}
+        elif action == "build" and method == "GET":
+            token = params.get("token")
+            cur.execute(
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM user_builds b JOIN users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка не найдена"})}
+            b = fmt_build(row)
+            b["username"] = row[10]
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(b)}
 
-                user = get_user(cur, session_id)
-                if not user:
-                    return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
-                cur.execute(
-                    f"SELECT id, user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at FROM user_builds WHERE user_id = {user[0]} ORDER BY created_at DESC"
-                )
-                return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": [fmt_build(r) for r in cur.fetchall()]})}
+        elif action == "builds" and method == "GET":
+            user = get_user(cur, session_id)
+            if not user:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+            cur.execute(
+                f"SELECT id, user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at FROM user_builds WHERE user_id = {user[0]} ORDER BY created_at DESC"
+            )
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": [fmt_build(r) for r in cur.fetchall()]})}
 
-            elif method == "POST":
-                user = get_user(cur, session_id)
-                if not user:
-                    return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
-                body = json.loads(event.get("body") or "{}")
-                share_token = secrets.token_hex(16)
-                name = body.get("name", "Моя сборка")
-                components = json.dumps(body.get("components", []))
-                parts_total = float(body.get("parts_total", 0))
-                assembly_fee = float(body.get("assembly_fee", 0))
-                total_price = float(body.get("total_price", 0))
-                is_public = "TRUE" if body.get("is_public", False) else "FALSE"
-                cur.execute(
-                    f"INSERT INTO user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at, updated_at) VALUES ({user[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, NOW(), NOW()) RETURNING id"
-                )
-                new_id = cur.fetchone()[0]
-                conn.commit()
-                return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "share_token": share_token, "ok": True})}
+        elif action == "save_build" and method == "POST":
+            user = get_user(cur, session_id)
+            if not user:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+            body = json.loads(event.get("body") or "{}")
+            share_token = secrets.token_hex(16)
+            name = body.get("name", "Моя сборка")
+            components = json.dumps(body.get("components", []))
+            parts_total = float(body.get("parts_total", 0))
+            assembly_fee = float(body.get("assembly_fee", 0))
+            total_price = float(body.get("total_price", 0))
+            is_public = "TRUE" if body.get("is_public", False) else "FALSE"
+            cur.execute(
+                f"INSERT INTO user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at, updated_at) VALUES ({user[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, NOW(), NOW()) RETURNING id"
+            )
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "share_token": share_token, "ok": True})}
 
-            elif method == "PUT":
-                user = get_user(cur, session_id)
-                if not user:
-                    return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
-                body = json.loads(event.get("body") or "{}")
-                name = body.get("name", "")
-                components = json.dumps(body.get("components", []))
-                parts_total = float(body.get("parts_total", 0))
-                assembly_fee = float(body.get("assembly_fee", 0))
-                total_price = float(body.get("total_price", 0))
-                is_public = "TRUE" if body.get("is_public", False) else "FALSE"
-                build_id = int(body["id"])
-                cur.execute(
-                    f"UPDATE user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, updated_at=NOW() WHERE id={build_id} AND user_id={user[0]}"
-                )
-                conn.commit()
-                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+        elif action == "update_build" and method == "PUT":
+            user = get_user(cur, session_id)
+            if not user:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+            body = json.loads(event.get("body") or "{}")
+            name = body.get("name", "")
+            components = json.dumps(body.get("components", []))
+            parts_total = float(body.get("parts_total", 0))
+            assembly_fee = float(body.get("assembly_fee", 0))
+            total_price = float(body.get("total_price", 0))
+            is_public = "TRUE" if body.get("is_public", False) else "FALSE"
+            build_id = int(body["id"])
+            cur.execute(
+                f"UPDATE user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, updated_at=NOW() WHERE id={build_id} AND user_id={user[0]}"
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
-        elif method == "GET":
+        else:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
     finally:
         cur.close()
         conn.close()
-
-    return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}

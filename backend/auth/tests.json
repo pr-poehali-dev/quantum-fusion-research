@@ -3,10 +3,10 @@
     {
       "name": "Me without session",
       "method": "GET",
-      "path": "/me",
+      "path": "/?action=me",
       "expectedStatus": 401,
       "bodyMatcher": "partial",
-      "expectedBody": {}
+      "expectedBody": {"error": "Не авторизован"}
     }
   ]
 }
