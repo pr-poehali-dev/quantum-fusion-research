@@ -104,6 +104,7 @@ export const api = {
     getBuildByToken: (token: string) => fetch(`${URLS.auth}?action=build&token=${token}`).then(r => r.json()),
     saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=save_build`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_build`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
+    updateProfile: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_profile`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
   },
   telegramAuth: {
     login: (tg_data: Record<string, string>) => fetch(`${URLS.telegramAuth}?action=login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tg_data }) }).then(r => r.json()),

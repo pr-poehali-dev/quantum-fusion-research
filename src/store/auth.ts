@@ -5,12 +5,20 @@ interface User {
   id: number
   email: string
   username: string
+  bio?: string
+  phone?: string
+  vk_url?: string
+  telegram_id?: number | null
+  telegram_username?: string
+  telegram_photo?: string
+  email_verified?: boolean
 }
 
 interface AuthStore {
   user: User | null
   sessionId: string | null
   setAuth: (user: User, sessionId: string) => void
+  updateUser: (user: User) => void
   logout: () => void
   isAuthed: () => boolean
 }
@@ -21,6 +29,7 @@ export const useAuth = create<AuthStore>()(
       user: null,
       sessionId: null,
       setAuth: (user, sessionId) => set({ user, sessionId }),
+      updateUser: (user) => set({ user }),
       logout: () => set({ user: null, sessionId: null }),
       isAuthed: () => !!get().sessionId && !!get().user,
     }),

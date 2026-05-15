@@ -70,15 +70,22 @@ const SLOT_NAMES: Record<string, string> = {
 }
 
 export default function Profile() {
-  const { user, sessionId, isAuthed, logout } = useAuth()
+  const { user, sessionId, isAuthed, logout, updateUser } = useAuth()
   const navigate = useNavigate()
 
-  const [activeTab, setActiveTab] = useState<"orders" | "my_builds" | "admin_builds">("orders")
+  const [activeTab, setActiveTab] = useState<"profile" | "orders" | "my_builds" | "admin_builds">("profile")
   const [userBuilds, setUserBuilds] = useState<UserBuild[]>([])
   const [adminBuilds, setAdminBuilds] = useState<AdminBuild[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState<number | null>(null)
+
+  // Profile edit state
+  const [profileForm, setProfileForm] = useState({
+    username: "", email: "", bio: "", phone: "", vk_url: ""
+  })
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -86,11 +93,24 @@ export default function Profile() {
     if (!isAuthed() || !sessionId) { navigate("/auth"); return }
     setLoading(true)
 
+    // Подгружаем свежие данные профиля
+    api.auth.me(sessionId).then(d => {
+      if (d.user) {
+        updateUser(d.user)
+        setProfileForm({
+          username: d.user.username || "",
+          email: d.user.email || "",
+          bio: d.user.bio || "",
+          phone: d.user.phone || "",
+          vk_url: d.user.vk_url || "",
+        })
+      }
+    })
+
     Promise.all([
       api.auth.getBuilds(sessionId).then(d => setUserBuilds(d.builds || [])),
       api.orders.getMyOrders(sessionId).then(async d => {
         const ords: Order[] = d.orders || []
-        // Для pc_build заказов подгружаем wip-статус
         await Promise.all(ords.filter(o => o.order_type === "pc_build").map(async o => {
           const wip = await api.wipBuilds.getByOrderId(o.id).catch(() => null)
           if (wip?.stage) o.wip_stage = wip.stage
@@ -112,6 +132,23 @@ export default function Profile() {
     logout()
     navigate("/")
   }
+
+  const saveProfile = async () => {
+    if (!sessionId) return
+    setProfileSaving(true)
+    setProfileMsg(null)
+    const res = await api.auth.updateProfile(profileForm, sessionId)
+    if (res.error) {
+      setProfileMsg({ type: "err", text: res.error })
+    } else {
+      updateUser(res.user)
+      setProfileMsg({ type: "ok", text: "Профиль сохранён" })
+      setTimeout(() => setProfileMsg(null), 3000)
+    }
+    setProfileSaving(false)
+  }
+
+  const avatarSrc = user?.telegram_photo
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
@@ -139,12 +176,21 @@ export default function Profile() {
       <div className="mx-auto max-w-5xl px-6 py-10">
         {/* User card */}
         <div className="mb-8 flex items-center gap-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
-            <Icon name="User" size={28} className="text-primary" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 overflow-hidden">
+            {avatarSrc
+              ? <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
+              : <Icon name="User" size={28} className="text-primary" />}
           </div>
           <div>
             <h1 className="text-2xl font-light text-foreground">{user?.username}</h1>
-            <p className="text-sm text-foreground/50">{user?.email}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              {user?.email && <p className="text-sm text-foreground/50">{user.email}</p>}
+              {user?.telegram_username && (
+                <span className="flex items-center gap-1 text-xs text-foreground/40">
+                  <Icon name="Send" size={11} />@{user.telegram_username}
+                </span>
+              )}
+            </div>
           </div>
           <div className="ml-auto flex gap-3">
             <button onClick={() => navigate("/configurator")} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
@@ -154,8 +200,9 @@ export default function Profile() {
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex border-b border-border">
+        <div className="mb-6 flex border-b border-border overflow-x-auto">
           {[
+            { key: "profile", label: "Мой профиль", icon: "UserCog" },
             { key: "orders", label: "Мои заказы", icon: "ShoppingBag", count: orders.length },
             { key: "admin_builds", label: "Сборки от BeGraphics", icon: "Sparkles", count: adminBuilds.length },
             { key: "my_builds", label: "Мои конфиги", icon: "Cpu", count: userBuilds.length },
@@ -163,24 +210,145 @@ export default function Profile() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key as typeof activeTab)}
-              className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
               style={{ cursor: "pointer" }}
             >
               <Icon name={t.icon as "Cpu"} size={15} />
               {t.label}
-              {t.count > 0 && (
+              {"count" in t && t.count! > 0 && (
                 <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary">{t.count}</span>
               )}
             </button>
           ))}
         </div>
 
-        {loading ? (
+        {loading && activeTab !== "profile" ? (
           <div className="grid gap-4 md:grid-cols-2">
             {[...Array(3)].map((_, i) => <div key={i} className="h-32 rounded-xl bg-card animate-pulse" />)}
           </div>
         ) : (
           <>
+            {/* PROFILE EDIT */}
+            {activeTab === "profile" && (
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Основные данные */}
+                <div className="rounded-2xl border border-border bg-card p-6">
+                  <h2 className="mb-5 text-sm font-semibold text-foreground">Основные данные</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1 block text-xs text-foreground/60">Имя пользователя</label>
+                      <input
+                        value={profileForm.username}
+                        onChange={e => setProfileForm(f => ({ ...f, username: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                        placeholder="username"
+                        style={{ cursor: "text" }}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 flex items-center gap-1.5 text-xs text-foreground/60">
+                        Email
+                        {user?.email_verified
+                          ? <span className="flex items-center gap-1 text-green-400"><Icon name="CheckCircle" size={11} />подтверждён</span>
+                          : user?.email
+                            ? <span className="flex items-center gap-1 text-yellow-400"><Icon name="AlertCircle" size={11} />не подтверждён</span>
+                            : null}
+                      </label>
+                      <input
+                        type="email"
+                        value={profileForm.email}
+                        onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                        placeholder="you@email.com"
+                        style={{ cursor: "text" }}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-foreground/60">Телефон</label>
+                      <input
+                        type="tel"
+                        value={profileForm.phone}
+                        onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                        placeholder="+7 (___) ___-__-__"
+                        style={{ cursor: "text" }}
+                      />
+                      <p className="mt-1 text-xs text-foreground/30">Виден только администраторам</p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-foreground/60">О себе</label>
+                      <textarea
+                        rows={3}
+                        value={profileForm.bio}
+                        onChange={e => setProfileForm(f => ({ ...f, bio: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none resize-none"
+                        placeholder="Расскажи немного о себе..."
+                        style={{ cursor: "text" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Соцсети */}
+                <div className="space-y-6">
+                  <div className="rounded-2xl border border-border bg-card p-6">
+                    <h2 className="mb-5 text-sm font-semibold text-foreground">Привязанные аккаунты</h2>
+                    <div className="space-y-3">
+                      {/* Telegram */}
+                      <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#229ED9]/10">
+                          <Icon name="Send" size={16} className="text-[#229ED9]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">Telegram</p>
+                          {user?.telegram_username
+                            ? <p className="text-xs text-foreground/50 truncate">@{user.telegram_username}</p>
+                            : <p className="text-xs text-foreground/30">Не привязан</p>}
+                        </div>
+                        {user?.telegram_id
+                          ? <span className="flex items-center gap-1 text-xs text-green-400"><Icon name="Check" size={12} />Привязан</span>
+                          : <button onClick={() => navigate("/auth")} className="text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>Привязать</button>}
+                      </div>
+
+                      {/* ВКонтакте */}
+                      <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0077FF]/10">
+                          <Icon name="Globe" size={16} className="text-[#0077FF]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">ВКонтакте</p>
+                          <input
+                            value={profileForm.vk_url}
+                            onChange={e => setProfileForm(f => ({ ...f, vk_url: e.target.value }))}
+                            className="w-full bg-transparent text-xs text-foreground/50 focus:outline-none focus:text-foreground placeholder:text-foreground/30"
+                            placeholder="https://vk.com/username"
+                            style={{ cursor: "text" }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Сохранить */}
+                  <div>
+                    {profileMsg && (
+                      <div className={`mb-3 rounded-lg px-3 py-2 text-xs ${profileMsg.type === "ok" ? "bg-green-500/10 text-green-400" : "bg-primary/10 text-primary"}`}>
+                        {profileMsg.text}
+                      </div>
+                    )}
+                    <button
+                      onClick={saveProfile}
+                      disabled={profileSaving}
+                      className="w-full rounded-xl bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      style={{ cursor: "pointer" }}
+                    >
+                      {profileSaving ? "Сохранение..." : "Сохранить изменения"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ORDERS */}
             {activeTab === "orders" && (
               orders.length === 0 ? (
@@ -278,7 +446,7 @@ export default function Profile() {
               )
             )}
 
-            {/* MY BUILDS (конфигуратор) */}
+            {/* MY BUILDS */}
             {activeTab === "my_builds" && (
               userBuilds.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border py-20 text-center">
