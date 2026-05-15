@@ -86,7 +86,7 @@ export default function Profile() {
   })
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-  const [showTgWidget, setShowTgWidget] = useState(false)
+
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -134,31 +134,33 @@ export default function Profile() {
     navigate("/")
   }
 
-  const tgCallbackRef = (node: HTMLDivElement | null) => {
-    if (!node) return
-    node.innerHTML = ""
+  const handleTgConnect = () => {
+    const redirectUrl = encodeURIComponent(window.location.origin + "/profile?tg_auth=1")
+    const url = `https://oauth.telegram.org/auth?bot_id=8083970465&origin=${encodeURIComponent(window.location.origin)}&embed=0&request_access=write&return_to=${redirectUrl}`
+    window.open(url, "tgauth", "width=550,height=470,resizable=yes,scrollbars=yes")
+  }
 
-    window.onTelegramAuth = async (tgUser) => {
-      const res = await api.telegramAuth.login(tgUser)
+  // Обрабатываем редирект от Telegram OAuth
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (!params.get("tg_auth")) return
+    const tgData: Record<string, string> = {}
+    for (const [k, v] of params.entries()) {
+      if (k !== "tg_auth") tgData[k] = v
+    }
+    if (!tgData.id || !sessionId) return
+
+    // Убираем параметры из URL
+    window.history.replaceState({}, "", "/profile")
+
+    api.telegramAuth.login(tgData).then(res => {
       if (!res.error && res.user) {
         updateUser(res.user)
         setProfileMsg({ type: "ok", text: "Telegram успешно привязан!" })
-        setShowTgWidget(false)
         setTimeout(() => setProfileMsg(null), 3000)
-      } else {
-        setProfileMsg({ type: "err", text: res.error || "Ошибка привязки" })
       }
-    }
-
-    const script = document.createElement("script")
-    script.src = "https://telegram.org/js/telegram-widget.js?22"
-    script.setAttribute("data-telegram-login", "BeGraphicsPC_Bot")
-    script.setAttribute("data-size", "large")
-    script.setAttribute("data-onauth", "onTelegramAuth(user)")
-    script.setAttribute("data-request-access", "write")
-    script.async = true
-    node.appendChild(script)
-  }
+    })
+  }, [])
 
   const saveProfile = async () => {
     if (!sessionId) return
@@ -335,13 +337,8 @@ export default function Profile() {
                           </div>
                           {user?.telegram_id
                             ? <span className="flex items-center gap-1 text-xs text-green-400"><Icon name="Check" size={12} />Привязан</span>
-                            : <button onClick={() => setShowTgWidget(v => !v)} className="text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>
-                                {showTgWidget ? "Отмена" : "Привязать"}
-                              </button>}
+                            : <button onClick={handleTgConnect} className="text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>Привязать</button>}
                         </div>
-                        {showTgWidget && !user?.telegram_id && (
-                          <div className="mt-3 flex justify-center" ref={tgCallbackRef} />
-                        )}
                       </div>
 
                       {/* ВКонтакте */}
