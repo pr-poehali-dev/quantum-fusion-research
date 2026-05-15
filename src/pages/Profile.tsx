@@ -82,7 +82,7 @@ export default function Profile() {
 
   // Profile edit state
   const [profileForm, setProfileForm] = useState({
-    username: "", email: "", bio: "", phone: "", vk_url: ""
+    username: "", email: "", bio: "", phone: "", vk_url: "", telegram_tag: ""
   })
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -104,6 +104,7 @@ export default function Profile() {
           bio: d.user.bio || "",
           phone: d.user.phone || "",
           vk_url: d.user.vk_url || "",
+          telegram_tag: d.user.telegram_tag || "",
         })
       }
     })
@@ -391,6 +392,23 @@ export default function Profile() {
                             onChange={e => setProfileForm(f => ({ ...f, vk_url: e.target.value }))}
                             className="w-full bg-transparent text-xs text-foreground/50 focus:outline-none focus:text-foreground placeholder:text-foreground/30"
                             placeholder="https://vk.com/username"
+                            style={{ cursor: "text" }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Telegram тег */}
+                      <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#229ED9]/10">
+                          <Icon name="Send" size={16} className="text-[#229ED9]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">Telegram</p>
+                          <input
+                            value={profileForm.telegram_tag}
+                            onChange={e => setProfileForm(f => ({ ...f, telegram_tag: e.target.value }))}
+                            className="w-full bg-transparent text-xs text-foreground/50 focus:outline-none focus:text-foreground placeholder:text-foreground/30"
+                            placeholder="@username"
                             style={{ cursor: "text" }}
                           />
                         </div>
