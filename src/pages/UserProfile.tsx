@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+
+interface Build {
+  id: number
+  name: string
+  components: Array<{ slot: string; name: string; price: number }>
+  parts_total: number
+  assembly_fee: number
+  total_price: number
+  share_token: string
+  created_at: string
+}
 
 interface PublicUser {
   id: number
@@ -11,10 +22,19 @@ interface PublicUser {
   avatar_url: string
   user_tag: string
   telegram_tag: string
+  builds: Build[]
 }
+
+const SLOT_NAMES: Record<string, string> = {
+  cpu: "Процессор", gpu: "Видеокарта", ram: "ОЗУ",
+  storage: "Накопитель", psu: "БП", case: "Корпус", motherboard: "Материнка",
+}
+
+const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
 export default function UserProfile() {
   const { tag } = useParams<{ tag: string }>()
+  const navigate = useNavigate()
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -49,14 +69,14 @@ export default function UserProfile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-lg px-4 py-12">
+      <div className="mx-auto max-w-2xl px-4 py-12">
         <Link to="/" className="mb-8 flex items-center gap-2 text-sm text-foreground/40 hover:text-foreground transition-colors">
           <Icon name="ArrowLeft" size={14} />
           На главную
         </Link>
 
-        <div className="rounded-2xl border border-border bg-card p-8">
-          {/* Аватар + имя */}
+        {/* Карточка профиля */}
+        <div className="rounded-2xl border border-border bg-card p-8 mb-6">
           <div className="flex items-center gap-6 mb-6">
             <div className="h-40 w-40 rounded-full overflow-hidden border-2 border-border bg-muted flex items-center justify-center flex-shrink-0">
               {profile.avatar_url
@@ -66,7 +86,6 @@ export default function UserProfile() {
             <div className="space-y-1.5">
               <h1 className="text-2xl font-semibold text-foreground">{profile.username}</h1>
               {profile.user_tag && <p className="text-sm text-foreground/40">@{profile.user_tag}</p>}
-              {/* Соцсети под ником */}
               <div className="flex items-center gap-2 pt-1">
                 {profile.vk_url && (
                   <a
@@ -90,13 +109,52 @@ export default function UserProfile() {
             </div>
           </div>
 
-          {/* Био */}
           {profile.bio && (
-            <div className="mb-6 prose prose-sm max-w-none text-foreground/70 prose-headings:text-foreground prose-a:text-primary prose-strong:text-foreground" dangerouslySetInnerHTML={{ __html: profile.bio }} />
+            <div className="prose prose-sm max-w-none text-foreground/70 prose-headings:text-foreground prose-a:text-primary prose-strong:text-foreground" dangerouslySetInnerHTML={{ __html: profile.bio }} />
           )}
-
-
         </div>
+
+        {/* Конфигурации */}
+        {profile.builds && profile.builds.length > 0 && (
+          <div>
+            <h2 className="mb-4 text-sm font-semibold text-foreground/60 uppercase tracking-wide">
+              Конфигурации · {profile.builds.length}
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {profile.builds.map(b => (
+                <div
+                  key={b.id}
+                  onClick={() => navigate(`/configurator?build=${b.share_token}`)}
+                  className="rounded-xl border border-border bg-card p-5 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer group"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <h3 className="font-medium text-foreground group-hover:text-primary transition-colors">{b.name}</h3>
+                    <Icon name="ExternalLink" size={14} className="text-foreground/30 group-hover:text-primary transition-colors flex-shrink-0 mt-0.5" />
+                  </div>
+
+                  <div className="mb-3 space-y-1">
+                    {b.components.slice(0, 4).map((c, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="w-20 shrink-0 text-foreground/40">{SLOT_NAMES[c.slot] || c.slot}</span>
+                        <span className="flex-1 truncate text-foreground/60">{c.name}</span>
+                      </div>
+                    ))}
+                    {b.components.length > 4 && (
+                      <p className="text-xs text-foreground/30">+{b.components.length - 4} компонентов</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-border pt-3">
+                    <span className="text-xs text-foreground/40">
+                      {new Date(b.created_at).toLocaleDateString("ru-RU")}
+                    </span>
+                    <span className="text-sm font-semibold text-foreground">{fmt(b.total_price)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -146,10 +146,9 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(u)})}
 
         elif action == "public":
-            print("DEBUG params:", params)
             tag = params.get("utag", params.get("tag", "")).strip().lstrip("@").lower()
             if not tag:
-                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Тег не указан, params: " + str(params)})}
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Тег не указан"})}
             cur.execute(
                 f"SELECT id, username, bio, vk_url, avatar_url, user_tag, is_public, telegram_tag FROM {SCHEMA}.users WHERE LOWER(user_tag) = {esc(tag)}"
             )
@@ -159,10 +158,26 @@ def handler(event: dict, context) -> dict:
             user_id, username, bio, vk_url, avatar_url, user_tag, is_public, telegram_tag = row
             if not is_public:
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Профиль закрыт"})}
+            cur.execute(
+                f"SELECT id, name, components, parts_total, assembly_fee, total_price, share_token, created_at "
+                f"FROM {SCHEMA}.user_builds WHERE user_id = {user_id} AND is_public = TRUE ORDER BY created_at DESC LIMIT 20"
+            )
+            builds = []
+            for b in cur.fetchall():
+                builds.append({
+                    "id": b[0], "name": b[1],
+                    "components": b[2] or [],
+                    "parts_total": float(b[3]) if b[3] else 0,
+                    "assembly_fee": float(b[4]) if b[4] else 0,
+                    "total_price": float(b[5]) if b[5] else 0,
+                    "share_token": b[6],
+                    "created_at": b[7].isoformat() if b[7] else None,
+                })
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
                 "id": user_id, "username": username, "bio": bio or "",
                 "vk_url": vk_url or "", "avatar_url": avatar_url or "",
                 "user_tag": user_tag or "", "telegram_tag": telegram_tag or "",
+                "builds": builds,
             })}
 
         elif action == "update_profile" and method == "POST":
