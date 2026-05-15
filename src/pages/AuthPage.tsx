@@ -1,8 +1,14 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
+
+declare global {
+  interface Window {
+    onTelegramAuth?: (user: Record<string, string>) => void
+  }
+}
 
 export default function AuthPage() {
   const navigate = useNavigate()
@@ -11,6 +17,37 @@ export default function AuthPage() {
   const [form, setForm] = useState({ email: "", username: "", password: "" })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const tgRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    window.onTelegramAuth = async (tgUser) => {
+      setLoading(true)
+      setError("")
+      try {
+        const res = await api.telegramAuth.login(tgUser)
+        if (res.error) { setError(res.error); setLoading(false); return }
+        setAuth(res.user, res.session_id)
+        navigate("/profile")
+      } catch {
+        setError("Ошибка соединения с Telegram")
+      }
+      setLoading(false)
+    }
+
+    if (tgRef.current) {
+      tgRef.current.innerHTML = ""
+      const script = document.createElement("script")
+      script.src = "https://telegram.org/js/telegram-widget.js?22"
+      script.setAttribute("data-telegram-login", "BeGraphicsPC_Bot")
+      script.setAttribute("data-size", "large")
+      script.setAttribute("data-onauth", "onTelegramAuth(user)")
+      script.setAttribute("data-request-access", "write")
+      script.async = true
+      tgRef.current.appendChild(script)
+    }
+
+    return () => { delete window.onTelegramAuth }
+  }, [])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,6 +81,19 @@ export default function AuthPage() {
               <h1 className="text-lg font-semibold text-foreground">BeGraphics</h1>
               <p className="text-xs text-foreground/40">{mode === "login" ? "Войти в аккаунт" : "Создать аккаунт"}</p>
             </div>
+          </div>
+
+          {/* Telegram вход */}
+          <div className="mb-6">
+            <p className="mb-3 text-xs text-foreground/50 text-center">Быстрый вход</p>
+            <div ref={tgRef} className="flex justify-center" />
+            {loading && <p className="mt-2 text-center text-xs text-foreground/40">Загрузка...</p>}
+          </div>
+
+          <div className="relative mb-6 flex items-center gap-3">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-foreground/30">или</span>
+            <div className="flex-1 h-px bg-border" />
           </div>
 
           <div className="mb-6 flex overflow-hidden rounded-xl border border-border">

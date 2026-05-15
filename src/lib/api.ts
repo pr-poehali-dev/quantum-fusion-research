@@ -3,6 +3,7 @@ const URLS = {
   orders: "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745",
   builds: "https://functions.poehali.dev/6a3fdc40-04ab-4ef6-932b-4b24e530ee98",
   auth: "https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3",
+  telegramAuth: "https://functions.poehali.dev/3fcf2e40-36d1-4064-99e2-3b422e0ca3f0",
   articles: "https://functions.poehali.dev/f13f1242-55c3-4265-9f6e-bb883371a574",
   syncProducts: "https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031",
   tags: "https://functions.poehali.dev/52e8165b-43fb-4ed1-a088-53cd09447d2e",
@@ -103,6 +104,9 @@ export const api = {
     getBuildByToken: (token: string) => fetch(`${URLS.auth}?action=build&token=${token}`).then(r => r.json()),
     saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=save_build`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_build`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
+  },
+  telegramAuth: {
+    login: (tg_data: Record<string, string>) => fetch(`${URLS.telegramAuth}?action=login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tg_data }) }).then(r => r.json()),
   },
   cables: {
     getAll: () => fetch(URLS.cables).then(r => r.json()),
