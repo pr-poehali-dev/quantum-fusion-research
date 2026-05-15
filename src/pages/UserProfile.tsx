@@ -57,15 +57,36 @@ export default function UserProfile() {
 
         <div className="rounded-2xl border border-border bg-card p-8">
           {/* Аватар + имя */}
-          <div className="flex items-center gap-5 mb-6">
-            <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-border bg-muted flex items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-6 mb-6">
+            <div className="h-40 w-40 rounded-full overflow-hidden border-2 border-border bg-muted flex items-center justify-center flex-shrink-0">
               {profile.avatar_url
                 ? <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
-                : <Icon name="User" size={34} className="text-foreground/30" />}
+                : <Icon name="User" size={56} className="text-foreground/30" />}
             </div>
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">{profile.username}</h1>
+            <div className="space-y-1.5">
+              <h1 className="text-2xl font-semibold text-foreground">{profile.username}</h1>
               {profile.user_tag && <p className="text-sm text-foreground/40">@{profile.user_tag}</p>}
+              {/* Соцсети под ником */}
+              <div className="flex items-center gap-2 pt-1">
+                {profile.vk_url && (
+                  <a
+                    href={profile.vk_url.startsWith("http") ? profile.vk_url : `https://${profile.vk_url}`}
+                    target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+                  >
+                    <Icon name="Globe" size={13} className="text-[#0077FF]" />ВКонтакте
+                  </a>
+                )}
+                {profile.telegram_tag && (
+                  <a
+                    href={`https://t.me/${profile.telegram_tag.replace("@", "")}`}
+                    target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+                  >
+                    <Icon name="Send" size={13} className="text-[#229ED9]" />Telegram
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 
@@ -74,33 +95,7 @@ export default function UserProfile() {
             <div className="mb-6 prose prose-sm max-w-none text-foreground/70 prose-headings:text-foreground prose-a:text-primary prose-strong:text-foreground" dangerouslySetInnerHTML={{ __html: profile.bio }} />
           )}
 
-          {/* Соцсети */}
-          {(profile.vk_url || profile.telegram_tag) && (
-            <div className="space-y-2">
-              {profile.vk_url && (
-                <a
-                  href={profile.vk_url.startsWith("http") ? profile.vk_url : `https://${profile.vk_url}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  <Icon name="Globe" size={16} className="text-[#0077FF]" />
-                  ВКонтакте
-                </a>
-              )}
-              {profile.telegram_tag && (
-                <a
-                  href={`https://t.me/${profile.telegram_tag.replace("@", "")}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  <Icon name="Send" size={16} className="text-[#229ED9]" />
-                  Telegram
-                </a>
-              )}
-            </div>
-          )}
+
         </div>
       </div>
     </div>
