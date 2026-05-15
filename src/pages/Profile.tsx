@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import RichTextEditor from "@/components/ui/rich-text-editor"
+import AvatarCropModal from "@/components/ui/avatar-crop-modal"
 
 interface UserBuild {
   id: number
@@ -86,6 +87,7 @@ export default function Profile() {
     username: "", email: "", bio: "", phone: "", vk_url: "", telegram_tag: "", user_tag: "", is_public: true,
   })
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
@@ -179,23 +181,27 @@ export default function Profile() {
     setTimeout(() => setTgCodeCopied(false), 2000)
   }
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !sessionId) return
-    setAvatarUploading(true)
+    if (!file) return
+    e.target.value = ""
     const reader = new FileReader()
-    reader.onload = async (ev) => {
-      const base64 = ev.target?.result as string
-      const res = await api.upload.avatar(base64)
-      if (res.url) {
-        await api.auth.updateProfile({ avatar_url: res.url }, sessionId)
-        updateUser({ ...user, avatar_url: res.url })
-        setProfileMsg({ type: "ok", text: "Аватарка обновлена!" })
-        setTimeout(() => setProfileMsg(null), 2000)
-      }
-      setAvatarUploading(false)
-    }
+    reader.onload = (ev) => setCropSrc(ev.target?.result as string)
     reader.readAsDataURL(file)
+  }
+
+  const handleCropSave = async (croppedBase64: string) => {
+    if (!sessionId) return
+    setCropSrc(null)
+    setAvatarUploading(true)
+    const res = await api.upload.avatar(croppedBase64)
+    if (res.url) {
+      await api.auth.updateProfile({ avatar_url: res.url }, sessionId)
+      updateUser({ ...user, avatar_url: res.url })
+      setProfileMsg({ type: "ok", text: "Аватарка обновлена!" })
+      setTimeout(() => setProfileMsg(null), 2000)
+    }
+    setAvatarUploading(false)
   }
 
   const saveProfile = async () => {
@@ -216,6 +222,7 @@ export default function Profile() {
   const avatarSrc = user?.telegram_photo
 
   return (
+    <>
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
@@ -632,5 +639,14 @@ export default function Profile() {
         )}
       </div>
     </div>
+
+    {cropSrc && (
+      <AvatarCropModal
+        imageSrc={cropSrc}
+        onSave={handleCropSave}
+        onClose={() => setCropSrc(null)}
+      />
+    )}
+    </>
   )
 }
