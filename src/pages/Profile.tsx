@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
@@ -86,6 +86,8 @@ export default function Profile() {
   })
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+  const [showTgWidget, setShowTgWidget] = useState(false)
+  const tgRef = useRef<HTMLDivElement>(null)
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -132,6 +134,34 @@ export default function Profile() {
     logout()
     navigate("/")
   }
+
+  useEffect(() => {
+    if (!showTgWidget || !tgRef.current) return
+    tgRef.current.innerHTML = ""
+
+    window.onTelegramAuth = async (tgUser) => {
+      const res = await api.telegramAuth.login(tgUser)
+      if (!res.error && res.user) {
+        updateUser(res.user)
+        setProfileMsg({ type: "ok", text: "Telegram успешно привязан!" })
+        setShowTgWidget(false)
+        setTimeout(() => setProfileMsg(null), 3000)
+      } else {
+        setProfileMsg({ type: "err", text: res.error || "Ошибка привязки" })
+      }
+    }
+
+    const script = document.createElement("script")
+    script.src = "https://telegram.org/js/telegram-widget.js?22"
+    script.setAttribute("data-telegram-login", "BeGraphicsPC_Bot")
+    script.setAttribute("data-size", "large")
+    script.setAttribute("data-onauth", "onTelegramAuth(user)")
+    script.setAttribute("data-request-access", "write")
+    script.async = true
+    tgRef.current.appendChild(script)
+
+    return () => { delete window.onTelegramAuth }
+  }, [showTgWidget])
 
   const saveProfile = async () => {
     if (!sessionId) return
@@ -295,19 +325,26 @@ export default function Profile() {
                     <h2 className="mb-5 text-sm font-semibold text-foreground">Привязанные аккаунты</h2>
                     <div className="space-y-3">
                       {/* Telegram */}
-                      <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#229ED9]/10">
-                          <Icon name="Send" size={16} className="text-[#229ED9]" />
+                      <div className="rounded-xl border border-border bg-background px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#229ED9]/10">
+                            <Icon name="Send" size={16} className="text-[#229ED9]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground">Telegram</p>
+                            {user?.telegram_username
+                              ? <p className="text-xs text-foreground/50 truncate">@{user.telegram_username}</p>
+                              : <p className="text-xs text-foreground/30">Не привязан</p>}
+                          </div>
+                          {user?.telegram_id
+                            ? <span className="flex items-center gap-1 text-xs text-green-400"><Icon name="Check" size={12} />Привязан</span>
+                            : <button onClick={() => setShowTgWidget(v => !v)} className="text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>
+                                {showTgWidget ? "Отмена" : "Привязать"}
+                              </button>}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">Telegram</p>
-                          {user?.telegram_username
-                            ? <p className="text-xs text-foreground/50 truncate">@{user.telegram_username}</p>
-                            : <p className="text-xs text-foreground/30">Не привязан</p>}
-                        </div>
-                        {user?.telegram_id
-                          ? <span className="flex items-center gap-1 text-xs text-green-400"><Icon name="Check" size={12} />Привязан</span>
-                          : <button onClick={() => navigate("/auth")} className="text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>Привязать</button>}
+                        {showTgWidget && !user?.telegram_id && (
+                          <div className="mt-3 flex justify-center" ref={tgRef} />
+                        )}
                       </div>
 
                       {/* ВКонтакте */}
