@@ -9,6 +9,7 @@ const URLS = {
   tags: "https://functions.poehali.dev/52e8165b-43fb-4ed1-a088-53cd09447d2e",
   wipBuilds: "https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3",
   cables: "https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63",
+  upload: "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81",
 }
 
 function authHeaders(session?: string | null) {
@@ -105,6 +106,7 @@ export const api = {
     saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=save_build`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_build`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateProfile: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_profile`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
+    viewProfile: (tag: string) => fetch(`${URLS.auth}?action=view&tag=${encodeURIComponent(tag)}`).then(r => r.json()),
   },
   telegramAuth: {
     generateCode: (session: string) => fetch(`${URLS.telegramAuth}?action=generate`, { headers: authHeaders(session) }).then(r => r.json()),
@@ -119,5 +121,8 @@ export const api = {
     generateClientLink: (id: number) => fetch(URLS.cables, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate_client_link", id }) }).then(r => r.json()),
     revokeClientLink: (id: number) => fetch(URLS.cables, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "revoke_client_link", id }) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.cables}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+  },
+  upload: {
+    avatar: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "avatars", compress: true }) }).then(r => r.json()),
   },
 }

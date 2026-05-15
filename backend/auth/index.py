@@ -2,8 +2,12 @@ import json
 import os
 import hashlib
 import secrets
+import re
 import psycopg2
 from datetime import datetime, timedelta
+
+
+SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "t_p72635010_quantum_fusion_resea")
 
 
 def get_conn():
@@ -24,8 +28,8 @@ def get_user(cur, session_id):
     if not session_id:
         return None
     cur.execute(
-        f"SELECT u.id, u.email, u.username, u.bio, u.phone, u.vk_url, u.telegram_id, u.telegram_username, u.telegram_photo, u.email_verified "
-        f"FROM user_sessions s JOIN users u ON s.user_id = u.id "
+        f"SELECT u.id, u.email, u.username, u.bio, u.phone, u.vk_url, u.telegram_id, u.telegram_username, u.telegram_photo, u.email_verified, u.user_tag, u.is_public, u.avatar_url, u.telegram_tag "
+        f"FROM {SCHEMA}.user_sessions s JOIN {SCHEMA}.users u ON s.user_id = u.id "
         f"WHERE s.id = {esc(session_id)} AND s.expires_at > NOW()"
     )
     return cur.fetchone()
@@ -43,6 +47,10 @@ def fmt_user(u):
         "telegram_username": u[7] or "",
         "telegram_photo": u[8] or "",
         "email_verified": u[9] or False,
+        "user_tag": u[10] or "",
+        "is_public": u[11] if u[11] is not None else True,
+        "avatar_url": u[12] or "",
+        "telegram_tag": u[13] or "",
     }
 
 
@@ -50,7 +58,8 @@ def handler(event: dict, context) -> dict:
     """
     Авторизация пользователей.
     POST ?action=register, POST ?action=login, GET ?action=me, POST ?action=logout
-    POST ?action=update_profile — обновление профиля (bio, phone, vk_url, email, username)
+    POST ?action=update_profile — обновление профиля (bio, phone, vk_url, email, username, user_tag, is_public, avatar_url, telegram_tag)
+    GET ?action=view&tag=... — публичный просмотр профиля по тегу
     GET ?action=builds, GET ?action=community, GET ?action=build&token=...
     POST ?action=save_build, PUT ?action=update_build
     """
@@ -93,21 +102,21 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Заполните все поля"})}
             if len(password) < 6:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Пароль минимум 6 символов"})}
-            cur.execute(f"SELECT id FROM users WHERE email = {esc(email)}")
+            cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE email = {esc(email)}")
             if cur.fetchone():
                 return {"statusCode": 409, "headers": cors, "body": json.dumps({"error": "Email уже зарегистрирован"})}
             pw_hash = hash_pw(password)
             cur.execute(
-                f"INSERT INTO users (email, username, password_hash, created_at) VALUES ({esc(email)}, {esc(username)}, {esc(pw_hash)}, NOW()) RETURNING id"
+                f"INSERT INTO {SCHEMA}.users (email, username, password_hash, created_at) VALUES ({esc(email)}, {esc(username)}, {esc(pw_hash)}, NOW()) RETURNING id"
             )
             user_id = cur.fetchone()[0]
             sid = secrets.token_hex(32)
             expires = (datetime.now() + timedelta(days=30)).isoformat()
             cur.execute(
-                f"INSERT INTO user_sessions (id, user_id, created_at, expires_at) VALUES ({esc(sid)}, {user_id}, NOW(), {esc(expires)})"
+                f"INSERT INTO {SCHEMA}.user_sessions (id, user_id, created_at, expires_at) VALUES ({esc(sid)}, {user_id}, NOW(), {esc(expires)})"
             )
             conn.commit()
-            return {"statusCode": 201, "headers": cors, "body": json.dumps({"session_id": sid, "user": {"id": user_id, "email": email, "username": username, "bio": "", "phone": "", "vk_url": "", "telegram_id": None, "telegram_username": "", "telegram_photo": "", "email_verified": False}})}
+            return {"statusCode": 201, "headers": cors, "body": json.dumps({"session_id": sid, "user": {"id": user_id, "email": email, "username": username, "bio": "", "phone": "", "vk_url": "", "telegram_id": None, "telegram_username": "", "telegram_photo": "", "email_verified": False, "user_tag": "", "is_public": True, "avatar_url": "", "telegram_tag": ""}})}
 
         elif action == "login" and method == "POST":
             body = json.loads(event.get("body") or "{}")
@@ -115,8 +124,8 @@ def handler(event: dict, context) -> dict:
             password = body.get("password", "")
             pw_hash = hash_pw(password)
             cur.execute(
-                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified "
-                f"FROM users WHERE email = {esc(email)} AND password_hash = {esc(pw_hash)}"
+                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified, user_tag, is_public, avatar_url, telegram_tag "
+                f"FROM {SCHEMA}.users WHERE email = {esc(email)} AND password_hash = {esc(pw_hash)}"
             )
             u = cur.fetchone()
             if not u:
@@ -124,7 +133,7 @@ def handler(event: dict, context) -> dict:
             sid = secrets.token_hex(32)
             expires = (datetime.now() + timedelta(days=30)).isoformat()
             cur.execute(
-                f"INSERT INTO user_sessions (id, user_id, created_at, expires_at) VALUES ({esc(sid)}, {u[0]}, NOW(), {esc(expires)})"
+                f"INSERT INTO {SCHEMA}.user_sessions (id, user_id, created_at, expires_at) VALUES ({esc(sid)}, {u[0]}, NOW(), {esc(expires)})"
             )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"session_id": sid, "user": fmt_user(u)})}
@@ -134,6 +143,25 @@ def handler(event: dict, context) -> dict:
             if not u:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(u)})}
+
+        elif action == "view" and method == "GET":
+            tag = params.get("tag", "").strip().lstrip("@").lower()
+            if not tag:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Тег не указан"})}
+            cur.execute(
+                f"SELECT id, username, bio, vk_url, avatar_url, user_tag, is_public, telegram_tag FROM {SCHEMA}.users WHERE LOWER(user_tag) = {esc(tag)}"
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Пользователь не найден"})}
+            user_id, username, bio, vk_url, avatar_url, user_tag, is_public, telegram_tag = row
+            if not is_public:
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Профиль закрыт"})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "id": user_id, "username": username, "bio": bio or "",
+                "vk_url": vk_url or "", "avatar_url": avatar_url or "",
+                "user_tag": user_tag or "", "telegram_tag": telegram_tag or "",
+            })}
 
         elif action == "update_profile" and method == "POST":
             u = get_user(cur, session_id)
@@ -151,33 +179,50 @@ def handler(event: dict, context) -> dict:
                 updates.append(f"phone = {esc(body['phone'])}")
             if "vk_url" in body:
                 updates.append(f"vk_url = {esc(body['vk_url'])}")
+            if "telegram_tag" in body:
+                updates.append(f"telegram_tag = {esc(body['telegram_tag'])}")
+            if "avatar_url" in body:
+                updates.append(f"avatar_url = {esc(body['avatar_url'])}")
+            if "is_public" in body:
+                updates.append(f"is_public = {'TRUE' if body['is_public'] else 'FALSE'}")
+            if "user_tag" in body:
+                tag = body["user_tag"].strip().lstrip("@").lower()
+                if tag:
+                    if not re.match(r'^[a-z0-9_]{3,32}$', tag):
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Тег: только латиница, цифры и _, от 3 до 32 символов"})}
+                    cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE LOWER(user_tag) = {esc(tag)} AND id != {user_id}")
+                    if cur.fetchone():
+                        return {"statusCode": 409, "headers": cors, "body": json.dumps({"error": "Этот тег уже занят"})}
+                    updates.append(f"user_tag = {esc(tag)}")
+                else:
+                    updates.append("user_tag = NULL")
             if "email" in body and body["email"].strip():
                 new_email = body["email"].strip().lower()
-                cur.execute(f"SELECT id FROM users WHERE email = {esc(new_email)} AND id != {user_id}")
+                cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE email = {esc(new_email)} AND id != {user_id}")
                 if cur.fetchone():
                     return {"statusCode": 409, "headers": cors, "body": json.dumps({"error": "Email уже занят"})}
                 updates.append(f"email = {esc(new_email)}")
                 updates.append("email_verified = FALSE")
 
             if updates:
-                cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = {user_id}")
+                cur.execute(f"UPDATE {SCHEMA}.users SET {', '.join(updates)} WHERE id = {user_id}")
                 conn.commit()
 
             cur.execute(
-                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified FROM users WHERE id = {user_id}"
+                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified, user_tag, is_public, avatar_url, telegram_tag FROM {SCHEMA}.users WHERE id = {user_id}"
             )
             updated = cur.fetchone()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(updated)})}
 
         elif action == "logout" and method == "POST":
             if session_id:
-                cur.execute(f"UPDATE user_sessions SET expires_at = NOW() WHERE id = {esc(session_id)}")
+                cur.execute(f"UPDATE {SCHEMA}.user_sessions SET expires_at = NOW() WHERE id = {esc(session_id)}")
                 conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         elif action == "community" and method == "GET":
             cur.execute(
-                "SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM user_builds b JOIN users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
             )
             rows = cur.fetchall()
             builds = []
@@ -190,7 +235,7 @@ def handler(event: dict, context) -> dict:
         elif action == "build" and method == "GET":
             token = params.get("token")
             cur.execute(
-                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM user_builds b JOIN users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
             )
             row = cur.fetchone()
             if not row:
@@ -204,7 +249,7 @@ def handler(event: dict, context) -> dict:
             if not u:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             cur.execute(
-                f"SELECT id, user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at FROM user_builds WHERE user_id = {u[0]} ORDER BY created_at DESC"
+                f"SELECT id, user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at FROM {SCHEMA}.user_builds WHERE user_id = {u[0]} ORDER BY created_at DESC"
             )
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": [fmt_build(r) for r in cur.fetchall()]})}
 
@@ -221,7 +266,7 @@ def handler(event: dict, context) -> dict:
             total_price = float(body.get("total_price", 0))
             is_public = "TRUE" if body.get("is_public", False) else "FALSE"
             cur.execute(
-                f"INSERT INTO user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at, updated_at) VALUES ({u[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, NOW(), NOW()) RETURNING id"
+                f"INSERT INTO {SCHEMA}.user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at, updated_at) VALUES ({u[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, NOW(), NOW()) RETURNING id"
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -240,7 +285,7 @@ def handler(event: dict, context) -> dict:
             is_public = "TRUE" if body.get("is_public", False) else "FALSE"
             build_id = int(body["id"])
             cur.execute(
-                f"UPDATE user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, updated_at=NOW() WHERE id={build_id} AND user_id={u[0]}"
+                f"UPDATE {SCHEMA}.user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, updated_at=NOW() WHERE id={build_id} AND user_id={u[0]}"
             )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}

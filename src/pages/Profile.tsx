@@ -82,8 +82,9 @@ export default function Profile() {
 
   // Profile edit state
   const [profileForm, setProfileForm] = useState({
-    username: "", email: "", bio: "", phone: "", vk_url: "", telegram_tag: ""
+    username: "", email: "", bio: "", phone: "", vk_url: "", telegram_tag: "", user_tag: "", is_public: true,
   })
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
@@ -105,6 +106,8 @@ export default function Profile() {
           phone: d.user.phone || "",
           vk_url: d.user.vk_url || "",
           telegram_tag: d.user.telegram_tag || "",
+          user_tag: d.user.user_tag || "",
+          is_public: d.user.is_public !== false,
         })
       }
     })
@@ -173,6 +176,25 @@ export default function Profile() {
     navigator.clipboard.writeText(tgCode)
     setTgCodeCopied(true)
     setTimeout(() => setTgCodeCopied(false), 2000)
+  }
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !sessionId) return
+    setAvatarUploading(true)
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string
+      const res = await api.upload.avatar(base64)
+      if (res.url) {
+        await api.auth.updateProfile({ avatar_url: res.url }, sessionId)
+        updateUser({ ...user, avatar_url: res.url })
+        setProfileMsg({ type: "ok", text: "Аватарка обновлена!" })
+        setTimeout(() => setProfileMsg(null), 2000)
+      }
+      setAvatarUploading(false)
+    }
+    reader.readAsDataURL(file)
   }
 
   const saveProfile = async () => {
@@ -277,6 +299,32 @@ export default function Profile() {
                 <div className="rounded-2xl border border-border bg-card p-6">
                   <h2 className="mb-5 text-sm font-semibold text-foreground">Основные данные</h2>
                   <div className="space-y-4">
+
+                    {/* Аватарка */}
+                    <div className="flex items-center gap-4">
+                      <label className="relative cursor-pointer group">
+                        <div className="h-16 w-16 rounded-full overflow-hidden border-2 border-border bg-muted flex items-center justify-center">
+                          {user?.avatar_url
+                            ? <img src={user.avatar_url} alt="avatar" className="h-full w-full object-cover" />
+                            : <Icon name="User" size={28} className="text-foreground/30" />}
+                          {avatarUploading && (
+                            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
+                              <Icon name="Loader" size={18} className="text-white animate-spin" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Icon name="Camera" size={16} className="text-white" />
+                        </div>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                      </label>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{user?.username}</p>
+                        {user?.user_tag && <p className="text-xs text-foreground/40">@{user.user_tag}</p>}
+                        <p className="text-xs text-foreground/30 mt-0.5">Нажми на фото чтобы изменить</p>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="mb-1 block text-xs text-foreground/60">Имя пользователя</label>
                       <input
@@ -287,6 +335,49 @@ export default function Profile() {
                         style={{ cursor: "text" }}
                       />
                     </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs text-foreground/60">Тег профиля</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground/40">@</span>
+                        <input
+                          value={profileForm.user_tag}
+                          onChange={e => setProfileForm(f => ({ ...f, user_tag: e.target.value.replace(/[^a-z0-9_]/gi, "").toLowerCase() }))}
+                          className="w-full rounded-lg border border-border bg-background pl-7 pr-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                          placeholder="mytag"
+                          maxLength={32}
+                          style={{ cursor: "text" }}
+                        />
+                      </div>
+                      {profileForm.user_tag && (
+                        <p className="mt-1 text-xs text-foreground/30">Профиль: /profile/{profileForm.user_tag}</p>
+                      )}
+                    </div>
+
+                    {/* Приватность */}
+                    <div>
+                      <label className="mb-2 block text-xs text-foreground/60">Приватность профиля</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setProfileForm(f => ({ ...f, is_public: true }))}
+                          className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm transition-colors ${profileForm.is_public ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground/50 hover:text-foreground"}`}
+                        >
+                          <Icon name="Globe" size={14} />Открытый
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProfileForm(f => ({ ...f, is_public: false }))}
+                          className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm transition-colors ${!profileForm.is_public ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground/50 hover:text-foreground"}`}
+                        >
+                          <Icon name="Lock" size={14} />Закрытый
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-foreground/30">
+                        {profileForm.is_public ? "Все могут найти твой профиль по тегу" : "Профиль скрыт от других пользователей"}
+                      </p>
+                    </div>
+
                     <div>
                       <label className="mb-1 flex items-center gap-1.5 text-xs text-foreground/60">
                         Email
