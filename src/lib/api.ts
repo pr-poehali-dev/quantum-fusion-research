@@ -107,7 +107,8 @@ export const api = {
     updateProfile: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_profile`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
   },
   telegramAuth: {
-    login: (tg_data: Record<string, string>) => fetch(`${URLS.telegramAuth}?action=login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tg_data }) }).then(r => r.json()),
+    generateCode: (session: string) => fetch(`${URLS.telegramAuth}?action=generate`, { headers: authHeaders(session) }).then(r => r.json()),
+    checkLinked: (session: string) => fetch(`${URLS.telegramAuth}?action=check`, { headers: authHeaders(session) }).then(r => r.json()),
   },
   cables: {
     getAll: () => fetch(URLS.cables).then(r => r.json()),

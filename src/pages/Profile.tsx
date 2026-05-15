@@ -134,33 +134,45 @@ export default function Profile() {
     navigate("/")
   }
 
-  const handleTgConnect = () => {
-    const redirectUrl = encodeURIComponent(window.location.origin + "/profile?tg_auth=1")
-    const url = `https://oauth.telegram.org/auth?bot_id=8083970465&origin=${encodeURIComponent(window.location.origin)}&embed=0&request_access=write&return_to=${redirectUrl}`
-    window.open(url, "tgauth", "width=550,height=470,resizable=yes,scrollbars=yes")
+  const [tgCode, setTgCode] = useState<string | null>(null)
+  const [tgCodeLoading, setTgCodeLoading] = useState(false)
+  const [tgCodeCopied, setTgCodeCopied] = useState(false)
+  const [tgPolling, setTgPolling] = useState(false)
+
+  const handleTgConnect = async () => {
+    if (!sessionId) return
+    setTgCodeLoading(true)
+    const res = await api.telegramAuth.generateCode(sessionId)
+    setTgCodeLoading(false)
+    if (res.code) {
+      setTgCode(res.code)
+      setTgPolling(true)
+    }
   }
 
-  // Обрабатываем редирект от Telegram OAuth
+  // Поллинг — проверяем привязку раз в 3 сек пока tgPolling=true
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (!params.get("tg_auth")) return
-    const tgData: Record<string, string> = {}
-    for (const [k, v] of params.entries()) {
-      if (k !== "tg_auth") tgData[k] = v
-    }
-    if (!tgData.id || !sessionId) return
-
-    // Убираем параметры из URL
-    window.history.replaceState({}, "", "/profile")
-
-    api.telegramAuth.login(tgData).then(res => {
-      if (!res.error && res.user) {
-        updateUser(res.user)
+    if (!tgPolling || !sessionId) return
+    const interval = setInterval(async () => {
+      const res = await api.telegramAuth.checkLinked(sessionId)
+      if (res.linked) {
+        clearInterval(interval)
+        setTgPolling(false)
+        setTgCode(null)
+        updateUser({ ...user, telegram_id: res.telegram_id, telegram_username: res.telegram_username, telegram_photo: res.telegram_photo })
         setProfileMsg({ type: "ok", text: "Telegram успешно привязан!" })
         setTimeout(() => setProfileMsg(null), 3000)
       }
-    })
-  }, [])
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [tgPolling, sessionId])
+
+  const copyTgCode = () => {
+    if (!tgCode) return
+    navigator.clipboard.writeText(tgCode)
+    setTgCodeCopied(true)
+    setTimeout(() => setTgCodeCopied(false), 2000)
+  }
 
   const saveProfile = async () => {
     if (!sessionId) return
@@ -337,8 +349,34 @@ export default function Profile() {
                           </div>
                           {user?.telegram_id
                             ? <span className="flex items-center gap-1 text-xs text-green-400"><Icon name="Check" size={12} />Привязан</span>
-                            : <button onClick={handleTgConnect} className="text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>Привязать</button>}
+                            : <button
+                                onClick={handleTgConnect}
+                                disabled={tgCodeLoading || !!tgCode}
+                                className="text-xs text-primary hover:underline disabled:opacity-50"
+                                style={{ cursor: "pointer" }}
+                              >
+                                {tgCodeLoading ? "Генерация..." : tgCode ? "Ожидание..." : "Привязать"}
+                              </button>}
                         </div>
+                        {tgCode && !user?.telegram_id && (
+                          <div className="mt-3 rounded-lg bg-[#229ED9]/8 border border-[#229ED9]/20 p-3 space-y-2">
+                            <p className="text-xs text-foreground/60">
+                              Напишите боту <a href="https://t.me/BeGraphicsPC_Bot" target="_blank" rel="noreferrer" className="text-[#229ED9] font-medium hover:underline">@BeGraphicsPC_Bot</a> команду:
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <code className="flex-1 rounded bg-background border border-border px-3 py-2 text-sm font-mono font-bold tracking-widest text-foreground text-center">
+                                /link {tgCode}
+                              </code>
+                              <button
+                                onClick={copyTgCode}
+                                className="flex items-center gap-1 rounded-lg border border-border px-2 py-2 text-xs text-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+                              >
+                                <Icon name={tgCodeCopied ? "Check" : "Copy"} size={13} />
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-foreground/40">Код действует 10 минут. После отправки страница обновится автоматически.</p>
+                          </div>
+                        )}
                       </div>
 
                       {/* ВКонтакте */}

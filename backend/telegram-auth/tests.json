@@ -5,8 +5,24 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,
-      "bodyMatcher": "partial",
-      "expectedBody": {"ok": true}
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Generate code - unauthorized",
+      "method": "GET",
+      "path": "/?action=generate",
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Не авторизован"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Confirm code - wrong secret",
+      "method": "POST",
+      "path": "/?action=confirm",
+      "body": {"bot_secret": "wrong", "code": "123456", "tg_id": 12345},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
     }
   ]
 }

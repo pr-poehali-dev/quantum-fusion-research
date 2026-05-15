@@ -2,9 +2,13 @@ import json
 import os
 import hashlib
 import hmac
-import secrets
+import random
+import string
 import psycopg2
 from datetime import datetime, timedelta
+
+
+SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "t_p72635010_quantum_fusion_resea")
 
 
 def get_conn():
@@ -17,20 +21,16 @@ def esc(val):
     return "'" + str(val).replace("'", "''") + "'"
 
 
-def verify_telegram_hash(data: dict, bot_token: str) -> bool:
-    """Верифицирует подпись от Telegram Login Widget"""
-    check_hash = data.get("hash", "")
-    fields = {k: v for k, v in data.items() if k != "hash"}
-    check_string = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
-    secret_key = hashlib.sha256(bot_token.encode()).digest()
-    computed = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
-    return computed == check_hash
+def gen_code():
+    return "".join(random.choices(string.digits, k=6))
 
 
 def handler(event: dict, context) -> dict:
     """
-    Вход через Telegram Login Widget.
-    POST ?action=login — верификация данных от Telegram и выдача сессии
+    Привязка Telegram аккаунта к профилю.
+    GET ?action=generate — генерация кода привязки (требует X-Session-Id)
+    POST ?action=confirm — подтверждение кода ботом (требует bot_secret + tg_data)
+    GET ?action=check — проверка статуса привязки по session_id
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
@@ -43,67 +43,115 @@ def handler(event: dict, context) -> dict:
     method = event.get("httpMethod", "GET")
     params = event.get("queryStringParameters") or {}
     action = params.get("action", "")
-
-    if method == "GET":
-        return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
-
-    if action != "login" or method != "POST":
-        return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
-
-    body = json.loads(event.get("body") or "{}")
-    tg_data = body.get("tg_data", {})
-
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not verify_telegram_hash(tg_data, bot_token):
-        return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Неверная подпись Telegram"})}
-
-    tg_id = int(tg_data["id"])
-    tg_username = tg_data.get("username", "")
-    tg_first = tg_data.get("first_name", "")
-    tg_last = tg_data.get("last_name", "")
-    tg_photo = tg_data.get("photo_url", "")
-    display_name = tg_username or f"{tg_first} {tg_last}".strip() or f"tg_{tg_id}"
+    headers = event.get("headers") or {}
+    session_id = headers.get("X-Session-Id") or headers.get("x-session-id")
 
     conn = get_conn()
     cur = conn.cursor()
 
     try:
-        cur.execute(f"SELECT id, email, username FROM t_p72635010_quantum_fusion_resea.users WHERE telegram_id = {tg_id}")
-        user = cur.fetchone()
+        # --- Генерация кода привязки ---
+        if action == "generate" and method == "GET":
+            if not session_id:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
 
-        if user:
-            user_id, email, username = user[0], user[1], user[2]
-            if tg_username:
-                cur.execute(f"UPDATE t_p72635010_quantum_fusion_resea.users SET telegram_username={esc(tg_username)}, telegram_photo={esc(tg_photo)} WHERE id={user_id}")
-        else:
+            cur.execute(f"SELECT user_id FROM {SCHEMA}.user_sessions WHERE id={esc(session_id)} AND expires_at > NOW()")
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Сессия не найдена"})}
+            user_id = row[0]
+
+            # Проверяем — вдруг уже привязан
+            cur.execute(f"SELECT telegram_id FROM {SCHEMA}.users WHERE id={user_id}")
+            user = cur.fetchone()
+            if user and user[0]:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Telegram уже привязан"})}
+
+            # Деактивируем старые коды
+            cur.execute(f"UPDATE {SCHEMA}.telegram_link_codes SET used=TRUE WHERE user_id={user_id} AND used=FALSE")
+
+            code = gen_code()
+            expires = (datetime.now() + timedelta(minutes=10)).isoformat()
             cur.execute(
-                f"INSERT INTO t_p72635010_quantum_fusion_resea.users (telegram_id, telegram_username, telegram_photo, username, password_hash, created_at) "
-                f"VALUES ({tg_id}, {esc(tg_username)}, {esc(tg_photo)}, {esc(display_name)}, '', NOW()) RETURNING id, email, username"
+                f"INSERT INTO {SCHEMA}.telegram_link_codes (code, user_id, expires_at) VALUES ({esc(code)}, {user_id}, {esc(expires)})"
+            )
+            conn.commit()
+
+            bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "BeGraphicsPC_Bot")
+            return {
+                "statusCode": 200,
+                "headers": cors,
+                "body": json.dumps({
+                    "code": code,
+                    "bot_username": bot_username,
+                    "expires_in": 600,
+                })
+            }
+
+        # --- Подтверждение кода ботом ---
+        if action == "confirm" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            bot_secret = body.get("bot_secret", "")
+            expected = os.environ.get("TELEGRAM_BOT_SECRET", "")
+            if not expected or bot_secret != expected:
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Неверный секрет"})}
+
+            code = str(body.get("code", "")).strip()
+            tg_id = body.get("tg_id")
+            tg_username = body.get("tg_username", "")
+            tg_first = body.get("tg_first", "")
+            tg_photo = body.get("tg_photo", "")
+
+            if not code or not tg_id:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Не хватает данных"})}
+
+            cur.execute(
+                f"SELECT user_id FROM {SCHEMA}.telegram_link_codes WHERE code={esc(code)} AND used=FALSE AND expires_at > NOW()"
             )
             row = cur.fetchone()
-            user_id, email, username = row[0], row[1], row[2]
+            if not row:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Код не найден или истёк"})}
 
-        sid = secrets.token_hex(32)
-        expires = (datetime.now() + timedelta(days=30)).isoformat()
-        cur.execute(
-            f"INSERT INTO t_p72635010_quantum_fusion_resea.user_sessions (id, user_id, created_at, expires_at) VALUES ({esc(sid)}, {user_id}, NOW(), {esc(expires)})"
-        )
-        conn.commit()
+            user_id = row[0]
+            cur.execute(
+                f"UPDATE {SCHEMA}.users SET telegram_id={tg_id}, telegram_username={esc(tg_username)}, telegram_photo={esc(tg_photo)} WHERE id={user_id}"
+            )
+            cur.execute(f"UPDATE {SCHEMA}.telegram_link_codes SET used=TRUE WHERE code={esc(code)}")
+            conn.commit()
 
-        return {
-            "statusCode": 200,
-            "headers": cors,
-            "body": json.dumps({
-                "session_id": sid,
-                "user": {
-                    "id": user_id,
-                    "email": email or "",
-                    "username": username,
-                    "telegram_username": tg_username,
-                    "telegram_photo": tg_photo,
+            return {
+                "statusCode": 200,
+                "headers": cors,
+                "body": json.dumps({"ok": True, "user_id": user_id, "tg_first": tg_first})
+            }
+
+        # --- Проверка статуса привязки ---
+        if action == "check" and method == "GET":
+            if not session_id:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+
+            cur.execute(f"SELECT user_id FROM {SCHEMA}.user_sessions WHERE id={esc(session_id)} AND expires_at > NOW()")
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Сессия не найдена"})}
+            user_id = row[0]
+
+            cur.execute(f"SELECT telegram_id, telegram_username, telegram_photo FROM {SCHEMA}.users WHERE id={user_id}")
+            user = cur.fetchone()
+            if user and user[0]:
+                return {
+                    "statusCode": 200,
+                    "headers": cors,
+                    "body": json.dumps({
+                        "linked": True,
+                        "telegram_id": user[0],
+                        "telegram_username": user[1],
+                        "telegram_photo": user[2],
+                    })
                 }
-            })
-        }
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"linked": False})}
+
+        return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
     finally:
         cur.close()
