@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
@@ -87,7 +87,6 @@ export default function Profile() {
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
   const [showTgWidget, setShowTgWidget] = useState(false)
-  const tgRef = useRef<HTMLDivElement>(null)
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -135,9 +134,9 @@ export default function Profile() {
     navigate("/")
   }
 
-  useEffect(() => {
-    if (!showTgWidget || !tgRef.current) return
-    tgRef.current.innerHTML = ""
+  const tgCallbackRef = (node: HTMLDivElement | null) => {
+    if (!node) return
+    node.innerHTML = ""
 
     window.onTelegramAuth = async (tgUser) => {
       const res = await api.telegramAuth.login(tgUser)
@@ -158,10 +157,8 @@ export default function Profile() {
     script.setAttribute("data-onauth", "onTelegramAuth(user)")
     script.setAttribute("data-request-access", "write")
     script.async = true
-    tgRef.current.appendChild(script)
-
-    return () => { delete window.onTelegramAuth }
-  }, [showTgWidget])
+    node.appendChild(script)
+  }
 
   const saveProfile = async () => {
     if (!sessionId) return
@@ -343,7 +340,7 @@ export default function Profile() {
                               </button>}
                         </div>
                         {showTgWidget && !user?.telegram_id && (
-                          <div className="mt-3 flex justify-center" ref={tgRef} />
+                          <div className="mt-3 flex justify-center" ref={tgCallbackRef} />
                         )}
                       </div>
 
