@@ -54,6 +54,7 @@ def fmt_user(u):
     }
 
 
+
 def handler(event: dict, context) -> dict:
     """
     Авторизация пользователей.
