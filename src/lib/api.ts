@@ -106,7 +106,7 @@ export const api = {
     saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=save_build`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_build`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateProfile: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_profile`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
-    viewProfile: (tag: string) => fetch(`${URLS.auth}?action=view&tag=${encodeURIComponent(tag)}`).then(r => r.json()),
+    viewProfile: (tag: string) => fetch(`${URLS.auth}?action=public&utag=${encodeURIComponent(tag)}`).then(r => r.json()),
   },
   telegramAuth: {
     generateCode: (session: string) => fetch(`${URLS.telegramAuth}?action=generate`, { headers: authHeaders(session) }).then(r => r.json()),

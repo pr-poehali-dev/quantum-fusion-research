@@ -145,10 +145,11 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(u)})}
 
-        elif action == "view" and method == "GET":
-            tag = params.get("tag", "").strip().lstrip("@").lower()
+        elif action == "public":
+            print("DEBUG params:", params)
+            tag = params.get("utag", params.get("tag", "")).strip().lstrip("@").lower()
             if not tag:
-                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Тег не указан"})}
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Тег не указан, params: " + str(params)})}
             cur.execute(
                 f"SELECT id, username, bio, vk_url, avatar_url, user_tag, is_public, telegram_tag FROM {SCHEMA}.users WHERE LOWER(user_tag) = {esc(tag)}"
             )
