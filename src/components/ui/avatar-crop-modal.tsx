@@ -41,7 +41,7 @@ export default function AvatarCropModal({ imageSrc, onSave, onClose }: AvatarCro
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-xl overflow-hidden">
+      <div className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h3 className="text-sm font-semibold text-foreground">Кадрировать фото</h3>
           <button onClick={onClose} className="text-foreground/40 hover:text-foreground transition-colors">
@@ -50,7 +50,7 @@ export default function AvatarCropModal({ imageSrc, onSave, onClose }: AvatarCro
         </div>
 
         {/* Кропер */}
-        <div className="relative bg-black" style={{ height: 300 }}>
+        <div className="relative bg-black" style={{ height: 500 }}>
           <Cropper
             image={imageSrc}
             crop={crop}
