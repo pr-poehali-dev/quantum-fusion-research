@@ -336,49 +336,7 @@ export default function Profile() {
                   <div className="rounded-2xl border border-border bg-card p-6">
                     <h2 className="mb-5 text-sm font-semibold text-foreground">Привязанные аккаунты</h2>
                     <div className="space-y-3">
-                      {/* Telegram */}
-                      <div className="rounded-xl border border-border bg-background px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#229ED9]/10">
-                            <Icon name="Send" size={16} className="text-[#229ED9]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground">Telegram</p>
-                            {user?.telegram_username
-                              ? <p className="text-xs text-foreground/50 truncate">@{user.telegram_username}</p>
-                              : <p className="text-xs text-foreground/30">Не привязан</p>}
-                          </div>
-                          {user?.telegram_id
-                            ? <span className="flex items-center gap-1 text-xs text-green-400"><Icon name="Check" size={12} />Привязан</span>
-                            : <button
-                                onClick={handleTgConnect}
-                                disabled={tgCodeLoading || !!tgCode}
-                                className="text-xs text-primary hover:underline disabled:opacity-50"
-                                style={{ cursor: "pointer" }}
-                              >
-                                {tgCodeLoading ? "Генерация..." : tgCode ? "Ожидание..." : "Привязать"}
-                              </button>}
-                        </div>
-                        {tgCode && !user?.telegram_id && (
-                          <div className="mt-3 rounded-lg bg-[#229ED9]/8 border border-[#229ED9]/20 p-3 space-y-2">
-                            <p className="text-xs text-foreground/60">
-                              Напишите боту <a href="https://t.me/BeGraphicsPC_Bot" target="_blank" rel="noreferrer" className="text-[#229ED9] font-medium hover:underline">@BeGraphicsPC_Bot</a> команду:
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <code className="flex-1 rounded bg-background border border-border px-3 py-2 text-sm font-mono font-bold tracking-widest text-foreground text-center">
-                                /link {tgCode}
-                              </code>
-                              <button
-                                onClick={copyTgCode}
-                                className="flex items-center gap-1 rounded-lg border border-border px-2 py-2 text-xs text-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
-                              >
-                                <Icon name={tgCodeCopied ? "Check" : "Copy"} size={13} />
-                              </button>
-                            </div>
-                            <p className="text-[11px] text-foreground/40">Код действует 10 минут. После отправки страница обновится автоматически.</p>
-                          </div>
-                        )}
-                      </div>
+
 
                       {/* ВКонтакте */}
                       <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3">
