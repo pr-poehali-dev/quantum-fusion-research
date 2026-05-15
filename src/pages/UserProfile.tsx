@@ -71,7 +71,7 @@ export default function UserProfile() {
 
           {/* Био */}
           {profile.bio && (
-            <p className="mb-6 text-sm text-foreground/70 leading-relaxed">{profile.bio}</p>
+            <div className="mb-6 prose prose-sm max-w-none text-foreground/70 prose-headings:text-foreground prose-a:text-primary prose-strong:text-foreground" dangerouslySetInnerHTML={{ __html: profile.bio }} />
           )}
 
           {/* Соцсети */}
