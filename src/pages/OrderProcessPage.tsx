@@ -304,14 +304,73 @@ export default function OrderProcessPage() {
                   {/* Заменить товар */}
                   {item.item_type === "product" && (
                     <button
-                      onClick={() => { setReplaceIdx(idx); setSearchQ(""); setSearchResults([]) }}
+                      onClick={() => {
+                        if (replaceIdx === idx) { setReplaceIdx(null); setSearchQ(""); setSearchResults([]) }
+                        else { setReplaceIdx(idx); setSearchQ(""); setSearchResults([]) }
+                      }}
                       style={{ cursor: "pointer" }}
-                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/50 hover:text-foreground transition-colors">
-                      <Icon name="RefreshCw" size={12} />
-                      Заменить товар
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${replaceIdx === idx ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/50 hover:text-foreground"}`}>
+                      <Icon name="RefreshCw" size={12} className={replaceIdx === idx ? "text-primary" : ""} />
+                      {replaceIdx === idx ? "Закрыть" : "Заменить товар"}
                     </button>
                   )}
                 </div>
+
+                {/* Инлайн-панель замены — как в конфигураторе */}
+                {replaceIdx === idx && item.item_type === "product" && (
+                  <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-xs text-foreground/50 mb-3">
+                      Выберите замену для: <span className="text-foreground font-medium">{item.name}</span>
+                    </p>
+                    <input
+                      autoFocus
+                      value={searchQ}
+                      onChange={e => setSearchQ(e.target.value)}
+                      placeholder="Поиск товара по названию..."
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      style={{ cursor: "text" }}
+                    />
+                    {searchLoading && (
+                      <div className="flex items-center gap-2 py-4 text-foreground/40 text-sm">
+                        <Icon name="Loader" size={14} className="animate-spin" />
+                        Ищу...
+                      </div>
+                    )}
+                    {searchResults.length > 0 && (
+                      <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
+                        {searchResults.map(p => (
+                          <button key={p.id}
+                            onClick={async () => {
+                              await callPut("replace_item", idx, { new_product_id: p.id })
+                              await load()
+                              setReplaceIdx(null)
+                              setSearchQ("")
+                              setSearchResults([])
+                            }}
+                            style={{ cursor: "pointer" }}
+                            className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm bg-background hover:bg-muted border border-border hover:border-primary/30 transition-colors text-left">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{p.name}</p>
+                              <p className="text-xs text-foreground/40 mt-0.5">
+                                {typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}
+                              </p>
+                            </div>
+                            <div className="shrink-0 ml-3 text-right">
+                              <p className="text-sm font-bold text-primary">{fmt(p.price)}</p>
+                              <p className="text-xs text-foreground/40">за шт.</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {searchQ.length >= 2 && !searchLoading && searchResults.length === 0 && (
+                      <p className="mt-3 text-center text-sm text-foreground/40">Ничего не найдено</p>
+                    )}
+                    {searchQ.length === 0 && (
+                      <p className="mt-3 text-center text-xs text-foreground/30">Начните вводить название товара</p>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -377,53 +436,7 @@ export default function OrderProcessPage() {
         </div>
       )}
 
-      {/* Модалка замены товара */}
-      {replaceIdx !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={e => { if (e.target === e.currentTarget) setReplaceIdx(null) }}>
-          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Заменить товар</h3>
-              <button onClick={() => setReplaceIdx(null)} style={{ cursor: "pointer" }}
-                className="text-foreground/40 hover:text-foreground">
-                <Icon name="X" size={18} />
-              </button>
-            </div>
-            <p className="text-xs text-foreground/50 mb-3">
-              Текущий: <span className="text-foreground">{order.items[replaceIdx]?.name}</span>
-            </p>
-            <input
-              autoFocus
-              value={searchQ}
-              onChange={e => setSearchQ(e.target.value)}
-              placeholder="Поиск нового товара..."
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none mb-3"
-            />
-            {searchLoading && <div className="text-center py-4 text-foreground/40 text-sm">Поиск...</div>}
-            <div className="space-y-1 max-h-72 overflow-y-auto">
-              {searchResults.map(p => (
-                <button key={p.id}
-                  onClick={async () => {
-                    await callPut("replace_item", replaceIdx, { new_product_id: p.id })
-                    await load()
-                    setReplaceIdx(null)
-                  }}
-                  style={{ cursor: "pointer" }}
-                  className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm hover:bg-muted transition-colors text-left">
-                  <div>
-                    <p className="font-medium">{p.name}</p>
-                    <p className="text-xs text-foreground/40">{typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}</p>
-                  </div>
-                  <span className="text-primary font-medium shrink-0 ml-3">{fmt(p.price)}</span>
-                </button>
-              ))}
-              {searchQ.length >= 2 && !searchLoading && searchResults.length === 0 && (
-                <p className="text-center py-4 text-foreground/40 text-sm">Ничего не найдено</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }
