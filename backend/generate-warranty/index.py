@@ -222,7 +222,7 @@ def handler(event: dict, context) -> dict:
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     cur = conn.cursor()
     cur.execute(
-        f"SELECT customer_name, customer_phone, customer_email, items, total, created_at "
+        f"SELECT customer_name, customer_phone, customer_email, items, total, created_at, order_type "
         f"FROM {SCHEMA}.orders WHERE id = %s",
         (int(order_id),)
     )
@@ -231,33 +231,123 @@ def handler(event: dict, context) -> dict:
         cur.close(); conn.close()
         return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Order not found"})}
 
-    customer_name, customer_phone, customer_email, items_raw, total, created_at = row
+    customer_name, customer_phone, customer_email, items_raw, total, created_at, order_type = row
     items = items_raw if isinstance(items_raw, list) else json.loads(items_raw)
 
     enriched = []
-    for item in items:
-        pid = item.get("id")
-        warranty = 12
-        if pid and item.get("item_type") == "product":
-            cur.execute(
-                f"SELECT wg.warranty_months FROM {SCHEMA}.warehouse_groups wg WHERE wg.product_id = %s LIMIT 1",
-                (int(pid),)
-            )
-            wr = cur.fetchone()
-            if wr and wr[0]:
-                warranty = wr[0]
-        # Собираем серийники: serial_numbers (массив) или serial_number (строка)
-        serials = item.get("serial_numbers") or []
-        if not serials and item.get("serial_number"):
-            serials = [item["serial_number"]]
-        serials = [s for s in serials if s and str(s).strip()]
-        enriched.append({
-            "name": item.get("name", ""),
-            "qty": item.get("quantity", 1),
-            "price": float(item.get("final_price") or item.get("price", 0)),
-            "warranty": warranty,
-            "serials": serials,
-        })
+
+    if order_type == "pc_build":
+        # Для ПК-заказов берём компоненты из wip_build
+        cur.execute(
+            f"SELECT wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, "
+            f"wb.psu, wb.case_name, wb.cooling, wb.extra, wb.build_id "
+            f"FROM {SCHEMA}.wip_builds wb WHERE wb.order_id = %s LIMIT 1",
+            (int(order_id),)
+        )
+        wip = cur.fetchone()
+        slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
+
+        # Маппинг slot -> product_id из pc_builds
+        slot_product_map = {}
+        if wip and wip[9]:
+            cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (wip[9],))
+            pc_row = cur.fetchone()
+            if pc_row and pc_row[0]:
+                raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                for comp in raw:
+                    s = comp.get("slot")
+                    if s and comp.get("source") == "catalog" and comp.get("source_id"):
+                        slot_product_map[s] = int(comp["source_id"])
+
+        # Серийники из items заказа по слоту (items хранят slot для ПК-заказов)
+        slot_serials = {}
+        slot_item_price = {}
+        for it in items:
+            slot = it.get("slot")
+            if slot:
+                sn = it.get("serial_numbers") or []
+                if not sn and it.get("serial_number"):
+                    sn = [it["serial_number"]]
+                slot_serials[slot] = [s for s in sn if s and str(s).strip()]
+                price = float(it.get("final_price") or it.get("price", 0))
+                if price:
+                    slot_item_price[slot] = price
+
+        if wip:
+            for i, slot in enumerate(slot_names):
+                name = wip[i]
+                if not name or not name.strip():
+                    continue
+                # Гарантия из склада
+                warranty = 12
+                pid = slot_product_map.get(slot)
+                if not pid:
+                    cur.execute(f"SELECT id FROM {SCHEMA}.products p WHERE p.name = %s LIMIT 1", (name,))
+                    pr = cur.fetchone()
+                    if pr:
+                        pid = pr[0]
+                if pid:
+                    cur.execute(
+                        f"SELECT wg.warranty_months FROM {SCHEMA}.warehouse_groups wg WHERE wg.product_id = %s LIMIT 1",
+                        (pid,)
+                    )
+                    wr = cur.fetchone()
+                    if wr and wr[0]:
+                        warranty = wr[0]
+                serials = slot_serials.get(slot, [])
+                price = slot_item_price.get(slot, 0)
+                enriched.append({
+                    "name": name,
+                    "qty": 1,
+                    "price": price,
+                    "warranty": warranty,
+                    "serials": serials,
+                })
+
+        # Строка стоимости сборки
+        assembly_fee = 0
+        for it in items:
+            if it.get("item_type") == "assembly" or "сборк" in str(it.get("name", "")).lower():
+                assembly_fee = float(it.get("price", 0))
+        if not assembly_fee:
+            # Пробуем из pc_builds
+            if wip and wip[9]:
+                cur.execute(f"SELECT assembly_fee FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (wip[9],))
+                af = cur.fetchone()
+                if af and af[0]:
+                    assembly_fee = float(af[0])
+        if assembly_fee:
+            enriched.append({
+                "name": "Работа по сборке и настройке ПК",
+                "qty": 1,
+                "price": assembly_fee,
+                "warranty": 0,
+                "serials": [],
+            })
+    else:
+        # Обычные заказы комплектующих
+        for item in items:
+            pid = item.get("id")
+            warranty = 12
+            if pid and item.get("item_type") == "product":
+                cur.execute(
+                    f"SELECT wg.warranty_months FROM {SCHEMA}.warehouse_groups wg WHERE wg.product_id = %s LIMIT 1",
+                    (int(pid),)
+                )
+                wr = cur.fetchone()
+                if wr and wr[0]:
+                    warranty = wr[0]
+            serials = item.get("serial_numbers") or []
+            if not serials and item.get("serial_number"):
+                serials = [item["serial_number"]]
+            serials = [s for s in serials if s and str(s).strip()]
+            enriched.append({
+                "name": item.get("name", ""),
+                "qty": item.get("quantity", 1),
+                "price": float(item.get("final_price") or item.get("price", 0)),
+                "warranty": warranty,
+                "serials": serials,
+            })
 
     cur.close(); conn.close()
 
@@ -313,16 +403,17 @@ def handler(event: dict, context) -> dict:
     p.y -= 7*mm
 
     for it in enriched:
-        price_str = f"{it['price']:,.0f}".replace(",", " ")
+        price_str = f"{it['price']:,.0f}".replace(",", " ") if it["price"] else "—"
+        warranty_str = months_label(it["warranty"]) if it["warranty"] else "—"
         p.c.setFont("dj", 8)
         if it["serials"]:
             # Отдельная строка на каждый серийник — все данные в каждой строке
             for sn in it["serials"]:
-                cells = [it["name"], sn, months_label(it["warranty"]), "1", price_str]
+                cells = [it["name"], sn, warranty_str, "1", price_str]
                 p.cell_row(cells, col_w, font="dj", size=8)
         else:
             # Нет серийника — одна строка с общим кол-вом
-            cells = [it["name"], "-", months_label(it["warranty"]), str(it["qty"]), price_str]
+            cells = [it["name"], "—", warranty_str, str(it["qty"]), price_str]
             p.cell_row(cells, col_w, font="dj", size=8)
 
     p.ln(18)
