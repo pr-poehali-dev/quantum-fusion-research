@@ -187,7 +187,12 @@ export default function Cart() {
                       <button
                         key={s.key}
                         type="button"
-                        onClick={() => setForm(f => ({ ...f, contact_type: s.key, contact_value: "" }))}
+                        onClick={() => setForm(f => {
+                          let val = ""
+                          if (s.key === "tg" && user?.telegram_username) val = `https://t.me/${user.telegram_username}`
+                          else if (s.key === "vk" && user?.vk_url) val = user.vk_url
+                          return { ...f, contact_type: s.key, contact_value: val }
+                        })}
                         className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${form.contact_type === s.key ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
                         style={{ cursor: "pointer" }}
                       >
