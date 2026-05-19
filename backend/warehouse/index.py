@@ -158,12 +158,13 @@ def handler(event: dict, context) -> dict:
                 f"SELECT g.id, g.product_id, g.name, g.sku, g.category, g.part_number, "
                 f"g.warranty_months, g.price_retail, g.price_opt1, g.price_opt2, "
                 f"g.url_site, g.url_supplier, g.is_archived, g.created_at, g.updated_at, "
-                f"COALESCE(SUM(s.qty), 0) as qty_total, "
+                f"COALESCE(SUM(s.qty), COALESCE(p.stock_qty, 0)) as qty_total, "
                 f"COALESCE(SUM(s.qty_reserved), 0) as qty_reserved, "
                 f"COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) as avg_cost "
                 f"FROM {SCHEMA}.warehouse_groups g "
                 f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
-                f"{where_sql} GROUP BY g.id ORDER BY g.name LIMIT {limit} OFFSET {offset}"
+                f"LEFT JOIN {SCHEMA}.products p ON p.id = g.product_id "
+                f"{where_sql} GROUP BY g.id, p.stock_qty ORDER BY g.name LIMIT {limit} OFFSET {offset}"
             )
             groups = [fmt_group(r) for r in cur.fetchall()]
 
@@ -442,6 +443,35 @@ def handler(event: dict, context) -> dict:
             )
             products = [{"id": r[0], "name": r[1], "price": float(r[2]) if r[2] else 0, "category": r[3]} for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps(products)}
+
+        # ── СИНХРОНИЗАЦИЯ: создать группы для всех товаров без группы ─────────
+        if action == "sync_products" and method == "POST":
+            cur.execute(
+                f"SELECT p.id, p.name, p.price, c.name "
+                f"FROM {SCHEMA}.products p "
+                f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+                f"WHERE p.warehouse_group_id IS NULL"
+            )
+            rows = cur.fetchall()
+            created = 0
+            for row in rows:
+                pid, pname, pprice, pcat = row
+                sku = gen_sku()
+                for _ in range(20):
+                    cur.execute(f"SELECT id FROM {SCHEMA}.warehouse_groups WHERE sku = {esc(sku)}")
+                    if not cur.fetchone():
+                        break
+                    sku = gen_sku()
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_groups (product_id, name, sku, category, price_retail) "
+                    f"VALUES ({pid}, {esc(pname)}, {esc(sku)}, {esc(pcat) if pcat else 'NULL'}, {float(pprice) if pprice else 0}) "
+                    f"RETURNING id"
+                )
+                gid = cur.fetchone()[0]
+                cur.execute(f"UPDATE {SCHEMA}.products SET warehouse_group_id = {gid} WHERE id = {pid}")
+                created += 1
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"created": created})}
 
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 

@@ -60,7 +60,8 @@ def handler(event: dict, context) -> dict:
             "stock_qty": stock_qty or 0,
             "is_featured": row[8], "sort_order": row[9],
             "created_at": row[10].isoformat() if row[10] else None,
-            "category": {"id": row[13], "name": row[14], "slug": row[15]} if len(row) > 13 and row[13] else None
+            "category": {"id": row[13], "name": row[14], "slug": row[15]} if len(row) > 13 and row[13] else None,
+            "warehouse_group_id": row[16] if len(row) > 16 else None,
         }
 
     try:
@@ -134,7 +135,7 @@ def handler(event: dict, context) -> dict:
             sel = """SELECT p.id, p.name, p.description, p.price, p.old_price,
                             p.image_url, p.specs, p.in_stock, p.is_featured,
                             p.sort_order, p.created_at, p.stock_qty, p.image_urls,
-                            c.id, c.name, c.slug
+                            c.id, c.name, c.slug, p.warehouse_group_id
                      FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
@@ -201,6 +202,11 @@ def handler(event: dict, context) -> dict:
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0), body["id"])
+            )
+            # синхронизируем цену и название в warehouse_group
+            cur.execute(
+                "UPDATE warehouse_groups SET price_retail=%s, name=%s, updated_at=NOW() WHERE product_id=%s",
+                (body["price"], body["name"], body["id"])
             )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}

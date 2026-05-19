@@ -402,15 +402,20 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
         </td>
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-1">
-            {group.url_site && (
-              <a href={group.url_site} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                className="text-foreground/30 hover:text-primary transition-colors">
+            {(group.url_site || group.product_id) && (
+              <a
+                href={group.url_site || `/product/${group.product_id}`}
+                target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                className="text-foreground/30 hover:text-primary transition-colors"
+                title="Карточка на сайте"
+              >
                 <Icon name="Globe" size={13} />
               </a>
             )}
             {group.url_supplier && (
               <a href={group.url_supplier} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                className="text-foreground/30 hover:text-foreground/70 transition-colors">
+                className="text-foreground/30 hover:text-foreground/70 transition-colors"
+                title="У поставщика">
                 <Icon name="ShoppingCart" size={13} />
               </a>
             )}
