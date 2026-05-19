@@ -5,6 +5,7 @@ import Icon from "@/components/ui/icon"
 
 const ORDERS_URL = "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745"
 const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
+const WARRANTY_URL = "https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618"
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new: { label: "Новый", color: "text-primary bg-primary/10" },
@@ -68,6 +69,19 @@ export default function OrderProcessPage() {
   // Модалка выдачи заказа
   const [showWriteoff, setShowWriteoff] = useState(false)
   const [writeoffLoading, setWriteoffLoading] = useState(false)
+
+  // Гарантийное письмо
+  const [warrantyLoading, setWarrantyLoading] = useState(false)
+  const downloadWarranty = async () => {
+    setWarrantyLoading(true)
+    const res = await fetch(`${WARRANTY_URL}?order_id=${id}`).then(r => r.json()).catch(() => null)
+    setWarrantyLoading(false)
+    if (!res?.pdf_b64) return
+    const link = document.createElement("a")
+    link.href = `data:application/pdf;base64,${res.pdf_b64}`
+    link.download = res.filename || `warranty_${id}.pdf`
+    link.click()
+  }
 
   // Поиск товаров для замены
   const [replaceIdx, setReplaceIdx] = useState<number | null>(null)
@@ -147,6 +161,15 @@ export default function OrderProcessPage() {
           <span className={`rounded-full px-3 py-1 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>
             {(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}
           </span>
+          <button
+            onClick={downloadWarranty}
+            disabled={warrantyLoading}
+            style={{ cursor: "pointer" }}
+            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary transition-colors disabled:opacity-50"
+          >
+            <Icon name={warrantyLoading ? "Loader" : "FileText"} size={15} className={warrantyLoading ? "animate-spin" : ""} />
+            Гарантийка
+          </button>
           {order.status !== "done" && order.status !== "cancelled" && (
             <button
               onClick={() => setShowWriteoff(true)}
