@@ -535,6 +535,7 @@ export default function WarehouseTab() {
 
   const [groupModal, setGroupModal] = useState<Partial<Group> | null | false>(false)
   const [storesModal, setStoresModal] = useState(false)
+  const [quickSupplyModal, setQuickSupplyModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -572,6 +573,9 @@ export default function WarehouseTab() {
         <div className="flex-1" />
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
           <Icon name="Store" size={14} className="mr-1.5" />Магазины
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setQuickSupplyModal(true)}>
+          <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
         </Button>
         <Button size="sm" onClick={() => setGroupModal({})}>
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
@@ -674,6 +678,187 @@ export default function WarehouseTab() {
           onSaved={load}
         />
       )}
+      {quickSupplyModal && (
+        <QuickSupplyModal
+          stores={stores}
+          onClose={() => setQuickSupplyModal(false)}
+          onSaved={load}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Быстрая приёмка поставки ─────────────────────────────────────────────────
+
+function QuickSupplyModal({ stores, onClose, onSaved }: {
+  stores: Store[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [searchQ, setSearchQ] = useState("")
+  const [searchResults, setSearchResults] = useState<Group[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
+  const [form, setForm] = useState({
+    store_id: stores[0]?.id || "",
+    qty: 1,
+    cost_price: 0,
+    purchase_date: new Date().toISOString().substring(0, 10),
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [alerts, setAlerts] = useState<{product: string, reserved: number, orders: number[]}[]>([])
+
+  useEffect(() => {
+    if (!searchQ || searchQ.length < 2) { setSearchResults([]); return }
+    let cancelled = false
+    setSearchLoading(true)
+    api.warehouse.getGroups({ search: searchQ, limit: "10", offset: "0" })
+      .then(d => { if (!cancelled) { setSearchResults(d.groups || []); setSearchLoading(false) } })
+      .catch(() => { if (!cancelled) setSearchLoading(false) })
+    return () => { cancelled = true }
+  }, [searchQ])
+
+  const save = async () => {
+    if (!selectedGroup) return
+    setLoading(true)
+    setError("")
+    const data = await api.warehouse.createSupply({
+      group_id: selectedGroup.id,
+      store_id: form.store_id || null,
+      qty: form.qty,
+      cost_price: form.cost_price,
+      purchase_date: form.purchase_date,
+    })
+    setLoading(false)
+    if (data.error) { setError(data.error); return }
+    if (data.negative_alerts?.length) {
+      setAlerts(data.negative_alerts)
+      return
+    }
+    onSaved()
+    onClose()
+  }
+
+  if (alerts.length) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-400/15">
+            <Icon name="Bell" size={18} className="text-yellow-400" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold">Товар из резерва</h2>
+            <p className="text-xs text-foreground/50">Поставка принята, резерв перераспределён</p>
+          </div>
+        </div>
+        <div className="space-y-2 mb-5">
+          {alerts.map((a, i) => (
+            <div key={i} className="rounded-lg border border-yellow-400/20 bg-yellow-400/5 px-3 py-2 text-sm">
+              <span className="text-yellow-400 font-medium">{a.product}</span>
+              <span className="text-foreground/60"> — {a.reserved} шт. → </span>
+              {a.orders.length ? <span className="text-foreground">заказ #{a.orders.join(', #')}</span> : <span className="text-foreground/40">заказы</span>}
+            </div>
+          ))}
+        </div>
+        <Button className="w-full" onClick={() => { onSaved(); onClose() }}>Понятно</Button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Принять поставку</h2>
+          <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+        </div>
+
+        {!selectedGroup ? (
+          <div>
+            <label className="mb-1.5 block text-xs text-foreground/50">Найдите товар</label>
+            <Input
+              autoFocus
+              value={searchQ}
+              onChange={e => setSearchQ(e.target.value)}
+              placeholder="Название, артикул..."
+            />
+            {searchLoading && (
+              <div className="flex items-center gap-2 py-4 text-foreground/40 text-sm">
+                <Icon name="Loader" size={14} className="animate-spin" />Ищу...
+              </div>
+            )}
+            {searchResults.length > 0 && (
+              <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
+                {searchResults.map(g => (
+                  <button key={g.id} onClick={() => setSelectedGroup(g)} style={{ cursor: "pointer" }}
+                    className="w-full flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5 text-sm hover:border-primary/40 hover:bg-muted transition-colors text-left">
+                    <div>
+                      <p className="font-medium">{g.name}</p>
+                      <p className="text-xs text-foreground/40 font-mono">{g.sku} {g.category ? `· ${g.category}` : ""}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-3">
+                      <p className="text-sm font-bold text-primary">{g.price_retail ? g.price_retail.toLocaleString("ru-RU") + " ₽" : "—"}</p>
+                      <p className="text-xs text-foreground/40">в наличии: {g.qty_total - g.qty_reserved}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {searchQ.length >= 2 && !searchLoading && searchResults.length === 0 && (
+              <p className="mt-3 text-center text-sm text-foreground/40">Ничего не найдено</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+              <div>
+                <p className="font-medium text-sm">{selectedGroup.name}</p>
+                <p className="text-xs text-foreground/40 font-mono">{selectedGroup.sku}</p>
+              </div>
+              <button onClick={() => setSelectedGroup(null)} style={{ cursor: "pointer" }}
+                className="text-xs text-foreground/40 hover:text-foreground transition-colors">
+                Изменить
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs text-foreground/50">Кол-во *</label>
+                <Input type="number" min={1} value={form.qty}
+                  onChange={e => setForm(p => ({ ...p, qty: parseInt(e.target.value) || 1 }))} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/50">Цена закупки</label>
+                <Input type="number" value={form.cost_price}
+                  onChange={e => setForm(p => ({ ...p, cost_price: parseFloat(e.target.value) || 0 }))} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/50">Магазин</label>
+                <select className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  value={form.store_id}
+                  onChange={e => setForm(p => ({ ...p, store_id: parseInt(e.target.value) }))}>
+                  <option value="">— не указан —</option>
+                  {stores.map(s => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/50">Дата</label>
+                <Input type="date" value={form.purchase_date}
+                  onChange={e => setForm(p => ({ ...p, purchase_date: e.target.value }))} />
+              </div>
+            </div>
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={onClose}>Отмена</Button>
+              <Button onClick={save} disabled={loading}>
+                <Icon name={loading ? "Loader" : "PackagePlus"} size={14} className={`mr-1.5 ${loading ? "animate-spin" : ""}`} />
+                {loading ? "Сохраняю..." : "Принять"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
