@@ -1,0 +1,1 @@
+ALTER TABLE t_p72635010_quantum_fusion_resea.warehouse_groups ADD COLUMN IF NOT EXISTS cell varchar(50) NULL;

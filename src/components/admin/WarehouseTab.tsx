@@ -54,6 +54,7 @@ interface Group {
   qty_total: number
   qty_reserved: number
   avg_cost: number
+  cell: string | null
   price_history: PricePoint[]
   supplies?: Supply[]
 }
@@ -114,6 +115,7 @@ function GroupModal({ group, stores, onClose, onSaved }: {
     price_opt2: group?.price_opt2 ?? 0,
     url_site: group?.url_site || "",
     url_supplier: group?.url_supplier || "",
+    cell: group?.cell || "",
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -155,6 +157,10 @@ function GroupModal({ group, stores, onClose, onSaved }: {
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Партнамбер</label>
             <Input value={form.part_number} onChange={f("part_number")} placeholder="BX8071514900K" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-foreground/50">Ячейка</label>
+            <Input value={form.cell} onChange={f("cell")} placeholder="A1-2" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Гарантия (мес.)</label>
@@ -209,7 +215,6 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
     store_id: supply?.store_id ?? (stores[0]?.id || ""),
     qty: supply?.qty ?? 1,
     cost_price: supply?.cost_price ?? 0,
-    cell: supply?.cell || "",
     purchase_date: supply?.purchase_date?.substring(0, 10) || new Date().toISOString().substring(0, 10),
     warranty_until: supply?.warranty_until?.substring(0, 10) || "",
   })
@@ -254,10 +259,6 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Цена закупки</label>
             <Input type="number" value={form.cost_price} onChange={e => setForm(p => ({ ...p, cost_price: parseFloat(e.target.value) || 0 }))} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Ячейка</label>
-            <Input value={form.cell} onChange={e => setForm(p => ({ ...p, cell: e.target.value }))} placeholder="A1-2" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Дата покупки</label>

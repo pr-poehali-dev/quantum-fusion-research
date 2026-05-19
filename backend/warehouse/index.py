@@ -47,6 +47,7 @@ def fmt_group(row):
         "qty_total": int(row[15]) if row[15] else 0,
         "qty_reserved": int(row[16]) if row[16] else 0,
         "avg_cost": float(row[17]) if row[17] else 0,
+        "cell": row[18] if len(row) > 18 else None,
     }
 
 
@@ -160,7 +161,8 @@ def handler(event: dict, context) -> dict:
                 f"g.url_site, g.url_supplier, g.is_archived, g.created_at, g.updated_at, "
                 f"COALESCE(SUM(s.qty), COALESCE(p.stock_qty, 0)) as qty_total, "
                 f"COALESCE(SUM(s.qty_reserved), 0) as qty_reserved, "
-                f"COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) as avg_cost "
+                f"COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) as avg_cost, "
+                f"g.cell "
                 f"FROM {SCHEMA}.warehouse_groups g "
                 f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
                 f"LEFT JOIN {SCHEMA}.products p ON p.id = g.product_id "
@@ -243,13 +245,14 @@ def handler(event: dict, context) -> dict:
             url_site = body.get("url_site", "")
             url_supplier = body.get("url_supplier", "")
 
+            cell = body.get("cell", "")
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_groups "
                 f"(product_id, name, sku, category, part_number, warranty_months, "
-                f"price_retail, price_opt1, price_opt2, url_site, url_supplier) "
+                f"price_retail, price_opt1, price_opt2, url_site, url_supplier, cell) "
                 f"VALUES ({product_id or 'NULL'}, {esc(name)}, {esc(sku)}, {esc(category)}, "
                 f"{esc(part_number)}, {warranty_months}, {price_retail}, {price_opt1}, {price_opt2}, "
-                f"{esc(url_site)}, {esc(url_supplier)}) RETURNING id"
+                f"{esc(url_site)}, {esc(url_supplier)}, {esc(cell)}) RETURNING id"
             )
             new_id = cur.fetchone()[0]
 
@@ -264,7 +267,7 @@ def handler(event: dict, context) -> dict:
         if action == "group_update" and method == "PUT":
             gid = body.get("id")
             fields = []
-            for f in ["name", "category", "part_number", "url_site", "url_supplier"]:
+            for f in ["name", "category", "part_number", "url_site", "url_supplier", "cell"]:
                 if f in body:
                     fields.append(f"{f} = {esc(body[f])}")
             for f in ["warranty_months", "price_retail", "price_opt1", "price_opt2", "product_id"]:
