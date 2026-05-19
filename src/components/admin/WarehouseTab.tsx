@@ -263,10 +263,7 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
             <label className="mb-1 block text-xs text-foreground/50">Дата покупки</label>
             <Input type="date" value={form.purchase_date} onChange={e => setForm(p => ({ ...p, purchase_date: e.target.value }))} />
           </div>
-          <div className="col-span-2">
-            <label className="mb-1 block text-xs text-foreground/50">Гарантия поставщика до</label>
-            <Input type="date" value={form.warranty_until} onChange={e => setForm(p => ({ ...p, warranty_until: e.target.value }))} />
-          </div>
+
         </div>
 
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
