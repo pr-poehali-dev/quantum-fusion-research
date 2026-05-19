@@ -228,6 +228,13 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
       : await api.warehouse.updateSupply({ id: supply!.id, ...form })
     setLoading(false)
     if (data.error) { setError(data.error); return }
+    // Уведомление об отрицательном резерве
+    if (data.negative_alerts?.length) {
+      const msgs = data.negative_alerts.map((a: {product: string, reserved: number, orders: number[]}) =>
+        `✓ ${a.product} (${a.reserved} шт.) → улетел в заказ${a.orders.length ? ` #${a.orders.join(', #')}` : ''}`
+      ).join('\n')
+      alert(`Товар из отрицательного резерва поставлен в резерв:\n\n${msgs}`)
+    }
     onSaved()
     onClose()
   }

@@ -387,6 +387,150 @@ def handler(event: dict, context) -> dict:
                 cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), total, order_id))
 
+            elif action == "sync_order":
+                # Синхронизировать заказ ПК: резервировать наличие, отрицательный резерв для отсутствующих
+                # Получаем wip_build и pc_build для этого заказа
+                cur.execute(
+                    f"SELECT wb.id, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, wb.cooling, wb.extra, "
+                    f"wb.cpu_status, wb.motherboard_status, wb.ram_status, wb.gpu_status, wb.storage_status, "
+                    f"wb.psu_status, wb.cooling_status, wb.extra_status, wb.build_id "
+                    f"FROM wip_builds wb WHERE wb.order_id = %s LIMIT 1",
+                    (order_id,)
+                )
+                wip = cur.fetchone()
+                if not wip:
+                    return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка в процессе не найдена"})}
+
+                wip_id = wip[0]
+                build_id = wip[17]
+                slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "cooling", "extra"]
+                slot_values = list(wip[1:9])    # названия компонентов
+                slot_statuses = list(wip[9:17]) # текущие статусы
+
+                # Получаем компоненты из pc_builds для сопоставления product_id
+                pc_components = []
+                if build_id:
+                    cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
+                    pc_row = cur.fetchone()
+                    if pc_row and pc_row[0]:
+                        raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                        pc_components = raw
+
+                # Строим маппинг slot -> source_id (product_id из каталога)
+                slot_product_map = {}
+                for comp in pc_components:
+                    slot = comp.get("slot")
+                    if slot and comp.get("source") == "catalog" and comp.get("source_id"):
+                        slot_product_map[slot] = int(comp["source_id"])
+
+                reserved_items = []
+                negative_items = []
+                new_statuses = {}
+
+                for slot, name, status in zip(slot_names, slot_values, slot_statuses):
+                    if not name or name.strip() == "":
+                        continue
+                    # Уже готово — пропускаем
+                    if status == "ready":
+                        continue
+
+                    product_id = slot_product_map.get(slot)
+                    if not product_id:
+                        # Пробуем найти по названию
+                        cur.execute(
+                            f"SELECT p.id FROM {schema}.products p WHERE p.name = %s LIMIT 1",
+                            (name,)
+                        )
+                        pr = cur.fetchone()
+                        if pr:
+                            product_id = pr[0]
+
+                    if not product_id:
+                        new_statuses[slot] = "need_order"
+                        negative_items.append({"slot": slot, "name": name, "reason": "product_not_found"})
+                        continue
+
+                    # Проверяем свободный остаток
+                    cur.execute(
+                        f"SELECT s.id, s.qty - s.qty_reserved as free FROM {schema}.warehouse_supplies s "
+                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                        f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC LIMIT 1",
+                        (product_id,)
+                    )
+                    supply = cur.fetchone()
+
+                    if supply:
+                        # Резервируем
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + 1 WHERE id = %s",
+                            (supply[0],)
+                        )
+                        cur.execute(
+                            f"INSERT INTO {schema}.warehouse_movements "
+                            f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', 1, %s, NOW())",
+                            (supply[0], supply[0], order_id, f"Авторезерв слот {slot} по заказу #{order_id}")
+                        )
+                        new_statuses[slot] = "ready"
+                        reserved_items.append({"slot": slot, "name": name, "product_id": product_id})
+                    else:
+                        # Ставим отрицательный резерв
+                        cur.execute(
+                            f"SELECT s.id FROM {schema}.warehouse_supplies s "
+                            f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                            f"WHERE g.product_id = %s ORDER BY s.id DESC LIMIT 1",
+                            (product_id,)
+                        )
+                        neg_supply = cur.fetchone()
+                        if neg_supply:
+                            cur.execute(
+                                f"UPDATE {schema}.warehouse_supplies SET qty_negative = qty_negative + 1 WHERE id = %s",
+                                (neg_supply[0],)
+                            )
+                        else:
+                            # Нет ни одной поставки — создаём виртуальную запись с qty_negative
+                            cur.execute(
+                                f"SELECT g.id FROM {schema}.warehouse_groups g WHERE g.product_id = %s LIMIT 1",
+                                (product_id,)
+                            )
+                            grp = cur.fetchone()
+                            if grp:
+                                cur.execute(
+                                    f"INSERT INTO {schema}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price, created_at) "
+                                    f"VALUES (%s, 0, 0, 1, 0, NOW())",
+                                    (grp[0],)
+                                )
+                        new_statuses[slot] = "need_order"
+                        negative_items.append({"slot": slot, "name": name, "product_id": product_id})
+
+                # Обновляем статусы слотов в wip_build
+                set_parts = []
+                for slot, st in new_statuses.items():
+                    set_parts.append(f"{slot}_status = '{st}'")
+                if set_parts:
+                    cur.execute(
+                        f"UPDATE wip_builds SET {', '.join(set_parts)}, updated_at=NOW() WHERE id = %s",
+                        (wip_id,)
+                    )
+
+                # Если всё в ready — меняем статус заказа на waiting_assembly
+                all_slots_filled = all(
+                    not v or not v.strip() or
+                    new_statuses.get(s, slot_statuses[i]) == "ready"
+                    for i, (s, v) in enumerate(zip(slot_names, slot_values))
+                )
+                if all_slots_filled and not negative_items:
+                    cur.execute("UPDATE orders SET status='waiting_assembly', updated_at=NOW() WHERE id=%s", (order_id,))
+                    cur.execute("UPDATE wip_builds SET stage='Ожидание сборки', updated_at=NOW() WHERE id=%s", (wip_id,))
+
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                    "ok": True,
+                    "reserved": reserved_items,
+                    "need_order": negative_items,
+                    "auto_status": "waiting_assembly" if (all_slots_filled and not negative_items) else None
+                })}
+
             elif action == "add_item":
                 # Добавить новый товар со склада в заказ
                 new_product_id = int(body["new_product_id"])
@@ -587,11 +731,18 @@ def handler(event: dict, context) -> dict:
             new_status = body["status"]
             order_id = body["id"]
             cur.execute("UPDATE orders SET status=%s, updated_at=NOW() WHERE id=%s", (new_status, order_id))
-            # Если заказ отменён — переносим wip_build в архив со статусом "Отменён"
-            if new_status == "cancelled":
+            # Синхронизируем стадию wip_build со статусом заказа ПК
+            STATUS_TO_STAGE = {
+                "new":              "Согласование",
+                "ordering":         "Заказ",
+                "waiting_assembly": "Ожидание сборки",
+                "assembly":         "Сборка",
+                "cancelled":        "Отменён",
+            }
+            if new_status in STATUS_TO_STAGE:
                 cur.execute(
-                    "UPDATE wip_builds SET stage='Отменён', updated_at=NOW() WHERE order_id=%s",
-                    (order_id,)
+                    "UPDATE wip_builds SET stage=%s, updated_at=NOW() WHERE order_id=%s",
+                    (STATUS_TO_STAGE[new_status], order_id)
                 )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}

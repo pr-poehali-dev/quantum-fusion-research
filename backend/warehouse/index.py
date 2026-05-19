@@ -343,8 +343,52 @@ def handler(event: dict, context) -> dict:
                 f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id) "
                 f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {group_id})"
             )
+
+            # Проверяем отрицательный резерв — если есть, резервируем и уведомляем
+            negative_alerts = []
+            cur.execute(
+                f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
+                f"WHERE s.group_id = {group_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
+            )
+            neg_supplies = cur.fetchall()
+            for (neg_sid, neg_qty) in neg_supplies:
+                to_reserve = min(neg_qty, qty)
+                if to_reserve <= 0:
+                    continue
+                # Переводим из отрицательного в обычный резерв
+                cur.execute(
+                    f"UPDATE {SCHEMA}.warehouse_supplies "
+                    f"SET qty_negative = GREATEST(0, qty_negative - %s), "
+                    f"    qty_reserved = qty_reserved + %s "
+                    f"WHERE id = %s",
+                    (to_reserve, to_reserve, neg_sid)
+                )
+                # Находим заказы с этим товаром в отрицательном резерве
+                cur.execute(
+                    f"SELECT p.id, p.name FROM {SCHEMA}.products p "
+                    f"JOIN {SCHEMA}.warehouse_groups g ON g.id = {group_id} "
+                    f"WHERE g.product_id = p.id LIMIT 1"
+                )
+                prod = cur.fetchone()
+                prod_name = prod[1] if prod else "Товар"
+                # Ищем заказы ПК у которых этот товар в need_order через wip_builds
+                cur.execute(
+                    f"SELECT o.id FROM orders o "
+                    f"JOIN wip_builds wb ON wb.order_id = o.id "
+                    f"WHERE o.status = 'ordering' LIMIT 10"
+                )
+                affected_orders = [r[0] for r in cur.fetchall()]
+                negative_alerts.append({
+                    "product": prod_name,
+                    "reserved": to_reserve,
+                    "orders": affected_orders
+                })
+
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": supply_id})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "id": supply_id,
+                "negative_alerts": negative_alerts
+            })}
 
         if action == "supply_update" and method == "PUT":
             sid = body.get("id")

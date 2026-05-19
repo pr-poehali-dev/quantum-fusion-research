@@ -16,7 +16,17 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   cancelled: { label: "Отменён", color: "text-foreground/50 bg-muted" },
 }
 
-const ACTIVE_STATUSES = ["new", "processing"]
+// Статусы для ПК-сборок — синхронизированы со стадиями wip_builds
+const PC_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  new:              { label: "Согласование",     color: "text-primary bg-primary/10" },
+  ordering:         { label: "Заказ комплектующих", color: "text-orange-400 bg-orange-400/10" },
+  waiting_assembly: { label: "Ожидание сборки",  color: "text-yellow-400 bg-yellow-400/10" },
+  assembly:         { label: "Сборка",           color: "text-accent bg-accent/10" },
+  done:             { label: "Выдан",            color: "text-green-400 bg-green-400/10" },
+  cancelled:        { label: "Отменён",          color: "text-foreground/50 bg-muted" },
+}
+
+const ACTIVE_STATUSES = ["new", "processing", "ordering", "waiting_assembly", "assembly"]
 const ARCHIVE_STATUSES = ["done", "cancelled"]
 
 const BUILD_STATUS: Record<string, string> = {
@@ -1221,7 +1231,7 @@ export default function Admin() {
                       <div>
                         <div className="flex items-center gap-3 mb-1">
                           <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${order.order_type === "pc_build" ? (PC_STATUS_LABELS[order.status] || PC_STATUS_LABELS.new).color : (STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{order.order_type === "pc_build" ? (PC_STATUS_LABELS[order.status] || PC_STATUS_LABELS.new).label : (STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
                           {order.order_type === "pc_build" && <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent">Сборка ПК</span>}
                           {order.order_type === "parts" && <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">Комплектующие</span>}
                           <span className="text-xs text-foreground/40">{new Date(order.created_at).toLocaleDateString("ru-RU")}</span>
@@ -1237,24 +1247,18 @@ export default function Admin() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <p className="text-lg font-bold text-foreground">{fmt(order.total)}</p>
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => copyOrderSheet(order.id)}
-                            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${copiedOrderId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-border text-foreground/50 hover:border-primary hover:text-primary"}`}
-                            style={{ cursor: "pointer" }}
-                            title="Скопировать ссылку для приёмщика"
-                          >
-                            <Icon name={copiedOrderId === order.id ? "Check" : "Link"} size={12} />
-                            {copiedOrderId === order.id ? "Скопировано" : "Ссылка"}
-                          </button>
-                          <button
-                            onClick={() => openOrderBuild(order.id)}
-                            className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-                            style={{ cursor: "pointer" }}
-                          >
-                            <Icon name="Pencil" size={12} />
-                            {order.order_type === "parts" ? "Редакт. список" : "Редакт. сборку"}
-                          </button>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {order.order_type === "pc_build" && (
+                            <button
+                              onClick={() => copyOrderSheet(order.id)}
+                              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${copiedOrderId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-border text-foreground/50 hover:border-primary hover:text-primary"}`}
+                              style={{ cursor: "pointer" }}
+                              title="Скопировать ссылку для приёмщика"
+                            >
+                              <Icon name={copiedOrderId === order.id ? "Check" : "Link"} size={12} />
+                              {copiedOrderId === order.id ? "Скопировано" : "Ссылка"}
+                            </button>
+                          )}
                           <button
                             onClick={() => downloadWarranty(order.id)}
                             disabled={warrantyLoadingId === order.id}
@@ -1280,7 +1284,10 @@ export default function Admin() {
                           className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                           style={{ cursor: "pointer" }}
                         >
-                          {Object.entries(STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          {order.order_type === "pc_build"
+                            ? Object.entries(PC_STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
+                            : Object.entries(STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
+                          }
                         </select>
                       </div>
                     </div>
