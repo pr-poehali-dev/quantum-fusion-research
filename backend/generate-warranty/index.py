@@ -108,6 +108,9 @@ class PDFWriter:
     def _check_page(self, need=10*mm):
         if self.y < self.MB + need:
             self.c.showPage()
+            self.c.setFillColorRGB(1, 1, 1)
+            self.c.rect(0, 0, self.PAGE_W, self.PAGE_H, fill=1, stroke=0)
+            self.c.setFillColorRGB(0, 0, 0)
             self.y = self.PAGE_H - self.MT
 
     def _draw_text(self, text: str, font: str, size: float, x: float, y: float, max_w: float = None) -> float:
