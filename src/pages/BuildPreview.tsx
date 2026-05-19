@@ -186,12 +186,18 @@ export default function BuildPreview() {
   const hasMultipleVariants = variants.length > 1
   const totalSections = components.length + 2
 
+  const sectionRefs = useRef<(HTMLDivElement | null)[]>([])
+
   const scrollToSection = useCallback((index: number) => {
     if (index < 0 || index >= totalSections || isTransitioning) return
     setIsTransitioning(true)
     setCurrentSection(index)
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({ top: window.innerHeight * index, behavior: "smooth" })
+    const el = sectionRefs.current[index]
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+    } else if (scrollContainerRef.current) {
+      const h = scrollContainerRef.current.clientHeight || window.innerHeight
+      scrollContainerRef.current.scrollTo({ top: h * index, behavior: "smooth" })
     }
     setTimeout(() => setIsTransitioning(false), 800)
   }, [totalSections, isTransitioning])
@@ -243,6 +249,23 @@ export default function BuildPreview() {
     }
   }, [currentSection, scrollToSection, hasMultipleVariants, variants.length])
 
+  // IntersectionObserver — обновляем currentSection по реальному скроллу (важно для iOS)
+  useEffect(() => {
+    if (!sectionRefs.current.length) return
+    const observers: IntersectionObserver[] = []
+    sectionRefs.current.forEach((el, idx) => {
+      if (!el) return
+      const obs = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          setCurrentSection(idx)
+        }
+      }, { threshold: 0.5 })
+      obs.observe(el)
+      observers.push(obs)
+    })
+    return () => observers.forEach(o => o.disconnect())
+  }, [components.length])
+
   const claimBuild = async () => {
     if (!isAuthed() || !sessionId) { navigate(`/auth?redirect=/build?token=${token}`); return }
     setClaiming(true)
@@ -279,7 +302,7 @@ export default function BuildPreview() {
   const buildImages = build.image_urls || []
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="relative w-screen overflow-hidden bg-background text-foreground" style={{ height: "100dvh" }}>
 
       {/* Точки навигации */}
       <nav className="fixed right-4 top-1/2 z-50 -translate-y-1/2 hidden sm:flex flex-col gap-2.5">
@@ -328,10 +351,10 @@ export default function BuildPreview() {
         </div>
       </header>
 
-      <div ref={scrollContainerRef} className="h-screen w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory" }}>
+      <div ref={scrollContainerRef} className="w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory", height: "100dvh" }}>
 
         {/* ── СЕКЦИЯ 0: Обзор ── */}
-        <div className="h-screen w-screen shrink-0 relative" style={{ scrollSnapAlign: "start" }}>
+        <div ref={el => { sectionRefs.current[0] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
           <div className="relative flex h-full w-full overflow-hidden">
 
             {/* Карусель фото сборки — справа, автосмена */}
@@ -494,7 +517,7 @@ export default function BuildPreview() {
 
         {/* ── СЕКЦИИ 1..N: Компоненты ── */}
         {components.map((comp, idx) => (
-          <div key={idx} className="h-screen w-screen shrink-0" style={{ scrollSnapAlign: "start" }}>
+          <div key={idx} ref={el => { sectionRefs.current[idx + 1] = el }} className="w-screen shrink-0" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
             <ComponentSection comp={comp} index={idx} total={components.length}
               active={currentSection === idx + 1}
               onNext={() => scrollToSection(idx + 2)}
@@ -504,7 +527,7 @@ export default function BuildPreview() {
         ))}
 
         {/* ── Последняя секция: Заказ ── */}
-        <div className="h-screen w-screen shrink-0 relative" style={{ scrollSnapAlign: "start" }}>
+        <div ref={el => { sectionRefs.current[components.length + 1] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
           <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 50% 50%, hsl(var(--primary) / 0.06) 0%, transparent 70%)" }} />
             <div className={`relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-8 pt-20 pb-8 transition-all duration-700 ${currentSection === totalSections - 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
