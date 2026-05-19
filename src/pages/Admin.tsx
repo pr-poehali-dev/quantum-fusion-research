@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { ImageUploader } from "@/components/image-uploader"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 import { CableBody } from "@/components/cable-configurator"
+import WarehouseTab from "@/components/admin/WarehouseTab"
 
 const ADMIN_PASSWORD = "begraphics2024"
 
@@ -601,9 +602,9 @@ function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, du
   )
 }
 
-type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article"
+type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse"
 
-const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article"]
+const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "warehouse"]
 
 export default function Admin() {
   const navigate = useNavigate()
@@ -1103,6 +1104,8 @@ export default function Admin() {
     { key: "products", label: "Товары", icon: "Package" },
     { key: "add_product", label: productForm.id ? "Ред. товар" : "Добавить товар", icon: "PlusCircle" },
     { key: "DIVIDER_2" },
+    { key: "warehouse", label: "Склад", icon: "Warehouse" },
+    { key: "DIVIDER_3" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
     { key: "add_article", label: articleForm.id ? "Ред. статью" : "Новая статья", icon: "FilePlus" },
   ]
@@ -1110,7 +1113,7 @@ export default function Admin() {
   const bottomTabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
-    { key: "DIVIDER_3" },
+    { key: "DIVIDER_4" },
     { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
     { key: "wip_archive", label: "Архив сборок", icon: "ArchiveRestore" },
   ]
@@ -2634,6 +2637,9 @@ export default function Admin() {
             </form>
           </div>
         )}
+
+        {tab === "warehouse" && <WarehouseTab />}
+
       </div>
     </div>
   )

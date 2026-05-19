@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Get stores",
+      "method": "GET",
+      "path": "/?action=stores",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get groups",
+      "method": "GET",
+      "path": "/?action=groups",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get categories",
+      "method": "GET",
+      "path": "/?action=categories",
+      "expectedStatus": 200
+    }
+  ]
+}

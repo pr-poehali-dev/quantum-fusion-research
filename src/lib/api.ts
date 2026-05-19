@@ -10,6 +10,7 @@ const URLS = {
   wipBuilds: "https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3",
   cables: "https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63",
   upload: "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81",
+  warehouse: "https://functions.poehali.dev/828a962b-2051-4152-bc1e-e8521b07c291",
 }
 
 function authHeaders(session?: string | null) {
@@ -124,5 +125,28 @@ export const api = {
   },
   upload: {
     avatar: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "avatars", compress: true }) }).then(r => r.json()),
+  },
+  warehouse: {
+    getGroups: (params?: Record<string, string>) => {
+      const qs = params ? "?" + new URLSearchParams({ action: "groups", ...params }).toString() : "?action=groups"
+      return fetch(URLS.warehouse + qs).then(r => r.json())
+    },
+    getGroup: (id: number) => fetch(`${URLS.warehouse}?action=group_get&id=${id}`).then(r => r.json()),
+    createGroup: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_create", ...data as object }) }).then(r => r.json()),
+    updateGroup: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_update", ...data as object }) }).then(r => r.json()),
+    archiveGroup: (id: number) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_archive", id }) }).then(r => r.json()),
+    createSupply: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "supply_create", ...data as object }) }).then(r => r.json()),
+    updateSupply: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "supply_update", ...data as object }) }).then(r => r.json()),
+    getStores: () => fetch(`${URLS.warehouse}?action=stores`).then(r => r.json()),
+    createStore: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "store_create", ...data as object }) }).then(r => r.json()),
+    updateStore: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "store_update", ...data as object }) }).then(r => r.json()),
+    getMovements: (params?: Record<string, string>) => {
+      const qs = new URLSearchParams({ action: "movements", ...params }).toString()
+      return fetch(`${URLS.warehouse}?${qs}`).then(r => r.json())
+    },
+    getCategories: () => fetch(`${URLS.warehouse}?action=categories`).then(r => r.json()),
+    searchProducts: (q: string) => fetch(`${URLS.warehouse}?action=search_products&q=${encodeURIComponent(q)}`).then(r => r.json()),
+    reserve: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reserve", ...data as object }) }).then(r => r.json()),
+    writeoff: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "writeoff", ...data as object }) }).then(r => r.json()),
   },
 }
