@@ -1278,17 +1278,16 @@ export default function Admin() {
                             Обработать
                           </button>
                         </div>
-                        <select
-                          value={order.status}
-                          onChange={e => updateStatus(order.id, e.target.value)}
-                          className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                          style={{ cursor: "pointer" }}
-                        >
-                          {order.order_type === "pc_build"
-                            ? Object.entries(PC_STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
-                            : Object.entries(STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)
-                          }
-                        </select>
+                        {order.order_type !== "pc_build" && (
+                          <select
+                            value={order.status}
+                            onChange={e => updateStatus(order.id, e.target.value)}
+                            className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                            style={{ cursor: "pointer" }}
+                          >
+                            {Object.entries(STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          </select>
+                        )}
                       </div>
                     </div>
                   </div>
