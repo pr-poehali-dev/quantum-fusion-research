@@ -412,7 +412,7 @@ export default function OrderProcessPage() {
                   className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm hover:bg-muted transition-colors text-left">
                   <div>
                     <p className="font-medium">{p.name}</p>
-                    <p className="text-xs text-foreground/40">{p.category}</p>
+                    <p className="text-xs text-foreground/40">{typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}</p>
                   </div>
                   <span className="text-primary font-medium shrink-0 ml-3">{fmt(p.price)}</span>
                 </button>
