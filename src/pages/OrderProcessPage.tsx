@@ -108,10 +108,13 @@ export default function OrderProcessPage() {
   // ── Поиск товаров ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!searchQ || searchQ.length < 2) { setSearchResults([]); return }
+    let cancelled = false
     setSearchLoading(true)
     fetch(`${PRODUCTS_URL}?search=${encodeURIComponent(searchQ)}`)
       .then(r => r.json())
-      .then(d => { setSearchResults(d.products || []); setSearchLoading(false) })
+      .then(d => { if (!cancelled) { setSearchResults(Array.isArray(d.products) ? d.products : []); setSearchLoading(false) } })
+      .catch(() => { if (!cancelled) setSearchLoading(false) })
+    return () => { cancelled = true }
   }, [searchQ])
 
   if (loading) return (
