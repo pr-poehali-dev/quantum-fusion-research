@@ -385,6 +385,7 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
         <td className="px-3 py-2.5 text-center text-sm text-orange-400">{fmtNum(group.qty_reserved)}</td>
         <td className="px-3 py-2.5 text-xs text-foreground/50">{group.warranty_months} мес.</td>
         <td className="px-3 py-2.5 text-sm font-medium">{fmt(group.price_retail)}</td>
+        <td className="px-3 py-2.5 text-xs font-mono text-foreground/60">{group.cell || "—"}</td>
         <td className="px-3 py-2.5 text-xs text-foreground/60">{fmt(group.price_opt1)}</td>
         <td className="px-3 py-2.5 text-xs text-foreground/60">{fmt(group.price_opt2)}</td>
         <td className="px-3 py-2.5 text-xs text-foreground/50">{fmt(group.avg_cost)}</td>
@@ -603,6 +604,7 @@ export default function WarehouseTab() {
               <th className="px-3 py-2.5 text-center font-medium">Резерв</th>
               <th className="px-3 py-2.5 text-left font-medium">Гарантия</th>
               <th className="px-3 py-2.5 text-left font-medium">Продажа</th>
+              <th className="px-3 py-2.5 text-left font-medium">Ячейка</th>
               <th className="px-3 py-2.5 text-left font-medium">Опт 1</th>
               <th className="px-3 py-2.5 text-left font-medium">Опт 2</th>
               <th className="px-3 py-2.5 text-left font-medium">Заход ср.</th>
@@ -614,10 +616,10 @@ export default function WarehouseTab() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={15} className="px-3 py-8 text-center text-sm text-foreground/40">Загрузка...</td></tr>
+              <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-foreground/40">Загрузка...</td></tr>
             )}
             {!loading && groups.length === 0 && (
-              <tr><td colSpan={15} className="px-3 py-12 text-center text-sm text-foreground/30">
+              <tr><td colSpan={16} className="px-3 py-12 text-center text-sm text-foreground/30">
                 Товаров нет. Добавьте первый через кнопку выше.
               </td></tr>
             )}
