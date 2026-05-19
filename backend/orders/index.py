@@ -266,8 +266,11 @@ def handler(event: dict, context) -> dict:
             item_idx = body.get("item_idx")  # индекс позиции в items
 
             if action == "set_serial":
-                # Сохранить серийный номер позиции
-                items[item_idx]["serial_number"] = body.get("serial_number", "")
+                # Сохранить серийные номера позиции (массив — по одному на каждую штуку)
+                if "serial_numbers" in body:
+                    items[item_idx]["serial_numbers"] = body["serial_numbers"]
+                else:
+                    items[item_idx]["serial_number"] = body.get("serial_number", "")
                 cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
 

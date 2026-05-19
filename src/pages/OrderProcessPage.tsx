@@ -35,6 +35,7 @@ interface OrderItem {
   quantity: number
   item_type: string
   serial_number?: string
+  serial_numbers?: string[]
   final_price?: number
   item_status?: string
   _supplies?: Supply[]
@@ -207,12 +208,32 @@ export default function OrderProcessPage() {
 
                 {/* Поля редактирования */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {/* Серийный номер */}
-                  <SerialInput
-                    value={item.serial_number || ""}
-                    saving={saving === `set_serial-${idx}`}
-                    onSave={val => callPut("set_serial", idx, { serial_number: val })}
-                  />
+                  {/* Серийные номера — по одному полю на каждую штуку */}
+                  <div className={item.quantity > 1 ? "sm:col-span-2" : ""}>
+                    <label className="text-xs text-foreground/40 mb-1.5 block">
+                      Серийный номер{item.quantity > 1 ? ` (${item.quantity} шт.)` : ""}
+                    </label>
+                    <div className="space-y-1.5">
+                      {Array.from({ length: item.quantity }).map((_, qIdx) => {
+                        const serials = item.serial_numbers || (item.serial_number ? [item.serial_number] : [])
+                        return (
+                          <SerialInput
+                            key={qIdx}
+                            label={item.quantity > 1 ? `#${qIdx + 1}` : undefined}
+                            value={serials[qIdx] || ""}
+                            saving={saving === `set_serial-${idx}-${qIdx}`}
+                            onSave={val => {
+                              const next = Array.from({ length: item.quantity }, (_, i) =>
+                                (item.serial_numbers || [])[i] || ""
+                              )
+                              next[qIdx] = val
+                              callPut("set_serial", idx, { serial_numbers: next })
+                            }}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
 
                   {/* Финальная цена */}
                   <PriceInput
@@ -328,31 +349,30 @@ export default function OrderProcessPage() {
 }
 
 // ── Компонент ввода серийного номера ──────────────────────────────────────────
-function SerialInput({ value, saving, onSave }: {
+function SerialInput({ value, saving, onSave, label }: {
   value: string
   saving: boolean
   onSave: (v: string) => void
+  label?: string
 }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
 
   return (
-    <div>
-      <label className="text-xs text-foreground/40 mb-1 block">Серийный номер</label>
-      <div className="flex gap-2">
-        <input
-          value={v}
-          onChange={e => setV(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && onSave(v)}
-          placeholder="Введите S/N..."
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono focus:border-primary focus:outline-none"
-        />
-        <button onClick={() => onSave(v)} disabled={saving || v === value}
-          style={{ cursor: "pointer" }}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
-          {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
-        </button>
-      </div>
+    <div className="flex gap-2 items-center">
+      {label && <span className="text-xs text-foreground/30 w-5 shrink-0 text-right">{label}</span>}
+      <input
+        value={v}
+        onChange={e => setV(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && onSave(v)}
+        placeholder="Введите S/N..."
+        className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono focus:border-primary focus:outline-none"
+      />
+      <button onClick={() => onSave(v)} disabled={saving || v === value}
+        style={{ cursor: "pointer" }}
+        className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30 shrink-0">
+        {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
+      </button>
     </div>
   )
 }
