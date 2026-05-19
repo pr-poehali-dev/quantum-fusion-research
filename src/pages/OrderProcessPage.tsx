@@ -223,7 +223,7 @@ export default function OrderProcessPage() {
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-foreground/40">Кол-во:</span>
                           <button
-                            onClick={() => { if (item.quantity > 1) callPut("change_qty", idx, { quantity: item.quantity - 1 }) }}
+                            onClick={async () => { if (item.quantity > 1) { await callPut("change_qty", idx, { quantity: item.quantity - 1 }); load() } }}
                             disabled={item.quantity <= 1 || saving === `change_qty-${idx}`}
                             style={{ cursor: "pointer" }}
                             className="flex h-5 w-5 items-center justify-center rounded border border-border text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
@@ -233,12 +233,9 @@ export default function OrderProcessPage() {
                             {saving === `change_qty-${idx}` ? <Icon name="Loader" size={10} className="animate-spin mx-auto" /> : item.quantity}
                           </span>
                           <button
-                            onClick={() => {
-                              if (totalFree > 0) callPut("change_qty", idx, { quantity: item.quantity + 1 })
-                            }}
-                            disabled={totalFree <= 0 || saving === `change_qty-${idx}`}
+                            onClick={async () => { await callPut("change_qty", idx, { quantity: item.quantity + 1 }); load() }}
+                            disabled={saving === `change_qty-${idx}`}
                             style={{ cursor: "pointer" }}
-                            title={totalFree <= 0 ? "Нет в наличии" : `Свободно: ${totalFree} шт.`}
                             className="flex h-5 w-5 items-center justify-center rounded border border-border text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
                             <Icon name="Plus" size={10} />
                           </button>
@@ -248,9 +245,6 @@ export default function OrderProcessPage() {
                       )}
                       {totalReserved > 0 && <span className="text-xs text-yellow-400">В резерве: {totalReserved}</span>}
                       {totalFree > 0 && <span className="text-xs text-foreground/40">Свободно: {totalFree}</span>}
-                      {totalFree === 0 && item.item_type === "product" && itemStatus !== "issued" && (
-                        <span className="text-xs text-red-400">Нет на складе</span>
-                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
