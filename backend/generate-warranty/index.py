@@ -104,6 +104,8 @@ class PDFWriter:
         self.c = canvas.Canvas(buf, pagesize=A4)
         self.W = self.PAGE_W - self.ML - self.MR
         self.y = self.PAGE_H - self.MT
+        self._cur_font = "dj"
+        self._cur_size = 9
 
     def _check_page(self, need=10*mm):
         if self.y < self.MB + need:
@@ -111,10 +113,12 @@ class PDFWriter:
             self.c.setFillColorRGB(1, 1, 1)
             self.c.rect(0, 0, self.PAGE_W, self.PAGE_H, fill=1, stroke=0)
             self.c.setFillColorRGB(0, 0, 0)
+            self.c.setFont(self._cur_font, self._cur_size)
             self.y = self.PAGE_H - self.MT
 
     def _draw_text(self, text: str, font: str, size: float, x: float, y: float, max_w: float = None) -> float:
         """Рисует текст с переносом по словам. Возвращает новый y."""
+        self._cur_font, self._cur_size = font, size
         self.c.setFont(font, size)
         line_h = size * 1.4
         if max_w is None:
