@@ -316,15 +316,9 @@ def handler(event: dict, context) -> dict:
         price_str = f"{it['price']:,.0f}".replace(",", " ")
         p.c.setFont("dj", 8)
         if it["serials"]:
-            # Отдельная строка на каждый серийник
-            for i, sn in enumerate(it["serials"]):
-                cells = [
-                    it["name"] if i == 0 else "",
-                    sn,
-                    months_label(it["warranty"]) if i == 0 else "",
-                    "1",
-                    price_str if i == 0 else "",
-                ]
+            # Отдельная строка на каждый серийник — все данные в каждой строке
+            for sn in it["serials"]:
+                cells = [it["name"], sn, months_label(it["warranty"]), "1", price_str]
                 p.cell_row(cells, col_w, font="dj", size=8)
         else:
             # Нет серийника — одна строка с общим кол-вом
