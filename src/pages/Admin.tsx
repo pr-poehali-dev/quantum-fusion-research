@@ -854,6 +854,22 @@ export default function Admin() {
     })
   }
 
+  const [warrantyLoadingId, setWarrantyLoadingId] = useState<number | null>(null)
+  const downloadWarranty = async (orderId: number) => {
+    setWarrantyLoadingId(orderId)
+    const res = await fetch(`https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618?order_id=${orderId}`)
+    const data = await res.json()
+    setWarrantyLoadingId(null)
+    if (!data.pdf_b64) { alert("Ошибка генерации PDF"); return }
+    const bin = atob(data.pdf_b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    const blob = new Blob([bytes], { type: "application/pdf" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a"); a.href = url; a.download = data.filename || `warranty_${orderId}.pdf`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const toggleStock = async (p: Product) => {
     const newQty = p.in_stock ? 0 : 1
     await api.products.patch({ id: p.id, stock_qty: newQty })
@@ -1238,6 +1254,16 @@ export default function Admin() {
                           >
                             <Icon name="Pencil" size={12} />
                             {order.order_type === "parts" ? "Редакт. список" : "Редакт. сборку"}
+                          </button>
+                          <button
+                            onClick={() => downloadWarranty(order.id)}
+                            disabled={warrantyLoadingId === order.id}
+                            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/50 hover:border-green-400/50 hover:text-green-400 transition-colors disabled:opacity-50"
+                            style={{ cursor: "pointer" }}
+                            title="Скачать гарантийный лист PDF"
+                          >
+                            <Icon name={warrantyLoadingId === order.id ? "Loader" : "FileText"} size={12} className={warrantyLoadingId === order.id ? "animate-spin" : ""} />
+                            Гарантийный лист
                           </button>
                         </div>
                         <select

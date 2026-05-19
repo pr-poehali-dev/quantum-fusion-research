@@ -11,6 +11,7 @@ const URLS = {
   cables: "https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63",
   upload: "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81",
   warehouse: "https://functions.poehali.dev/828a962b-2051-4152-bc1e-e8521b07c291",
+  generateWarranty: "https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618",
 }
 
 function authHeaders(session?: string | null) {

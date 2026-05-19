@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Generate warranty PDF",
+      "method": "GET",
+      "path": "/?order_id=22",
+      "expectedStatus": 200,
+      "expectedBody": {"pdf_b64": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
