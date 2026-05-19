@@ -372,12 +372,12 @@ export default function OrderProcessPage() {
                     <label className="text-xs text-foreground/40 mb-1.5 block">
                       Серийный номер{item.quantity > 1 ? ` (${item.quantity} шт.)` : ""}
                     </label>
-                    <div className={item.quantity > 1 ? "flex flex-wrap gap-2" : ""}>
+                    <div className="space-y-1.5">
                       {Array.from({ length: item.quantity }).map((_, qIdx) => {
                         const serials = item.serial_numbers || (item.serial_number ? [item.serial_number] : [])
                         return (
-                          <div key={qIdx} className={item.quantity > 1 ? "flex items-center gap-1 min-w-[180px] flex-1" : ""}>
-                            {item.quantity > 1 && <span className="text-xs text-foreground/30 shrink-0">#{qIdx + 1}</span>}
+                          <div key={qIdx} className="flex items-center gap-1">
+                            {item.quantity > 1 && <span className="text-xs text-foreground/30 shrink-0 w-5 text-right">#{qIdx + 1}</span>}
                             <SerialInput
                               value={serials[qIdx] || ""}
                               saving={saving === `set_serial-${idx}-${qIdx}`}
