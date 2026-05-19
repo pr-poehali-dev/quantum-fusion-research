@@ -42,6 +42,7 @@ interface OrderItem {
   slot?: string
   slot_label?: string
   wip_status?: string
+  warranty_months?: number
   _supplies?: Supply[]
 }
 
@@ -417,6 +418,11 @@ export default function OrderProcessPage() {
                     saving={saving === `set_price-${idx}`}
                     onSave={val => callPut("set_price", idx, { price: val })}
                   />
+                  <WarrantyInput
+                    value={item.warranty_months ?? 12}
+                    saving={saving === `set_warranty-${idx}`}
+                    onSave={val => callPut("set_warranty", idx, { warranty_months: val })}
+                  />
                 </div>
               </div>
             )
@@ -731,6 +737,37 @@ function SerialInput({ value, saving, onSave, label }: {
         className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30 shrink-0">
         {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
       </button>
+    </div>
+  )
+}
+
+// ── Компонент ввода срока гарантии ────────────────────────────────────────────
+function WarrantyInput({ value, saving, onSave }: {
+  value: number
+  saving: boolean
+  onSave: (v: number) => void
+}) {
+  const [v, setV] = useState(String(value))
+  useEffect(() => setV(String(value)), [value])
+  return (
+    <div>
+      <label className="text-xs text-foreground/40 mb-1 block">Гарантия (мес.)</label>
+      <div className="flex gap-2">
+        <input
+          type="number"
+          min={0}
+          value={v}
+          onChange={e => setV(e.target.value.replace(/[^0-9]/g, ""))}
+          onKeyDown={e => e.key === "Enter" && onSave(Number(v))}
+          placeholder="12"
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
+        />
+        <button onClick={() => onSave(Number(v))} disabled={saving || Number(v) === value}
+          style={{ cursor: "pointer" }}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
+          {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
+        </button>
+      </div>
     </div>
   )
 }

@@ -408,6 +408,12 @@ def handler(event: dict, context) -> dict:
                 cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), total, order_id))
 
+            elif action == "set_warranty":
+                # Установить срок гарантии для позиции (в месяцах)
+                items[item_idx]["warranty_months"] = int(body.get("warranty_months", 12))
+                cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), order_id))
+
             elif action == "set_status":
                 # Статус позиции: reserved / issued / returned
                 items[item_idx]["item_status"] = body.get("item_status", "reserved")
