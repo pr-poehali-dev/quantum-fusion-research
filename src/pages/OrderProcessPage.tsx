@@ -393,14 +393,31 @@ export default function OrderProcessPage() {
             const totalReserved = supplies.reduce((s, s2) => s + s2.qty_reserved, 0)
             const totalFree = supplies.reduce((s, s2) => s + s2.free, 0)
 
-            // Строка услуги (сборка) — компактный вид
+            // Строка услуги (сборка)
             if (isAssembly) return (
-              <div key={idx} className="rounded-xl border border-accent/20 bg-card p-5 flex items-center justify-between gap-4">
-                <div>
-                  {item.slot_label && <p className="text-xs text-foreground/40 mb-0.5">{item.slot_label}</p>}
-                  <p className="font-medium">{item.name}</p>
+              <div key={idx} className="rounded-xl border border-accent/20 bg-card p-5">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    {item.slot_label && <p className="text-xs text-foreground/40 mb-0.5">{item.slot_label}</p>}
+                    <p className="font-medium">{item.name}</p>
+                  </div>
+                  <p className="text-lg font-bold shrink-0">{fmt(finalPrice)}</p>
                 </div>
-                <p className="text-lg font-bold shrink-0">{fmt(finalPrice)}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-foreground/40 mb-1.5 block">Серийный номер</label>
+                    <SerialInput
+                      value={(item.serial_numbers?.[0]) || ""}
+                      saving={saving === `set_serial-${idx}-0`}
+                      onSave={val => callPut("set_serial", idx, { serial_numbers: [val] })}
+                    />
+                  </div>
+                  <PriceInput
+                    value={finalPrice}
+                    saving={saving === `set_price-${idx}`}
+                    onSave={val => callPut("set_price", idx, { price: val })}
+                  />
+                </div>
               </div>
             )
 
