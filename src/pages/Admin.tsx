@@ -1414,11 +1414,9 @@ export default function Admin() {
                               {p.old_price && <p className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</p>}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <button onClick={() => toggleStock(p)}
-                                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${p.in_stock ? "bg-green-400/10 text-green-400 hover:bg-red-400/10 hover:text-red-400" : "bg-red-400/10 text-red-400 hover:bg-green-400/10 hover:text-green-400"}`}
-                                style={{ cursor: "pointer" }}>
-                                {p.in_stock ? "Есть" : "Нет"}
-                              </button>
+                              <span className={`rounded-full px-3 py-1 text-xs font-medium ${p.stock_qty > 0 ? "bg-green-400/10 text-green-400" : "bg-red-400/10 text-red-400"}`}>
+                                {p.stock_qty > 0 ? `${p.stock_qty} шт.` : "0"}
+                              </span>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-end gap-2">
