@@ -305,12 +305,12 @@ def handler(event: dict, context) -> dict:
         p.c.setFont("dj", 8)
         p.cell_row(cells, col_w, font="dj", size=8)
 
-    p.ln(8)
+    p.ln(18)
     p.c.setFont("djB", 11)
     total_str = f"Стоимость заказа: {total_fmt}"
     p.c.drawRightString(p.ML + W, p.y, total_str)
     p.y -= 11 * 1.4
-    p.ln(8)
+    p.ln(12)
 
     # ── Гарантийный текст ─────────────────────────────────────────────────────
     for kind, text in WARRANTY_BLOCKS:
