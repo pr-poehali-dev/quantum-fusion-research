@@ -144,8 +144,13 @@ export default function OrderProcessPage() {
     const res = await api.orders.updateItem({ id: Number(id), action, item_idx: itemIdx, ...extra })
     setSaving(null)
     if (res.error) { alert(res.error); return res }
-    if (res.ok && res.items) {
-      setOrder(prev => prev ? { ...prev, items: res.items, total: res.items.reduce((s: number, it: OrderItem) => s + (it.final_price ?? it.price) * it.quantity, 0) } : prev)
+    // Для ПК-заказов items перестраиваются из wip_build — всегда перезагружаем
+    if (res.ok) {
+      if (order?.order_type === "pc_build") {
+        await load()
+      } else if (res.items) {
+        setOrder(prev => prev ? { ...prev, items: res.items, total: res.items.reduce((s: number, it: OrderItem) => s + (it.final_price ?? it.price) * it.quantity, 0) } : prev)
+      }
     }
     return res
   }

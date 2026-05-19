@@ -308,10 +308,14 @@ def handler(event: dict, context) -> dict:
         assembly_fee = 0
         assembly_warranty = 12
         assembly_serials = []
+        # assembly_warranty хранится в items[0].assembly_warranty для любого pc_build
         for it in items:
-            if it.get("item_type") == "assembly" or "сборк" in str(it.get("name", "")).lower():
+            if it.get("assembly_warranty"):
+                assembly_warranty = int(it["assembly_warranty"])
+            if it.get("item_type") == "assembly" or it.get("assembly") or "сборк" in str(it.get("name", "")).lower():
                 assembly_fee = float(it.get("final_price") or it.get("price", 0))
-                assembly_warranty = int(it.get("warranty_months") or 12)
+                if it.get("warranty_months"):
+                    assembly_warranty = int(it["warranty_months"])
                 sn = it.get("serial_numbers") or []
                 if not sn and it.get("serial_number"):
                     sn = [it["serial_number"]]
