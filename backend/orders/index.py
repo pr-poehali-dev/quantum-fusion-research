@@ -373,6 +373,64 @@ def handler(event: dict, context) -> dict:
                     cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
                                 (json.dumps(items), total, order_id))
 
+            elif action == "writeoff_order":
+                # Списать все зарезервированные товары заказа и перевести статус в done
+                wrote_off = []
+                for it in items:
+                    pid = it.get("id")
+                    qty = int(it.get("quantity", 1))
+                    item_status = it.get("item_status", "reserved")
+                    if not pid or item_status == "returned":
+                        continue
+                    sale_price = float(it.get("final_price") or it.get("price", 0))
+                    # Находим поставки с резервом по этому продукту
+                    cur.execute(
+                        f"SELECT s.id, s.qty_reserved, s.cost_price, g.id as gid "
+                        f"FROM {schema}.warehouse_supplies s "
+                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
+                        (int(pid),)
+                    )
+                    supplies = cur.fetchall()
+                    left = qty
+                    for sid, s_reserved, s_cost, gid in supplies:
+                        if left <= 0:
+                            break
+                        write = min(left, s_reserved)
+                        margin = round((sale_price - float(s_cost)) * write, 2)
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies "
+                            f"SET qty = qty - %s, qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                            f"WHERE id = %s AND qty >= %s",
+                            (write, write, sid, write)
+                        )
+                        cur.execute(
+                            f"INSERT INTO {schema}.warehouse_movements "
+                            f"(group_id, supply_id, order_id, type, qty_delta, cost_price, sale_price, margin, note, created_at) "
+                            f"VALUES (%s, %s, %s, 'sale', %s, %s, %s, %s, %s, NOW())",
+                            (gid, sid, order_id, -write, float(s_cost), sale_price, margin,
+                             f"Продажа {write} шт. по заказу #{order_id}")
+                        )
+                        left -= write
+                    # Обновить in_stock и stock_qty в products
+                    cur.execute(
+                        f"UPDATE {schema}.products SET "
+                        f"stock_qty = (SELECT COALESCE(SUM(s2.qty), 0) FROM {schema}.warehouse_supplies s2 "
+                        f"  JOIN {schema}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id), "
+                        f"in_stock = (SELECT COALESCE(SUM(s2.qty), 0) > 0 FROM {schema}.warehouse_supplies s2 "
+                        f"  JOIN {schema}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id) "
+                        f"WHERE id = %s",
+                        (int(pid),)
+                    )
+                    it["item_status"] = "issued"
+                    wrote_off.append({"name": it.get("name"), "qty": qty - left, "price": sale_price})
+
+                cur.execute("UPDATE orders SET items=%s, status='done', updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), order_id))
+                conn.commit()
+                return {"statusCode": 200, "headers": cors,
+                        "body": json.dumps({"ok": True, "wrote_off": wrote_off, "items": items})}
+
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "items": items})}
 

@@ -65,6 +65,10 @@ export default function OrderProcessPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
 
+  // Модалка выдачи заказа
+  const [showWriteoff, setShowWriteoff] = useState(false)
+  const [writeoffLoading, setWriteoffLoading] = useState(false)
+
   // Поиск товаров для замены
   const [replaceIdx, setReplaceIdx] = useState<number | null>(null)
   const [searchQ, setSearchQ] = useState("")
@@ -89,6 +93,16 @@ export default function OrderProcessPage() {
       setOrder(prev => prev ? { ...prev, items: res.items, total: res.items.reduce((s: number, it: OrderItem) => s + (it.final_price ?? it.price) * it.quantity, 0) } : prev)
     }
     return res
+  }
+
+  const doWriteoff = async () => {
+    setWriteoffLoading(true)
+    const res = await api.orders.updateItem({ id: Number(id), action: "writeoff_order", item_idx: 0 })
+    setWriteoffLoading(false)
+    setShowWriteoff(false)
+    if (res.ok) {
+      await load()
+    }
   }
 
   // ── Поиск товаров ──────────────────────────────────────────────────────────
@@ -130,6 +144,16 @@ export default function OrderProcessPage() {
           <span className={`rounded-full px-3 py-1 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>
             {(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}
           </span>
+          {order.status !== "done" && order.status !== "cancelled" && (
+            <button
+              onClick={() => setShowWriteoff(true)}
+              style={{ cursor: "pointer" }}
+              className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white hover:bg-green-600 transition-colors"
+            >
+              <Icon name="PackageCheck" size={15} />
+              Выдать заказ
+            </button>
+          )}
         </div>
       </header>
 
@@ -296,6 +320,59 @@ export default function OrderProcessPage() {
           <span className="text-2xl font-bold">{fmt(total)}</span>
         </div>
       </div>
+
+      {/* Модалка выдачи / списания */}
+      {showWriteoff && order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={e => { if (e.target === e.currentTarget && !writeoffLoading) setShowWriteoff(false) }}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/15">
+                <Icon name="PackageCheck" size={20} className="text-green-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Выдать заказ #{order.id}</h3>
+                <p className="text-xs text-foreground/50">Товары будут списаны со склада</p>
+              </div>
+            </div>
+
+            {/* Перечень списываемых товаров */}
+            <div className="rounded-xl border border-border bg-background mb-4 divide-y divide-border">
+              {order.items.filter(it => it.item_status !== "returned" && it.item_type === "product").map((it, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{it.name}</p>
+                    {it.serial_numbers?.filter(Boolean).length ? (
+                      <p className="text-xs text-foreground/40 font-mono mt-0.5">
+                        S/N: {it.serial_numbers.filter(Boolean).join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="text-right shrink-0 ml-3">
+                    <span className="text-sm font-medium text-green-400">−{it.quantity} шт.</span>
+                    <p className="text-xs text-foreground/40">{fmt((it.final_price ?? it.price) * it.quantity)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowWriteoff(false)} disabled={writeoffLoading}
+                style={{ cursor: "pointer" }}
+                className="flex-1 rounded-lg border border-border py-2.5 text-sm text-foreground/60 hover:text-foreground transition-colors disabled:opacity-40">
+                Отмена
+              </button>
+              <button onClick={doWriteoff} disabled={writeoffLoading}
+                style={{ cursor: "pointer" }}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-green-500 py-2.5 text-sm font-medium text-white hover:bg-green-600 transition-colors disabled:opacity-60">
+                {writeoffLoading
+                  ? <><Icon name="Loader" size={15} className="animate-spin" /> Списываю...</>
+                  : <><Icon name="Check" size={15} /> Подтвердить выдачу</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Модалка замены товара */}
       {replaceIdx !== null && (
