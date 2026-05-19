@@ -627,6 +627,7 @@ export default function Admin() {
   }
 
   const [orders, setOrders] = useState<Order[]>([])
+  const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "pc_build" | "parts">("all")
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [productCatFilter, setProductCatFilter] = useState("all")
@@ -1174,12 +1175,25 @@ export default function Admin() {
         {/* ORDERS */}
         {(tab === "orders" || tab === "orders_archive") && (() => {
           const isArchive = tab === "orders_archive"
-          const filtered = orders.filter(o => isArchive ? ARCHIVE_STATUSES.includes(o.status) : ACTIVE_STATUSES.includes(o.status))
+          const filtered = orders
+            .filter(o => isArchive ? ARCHIVE_STATUSES.includes(o.status) : ACTIVE_STATUSES.includes(o.status))
+            .filter(o => orderTypeFilter === "all" || o.order_type === orderTypeFilter)
           return (
             <div>
-              <h2 className="mb-4 text-xl font-light text-foreground">
-                {isArchive ? "Архив заказов" : "Активные заказы"} ({filtered.length})
-              </h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-light text-foreground">
+                  {isArchive ? "Архив заказов" : "Активные заказы"} ({filtered.length})
+                </h2>
+                <div className="flex items-center gap-1.5">
+                  {(["all", "pc_build", "parts"] as const).map(f => (
+                    <button key={f} onClick={() => setOrderTypeFilter(f)}
+                      style={{ cursor: "pointer" }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${orderTypeFilter === f ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/60 hover:text-foreground"}`}>
+                      {f === "all" ? "Все" : f === "pc_build" ? "Сборки ПК" : "Комплектующие"}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {loading ? <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)}</div>
                 : filtered.length === 0 ? (
                   <div className="py-16 text-center text-foreground/40">
