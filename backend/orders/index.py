@@ -92,8 +92,8 @@ def handler(event: dict, context) -> dict:
                         reserve = min(need_qty, free)
                         cur.execute(
                             f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s "
-                            f"WHERE id = %s",
-                            (reserve, supply_id)
+                            f"WHERE id = %s AND qty - qty_reserved >= %s",
+                            (reserve, supply_id, reserve)
                         )
                         cur.execute(
                             f"INSERT INTO {schema}.warehouse_movements "
