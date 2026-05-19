@@ -281,28 +281,29 @@ export default function OrderProcessPage() {
 
                 {/* Поля редактирования */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {/* Серийные номера — по одному полю на каждую штуку */}
+                  {/* Серийные номера — при qty>1 все поля в строку */}
                   <div className={item.quantity > 1 ? "sm:col-span-2" : ""}>
                     <label className="text-xs text-foreground/40 mb-1.5 block">
                       Серийный номер{item.quantity > 1 ? ` (${item.quantity} шт.)` : ""}
                     </label>
-                    <div className="space-y-1.5">
+                    <div className={item.quantity > 1 ? "flex flex-wrap gap-2" : ""}>
                       {Array.from({ length: item.quantity }).map((_, qIdx) => {
                         const serials = item.serial_numbers || (item.serial_number ? [item.serial_number] : [])
                         return (
-                          <SerialInput
-                            key={qIdx}
-                            label={item.quantity > 1 ? `#${qIdx + 1}` : undefined}
-                            value={serials[qIdx] || ""}
-                            saving={saving === `set_serial-${idx}-${qIdx}`}
-                            onSave={val => {
-                              const next = Array.from({ length: item.quantity }, (_, i) =>
-                                (item.serial_numbers || [])[i] || ""
-                              )
-                              next[qIdx] = val
-                              callPut("set_serial", idx, { serial_numbers: next })
-                            }}
-                          />
+                          <div key={qIdx} className={item.quantity > 1 ? "flex items-center gap-1 min-w-[180px] flex-1" : ""}>
+                            {item.quantity > 1 && <span className="text-xs text-foreground/30 shrink-0">#{qIdx + 1}</span>}
+                            <SerialInput
+                              value={serials[qIdx] || ""}
+                              saving={saving === `set_serial-${idx}-${qIdx}`}
+                              onSave={val => {
+                                const next = Array.from({ length: item.quantity }, (_, i) =>
+                                  (item.serial_numbers || [])[i] || ""
+                                )
+                                next[qIdx] = val
+                                callPut("set_serial", idx, { serial_numbers: next })
+                              }}
+                            />
+                          </div>
                         )
                       })}
                     </div>
