@@ -70,6 +70,40 @@ def handler(event: dict, context) -> dict:
 
             print(f"ORDER {order_id}: type={order_type}, items={json.dumps(items)}")
 
+            # ── АВТОРЕЗЕРВ: резервируем товары на складе по product_id ──────────
+            schema = "t_p72635010_quantum_fusion_resea"
+            for item in items:
+                if item.get("item_type") == "product" and item.get("id"):
+                    pid = int(item["id"])
+                    need_qty = int(item.get("quantity", 1))
+                    # берём поставки с доступным остатком, сортируем по FIFO
+                    cur.execute(
+                        f"SELECT s.id, s.qty - s.qty_reserved as free "
+                        f"FROM {schema}.warehouse_supplies s "
+                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                        f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 "
+                        f"ORDER BY s.id ASC",
+                        (pid,)
+                    )
+                    supplies = cur.fetchall()
+                    for supply_id, free in supplies:
+                        if need_qty <= 0:
+                            break
+                        reserve = min(need_qty, free)
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s "
+                            f"WHERE id = %s",
+                            (reserve, supply_id)
+                        )
+                        cur.execute(
+                            f"INSERT INTO {schema}.warehouse_movements "
+                            f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id = %s), "
+                            f"%s, %s, 'reserved', %s, %s, NOW())",
+                            (supply_id, supply_id, order_id, reserve, f"Авторезерв по заказу #{order_id}")
+                        )
+                        need_qty -= reserve
+
             def is_catalog_id(v):
                 try:
                     return 0 < int(str(v)) < 10**9
