@@ -383,20 +383,20 @@ def handler(event: dict, context) -> dict:
                     if not pid or item_status == "returned":
                         continue
                     sale_price = float(it.get("final_price") or it.get("price", 0))
-                    # Находим поставки с резервом по этому продукту
+                    # Находим поставки с достаточным qty (не только резерв — резерв мог быть снят вручную)
                     cur.execute(
-                        f"SELECT s.id, s.qty_reserved, s.cost_price, g.id as gid "
+                        f"SELECT s.id, s.qty, s.qty_reserved, s.cost_price, g.id as gid "
                         f"FROM {schema}.warehouse_supplies s "
                         f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
+                        f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
                         (int(pid),)
                     )
                     supplies = cur.fetchall()
                     left = qty
-                    for sid, s_reserved, s_cost, gid in supplies:
+                    for sid, s_qty, s_reserved, s_cost, gid in supplies:
                         if left <= 0:
                             break
-                        write = min(left, s_reserved)
+                        write = min(left, s_qty)
                         margin = round((sale_price - float(s_cost)) * write, 2)
                         cur.execute(
                             f"UPDATE {schema}.warehouse_supplies "
