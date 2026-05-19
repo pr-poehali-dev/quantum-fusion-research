@@ -89,6 +89,13 @@ export default function OrderProcessPage() {
   const [searchResults, setSearchResults] = useState<{ id: number; name: string; price: number; category: string }[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
 
+  // Добавление нового товара
+  const [showAddItem, setShowAddItem] = useState(false)
+  const [addSearchQ, setAddSearchQ] = useState("")
+  const [addSearchResults, setAddSearchResults] = useState<{ id: number; name: string; price: number; category: string }[]>([])
+  const [addSearchLoading, setAddSearchLoading] = useState(false)
+  const [addingItem, setAddingItem] = useState(false)
+
   const load = useCallback(async () => {
     if (!id) return
     setLoading(true)
@@ -131,6 +138,17 @@ export default function OrderProcessPage() {
     return () => { cancelled = true }
   }, [searchQ])
 
+  useEffect(() => {
+    if (!addSearchQ || addSearchQ.length < 2) { setAddSearchResults([]); return }
+    let cancelled = false
+    setAddSearchLoading(true)
+    fetch(`${PRODUCTS_URL}?search=${encodeURIComponent(addSearchQ)}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) { setAddSearchResults(Array.isArray(d.products) ? d.products : []); setAddSearchLoading(false) } })
+      .catch(() => { if (!cancelled) setAddSearchLoading(false) })
+    return () => { cancelled = true }
+  }, [addSearchQ])
+
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -161,6 +179,16 @@ export default function OrderProcessPage() {
           <span className={`rounded-full px-3 py-1 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>
             {(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}
           </span>
+          {order.status !== "done" && order.status !== "cancelled" && (
+            <button
+              onClick={() => { setShowAddItem(v => !v); setAddSearchQ(""); setAddSearchResults([]) }}
+              style={{ cursor: "pointer" }}
+              className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${showAddItem ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:text-foreground hover:border-primary"}`}
+            >
+              <Icon name="PackagePlus" size={15} />
+              Добавить со склада
+            </button>
+          )}
           <button
             onClick={downloadWarranty}
             disabled={warrantyLoading}
@@ -213,6 +241,64 @@ export default function OrderProcessPage() {
             </div>
           </div>
         </div>
+
+        {/* Панель добавления товара */}
+        {showAddItem && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <p className="text-sm font-medium mb-3">Добавить товар со склада</p>
+            <input
+              autoFocus
+              value={addSearchQ}
+              onChange={e => setAddSearchQ(e.target.value)}
+              placeholder="Поиск товара по названию..."
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              style={{ cursor: "text" }}
+            />
+            {addSearchLoading && (
+              <div className="flex items-center gap-2 py-4 text-foreground/40 text-sm">
+                <Icon name="Loader" size={14} className="animate-spin" />
+                Ищу...
+              </div>
+            )}
+            {addSearchResults.length > 0 && (
+              <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
+                {addSearchResults.map(p => (
+                  <button key={p.id}
+                    disabled={addingItem}
+                    onClick={async () => {
+                      setAddingItem(true)
+                      const res = await api.orders.updateItem({ id: Number(id), action: "add_item", item_idx: 0, new_product_id: p.id })
+                      setAddingItem(false)
+                      if (res.error) { alert(res.error); return }
+                      await load()
+                      setShowAddItem(false)
+                      setAddSearchQ("")
+                      setAddSearchResults([])
+                    }}
+                    style={{ cursor: "pointer" }}
+                    className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm bg-background hover:bg-muted border border-border hover:border-primary/30 transition-colors text-left disabled:opacity-50">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{p.name}</p>
+                      <p className="text-xs text-foreground/40 mt-0.5">
+                        {typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}
+                      </p>
+                    </div>
+                    <div className="shrink-0 ml-3 text-right">
+                      <p className="text-sm font-bold text-primary">{fmt(p.price)}</p>
+                      <p className="text-xs text-foreground/40">за шт.</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {addSearchQ.length >= 2 && !addSearchLoading && addSearchResults.length === 0 && (
+              <p className="mt-3 text-center text-sm text-foreground/40">Ничего не найдено</p>
+            )}
+            {addSearchQ.length === 0 && (
+              <p className="mt-3 text-center text-xs text-foreground/30">Начните вводить название товара</p>
+            )}
+          </div>
+        )}
 
         {/* Позиции */}
         <div className="space-y-3">
@@ -336,7 +422,7 @@ export default function OrderProcessPage() {
                   ))}
 
                   {/* Снять с резерва */}
-                  {totalReserved > 0 && itemStatus !== "returned" && (
+                  {item.item_type === "product" && itemStatus !== "returned" && itemStatus !== "issued" && (
                     <button
                       onClick={() => callPut("unreserve", idx)}
                       disabled={saving === `unreserve-${idx}`}

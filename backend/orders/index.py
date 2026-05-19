@@ -373,6 +373,62 @@ def handler(event: dict, context) -> dict:
                     cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
                                 (json.dumps(items), total, order_id))
 
+            elif action == "add_item":
+                # Добавить новый товар со склада в заказ
+                new_product_id = int(body["new_product_id"])
+                qty = int(body.get("quantity", 1))
+                cur.execute(
+                    f"SELECT p.name, p.price FROM {schema}.products p WHERE p.id = %s LIMIT 1",
+                    (new_product_id,)
+                )
+                pr = cur.fetchone()
+                if not pr:
+                    return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Товар не найден"})}
+                # Проверить наличие
+                cur.execute(
+                    f"SELECT COALESCE(SUM(s.qty - s.qty_reserved), 0) FROM {schema}.warehouse_supplies s "
+                    f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id WHERE g.product_id = %s",
+                    (new_product_id,)
+                )
+                available = int((cur.fetchone() or [0])[0])
+                if available < qty:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                        "error": f"Недостаточно товара на складе. Свободно: {available} шт."
+                    })}
+                # Зарезервировать (FIFO)
+                cur.execute(
+                    f"SELECT s.id, s.qty - s.qty_reserved as free FROM {schema}.warehouse_supplies s "
+                    f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                    f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC",
+                    (new_product_id,)
+                )
+                left = qty
+                for (sid, sfree) in cur.fetchall():
+                    if left <= 0: break
+                    reserve = min(left, sfree)
+                    cur.execute(
+                        f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s WHERE id = %s",
+                        (reserve, sid)
+                    )
+                    cur.execute(
+                        f"INSERT INTO {schema}.warehouse_movements "
+                        f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                        f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', %s, %s, NOW())",
+                        (sid, sid, order_id, reserve, f"Добавлен товар в заказ #{order_id}")
+                    )
+                    left -= reserve
+                items.append({
+                    "id": new_product_id,
+                    "name": pr[0],
+                    "price": float(pr[1]),
+                    "quantity": qty,
+                    "item_type": "product",
+                    "item_status": "reserved",
+                })
+                total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1) for it in items)
+                cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), total, order_id))
+
             elif action == "change_qty":
                 # Изменить количество позиции: снять старый резерв, поставить новый
                 new_qty = int(body.get("quantity", 1))
