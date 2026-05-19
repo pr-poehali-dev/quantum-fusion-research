@@ -330,6 +330,16 @@ def handler(event: dict, context) -> dict:
 
             log_movement(cur, group_id, supply_id, None, None, "supply_in", qty,
                          cost_price=cost_price, note=f"Приёмка {qty} шт. по {cost_price} ₽")
+
+            # синхронизируем in_stock и stock_qty в products
+            cur.execute(
+                f"UPDATE {SCHEMA}.products SET "
+                f"stock_qty = (SELECT COALESCE(SUM(s2.qty), 0) FROM {SCHEMA}.warehouse_supplies s2 "
+                f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id), "
+                f"in_stock = (SELECT COALESCE(SUM(s2.qty), 0) > 0 FROM {SCHEMA}.warehouse_supplies s2 "
+                f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id) "
+                f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {group_id})"
+            )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": supply_id})}
 
@@ -351,6 +361,14 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"SELECT group_id FROM {SCHEMA}.warehouse_supplies WHERE id = {sid}")
                 gid = cur.fetchone()[0]
                 log_movement(cur, gid, sid, None, None, "supply_updated", 0, note="Обновлена поставка")
+                cur.execute(
+                    f"UPDATE {SCHEMA}.products SET "
+                    f"stock_qty = (SELECT COALESCE(SUM(s2.qty), 0) FROM {SCHEMA}.warehouse_supplies s2 "
+                    f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id), "
+                    f"in_stock = (SELECT COALESCE(SUM(s2.qty), 0) > 0 FROM {SCHEMA}.warehouse_supplies s2 "
+                    f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id) "
+                    f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid})"
+                )
                 conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

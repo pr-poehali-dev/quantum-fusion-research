@@ -134,7 +134,11 @@ def handler(event: dict, context) -> dict:
         elif method == "GET":
             sel = """SELECT p.id, p.name, p.description, p.price, p.old_price,
                             p.image_url, p.specs, p.in_stock, p.is_featured,
-                            p.sort_order, p.created_at, p.stock_qty, p.image_urls,
+                            p.sort_order, p.created_at,
+                            COALESCE((SELECT SUM(s.qty) FROM warehouse_supplies s
+                                      JOIN warehouse_groups g ON g.id = s.group_id
+                                      WHERE g.product_id = p.id), 0) as stock_qty,
+                            p.image_urls,
                             c.id, c.name, c.slug, p.warehouse_group_id
                      FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
             if product_id:
