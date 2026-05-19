@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
@@ -7,9 +7,19 @@ import { useNavigate } from "react-router-dom"
 
 export default function Cart() {
   const { items, removeItem, updateQty, clearCart, total, count } = useCart()
-  const { sessionId } = useAuth()
+  const { sessionId, user } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: "", phone: "", contact_type: "tg" as "tg" | "vk" | "max", contact_value: "", comment: "" })
+
+  const prefilled = useMemo(() => {
+    if (!user) return { name: "", phone: "", contact_type: "tg" as const, contact_value: "" }
+    let contact_type: "tg" | "vk" | "max" = "max"
+    let contact_value = ""
+    if (user.telegram_username) { contact_type = "tg"; contact_value = `https://t.me/${user.telegram_username}` }
+    else if (user.vk_url) { contact_type = "vk"; contact_value = user.vk_url }
+    return { name: user.username || "", phone: user.phone || "", contact_type, contact_value }
+  }, [user])
+
+  const [form, setForm] = useState(() => ({ ...prefilled, comment: "" }))
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -135,6 +145,12 @@ export default function Cart() {
                 </div>
                 <p className="mt-1 text-xs text-foreground/40">Менеджер уточнит детали и подтвердит заказ</p>
               </div>
+              {user && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg bg-primary/8 border border-primary/20 px-3 py-2">
+                  <Icon name="UserCheck" size={14} className="text-primary shrink-0" />
+                  <span className="text-xs text-primary/80">Данные подтянуты из профиля — проверь и отправляй</span>
+                </div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="mb-1 block text-xs text-foreground/60">Имя *</label>
