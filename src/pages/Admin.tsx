@@ -1265,6 +1265,14 @@ export default function Admin() {
                             <Icon name={warrantyLoadingId === order.id ? "Loader" : "FileText"} size={12} className={warrantyLoadingId === order.id ? "animate-spin" : ""} />
                             Гарантийный лист
                           </button>
+                          <button
+                            onClick={() => navigate(`/admin/order/${order.id}`)}
+                            className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
+                            style={{ cursor: "pointer" }}
+                          >
+                            <Icon name="Settings2" size={12} />
+                            Обработать
+                          </button>
                         </div>
                         <select
                           value={order.status}

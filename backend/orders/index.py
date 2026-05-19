@@ -24,7 +24,7 @@ def handler(event: dict, context) -> dict:
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
     }
     if event.get("httpMethod") == "OPTIONS":
@@ -193,6 +193,36 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
 
         elif method == "GET":
+            # Один заказ по id
+            if params.get("id"):
+                cur.execute(
+                    """SELECT id, customer_name, customer_phone, customer_email, order_type,
+                              items, total, comment, status, created_at, updated_at, user_id
+                       FROM orders WHERE id = %s""",
+                    (int(params["id"]),)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
+                order = fmt_order(row)
+                # Подтягиваем складские остатки для каждой позиции
+                schema = "t_p72635010_quantum_fusion_resea"
+                for item in order["items"]:
+                    pid = item.get("id")
+                    if pid and item.get("item_type") == "product":
+                        cur.execute(
+                            f"SELECT s.id, s.qty, s.qty_reserved, wg.warranty_months, wg.id as gid "
+                            f"FROM {schema}.warehouse_supplies s "
+                            f"JOIN {schema}.warehouse_groups wg ON wg.id = s.group_id "
+                            f"WHERE wg.product_id = %s ORDER BY s.id ASC",
+                            (int(pid),)
+                        )
+                        supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
+                                     "free": r[1] - r[2], "warranty_months": r[3], "group_id": r[4]}
+                                    for r in cur.fetchall()]
+                        item["_supplies"] = supplies
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"order": order})}
+
             # Заказы текущего пользователя (для ЛК)
             if params.get("my") == "true":
                 user_id = get_user_by_session(cur, session_id)
@@ -219,6 +249,129 @@ def handler(event: dict, context) -> dict:
             )
             orders = [fmt_order(r) for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"orders": orders})}
+
+        elif method == "PUT":
+            # Обновление позиций заказа: серийник, цена, статус, замена товара, резерв
+            body = json.loads(event.get("body") or "{}")
+            order_id = int(body["id"])
+            action = body.get("action")
+            schema = "t_p72635010_quantum_fusion_resea"
+
+            cur.execute("SELECT items, total FROM orders WHERE id = %s", (order_id,))
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
+            items = row[0] if isinstance(row[0], list) else json.loads(row[0])
+
+            item_idx = body.get("item_idx")  # индекс позиции в items
+
+            if action == "set_serial":
+                # Сохранить серийный номер позиции
+                items[item_idx]["serial_number"] = body.get("serial_number", "")
+                cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), order_id))
+
+            elif action == "set_price":
+                # Изменить финальную цену позиции
+                items[item_idx]["final_price"] = float(body["price"])
+                # Пересчитать total
+                total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
+                            for it in items)
+                cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), total, order_id))
+
+            elif action == "set_status":
+                # Статус позиции: reserved / issued / returned
+                items[item_idx]["item_status"] = body.get("item_status", "reserved")
+                cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), order_id))
+
+            elif action == "unreserve":
+                # Снять резерв по позиции и вернуть на склад
+                pid = items[item_idx].get("id")
+                qty = int(items[item_idx].get("quantity", 1))
+                if pid:
+                    cur.execute(
+                        f"SELECT s.id FROM {schema}.warehouse_supplies s "
+                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
+                        (int(pid),)
+                    )
+                    supplies = cur.fetchall()
+                    left = qty
+                    for (sid,) in supplies:
+                        if left <= 0: break
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies "
+                            f"SET qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s "
+                            f"RETURNING group_id",
+                            (left, sid)
+                        )
+                        r = cur.fetchone()
+                        if r:
+                            cur.execute(
+                                f"INSERT INTO {schema}.warehouse_movements "
+                                f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                                f"VALUES (%s, %s, %s, 'unreserved', %s, %s, NOW())",
+                                (r[0], sid, order_id, -left, f"Снят резерв по заказу #{order_id}")
+                            )
+                        left -= left
+                items[item_idx]["item_status"] = "returned"
+                cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), order_id))
+
+            elif action == "replace_item":
+                # Заменить товар в позиции на другой из склада
+                new_product_id = int(body["new_product_id"])
+                cur.execute(
+                    f"SELECT p.name, p.price, wg.warranty_months "
+                    f"FROM {schema}.products p "
+                    f"LEFT JOIN {schema}.warehouse_groups wg ON wg.product_id = p.id "
+                    f"WHERE p.id = %s LIMIT 1",
+                    (new_product_id,)
+                )
+                pr = cur.fetchone()
+                if pr:
+                    # Снять резерв со старого товара
+                    old_pid = items[item_idx].get("id")
+                    qty = int(items[item_idx].get("quantity", 1))
+                    if old_pid:
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies SET qty_reserved = GREATEST(0, qty_reserved - %s) "
+                            f"WHERE id = (SELECT s.id FROM {schema}.warehouse_supplies s "
+                            f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                            f"WHERE g.product_id = %s AND s.qty_reserved > 0 LIMIT 1)",
+                            (qty, int(old_pid))
+                        )
+                    # Зарезервировать новый
+                    cur.execute(
+                        f"SELECT s.id, s.qty - s.qty_reserved as free FROM {schema}.warehouse_supplies s "
+                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                        f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC LIMIT 1",
+                        (new_product_id,)
+                    )
+                    ns = cur.fetchone()
+                    if ns:
+                        reserve = min(qty, ns[1])
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s "
+                            f"WHERE id = %s AND qty - qty_reserved >= %s",
+                            (reserve, ns[0], reserve)
+                        )
+                    # Обновляем позицию
+                    items[item_idx]["id"] = new_product_id
+                    items[item_idx]["name"] = pr[0]
+                    items[item_idx]["price"] = float(pr[1])
+                    items[item_idx].pop("final_price", None)
+                    items[item_idx].pop("serial_number", None)
+                    items[item_idx]["item_status"] = "reserved"
+                    total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
+                                for it in items)
+                    cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                                (json.dumps(items), total, order_id))
+
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "items": items})}
 
         elif method == "PATCH":
             body = json.loads(event.get("body") or "{}")

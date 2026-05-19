@@ -16,6 +16,7 @@ const AuthPage = lazy(() => import("./pages/AuthPage"));
 const Profile = lazy(() => import("./pages/Profile"));
 const BuildPreview = lazy(() => import("./pages/BuildPreview"));
 const OrderSheet = lazy(() => import("./pages/OrderSheet"));
+const OrderProcessPage = lazy(() => import("./pages/OrderProcessPage"));
 const ArticlePage = lazy(() => import("./pages/ArticlePage"));
 const ProductPage = lazy(() => import("./pages/ProductPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -58,6 +59,7 @@ const App = () => (
               <Route path="/build" element={<BuildPreview />} />
               <Route path="/build-preview/:id" element={<BuildPreview />} />
               <Route path="/order-sheet/:id" element={<OrderSheet />} />
+              <Route path="/admin/order/:id" element={<OrderProcessPage />} />
               <Route path="/articles/:id" element={<ArticlePage />} />
               <Route path="/product/:id" element={<ProductPage />} />
               <Route path="/cables" element={<CablePage />} />
