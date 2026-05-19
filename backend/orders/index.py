@@ -46,6 +46,7 @@ def handler(event: dict, context) -> dict:
             "created_at": row[9].isoformat() if row[9] else None,
             "updated_at": row[10].isoformat() if row[10] else None,
             "user_id": row[11],
+            "wip_stage": row[12] if len(row) > 12 else None,
         }
 
     try:
@@ -272,12 +273,15 @@ def handler(event: dict, context) -> dict:
 
             # Все заказы (для админа)
             status_filter = params.get("status")
-            where = "WHERE status = %s" if status_filter else ""
+            where = "WHERE o.status = %s" if status_filter else ""
             args = [status_filter] if status_filter else []
             cur.execute(
-                f"""SELECT id, customer_name, customer_phone, customer_email, order_type,
-                           items, total, comment, status, created_at, updated_at, user_id
-                    FROM orders {where} ORDER BY created_at DESC LIMIT 200""",
+                f"""SELECT o.id, o.customer_name, o.customer_phone, o.customer_email, o.order_type,
+                           o.items, o.total, o.comment, o.status, o.created_at, o.updated_at, o.user_id,
+                           wb.stage as wip_stage
+                    FROM orders o
+                    LEFT JOIN wip_builds wb ON wb.order_id = o.id
+                    {where} ORDER BY o.created_at DESC LIMIT 200""",
                 args
             )
             orders = [fmt_order(r) for r in cur.fetchall()]

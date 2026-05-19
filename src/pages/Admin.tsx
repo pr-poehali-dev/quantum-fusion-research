@@ -52,6 +52,7 @@ interface Order {
   comment: string
   status: string
   created_at: string
+  wip_stage?: string | null
 }
 
 interface Product {
@@ -1231,7 +1232,10 @@ export default function Admin() {
                       <div>
                         <div className="flex items-center gap-3 mb-1">
                           <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${order.order_type === "pc_build" ? (PC_STATUS_LABELS[order.status] || PC_STATUS_LABELS.new).color : (STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{order.order_type === "pc_build" ? (PC_STATUS_LABELS[order.status] || PC_STATUS_LABELS.new).label : (STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
+                          {order.order_type === "pc_build"
+                            ? <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${WIP_STAGE_COLORS[order.wip_stage || ""] || "bg-muted text-foreground/60"}`}>{order.wip_stage || "—"}</span>
+                            : <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>{(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}</span>
+                          }
                           {order.order_type === "pc_build" && <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent">Сборка ПК</span>}
                           {order.order_type === "parts" && <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">Комплектующие</span>}
                           <span className="text-xs text-foreground/40">{new Date(order.created_at).toLocaleDateString("ru-RU")}</span>
