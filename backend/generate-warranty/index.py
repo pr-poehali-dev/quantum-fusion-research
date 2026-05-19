@@ -306,9 +306,16 @@ def handler(event: dict, context) -> dict:
 
         # Строка стоимости сборки
         assembly_fee = 0
+        assembly_warranty = 12
+        assembly_serials = []
         for it in items:
             if it.get("item_type") == "assembly" or "сборк" in str(it.get("name", "")).lower():
-                assembly_fee = float(it.get("price", 0))
+                assembly_fee = float(it.get("final_price") or it.get("price", 0))
+                assembly_warranty = int(it.get("warranty_months") or 12)
+                sn = it.get("serial_numbers") or []
+                if not sn and it.get("serial_number"):
+                    sn = [it["serial_number"]]
+                assembly_serials = [s for s in sn if s and str(s).strip()]
         if not assembly_fee:
             # Пробуем из pc_builds
             if wip and wip[9]:
@@ -321,8 +328,8 @@ def handler(event: dict, context) -> dict:
                 "name": "Работа по сборке и настройке ПК",
                 "qty": 1,
                 "price": assembly_fee,
-                "warranty": 0,
-                "serials": [],
+                "warranty": assembly_warranty,
+                "serials": assembly_serials,
             })
     else:
         # Обычные заказы комплектующих
