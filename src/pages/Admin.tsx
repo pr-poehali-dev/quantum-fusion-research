@@ -1105,8 +1105,6 @@ export default function Admin() {
     { key: "products", label: "Товары", icon: "Package" },
     { key: "add_product", label: productForm.id ? "Ред. товар" : "Добавить товар", icon: "PlusCircle" },
     { key: "DIVIDER_2" },
-    { key: "warehouse", label: "Склад", icon: "Warehouse" },
-    { key: "DIVIDER_3" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
     { key: "add_article", label: articleForm.id ? "Ред. статью" : "Новая статья", icon: "FilePlus" },
   ]
@@ -1114,6 +1112,7 @@ export default function Admin() {
   const bottomTabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
+    { key: "warehouse", label: "Склад", icon: "Warehouse" },
     { key: "DIVIDER_4" },
     { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
     { key: "wip_archive", label: "Архив сборок", icon: "ArchiveRestore" },
