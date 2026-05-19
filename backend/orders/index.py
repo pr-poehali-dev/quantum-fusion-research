@@ -221,6 +221,39 @@ def handler(event: dict, context) -> dict:
                                      "free": r[1] - r[2], "warranty_months": r[3], "group_id": r[4]}
                                     for r in cur.fetchall()]
                         item["_supplies"] = supplies
+                # Для ПК-заказов подтягиваем wip_build с компонентами
+                if order.get("order_type") == "pc_build":
+                    cur.execute(
+                        f"SELECT wb.id, wb.stage, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, "
+                        f"wb.psu, wb.case_name, wb.cooling, wb.extra, "
+                        f"wb.cpu_status, wb.motherboard_status, wb.ram_status, wb.gpu_status, wb.storage_status, "
+                        f"wb.psu_status, wb.case_status, wb.cooling_status, wb.extra_status, "
+                        f"wb.build_id "
+                        f"FROM wip_builds wb WHERE wb.order_id = %s LIMIT 1",
+                        (int(params["id"]),)
+                    )
+                    wip = cur.fetchone()
+                    if wip:
+                        slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
+                        slot_labels = {"cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
+                                       "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
+                                       "case_name": "Корпус", "cooling": "Охлаждение", "extra": "Доп."}
+                        components = []
+                        for i, slot in enumerate(slot_names):
+                            name = wip[2 + i]
+                            status = wip[11 + i]
+                            if name and name.strip():
+                                components.append({
+                                    "slot": slot,
+                                    "label": slot_labels.get(slot, slot),
+                                    "name": name,
+                                    "status": status or "pending"
+                                })
+                        order["_wip_build"] = {
+                            "id": wip[0], "stage": wip[1],
+                            "build_id": wip[20],
+                            "components": components
+                        }
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"order": order})}
 
             # Заказы текущего пользователя (для ЛК)

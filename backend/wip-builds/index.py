@@ -179,13 +179,34 @@ def handler(event: dict, context) -> dict:
             # Обновить этап
             if "stage" in body:
                 new_stage = body["stage"]
-                # TODO: sync_crm(wip_id, new_stage, contact)
                 cur.execute("UPDATE wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s", (new_stage, wip_id))
                 # При "Забрали" или "Отменён" — переносим pc_build в архив
                 if new_stage in ("Забрали", "Отменён"):
                     cur.execute(
                         "UPDATE pc_builds SET status='archive' WHERE id=(SELECT build_id FROM wip_builds WHERE id=%s)",
                         (wip_id,)
+                    )
+                # Синхронизируем статус заказа ПК со стадией сборки
+                STAGE_TO_ORDER_STATUS = {
+                    "Согласование":           "new",
+                    "Заказ":                  "ordering",
+                    "Ожидание железа":        "ordering",
+                    "Ожидание сборки":        "waiting_assembly",
+                    "Сборка":                 "assembly",
+                    "Настройка":              "assembly",
+                    "Тесты":                  "assembly",
+                    "Досборать":              "assembly",
+                    "Проверка перед выдачей": "assembly",
+                    "Ожидание упаковки":      "assembly",
+                    "Готов, можно забрать":   "assembly",
+                    "Отнести в сдэк":         "assembly",
+                    "Отменён":                "cancelled",
+                }
+                order_status = STAGE_TO_ORDER_STATUS.get(new_stage)
+                if order_status:
+                    cur.execute(
+                        "UPDATE orders SET status=%s, updated_at=NOW() WHERE id=(SELECT order_id FROM wip_builds WHERE id=%s)",
+                        (order_status, wip_id)
                     )
                 conn.commit()
                 return resp(200, {"ok": True})

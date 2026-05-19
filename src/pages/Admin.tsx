@@ -2378,6 +2378,21 @@ export default function Admin() {
                             if (row.key === "_actions") return (
                               <td key={w.id} className="px-3 py-2 whitespace-nowrap">
                                 <div className="flex items-center gap-1 flex-wrap">
+                                  {w.order_id && w.stage !== "Согласование" && w.stage !== "Забрали" && w.stage !== "Отменён" && w.stage !== "Архив" && (
+                                    <button onClick={async () => {
+                                      const res = await api.orders.updateItem({ id: w.order_id, action: "sync_order", item_idx: 0 })
+                                      if (res.error) { alert(res.error); return }
+                                      const msgs: string[] = []
+                                      if (res.reserved?.length) msgs.push(`✓ Зарезервировано: ${res.reserved.map((r: {name:string}) => r.name).join(', ')}`)
+                                      if (res.need_order?.length) msgs.push(`⚠ Заказать: ${res.need_order.map((r: {name:string}) => r.name).join(', ')}`)
+                                      if (res.auto_status === "waiting_assembly") msgs.push("→ Статус: Ожидание сборки")
+                                      if (msgs.length) alert(msgs.join('\n'))
+                                      api.wipBuilds.getAll().then(d => { setWipBuilds(d.wip_builds || []); setWipStages(d.stages || WIP_STAGES) })
+                                    }}
+                                    className="flex items-center gap-1 rounded-lg border border-yellow-400/40 bg-yellow-400/5 px-2 py-1 text-[11px] text-yellow-400 hover:bg-yellow-400/15 transition-colors" style={{ cursor: "pointer" }}>
+                                      <Icon name="RefreshCw" size={11} />Синхр.
+                                    </button>
+                                  )}
                                   <button onClick={() => setWipPasteId(w.id)}
                                     className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground/50 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                                     <Icon name="Copy" size={11} />Паста

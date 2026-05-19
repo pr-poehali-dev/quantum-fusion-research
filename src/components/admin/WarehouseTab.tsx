@@ -53,6 +53,7 @@ interface Group {
   updated_at: string
   qty_total: number
   qty_reserved: number
+  qty_negative: number
   avg_cost: number
   cell: string | null
   price_history: PricePoint[]
@@ -389,7 +390,11 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
             {fmtNum(group.qty_total)}
           </span>
         </td>
-        <td className="px-3 py-2.5 text-center text-sm text-orange-400">{fmtNum(group.qty_reserved)}</td>
+        <td className="px-3 py-2.5 text-center text-sm">
+          {group.qty_reserved > 0 && <span className="text-orange-400">{fmtNum(group.qty_reserved)}</span>}
+          {group.qty_negative > 0 && <span className="text-red-400 ml-1">−{fmtNum(group.qty_negative)}</span>}
+          {group.qty_reserved === 0 && group.qty_negative === 0 && <span className="text-foreground/30">0</span>}
+        </td>
         <td className="px-3 py-2.5 text-xs text-foreground/50">{group.warranty_months} мес.</td>
         <td className="px-3 py-2.5 text-sm font-medium">{fmt(group.price_retail)}</td>
         <td className="px-3 py-2.5 text-xs font-mono text-foreground/60">{group.cell || "—"}</td>

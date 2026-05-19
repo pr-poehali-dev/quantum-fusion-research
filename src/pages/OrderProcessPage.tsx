@@ -42,6 +42,20 @@ interface OrderItem {
   _supplies?: Supply[]
 }
 
+interface WipComponent {
+  slot: string
+  label: string
+  name: string
+  status: string
+}
+
+interface WipBuildInfo {
+  id: number
+  stage: string
+  build_id?: number | null
+  components: WipComponent[]
+}
+
 interface Order {
   id: number
   customer_name: string
@@ -53,6 +67,7 @@ interface Order {
   comment?: string
   status: string
   created_at: string
+  _wip_build?: WipBuildInfo
 }
 
 function fmt(n: number) {
@@ -303,6 +318,49 @@ export default function OrderProcessPage() {
             </div>
           </div>
         </div>
+
+        {/* Железо сборки ПК из wip_build */}
+        {order.order_type === "pc_build" && order._wip_build && (
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-medium">Состав сборки</h2>
+                <p className="text-xs text-foreground/40 mt-0.5">Стадия: <span className="text-foreground/70">{order._wip_build.stage}</span></p>
+              </div>
+              {order._wip_build.build_id && (
+                <a href={`/admin/wip_builds`} className="text-xs text-primary hover:underline">
+                  Открыть в сборках →
+                </a>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {order._wip_build.components.map(comp => {
+                const statusColors: Record<string, string> = {
+                  ready:           "text-green-400 bg-green-400/10",
+                  need_order:      "text-red-400 bg-red-400/10",
+                  ordered_transit: "text-yellow-400 bg-yellow-400/10",
+                  ordered_delay:   "text-orange-400 bg-orange-400/10",
+                  pending:         "text-foreground/40 bg-muted",
+                }
+                const statusLabels: Record<string, string> = {
+                  ready: "В наличии", need_order: "Заказать",
+                  ordered_transit: "В пути", ordered_delay: "Задержка", pending: "Ожидание"
+                }
+                const cls = statusColors[comp.status] || statusColors.pending
+                const lbl = statusLabels[comp.status] || comp.status
+                return (
+                  <div key={comp.slot} className="flex items-start gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-foreground/40">{comp.label}</p>
+                      <p className="text-sm font-medium text-foreground truncate mt-0.5">{comp.name}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{lbl}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Панель добавления товара */}
         {showAddItem && (

@@ -48,6 +48,7 @@ def fmt_group(row):
         "qty_reserved": int(row[16]) if row[16] else 0,
         "avg_cost": float(row[17]) if row[17] else 0,
         "cell": row[18] if len(row) > 18 else None,
+        "qty_negative": int(row[19]) if len(row) > 19 and row[19] else 0,
     }
 
 
@@ -162,7 +163,8 @@ def handler(event: dict, context) -> dict:
                 f"COALESCE(SUM(s.qty), COALESCE(p.stock_qty, 0)) as qty_total, "
                 f"COALESCE(SUM(s.qty_reserved), 0) as qty_reserved, "
                 f"COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) as avg_cost, "
-                f"g.cell "
+                f"g.cell, "
+                f"COALESCE(SUM(s.qty_negative), 0) as qty_negative "
                 f"FROM {SCHEMA}.warehouse_groups g "
                 f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
                 f"LEFT JOIN {SCHEMA}.products p ON p.id = g.product_id "
