@@ -261,17 +261,25 @@ def handler(event: dict, context) -> dict:
                                 if it.get("final_price"):
                                     assembly_final_price = float(it["final_price"])
 
-                        # Серийники и финальные цены из items заказа (по slot)
+                        # Серийники из items[0].slot_serials, финальные цены из items (по slot)
                         slot_serials = {}
                         slot_final_price = {}
                         slot_item_status = {}
-                        for it in order["items"]:
+                        raw_items = order["items"]
+                        # Читаем slot_serials из первого item
+                        for it in raw_items:
+                            stored = it.get("slot_serials") or {}
+                            for s, sn in stored.items():
+                                slot_serials[s] = sn if isinstance(sn, list) else [sn]
+                        # Остальные поля по slot
+                        for it in raw_items:
                             s = it.get("slot")
                             if s:
                                 sn = it.get("serial_numbers") or []
                                 if not sn and it.get("serial_number"):
                                     sn = [it["serial_number"]]
-                                slot_serials[s] = [x for x in sn if x and str(x).strip()]
+                                if sn:
+                                    slot_serials[s] = [x for x in sn if x and str(x).strip()]
                                 if it.get("final_price"):
                                     slot_final_price[s] = float(it["final_price"])
                                 if it.get("item_status"):
@@ -408,11 +416,21 @@ def handler(event: dict, context) -> dict:
             item_idx = body.get("item_idx")  # индекс позиции в items
 
             if action == "set_serial":
-                # Сохранить серийные номера позиции (массив — по одному на каждую штуку)
-                if "serial_numbers" in body:
-                    items[item_idx]["serial_numbers"] = body["serial_numbers"]
+                # Для ПК-заказов серийники хранятся в items[0].slot_serials[slot]
+                cur.execute("SELECT order_type FROM orders WHERE id=%s", (order_id,))
+                ot = cur.fetchone()
+                slot = body.get("slot")
+                if ot and ot[0] == "pc_build" and slot:
+                    if not items:
+                        items = [{}]
+                    if "slot_serials" not in items[0]:
+                        items[0]["slot_serials"] = {}
+                    items[0]["slot_serials"][slot] = body.get("serial_numbers", [body.get("serial_number", "")])
                 else:
-                    items[item_idx]["serial_number"] = body.get("serial_number", "")
+                    if "serial_numbers" in body:
+                        items[item_idx]["serial_numbers"] = body["serial_numbers"]
+                    else:
+                        items[item_idx]["serial_number"] = body.get("serial_number", "")
                 cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
 

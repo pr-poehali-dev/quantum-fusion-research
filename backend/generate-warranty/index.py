@@ -259,16 +259,22 @@ def handler(event: dict, context) -> dict:
                     if s and comp.get("source") == "catalog" and comp.get("source_id"):
                         slot_product_map[s] = int(comp["source_id"])
 
-        # Серийники из items заказа по слоту (items хранят slot для ПК-заказов)
+        # Серийники из items[0].slot_serials (новый формат) или по slot (старый)
         slot_serials = {}
         slot_item_price = {}
+        for it in items:
+            # Новый формат: slot_serials = {slot: [sn1, sn2]}
+            stored = it.get("slot_serials") or {}
+            for s, sn in stored.items():
+                slot_serials[s] = sn if isinstance(sn, list) else [sn]
         for it in items:
             slot = it.get("slot")
             if slot:
                 sn = it.get("serial_numbers") or []
                 if not sn and it.get("serial_number"):
                     sn = [it["serial_number"]]
-                slot_serials[slot] = [s for s in sn if s and str(s).strip()]
+                if sn:
+                    slot_serials[slot] = [s for s in sn if s and str(s).strip()]
                 price = float(it.get("final_price") or it.get("price", 0))
                 if price:
                     slot_item_price[slot] = price

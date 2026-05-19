@@ -415,7 +415,7 @@ export default function OrderProcessPage() {
                     <SerialInput
                       value={(item.serial_numbers?.[0]) || ""}
                       saving={saving === `set_serial-${idx}-0`}
-                      onSave={val => callPut("set_serial", idx, { serial_numbers: [val] })}
+                      onSave={val => callPut("set_serial", idx, { serial_numbers: [val], slot: "assembly" })}
                     />
                   </div>
                   <PriceInput
@@ -529,7 +529,7 @@ export default function OrderProcessPage() {
                                   (item.serial_numbers || [])[i] || ""
                                 )
                                 next[qIdx] = val
-                                callPut("set_serial", idx, { serial_numbers: next })
+                                callPut("set_serial", idx, { serial_numbers: next, slot: item.slot || null })
                               }}
                             />
                           </div>
