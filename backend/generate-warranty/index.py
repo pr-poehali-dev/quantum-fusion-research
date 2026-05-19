@@ -246,11 +246,17 @@ def handler(event: dict, context) -> dict:
             wr = cur.fetchone()
             if wr and wr[0]:
                 warranty = wr[0]
+        # Собираем серийники: serial_numbers (массив) или serial_number (строка)
+        serials = item.get("serial_numbers") or []
+        if not serials and item.get("serial_number"):
+            serials = [item["serial_number"]]
+        serials = [s for s in serials if s and str(s).strip()]
         enriched.append({
             "name": item.get("name", ""),
             "qty": item.get("quantity", 1),
-            "price": item.get("price", 0),
+            "price": float(item.get("final_price") or item.get("price", 0)),
             "warranty": warranty,
+            "serials": serials,
         })
 
     cur.close(); conn.close()
@@ -307,10 +313,23 @@ def handler(event: dict, context) -> dict:
     p.y -= 7*mm
 
     for it in enriched:
-        price_str = f"{float(it['price']):,.0f}".replace(",", " ")
-        cells = [it["name"], "-", months_label(it["warranty"]), str(it["qty"]), price_str]
+        price_str = f"{it['price']:,.0f}".replace(",", " ")
         p.c.setFont("dj", 8)
-        p.cell_row(cells, col_w, font="dj", size=8)
+        if it["serials"]:
+            # Отдельная строка на каждый серийник
+            for i, sn in enumerate(it["serials"]):
+                cells = [
+                    it["name"] if i == 0 else "",
+                    sn,
+                    months_label(it["warranty"]) if i == 0 else "",
+                    "1",
+                    price_str if i == 0 else "",
+                ]
+                p.cell_row(cells, col_w, font="dj", size=8)
+        else:
+            # Нет серийника — одна строка с общим кол-вом
+            cells = [it["name"], "-", months_label(it["warranty"]), str(it["qty"]), price_str]
+            p.cell_row(cells, col_w, font="dj", size=8)
 
     p.ln(18)
     p.c.setFont("djB", 11)
