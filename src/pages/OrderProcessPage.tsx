@@ -385,12 +385,24 @@ export default function OrderProcessPage() {
           <h2 className="text-lg font-medium">Позиции заказа</h2>
 
           {order.items.map((item, idx) => {
+            const isAssembly = item.item_type === "assembly"
             const itemStatus = item.item_status || "reserved"
             const statusInfo = ITEM_STATUS[itemStatus] || ITEM_STATUS.reserved
             const finalPrice = item.final_price ?? item.price
             const supplies = item._supplies || []
             const totalReserved = supplies.reduce((s, s2) => s + s2.qty_reserved, 0)
             const totalFree = supplies.reduce((s, s2) => s + s2.free, 0)
+
+            // Строка услуги (сборка) — компактный вид
+            if (isAssembly) return (
+              <div key={idx} className="rounded-xl border border-accent/20 bg-card p-5 flex items-center justify-between gap-4">
+                <div>
+                  {item.slot_label && <p className="text-xs text-foreground/40 mb-0.5">{item.slot_label}</p>}
+                  <p className="font-medium">{item.name}</p>
+                </div>
+                <p className="text-lg font-bold shrink-0">{fmt(finalPrice)}</p>
+              </div>
+            )
 
             return (
               <div key={idx} className={`rounded-xl border bg-card p-5 transition-colors ${

@@ -226,17 +226,40 @@ def handler(event: dict, context) -> dict:
                                        "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
                                        "case_name": "Корпус", "cooling": "Охлаждение", "extra": "Доп."}
                         # Маппинг slot -> source_id из pc_build
-                        slot_product_map = {}
+                        slot_product_map = {}  # slot -> product_id
+                        slot_price_map = {}    # slot -> price из pc_builds.components
+                        assembly_fee = 0
                         build_id = wip[20]
                         if build_id:
-                            cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
+                            cur.execute(f"SELECT components, assembly_fee FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
                             pc_row = cur.fetchone()
                             if pc_row and pc_row[0]:
                                 raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
                                 for comp in raw:
                                     s = comp.get("slot")
-                                    if s and comp.get("source") == "catalog" and comp.get("source_id"):
-                                        slot_product_map[s] = int(comp["source_id"])
+                                    if s:
+                                        if comp.get("source") == "catalog" and comp.get("source_id"):
+                                            slot_product_map[s] = int(comp["source_id"])
+                                        if comp.get("price"):
+                                            slot_price_map[s] = float(comp["price"])
+                            if pc_row and pc_row[1]:
+                                assembly_fee = float(pc_row[1])
+
+                        # Серийники и финальные цены из items заказа (по slot)
+                        slot_serials = {}
+                        slot_final_price = {}
+                        slot_item_status = {}
+                        for it in order["items"]:
+                            s = it.get("slot")
+                            if s:
+                                sn = it.get("serial_numbers") or []
+                                if not sn and it.get("serial_number"):
+                                    sn = [it["serial_number"]]
+                                slot_serials[s] = [x for x in sn if x and str(x).strip()]
+                                if it.get("final_price"):
+                                    slot_final_price[s] = float(it["final_price"])
+                                if it.get("item_status"):
+                                    slot_item_status[s] = it["item_status"]
 
                         wip_items = []
                         for i, slot in enumerate(slot_names):
@@ -245,12 +268,19 @@ def handler(event: dict, context) -> dict:
                             if not name or not name.strip():
                                 continue
                             product_id = slot_product_map.get(slot)
-                            # Ищем по имени если нет маппинга
+                            # Ищем product_id по имени если нет маппинга
                             if not product_id:
                                 cur.execute(f"SELECT id FROM {schema}.products p WHERE p.name = %s LIMIT 1", (name,))
                                 pr = cur.fetchone()
                                 if pr:
                                     product_id = pr[0]
+                            # Цена: финальная из заказа → из pc_builds.components → из warehouse_groups
+                            price = slot_final_price.get(slot) or slot_price_map.get(slot, 0)
+                            if not price and product_id:
+                                cur.execute(f"SELECT price_retail FROM {schema}.warehouse_groups WHERE product_id = %s LIMIT 1", (product_id,))
+                                pr2 = cur.fetchone()
+                                if pr2 and pr2[0]:
+                                    price = float(pr2[0])
                             # Складские остатки
                             supplies = []
                             if product_id:
@@ -268,14 +298,33 @@ def handler(event: dict, context) -> dict:
                             wip_items.append({
                                 "id": product_id,
                                 "name": name,
-                                "price": 0,
+                                "price": price,
                                 "quantity": 1,
                                 "item_type": "product",
                                 "slot": slot,
                                 "slot_label": slot_labels.get(slot, slot),
                                 "wip_status": wip_status,
+                                "item_status": slot_item_status.get(slot),
+                                "serial_numbers": slot_serials.get(slot, []),
                                 "_supplies": supplies,
                             })
+
+                        # Строка стоимости сборки
+                        if assembly_fee:
+                            wip_items.append({
+                                "id": None,
+                                "name": "Работа по сборке и настройке ПК",
+                                "price": assembly_fee,
+                                "quantity": 1,
+                                "item_type": "assembly",
+                                "slot": None,
+                                "slot_label": "Услуга",
+                                "wip_status": None,
+                                "item_status": None,
+                                "serial_numbers": [],
+                                "_supplies": [],
+                            })
+
                         order["items"] = wip_items
                         order["_wip_stage"] = wip[1]
                 else:
