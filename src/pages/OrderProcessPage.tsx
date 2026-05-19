@@ -144,9 +144,12 @@ export default function OrderProcessPage() {
     const res = await api.orders.updateItem({ id: Number(id), action, item_idx: itemIdx, ...extra })
     setSaving(null)
     if (res.error) { alert(res.error); return res }
-    // Для ПК-заказов items перестраиваются из wip_build — всегда перезагружаем
     if (res.ok) {
-      if (order?.order_type === "pc_build") {
+      // set_serial не перезагружает — просто обновляем локально
+      if (action === "set_serial") {
+        // ничего, SerialInput сам отражает новое значение
+      } else if (order?.order_type === "pc_build") {
+        // Для ПК-заказов items перестраиваются из wip_build — перезагружаем
         await load()
       } else if (res.items) {
         setOrder(prev => prev ? { ...prev, items: res.items, total: res.items.reduce((s: number, it: OrderItem) => s + (it.final_price ?? it.price) * it.quantity, 0) } : prev)
