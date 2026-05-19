@@ -462,7 +462,6 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
                         <th className="pb-1 text-right font-normal">Кол-во</th>
                         <th className="pb-1 text-right font-normal">Резерв</th>
                         <th className="pb-1 text-right font-normal">Заход</th>
-                        <th className="pb-1 text-left font-normal">Гарантия до</th>
                         <th className="pb-1"></th>
                       </tr>
                     </thead>
@@ -478,7 +477,6 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
                           <td className="py-1 text-right font-medium">{fmtNum(s.qty)}</td>
                           <td className="py-1 text-right text-orange-400">{fmtNum(s.qty_reserved)}</td>
                           <td className="py-1 text-right text-foreground/60">{fmt(s.cost_price)}</td>
-                          <td className="py-1 text-foreground/40">{s.warranty_until?.substring(0, 10) || "—"}</td>
                           <td className="py-1 text-right">
                             <button className="text-foreground/30 hover:text-foreground/70 transition-colors"
                               onClick={() => setSupplyModal(s)}>
