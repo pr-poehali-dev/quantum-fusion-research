@@ -728,7 +728,27 @@ function SerialInput({ value, saving, onSave, label }: {
   label?: string
 }) {
   const [v, setV] = useState(value)
+  const [flash, setFlash] = useState(false)
   useEffect(() => setV(value), [value])
+
+  const handleSave = (val: string) => {
+    // Звук
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as {webkitAudioContext: typeof AudioContext}).webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.frequency.setValueAtTime(880, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.08)
+      gain.gain.setValueAtTime(0.15, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
+      osc.start(); osc.stop(ctx.currentTime + 0.15)
+    } catch (_) { /* AudioContext недоступен */ }
+    // Анимация кнопки
+    setFlash(true)
+    setTimeout(() => setFlash(false), 400)
+    onSave(val)
+  }
 
   return (
     <div className="flex gap-2 items-center">
@@ -736,13 +756,17 @@ function SerialInput({ value, saving, onSave, label }: {
       <input
         value={v}
         onChange={e => setV(e.target.value)}
-        onKeyDown={e => e.key === "Enter" && onSave(v)}
+        onKeyDown={e => e.key === "Enter" && handleSave(v)}
         placeholder="Введите S/N..."
         className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono focus:border-primary focus:outline-none"
       />
-      <button onClick={() => onSave(v)} disabled={saving || v === value}
+      <button onClick={() => handleSave(v)} disabled={saving || v === value}
         style={{ cursor: "pointer" }}
-        className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30 shrink-0">
+        className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-200 shrink-0 ${
+          flash
+            ? "border-green-400 bg-green-400/15 text-green-400 scale-110"
+            : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+        } disabled:opacity-30`}>
         {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
       </button>
     </div>
