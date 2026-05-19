@@ -320,7 +320,7 @@ export default function OrderProcessPage() {
                 {/* Кнопки действий */}
                 <div className="flex flex-wrap gap-2">
                   {/* Статус */}
-                  {["reserved", "issued", "returned"].map(s => (
+                  {["reserved", "issued"].map(s => (
                     <button key={s}
                       onClick={() => callPut("set_status", idx, { item_status: s })}
                       disabled={itemStatus === s || saving === `set_status-${idx}`}
