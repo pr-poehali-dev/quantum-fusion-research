@@ -39,6 +39,9 @@ interface OrderItem {
   serial_numbers?: string[]
   final_price?: number
   item_status?: string
+  slot?: string
+  slot_label?: string
+  wip_status?: string
   _supplies?: Supply[]
 }
 
@@ -319,49 +322,6 @@ export default function OrderProcessPage() {
           </div>
         </div>
 
-        {/* Железо сборки ПК из wip_build */}
-        {order.order_type === "pc_build" && order._wip_build && (
-          <div className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-medium">Состав сборки</h2>
-                <p className="text-xs text-foreground/40 mt-0.5">Стадия: <span className="text-foreground/70">{order._wip_build.stage}</span></p>
-              </div>
-              {order._wip_build.build_id && (
-                <a href={`/admin/wip_builds`} className="text-xs text-primary hover:underline">
-                  Открыть в сборках →
-                </a>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {order._wip_build.components.map(comp => {
-                const statusColors: Record<string, string> = {
-                  ready:           "text-green-400 bg-green-400/10",
-                  need_order:      "text-red-400 bg-red-400/10",
-                  ordered_transit: "text-yellow-400 bg-yellow-400/10",
-                  ordered_delay:   "text-orange-400 bg-orange-400/10",
-                  pending:         "text-foreground/40 bg-muted",
-                }
-                const statusLabels: Record<string, string> = {
-                  ready: "В наличии", need_order: "Заказать",
-                  ordered_transit: "В пути", ordered_delay: "Задержка", pending: "Ожидание"
-                }
-                const cls = statusColors[comp.status] || statusColors.pending
-                const lbl = statusLabels[comp.status] || comp.status
-                return (
-                  <div key={comp.slot} className="flex items-start gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-foreground/40">{comp.label}</p>
-                      <p className="text-sm font-medium text-foreground truncate mt-0.5">{comp.name}</p>
-                    </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{lbl}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Панель добавления товара */}
         {showAddItem && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
@@ -435,17 +395,40 @@ export default function OrderProcessPage() {
             return (
               <div key={idx} className={`rounded-xl border bg-card p-5 transition-colors ${
                 itemStatus === "returned" ? "border-red-400/20" :
-                itemStatus === "issued" ? "border-green-400/20" : "border-border"
+                itemStatus === "issued" ? "border-green-400/20" :
+                item.wip_status === "ready" ? "border-green-400/20" :
+                item.wip_status === "need_order" ? "border-red-400/20" :
+                item.wip_status === "ordered_transit" ? "border-yellow-400/20" :
+                item.wip_status === "ordered_delay" ? "border-orange-400/20" :
+                "border-border"
               }`}>
                 {/* Заголовок позиции */}
                 <div className="flex flex-wrap items-start gap-3 mb-4">
                   <div className="flex-1 min-w-0">
+                    {item.slot_label && <p className="text-xs text-foreground/40 mb-0.5">{item.slot_label}</p>}
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{item.name}</p>
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusInfo.color}`}>
-                        <Icon name={statusInfo.icon as "Clock"} size={11} />
-                        {statusInfo.label}
-                      </span>
+                      {item.item_status && (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusInfo.color}`}>
+                          <Icon name={statusInfo.icon as "Clock"} size={11} />
+                          {statusInfo.label}
+                        </span>
+                      )}
+                      {item.wip_status && (() => {
+                        const WIP_STATUS_STYLE: Record<string, {label: string, color: string}> = {
+                          ready:           { label: "Есть",      color: "text-green-400 bg-green-400/10" },
+                          need_order:      { label: "Заказать",  color: "text-red-400 bg-red-400/10" },
+                          ordered_transit: { label: "В пути",    color: "text-yellow-400 bg-yellow-400/10" },
+                          ordered_delay:   { label: "Задержка",  color: "text-orange-400 bg-orange-400/10" },
+                          pending:         { label: "Ожидание",  color: "text-foreground/40 bg-muted" },
+                        }
+                        const ws = WIP_STATUS_STYLE[item.wip_status] || WIP_STATUS_STYLE.pending
+                        return (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ws.color}`}>
+                            {ws.label}
+                          </span>
+                        )
+                      })()}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       {item.item_type === "product" && itemStatus !== "issued" ? (

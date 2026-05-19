@@ -206,24 +206,10 @@ def handler(event: dict, context) -> dict:
                 if not row:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
                 order = fmt_order(row)
-                # Подтягиваем складские остатки для каждой позиции
                 schema = "t_p72635010_quantum_fusion_resea"
-                for item in order["items"]:
-                    pid = item.get("id")
-                    if pid and item.get("item_type") == "product":
-                        cur.execute(
-                            f"SELECT s.id, s.qty, s.qty_reserved, wg.warranty_months, wg.id as gid "
-                            f"FROM {schema}.warehouse_supplies s "
-                            f"JOIN {schema}.warehouse_groups wg ON wg.id = s.group_id "
-                            f"WHERE wg.product_id = %s ORDER BY s.id ASC",
-                            (int(pid),)
-                        )
-                        supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
-                                     "free": r[1] - r[2], "warranty_months": r[3], "group_id": r[4]}
-                                    for r in cur.fetchall()]
-                        item["_supplies"] = supplies
-                # Для ПК-заказов подтягиваем wip_build с компонентами
+
                 if order.get("order_type") == "pc_build":
+                    # Для ПК-заказов: items = слоты из wip_build с данными склада и статусами
                     cur.execute(
                         f"SELECT wb.id, wb.stage, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, "
                         f"wb.psu, wb.case_name, wb.cooling, wb.extra, "
@@ -239,22 +225,75 @@ def handler(event: dict, context) -> dict:
                         slot_labels = {"cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
                                        "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
                                        "case_name": "Корпус", "cooling": "Охлаждение", "extra": "Доп."}
-                        components = []
+                        # Маппинг slot -> source_id из pc_build
+                        slot_product_map = {}
+                        build_id = wip[20]
+                        if build_id:
+                            cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
+                            pc_row = cur.fetchone()
+                            if pc_row and pc_row[0]:
+                                raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                                for comp in raw:
+                                    s = comp.get("slot")
+                                    if s and comp.get("source") == "catalog" and comp.get("source_id"):
+                                        slot_product_map[s] = int(comp["source_id"])
+
+                        wip_items = []
                         for i, slot in enumerate(slot_names):
                             name = wip[2 + i]
-                            status = wip[11 + i]
-                            if name and name.strip():
-                                components.append({
-                                    "slot": slot,
-                                    "label": slot_labels.get(slot, slot),
-                                    "name": name,
-                                    "status": status or "pending"
-                                })
-                        order["_wip_build"] = {
-                            "id": wip[0], "stage": wip[1],
-                            "build_id": wip[20],
-                            "components": components
-                        }
+                            wip_status = wip[11 + i] or "pending"
+                            if not name or not name.strip():
+                                continue
+                            product_id = slot_product_map.get(slot)
+                            # Ищем по имени если нет маппинга
+                            if not product_id:
+                                cur.execute(f"SELECT id FROM {schema}.products p WHERE p.name = %s LIMIT 1", (name,))
+                                pr = cur.fetchone()
+                                if pr:
+                                    product_id = pr[0]
+                            # Складские остатки
+                            supplies = []
+                            if product_id:
+                                cur.execute(
+                                    f"SELECT s.id, s.qty, s.qty_reserved, s.qty_negative, wg.warranty_months, wg.id "
+                                    f"FROM {schema}.warehouse_supplies s "
+                                    f"JOIN {schema}.warehouse_groups wg ON wg.id = s.group_id "
+                                    f"WHERE wg.product_id = %s ORDER BY s.id ASC",
+                                    (product_id,)
+                                )
+                                supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
+                                             "free": r[1] - r[2], "qty_negative": r[3],
+                                             "warranty_months": r[4], "group_id": r[5]}
+                                            for r in cur.fetchall()]
+                            wip_items.append({
+                                "id": product_id,
+                                "name": name,
+                                "price": 0,
+                                "quantity": 1,
+                                "item_type": "product",
+                                "slot": slot,
+                                "slot_label": slot_labels.get(slot, slot),
+                                "wip_status": wip_status,
+                                "_supplies": supplies,
+                            })
+                        order["items"] = wip_items
+                        order["_wip_stage"] = wip[1]
+                else:
+                    # Для обычных заказов — подтягиваем складские остатки
+                    for item in order["items"]:
+                        pid = item.get("id")
+                        if pid and item.get("item_type") == "product":
+                            cur.execute(
+                                f"SELECT s.id, s.qty, s.qty_reserved, wg.warranty_months, wg.id as gid "
+                                f"FROM {schema}.warehouse_supplies s "
+                                f"JOIN {schema}.warehouse_groups wg ON wg.id = s.group_id "
+                                f"WHERE wg.product_id = %s ORDER BY s.id ASC",
+                                (int(pid),)
+                            )
+                            supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
+                                         "free": r[1] - r[2], "warranty_months": r[3], "group_id": r[4]}
+                                        for r in cur.fetchall()]
+                            item["_supplies"] = supplies
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"order": order})}
 
             # Заказы текущего пользователя (для ЛК)
@@ -467,8 +506,8 @@ def handler(event: dict, context) -> dict:
                 for slot, name, status in zip(slot_names, slot_values, slot_statuses):
                     if not name or name.strip() == "":
                         continue
-                    # Уже готово — пропускаем
-                    if status == "ready":
+                    # Уже обработан — пропускаем
+                    if status in ("ready", "need_order", "ordered_transit", "ordered_delay"):
                         continue
 
                     product_id = slot_product_map.get(slot)
