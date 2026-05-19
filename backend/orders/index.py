@@ -245,6 +245,22 @@ def handler(event: dict, context) -> dict:
                             if pc_row and pc_row[1]:
                                 assembly_fee = float(pc_row[1])
 
+                        # Гарантия и серийник сборки из items[0].assembly_warranty
+                        assembly_warranty = 12
+                        assembly_serial = []
+                        assembly_final_price = None
+                        raw_items = order["items"]
+                        for it in raw_items:
+                            if it.get("item_type") in ("config", "assembly") or it.get("assembly"):
+                                if it.get("assembly_warranty"):
+                                    assembly_warranty = int(it["assembly_warranty"])
+                                sn = it.get("serial_numbers") or []
+                                if not sn and it.get("serial_number"):
+                                    sn = [it["serial_number"]]
+                                assembly_serial = [x for x in sn if x and str(x).strip()]
+                                if it.get("final_price"):
+                                    assembly_final_price = float(it["final_price"])
+
                         # Серийники и финальные цены из items заказа (по slot)
                         slot_serials = {}
                         slot_final_price = {}
@@ -314,14 +330,15 @@ def handler(event: dict, context) -> dict:
                             wip_items.append({
                                 "id": None,
                                 "name": "Работа по сборке и настройке ПК",
-                                "price": assembly_fee,
+                                "price": assembly_final_price or assembly_fee,
                                 "quantity": 1,
                                 "item_type": "assembly",
                                 "slot": None,
                                 "slot_label": "Услуга",
                                 "wip_status": None,
                                 "item_status": None,
-                                "serial_numbers": [],
+                                "warranty_months": assembly_warranty,
+                                "serial_numbers": assembly_serial,
                                 "_supplies": [],
                             })
 
@@ -409,8 +426,16 @@ def handler(event: dict, context) -> dict:
                             (json.dumps(items), total, order_id))
 
             elif action == "set_warranty":
-                # Установить срок гарантии для позиции (в месяцах)
-                items[item_idx]["warranty_months"] = int(body.get("warranty_months", 12))
+                # Для ПК-заказов гарантия сборки хранится в items[0].assembly_warranty
+                # Для обычных — в items[item_idx].warranty_months
+                cur.execute("SELECT order_type FROM orders WHERE id=%s", (order_id,))
+                ot = cur.fetchone()
+                if ot and ot[0] == "pc_build":
+                    # Всегда сохраняем в первый item (config) как assembly_warranty
+                    if items:
+                        items[0]["assembly_warranty"] = int(body.get("warranty_months", 12))
+                else:
+                    items[item_idx]["warranty_months"] = int(body.get("warranty_months", 12))
                 cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
 
