@@ -484,6 +484,26 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        # ── РЕЗЕРВЫ ПО ГРУППЕ ─────────────────────────────────────────────────
+        if action == "group_reserves" and method == "GET":
+            """Возвращает активные резервы по group_id с разбивкой по заказам"""
+            gid = params.get("group_id")
+            if not gid:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "group_id required"})}
+            cur.execute(
+                f"SELECT m.order_id, SUM(m.qty_delta) as qty, "
+                f"o.customer_name "
+                f"FROM {SCHEMA}.warehouse_movements m "
+                f"LEFT JOIN orders o ON o.id = m.order_id "
+                f"WHERE m.group_id = {gid} AND m.type IN ('reserved', 'unreserved') AND m.order_id IS NOT NULL "
+                f"GROUP BY m.order_id, o.customer_name "
+                f"HAVING SUM(m.qty_delta) > 0 "
+                f"ORDER BY m.order_id ASC"
+            )
+            rows = cur.fetchall()
+            reserves = [{"order_id": r[0], "qty": int(r[1]), "customer_name": r[2]} for r in rows]
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"reserves": reserves})}
+
         # ── ИСТОРИЯ ДВИЖЕНИЙ ──────────────────────────────────────────────────
         if action == "movements" and method == "GET":
             gid = params.get("group_id")

@@ -149,6 +149,7 @@ export const api = {
     },
     getCategories: () => fetch(`${URLS.warehouse}?action=categories`).then(r => r.json()),
     searchProducts: (q: string) => fetch(`${URLS.warehouse}?action=search_products&q=${encodeURIComponent(q)}`).then(r => r.json()),
+    getGroupReserves: (groupId: number) => fetch(`${URLS.warehouse}?action=group_reserves&group_id=${groupId}`).then(r => r.json()),
     reserve: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reserve", ...data as object }) }).then(r => r.json()),
     writeoff: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "writeoff", ...data as object }) }).then(r => r.json()),
   },

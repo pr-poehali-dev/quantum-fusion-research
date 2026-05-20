@@ -353,6 +353,7 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
   const [supplyModal, setSupplyModal] = useState<Supply | null | "new">(null)
   const [detail, setDetail] = useState<Group | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+  const [reservesModal, setReservesModal] = useState(false)
 
   const load = useCallback(async () => {
     if (!expanded) return
@@ -391,9 +392,20 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
           </span>
         </td>
         <td className="px-3 py-2.5 text-center text-sm">
-          {group.qty_reserved > 0 && <span className="text-orange-400">{fmtNum(group.qty_reserved)}</span>}
-          {group.qty_negative > 0 && <span className="text-red-400 ml-1">−{fmtNum(group.qty_negative)}</span>}
-          {group.qty_reserved === 0 && group.qty_negative === 0 && <span className="text-foreground/30">0</span>}
+          {(group.qty_reserved > 0 || group.qty_negative > 0) ? (
+            <button
+              onClick={e => { e.stopPropagation(); setReservesModal(true) }}
+              className="hover:opacity-70 transition-opacity cursor-pointer"
+            >
+              {group.qty_reserved > 0 && <span className="text-orange-400">{fmtNum(group.qty_reserved)}</span>}
+              {group.qty_negative > 0 && <span className="text-red-400 ml-1">−{fmtNum(group.qty_negative)}</span>}
+            </button>
+          ) : (
+            <span className="text-foreground/30">0</span>
+          )}
+          {reservesModal && (
+            <ReservesModal group={group} onClose={() => setReservesModal(false)} />
+          )}
         </td>
         <td className="px-3 py-2.5 text-xs text-foreground/50">{group.warranty_months} мес.</td>
         <td className="px-3 py-2.5 text-sm font-medium">{fmt(group.price_retail)}</td>
@@ -685,6 +697,57 @@ export default function WarehouseTab() {
           onSaved={load}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Модалка резервов по заказам ──────────────────────────────────────────────
+
+function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }) {
+  const [reserves, setReserves] = useState<{ order_id: number; qty: number; customer_name: string | null }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.warehouse.getGroupReserves(group.id).then(d => {
+      setReserves(d.reserves || [])
+      setLoading(false)
+    })
+  }, [group.id])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Резервы</h2>
+            <p className="text-xs text-foreground/40 mt-0.5">{group.name}</p>
+          </div>
+          <button onClick={onClose}><Icon name="X" size={16} className="text-foreground/40" /></button>
+        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 py-6 justify-center text-foreground/40 text-sm">
+            <Icon name="Loader" size={14} className="animate-spin" />Загружаю...
+          </div>
+        ) : reserves.length === 0 ? (
+          <p className="py-6 text-center text-sm text-foreground/40">Нет активных резервов</p>
+        ) : (
+          <div className="space-y-2">
+            {reserves.map(r => (
+              <div key={r.order_id} className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
+                <a
+                  href={`/admin/orders?id=${r.order_id}`}
+                  onClick={e => e.stopPropagation()}
+                  className="text-sm font-mono font-semibold text-primary hover:underline"
+                >
+                  #{String(r.order_id).padStart(4, "0")}
+                  {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
+                </a>
+                <span className="text-sm font-semibold text-orange-400">{r.qty} шт.</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
