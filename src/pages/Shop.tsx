@@ -388,7 +388,11 @@ export default function Shop() {
               </div>
             ) : (() => {
               const sorted = [...products].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
-              const featured = sorted.filter(p => p.is_featured)
+              // Рекомендуемые — всегда все is_featured из products (без фильтра по категории)
+              const featuredSource = (activeCategory === "all" && !search && allProducts.length > 0) ? allProducts : products
+              const featured = [...featuredSource]
+                .filter(p => p.is_featured)
+                .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
               const rest = sorted.filter(p => !p.is_featured)
               const renderCard = (p: Product) => (
                 <ProductCard
