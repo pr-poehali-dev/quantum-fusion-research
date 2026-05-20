@@ -592,10 +592,15 @@ def handler(event: dict, context) -> dict:
                     filter_desc = json.loads(fvalue) if fvalue else {}
                 except Exception:
                     filter_desc = {}
-                try:
-                    applied_list = json.loads(result_json) if result_json else []
-                except Exception:
+                if not result_json:
                     applied_list = []
+                elif isinstance(result_json, (list, dict)):
+                    applied_list = result_json if isinstance(result_json, list) else []
+                else:
+                    try:
+                        applied_list = json.loads(result_json)
+                    except Exception:
+                        applied_list = []
                 result.append({
                     "id": inv_id,
                     "filter_desc": filter_desc,
