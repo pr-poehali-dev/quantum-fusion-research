@@ -346,25 +346,30 @@ def handler(event: dict, context) -> dict:
                 f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {group_id})"
             )
 
-            # Проверяем отрицательный резерв — если есть, резервируем и уведомляем
+            # Проверяем отрицательный резерв — если есть, резервируем из новой поставки и уведомляем
             negative_alerts = []
+            remaining_qty = qty  # сколько из новой поставки ещё можно зарезервировать
             cur.execute(
                 f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
-                f"WHERE s.group_id = {group_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
+                f"WHERE s.group_id = {group_id} AND s.id != {supply_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
             )
             neg_supplies = cur.fetchall()
+            total_reserved = 0
             for (neg_sid, neg_qty) in neg_supplies:
-                to_reserve = min(neg_qty, qty)
+                if remaining_qty <= 0:
+                    break
+                to_reserve = min(neg_qty, remaining_qty)
                 if to_reserve <= 0:
                     continue
-                # Переводим из отрицательного в обычный резерв
+                # Снимаем отрицательный резерв с виртуальной/старой записи
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
-                    f"SET qty_negative = GREATEST(0, qty_negative - %s), "
-                    f"    qty_reserved = qty_reserved + %s "
+                    f"SET qty_negative = GREATEST(0, qty_negative - %s) "
                     f"WHERE id = %s",
-                    (to_reserve, to_reserve, neg_sid)
+                    (to_reserve, neg_sid)
                 )
+                remaining_qty -= to_reserve
+                total_reserved += to_reserve
                 # Находим заказы с этим товаром в отрицательном резерве
                 cur.execute(
                     f"SELECT p.id, p.name FROM {SCHEMA}.products p "
@@ -373,7 +378,6 @@ def handler(event: dict, context) -> dict:
                 )
                 prod = cur.fetchone()
                 prod_name = prod[1] if prod else "Товар"
-                # Ищем заказы ПК у которых этот товар в need_order через wip_builds
                 cur.execute(
                     f"SELECT o.id FROM orders o "
                     f"JOIN wip_builds wb ON wb.order_id = o.id "
@@ -385,6 +389,14 @@ def handler(event: dict, context) -> dict:
                     "reserved": to_reserve,
                     "orders": affected_orders
                 })
+            # Резерв кладём на новую поставку (не на виртуальную)
+            if total_reserved > 0:
+                cur.execute(
+                    f"UPDATE {SCHEMA}.warehouse_supplies "
+                    f"SET qty_reserved = qty_reserved + %s "
+                    f"WHERE id = %s",
+                    (total_reserved, supply_id)
+                )
 
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
