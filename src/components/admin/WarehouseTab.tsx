@@ -548,6 +548,7 @@ export default function WarehouseTab() {
   const [groupModal, setGroupModal] = useState<Partial<Group> | null | false>(false)
   const [storesModal, setStoresModal] = useState(false)
   const [quickSupplyModal, setQuickSupplyModal] = useState(false)
+  const [inventoryModal, setInventoryModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -588,6 +589,9 @@ export default function WarehouseTab() {
         </Button>
         <Button variant="outline" size="sm" onClick={() => setQuickSupplyModal(true)}>
           <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
+          <Icon name="ClipboardList" size={14} className="mr-1.5" />Инвентаризация
         </Button>
         <Button size="sm" onClick={() => setGroupModal({})}>
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
@@ -695,6 +699,14 @@ export default function WarehouseTab() {
           stores={stores}
           onClose={() => setQuickSupplyModal(false)}
           onSaved={load}
+        />
+      )}
+      {inventoryModal && (
+        <InventoryModal
+          categories={categories}
+          groups={groups}
+          onClose={() => setInventoryModal(false)}
+          onApplied={load}
         />
       )}
     </div>
@@ -921,6 +933,266 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Инвентаризация ────────────────────────────────────────────────────────────
+
+type InvItem = {
+  id: number; group_id: number; name: string; category: string;
+  cell: string; qty_expected: number; qty_reserved: number; qty_actual: number | null; note: string;
+}
+
+function InventoryModal({ categories, groups, onClose, onApplied }: {
+  categories: string[]
+  groups: Group[]
+  onClose: () => void
+  onApplied: () => void
+}) {
+  // Шаг 1 — выбор фильтров, Шаг 2 — заполнение, Шаг 3 — подтверждение
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [selCells, setSelCells] = useState<string[]>([])
+  const [selCats, setSelCats] = useState<string[]>([])
+  const [inventoryId, setInventoryId] = useState<number | null>(null)
+  const [items, setItems] = useState<InvItem[]>([])
+  const [actuals, setActuals] = useState<Record<number, string>>({})
+  const [saving, setSaving] = useState<Record<number, boolean>>({})
+  const [applying, setApplying] = useState(false)
+  const [applyResult, setApplyResult] = useState<{ name: string; delta: number }[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  // Уникальные ячейки из текущих групп
+  const allCells = Array.from(new Set(groups.map(g => g.cell).filter(Boolean))).sort()
+
+  const toggleCell = (c: string) => setSelCells(p => p.includes(c) ? p.filter(x => x !== c) : [...p, c])
+  const toggleCat = (c: string) => setSelCats(p => p.includes(c) ? p.filter(x => x !== c) : [...p, c])
+
+  const startInventory = async () => {
+    if (!selCells.length && !selCats.length) { setError("Выберите хотя бы одну ячейку или категорию"); return }
+    setError(""); setLoading(true)
+    const d = await api.warehouse.inventoryCreate({ filter_cells: selCells, filter_cats: selCats })
+    setLoading(false)
+    if (d.error) { setError(d.error); return }
+    setInventoryId(d.inventory_id)
+    const initActuals: Record<number, string> = {}
+    d.items.forEach((it: InvItem) => { initActuals[it.id] = it.qty_actual !== null ? String(it.qty_actual) : "" })
+    setActuals(initActuals)
+    setItems(d.items)
+    setStep(2)
+  }
+
+  const saveItem = async (itemId: number) => {
+    const val = actuals[itemId]
+    const qty = val === "" ? null : parseInt(val)
+    setSaving(p => ({ ...p, [itemId]: true }))
+    await api.warehouse.inventoryUpdateItem({ item_id: itemId, qty_actual: qty })
+    setSaving(p => ({ ...p, [itemId]: false }))
+  }
+
+  const applyInventory = async () => {
+    if (!inventoryId) return
+    setApplying(true)
+    const d = await api.warehouse.inventoryApply(inventoryId)
+    setApplying(false)
+    if (d.error) { setError(d.error); return }
+    setApplyResult(d.applied || [])
+    setStep(3)
+    onApplied()
+  }
+
+  const filledCount = items.filter(it => actuals[it.id] !== "").length
+  const changedItems = items.filter(it => {
+    const v = actuals[it.id]
+    return v !== "" && parseInt(v) !== it.qty_expected
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="flex w-full max-w-2xl flex-col rounded-2xl border border-border bg-card shadow-2xl" style={{ maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
+
+        {/* Шапка */}
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold">Инвентаризация</h2>
+            <p className="text-xs text-foreground/40 mt-0.5">
+              {step === 1 && "Шаг 1 из 3 — выбор позиций"}
+              {step === 2 && `Шаг 2 из 3 — подсчёт (заполнено ${filledCount} из ${items.length})`}
+              {step === 3 && "Шаг 3 из 3 — результат"}
+            </p>
+          </div>
+          <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+        </div>
+
+        {/* Контент */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+
+          {/* ШАГ 1 — фильтры */}
+          {step === 1 && (
+            <div className="space-y-5">
+              {allCells.length > 0 && (
+                <div>
+                  <p className="mb-2 text-sm font-medium">По ячейкам</p>
+                  <div className="flex flex-wrap gap-2">
+                    {allCells.map(c => (
+                      <button key={c} onClick={() => toggleCell(c)}
+                        className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${selCells.includes(c) ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary/40"}`}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {categories.length > 0 && (
+                <div>
+                  <p className="mb-2 text-sm font-medium">По типам товаров</p>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map(c => (
+                      <button key={c} onClick={() => toggleCat(c)}
+                        className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${selCats.includes(c) ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary/40"}`}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {error && <p className="text-sm text-red-500">{error}</p>}
+            </div>
+          )}
+
+          {/* ШАГ 2 — заполнение */}
+          {step === 2 && (
+            <div className="space-y-2">
+              {items.map(it => (
+                <div key={it.id} className={`rounded-xl border px-4 py-3 ${actuals[it.id] !== "" && parseInt(actuals[it.id]) !== it.qty_expected ? "border-orange-400/40 bg-orange-400/5" : "border-border bg-background"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{it.name}</p>
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-foreground/40">
+                        {it.category && <span>{it.category}</span>}
+                        {it.cell && <><span>·</span><span className="font-mono">📦 {it.cell}</span></>}
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-foreground/60">
+                        <span>Ожидается: <span className="font-semibold text-foreground">{it.qty_expected}</span></span>
+                        {it.qty_reserved > 0 && <span>Резерв: <span className="text-orange-400 font-semibold">{it.qty_reserved}</span></span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Input
+                        type="number" min={0}
+                        placeholder="Факт"
+                        className="w-24 text-center"
+                        value={actuals[it.id] ?? ""}
+                        onChange={e => setActuals(p => ({ ...p, [it.id]: e.target.value }))}
+                        onBlur={() => saveItem(it.id)}
+                      />
+                      {saving[it.id] && <Icon name="Loader" size={12} className="animate-spin text-foreground/30" />}
+                      {!saving[it.id] && actuals[it.id] !== "" && (
+                        parseInt(actuals[it.id]) === it.qty_expected
+                          ? <Icon name="Check" size={14} className="text-emerald-500" />
+                          : <Icon name="AlertCircle" size={14} className="text-orange-400" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ШАГ 3 — результат */}
+          {step === 3 && applyResult && (
+            <div className="space-y-3">
+              {applyResult.length === 0 ? (
+                <div className="py-8 text-center">
+                  <Icon name="CheckCircle" size={40} className="mx-auto mb-3 text-emerald-500" />
+                  <p className="font-medium">Расхождений нет</p>
+                  <p className="text-sm text-foreground/40 mt-1">Фактическое количество совпало с учётным</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-foreground/60 mb-3">Скорректировано позиций: <span className="font-semibold text-foreground">{applyResult.length}</span></p>
+                  {applyResult.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
+                      <span className="text-sm">{r.name}</span>
+                      <span className={`text-sm font-semibold ${r.delta > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                        {r.delta > 0 ? "+" : ""}{r.delta} шт.
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Футер */}
+        <div className="border-t border-border px-6 py-4 shrink-0 flex items-center justify-between gap-3">
+          {step === 1 && (
+            <>
+              <span className="text-xs text-foreground/40">
+                {selCells.length + selCats.length === 0 ? "Ничего не выбрано" : `Выбрано: ${[...selCells, ...selCats].join(", ")}`}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={onClose}>Отмена</Button>
+                <Button onClick={startInventory} disabled={loading}>
+                  {loading ? <><Icon name="Loader" size={14} className="mr-1.5 animate-spin" />Создаю...</> : "Начать →"}
+                </Button>
+              </div>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <span className="text-xs text-foreground/40">
+                {changedItems.length > 0 ? `Расхождений: ${changedItems.length}` : filledCount === items.length ? "Всё заполнено" : `Не заполнено: ${items.length - filledCount}`}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setStep(1)}>← Назад</Button>
+                <Button onClick={() => setStep(3)} disabled={filledCount === 0}>
+                  Проверить итог →
+                </Button>
+              </div>
+            </>
+          )}
+          {step === 3 && !applyResult && (
+            <div className="w-full space-y-3">
+              {changedItems.length > 0 && (
+                <div className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-3">
+                  <p className="text-sm font-medium text-orange-400 mb-2">Будет скорректировано {changedItems.length} позиций:</p>
+                  <div className="space-y-1">
+                    {changedItems.map(it => {
+                      const actual = parseInt(actuals[it.id])
+                      const delta = actual - it.qty_expected
+                      return (
+                        <div key={it.id} className="flex items-center justify-between text-sm">
+                          <span className="text-foreground/70">{it.name}</span>
+                          <span className={delta > 0 ? "text-emerald-500 font-medium" : "text-red-500 font-medium"}>
+                            {delta > 0 ? "+" : ""}{delta} шт.
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {error && <p className="text-sm text-red-500">{error}</p>}
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setStep(2)}>← Назад</Button>
+                <Button onClick={applyInventory} disabled={applying}>
+                  {applying
+                    ? <><Icon name="Loader" size={14} className="mr-1.5 animate-spin" />Применяю...</>
+                    : <><Icon name="CheckCircle" size={14} className="mr-1.5" />Применить инвентаризацию</>}
+                </Button>
+              </div>
+            </div>
+          )}
+          {step === 3 && applyResult && (
+            <div className="flex w-full justify-end">
+              <Button onClick={onClose}>Закрыть</Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

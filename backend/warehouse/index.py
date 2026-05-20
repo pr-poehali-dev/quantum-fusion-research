@@ -572,6 +572,153 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"created": created})}
 
+        # ── ИНВЕНТАРИЗАЦИЯ ────────────────────────────────────────────────────
+
+        if action == "inventory_create" and method == "POST":
+            """Создать новую инвентаризацию по фильтру (ячейки и/или категории)"""
+            filter_cells = body.get("filter_cells", [])   # список ячеек
+            filter_cats = body.get("filter_cats", [])     # список категорий
+
+            where_parts = ["g.is_archived = FALSE"]
+            if filter_cells and filter_cats:
+                cells_sql = ", ".join(f"'{c}'" for c in filter_cells)
+                cats_sql  = ", ".join(f"'{c}'" for c in filter_cats)
+                where_parts.append(f"(g.cell IN ({cells_sql}) OR g.category IN ({cats_sql}))")
+            elif filter_cells:
+                cells_sql = ", ".join(f"'{c}'" for c in filter_cells)
+                where_parts.append(f"g.cell IN ({cells_sql})")
+            elif filter_cats:
+                cats_sql = ", ".join(f"'{c}'" for c in filter_cats)
+                where_parts.append(f"g.category IN ({cats_sql})")
+
+            where = " AND ".join(where_parts)
+            cur.execute(
+                f"SELECT g.id, g.name, g.category, g.cell, "
+                f"COALESCE(SUM(s.qty),0) as qty_total, "
+                f"COALESCE(SUM(s.qty_reserved),0) as qty_reserved "
+                f"FROM {SCHEMA}.warehouse_groups g "
+                f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
+                f"WHERE {where} GROUP BY g.id ORDER BY g.cell NULLS LAST, g.name"
+            )
+            groups = cur.fetchall()
+            if not groups:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нет товаров по выбранным фильтрам"})}
+
+            filter_desc = {"cells": filter_cells, "cats": filter_cats}
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.warehouse_inventories (filter_type, filter_value, status, result_json, created_at) "
+                f"VALUES ('mixed', %s, 'draft', '[]', NOW()) RETURNING id",
+                (json.dumps(filter_desc, ensure_ascii=False),)
+            )
+            inv_id = cur.fetchone()[0]
+
+            items = []
+            for gid, name, cat, cell, qty_total, qty_reserved in groups:
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_inventory_items "
+                    f"(inventory_id, group_id, qty_expected, qty_actual, cell) "
+                    f"VALUES (%s, %s, %s, NULL, %s) RETURNING id",
+                    (inv_id, gid, int(qty_total), cell or "")
+                )
+                item_id = cur.fetchone()[0]
+                items.append({
+                    "id": item_id, "group_id": gid, "name": name,
+                    "category": cat, "cell": cell or "",
+                    "qty_expected": int(qty_total), "qty_reserved": int(qty_reserved),
+                    "qty_actual": None
+                })
+
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"inventory_id": inv_id, "items": items})}
+
+        if action == "inventory_update_item" and method == "POST":
+            """Обновить фактическое количество по позиции инвентаризации"""
+            item_id = int(body.get("item_id"))
+            qty_actual = body.get("qty_actual")
+            note = body.get("note", "")
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_inventory_items "
+                f"SET qty_actual=%s, note=%s, updated_at=NOW() WHERE id=%s",
+                (qty_actual, note, item_id)
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "inventory_apply" and method == "POST":
+            """Применить инвентаризацию: скорректировать qty в поставках и записать в лог"""
+            inv_id = int(body.get("inventory_id"))
+            cur.execute(
+                f"SELECT ii.id, ii.group_id, ii.qty_expected, ii.qty_actual, ii.cell, g.name "
+                f"FROM {SCHEMA}.warehouse_inventory_items ii "
+                f"JOIN {SCHEMA}.warehouse_groups g ON g.id = ii.group_id "
+                f"WHERE ii.inventory_id = %s AND ii.qty_actual IS NOT NULL",
+                (inv_id,)
+            )
+            items = cur.fetchall()
+            applied = []
+            for iid, gid, qty_exp, qty_act, cell, name in items:
+                delta = int(qty_act) - int(qty_exp)
+                if delta == 0:
+                    continue
+                # Берём последнюю поставку этой группы для корректировки
+                cur.execute(
+                    f"SELECT id, qty FROM {SCHEMA}.warehouse_supplies WHERE group_id=%s ORDER BY id DESC LIMIT 1",
+                    (gid,)
+                )
+                supply = cur.fetchone()
+                if supply:
+                    sid, s_qty = supply
+                    new_qty = max(0, int(s_qty) + delta)
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_supplies SET qty=%s, updated_at=NOW() WHERE id=%s",
+                        (new_qty, sid)
+                    )
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.warehouse_movements "
+                        f"(group_id, supply_id, type, qty_delta, note, created_at) "
+                        f"VALUES (%s, %s, 'inventory', %s, %s, NOW())",
+                        (gid, sid, delta, f"Инвентаризация #{inv_id}: {'+' if delta>0 else ''}{delta} шт. (факт {qty_act}, ожидалось {qty_exp})")
+                    )
+                    # Синхронизируем in_stock/stock_qty в products
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.products SET "
+                        f"stock_qty=(SELECT COALESCE(SUM(s2.qty),0) FROM {SCHEMA}.warehouse_supplies s2 "
+                        f"JOIN {SCHEMA}.warehouse_groups g2 ON g2.id=s2.group_id WHERE g2.product_id=products.id), "
+                        f"in_stock=(SELECT COALESCE(SUM(s2.qty),0)>0 FROM {SCHEMA}.warehouse_supplies s2 "
+                        f"JOIN {SCHEMA}.warehouse_groups g2 ON g2.id=s2.group_id WHERE g2.product_id=products.id) "
+                        f"WHERE id=(SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id=%s)",
+                        (gid,)
+                    )
+                    applied.append({"name": name, "delta": delta, "qty_actual": qty_act})
+
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_inventories SET status='applied', result_json=%s, applied_at=NOW() WHERE id=%s",
+                (json.dumps(applied, ensure_ascii=False), inv_id)
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "applied": applied})}
+
+        if action == "inventory_get" and method == "GET":
+            """Получить позиции инвентаризации"""
+            inv_id = int(params.get("inventory_id"))
+            cur.execute(
+                f"SELECT ii.id, ii.group_id, g.name, g.category, ii.cell, "
+                f"ii.qty_expected, ii.qty_actual, ii.note, "
+                f"COALESCE(SUM(s.qty_reserved),0) as qty_reserved "
+                f"FROM {SCHEMA}.warehouse_inventory_items ii "
+                f"JOIN {SCHEMA}.warehouse_groups g ON g.id = ii.group_id "
+                f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = ii.group_id "
+                f"WHERE ii.inventory_id = %s "
+                f"GROUP BY ii.id, ii.group_id, g.name, g.category, ii.cell, ii.qty_expected, ii.qty_actual, ii.note "
+                f"ORDER BY ii.cell NULLS LAST, g.name",
+                (inv_id,)
+            )
+            rows = cur.fetchall()
+            items = [{"id": r[0], "group_id": r[1], "name": r[2], "category": r[3],
+                      "cell": r[4] or "", "qty_expected": r[5], "qty_actual": r[6],
+                      "note": r[7], "qty_reserved": int(r[8])} for r in rows]
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"items": items})}
+
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 
     finally:
