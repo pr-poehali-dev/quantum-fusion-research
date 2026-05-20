@@ -945,14 +945,26 @@ type InvItem = {
   cell: string; qty_expected: number; qty_reserved: number; qty_actual: number | null; note: string;
 }
 
+type InventoryRecord = {
+  id: number
+  filter_desc: { cells?: string[]; cats?: string[] }
+  status: string
+  total_items: number
+  filled_items: number
+  changes_count: number
+  applied_list: { name: string; delta: number }[]
+  applied_at: string | null
+  created_at: string | null
+}
+
 function InventoryModal({ categories, groups, onClose, onApplied }: {
   categories: string[]
   groups: Group[]
   onClose: () => void
   onApplied: () => void
 }) {
-  // Шаг 1 — выбор фильтров, Шаг 2 — заполнение, Шаг 3 — подтверждение
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // Шаг 1 — выбор фильтров, Шаг 2 — заполнение, Шаг 3 — подтверждение, "history" — история
+  const [step, setStep] = useState<1 | 2 | 3 | "history">(1)
   const [selCells, setSelCells] = useState<string[]>([])
   const [selCats, setSelCats] = useState<string[]>([])
   const [inventoryId, setInventoryId] = useState<number | null>(null)
@@ -963,9 +975,19 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
   const [applyResult, setApplyResult] = useState<{ name: string; delta: number }[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [historyList, setHistoryList] = useState<InventoryRecord[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   // Уникальные ячейки из текущих групп
   const allCells = Array.from(new Set(groups.map(g => g.cell).filter(Boolean))).sort()
+
+  const openHistory = async () => {
+    setStep("history")
+    setHistoryLoading(true)
+    const d = await api.warehouse.inventoryList()
+    setHistoryList(d.inventories || [])
+    setHistoryLoading(false)
+  }
 
   const toggleCell = (c: string) => setSelCells(p => p.includes(c) ? p.filter(x => x !== c) : [...p, c])
   const toggleCat = (c: string) => setSelCats(p => p.includes(c) ? p.filter(x => x !== c) : [...p, c])
@@ -1016,14 +1038,29 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
         {/* Шапка */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
           <div>
-            <h2 className="text-lg font-semibold">Инвентаризация</h2>
+            <h2 className="text-lg font-semibold">
+              {step === "history" ? "История инвентаризаций" : "Инвентаризация"}
+            </h2>
             <p className="text-xs text-foreground/40 mt-0.5">
               {step === 1 && "Шаг 1 из 3 — выбор позиций"}
               {step === 2 && `Шаг 2 из 3 — подсчёт (заполнено ${filledCount} из ${items.length})`}
               {step === 3 && "Шаг 3 из 3 — результат"}
+              {step === "history" && "Все проведённые инвентаризации"}
             </p>
           </div>
-          <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+          <div className="flex items-center gap-2">
+            {step !== "history" && (
+              <button onClick={openHistory} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary/40 hover:text-foreground transition-colors">
+                <Icon name="History" size={13} />История
+              </button>
+            )}
+            {step === "history" && (
+              <button onClick={() => setStep(1)} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary/40 hover:text-foreground transition-colors">
+                <Icon name="Plus" size={13} />Новая
+              </button>
+            )}
+            <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+          </div>
         </div>
 
         {/* Контент */}
@@ -1101,6 +1138,68 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
             </div>
           )}
 
+          {/* ИСТОРИЯ */}
+          {step === "history" && (
+            <div className="space-y-3">
+              {historyLoading && (
+                <div className="flex items-center justify-center gap-2 py-10 text-foreground/40 text-sm">
+                  <Icon name="Loader" size={14} className="animate-spin" />Загружаю...
+                </div>
+              )}
+              {!historyLoading && historyList.length === 0 && (
+                <div className="py-10 text-center text-sm text-foreground/40">Инвентаризаций ещё не проводилось</div>
+              )}
+              {!historyLoading && historyList.map(inv => {
+                const filters = [
+                  ...(inv.filter_desc.cells || []),
+                  ...(inv.filter_desc.cats || []),
+                ].join(", ")
+                const dt = inv.applied_at || inv.created_at
+                const dateStr = dt ? new Date(dt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"
+                return (
+                  <details key={inv.id} className="group rounded-xl border border-border bg-background overflow-hidden">
+                    <summary className="flex cursor-pointer items-center justify-between px-4 py-3 list-none hover:bg-muted transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-2 w-2 rounded-full shrink-0 ${inv.status === "applied" ? "bg-emerald-500" : "bg-yellow-400"}`} />
+                        <div>
+                          <p className="text-sm font-medium">#{inv.id} — {filters || "весь склад"}</p>
+                          <p className="text-xs text-foreground/40">{dateStr} · {inv.total_items} позиций</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {inv.status === "applied" && inv.changes_count > 0 && (
+                          <span className="text-xs text-orange-400 font-medium">{inv.changes_count} изм.</span>
+                        )}
+                        {inv.status === "applied" && inv.changes_count === 0 && (
+                          <span className="text-xs text-emerald-500">без изменений</span>
+                        )}
+                        {inv.status === "draft" && (
+                          <span className="text-xs text-yellow-400">черновик</span>
+                        )}
+                        <Icon name="ChevronDown" size={14} className="text-foreground/30 transition-transform group-open:rotate-180" />
+                      </div>
+                    </summary>
+                    {inv.applied_list.length > 0 && (
+                      <div className="border-t border-border px-4 py-3 space-y-1.5">
+                        {inv.applied_list.map((r, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm">
+                            <span className="text-foreground/70">{r.name}</span>
+                            <span className={`font-semibold ${r.delta > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                              {r.delta > 0 ? "+" : ""}{r.delta} шт.
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {inv.applied_list.length === 0 && inv.status === "applied" && (
+                      <div className="border-t border-border px-4 py-3 text-xs text-foreground/40">Расхождений не было</div>
+                    )}
+                  </details>
+                )
+              })}
+            </div>
+          )}
+
           {/* ШАГ 3 — результат */}
           {step === 3 && applyResult && (
             <div className="space-y-3">
@@ -1129,6 +1228,11 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
 
         {/* Футер */}
         <div className="border-t border-border px-6 py-4 shrink-0 flex items-center justify-between gap-3">
+          {step === "history" && (
+            <div className="flex w-full justify-end">
+              <Button variant="outline" onClick={onClose}>Закрыть</Button>
+            </div>
+          )}
           {step === 1 && (
             <>
               <span className="text-xs text-foreground/40">

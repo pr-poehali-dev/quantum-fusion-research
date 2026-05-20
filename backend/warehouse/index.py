@@ -574,6 +574,41 @@ def handler(event: dict, context) -> dict:
 
         # ── ИНВЕНТАРИЗАЦИЯ ────────────────────────────────────────────────────
 
+        if action == "inventory_list" and method == "GET":
+            """Список всех инвентаризаций с позициями"""
+            cur.execute(
+                f"SELECT i.id, i.filter_type, i.filter_value, i.status, i.result_json, "
+                f"i.applied_at, i.created_at, COUNT(ii.id) as total_items, "
+                f"COUNT(ii.id) FILTER (WHERE ii.qty_actual IS NOT NULL) as filled_items "
+                f"FROM {SCHEMA}.warehouse_inventories i "
+                f"LEFT JOIN {SCHEMA}.warehouse_inventory_items ii ON ii.inventory_id = i.id "
+                f"GROUP BY i.id ORDER BY i.created_at DESC LIMIT 50"
+            )
+            rows = cur.fetchall()
+            result = []
+            for r in rows:
+                inv_id, ftype, fvalue, status, result_json, applied_at, created_at, total, filled = r
+                try:
+                    filter_desc = json.loads(fvalue) if fvalue else {}
+                except Exception:
+                    filter_desc = {}
+                try:
+                    applied_list = json.loads(result_json) if result_json else []
+                except Exception:
+                    applied_list = []
+                result.append({
+                    "id": inv_id,
+                    "filter_desc": filter_desc,
+                    "status": status,
+                    "total_items": int(total),
+                    "filled_items": int(filled),
+                    "changes_count": len(applied_list),
+                    "applied_list": applied_list,
+                    "applied_at": applied_at.isoformat() if applied_at else None,
+                    "created_at": created_at.isoformat() if created_at else None,
+                })
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"inventories": result})}
+
         if action == "inventory_create" and method == "POST":
             """Создать новую инвентаризацию по фильтру (ячейки и/или категории)"""
             filter_cells = body.get("filter_cells", [])   # список ячеек

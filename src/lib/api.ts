@@ -152,6 +152,7 @@ export const api = {
     getGroupReserves: (groupId: number) => fetch(`${URLS.warehouse}?action=group_reserves&group_id=${groupId}`).then(r => r.json()),
     reserve: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reserve", ...data as object }) }).then(r => r.json()),
     writeoff: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "writeoff", ...data as object }) }).then(r => r.json()),
+    inventoryList: () => fetch(`${URLS.warehouse}?action=inventory_list`).then(r => r.json()),
     inventoryCreate: (data: { filter_cells: string[], filter_cats: string[] }) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_create", ...data }) }).then(r => r.json()),
     inventoryUpdateItem: (data: { item_id: number, qty_actual: number | null, note?: string }) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_update_item", ...data }) }).then(r => r.json()),
     inventoryApply: (inventory_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_apply", inventory_id }) }).then(r => r.json()),
