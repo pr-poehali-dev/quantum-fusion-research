@@ -904,6 +904,58 @@ def handler(event: dict, context) -> dict:
             body = json.loads(event.get("body") or "{}")
             new_status = body["status"]
             order_id = body["id"]
+            schema = "t_p72635010_quantum_fusion_resea"
+
+            # При отмене — снимаем все резервы этого заказа со склада
+            if new_status == "cancelled":
+                cur.execute(
+                    f"SELECT s.id, s.group_id, SUM(m.qty_delta) as reserved_qty "
+                    f"FROM {schema}.warehouse_movements m "
+                    f"JOIN {schema}.warehouse_supplies s ON s.id = m.supply_id "
+                    f"WHERE m.order_id = %s AND m.type IN ('reserved', 'unreserved') "
+                    f"GROUP BY s.id, s.group_id "
+                    f"HAVING SUM(m.qty_delta) > 0",
+                    (order_id,)
+                )
+                reserves = cur.fetchall()
+                for sid, gid, qty in reserves:
+                    cur.execute(
+                        f"UPDATE {schema}.warehouse_supplies "
+                        f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                        f"WHERE id = %s",
+                        (int(qty), sid)
+                    )
+                    cur.execute(
+                        f"INSERT INTO {schema}.warehouse_movements "
+                        f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                        f"VALUES (%s, %s, %s, 'unreserved', %s, %s, NOW())",
+                        (gid, sid, order_id, -int(qty), f"Снят резерв при отмене заказа #{order_id}")
+                    )
+                # Снимаем также отрицательные резервы (qty_negative) по товарам заказа
+                cur.execute("SELECT items FROM orders WHERE id = %s", (order_id,))
+                row = cur.fetchone()
+                order_items = row[0] if row else []
+                for it in (order_items or []):
+                    pid = it.get("id")
+                    if not pid or it.get("item_type") != "product":
+                        continue
+                    item_status = it.get("item_status", "")
+                    if item_status == "need_order":
+                        qty_neg = int(it.get("quantity", 1))
+                        cur.execute(
+                            f"SELECT s.id FROM {schema}.warehouse_supplies s "
+                            f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                            f"WHERE g.product_id = %s AND s.qty_negative > 0 ORDER BY s.id DESC LIMIT 1",
+                            (int(pid),)
+                        )
+                        neg_row = cur.fetchone()
+                        if neg_row:
+                            cur.execute(
+                                f"UPDATE {schema}.warehouse_supplies "
+                                f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
+                                (qty_neg, neg_row[0])
+                            )
+
             cur.execute("UPDATE orders SET status=%s, updated_at=NOW() WHERE id=%s", (new_status, order_id))
             # Синхронизируем стадию wip_build со статусом заказа ПК
             STATUS_TO_STAGE = {
