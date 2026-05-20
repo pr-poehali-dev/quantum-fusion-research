@@ -19,6 +19,7 @@ interface Product {
   specs: Record<string, string>
   in_stock: boolean
   is_featured: boolean
+  avg_cost: number
   category: { id: number; name: string; slug: string } | null
 }
 
@@ -91,6 +92,7 @@ const SLOT_ICONS: Record<string, string> = {
 
 export default function Shop() {
   const [products, setProducts] = useState<Product[]>([])
+  const [allProducts, setAllProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [builds, setBuilds] = useState<Build[]>([])
   const [communityBuilds, setCommunityBuilds] = useState<CommunityBuild[]>([])
@@ -132,6 +134,12 @@ export default function Shop() {
     if (tab === "community") setShopTab("community")
     else if (searchParams.get("build")) setShopTab("builds")
   }, [searchParams])
+
+  useEffect(() => {
+    api.products.getAll({}).then(data => {
+      setAllProducts(data.products || [])
+    })
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -394,6 +402,18 @@ export default function Shop() {
                   onNavigate={() => navigate(`/product/${p.id}`)}
                 />
               )
+              // По категориям из allProducts — топ-3 по марже на категорию
+              const catProducts = categories.map(cat => {
+                const inCat = allProducts
+                  .filter(p => p.in_stock && p.category?.slug === cat.slug)
+                  .sort((a, b) => {
+                    const mA = a.avg_cost > 0 ? (a.price - a.avg_cost) / a.price : 0
+                    const mB = b.avg_cost > 0 ? (b.price - b.avg_cost) / b.price : 0
+                    return mB - mA
+                  })
+                return { cat, top: inCat.slice(0, 3) }
+              }).filter(({ top }) => top.length > 0)
+
               return (
                 <>
                   {featured.length > 0 && (
@@ -404,13 +424,32 @@ export default function Shop() {
                       </div>
                     </>
                   )}
-                  {rest.length > 0 && (
-                    <>
-                      {featured.length > 0 && <p className="mt-8 mb-3 text-xs font-mono uppercase tracking-widest text-foreground/40">Все товары</p>}
-                      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {rest.map(renderCard)}
-                      </div>
-                    </>
+                  {/* Блоки по категориям — только на главной без фильтра */}
+                  {catProducts.length > 0 && activeCategory === "all" && !search && (
+                    <div className={`space-y-10 ${featured.length > 0 ? "mt-10" : ""}`}>
+                      {catProducts.map(({ cat, top }) => (
+                        <div key={cat.slug}>
+                          <p className="mb-4 text-xs font-mono uppercase tracking-widest text-foreground/40">{cat.name}</p>
+                          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                            {top.map(renderCard)}
+                            {/* Бокс "Посмотреть все" */}
+                            <button
+                              onClick={() => { setActiveCategory(cat.slug) }}
+                              style={{ cursor: "pointer" }}
+                              className="group flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 min-h-[200px] gap-3 p-6"
+                            >
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border group-hover:border-primary/40 transition-colors">
+                                <Icon name="ArrowRight" size={20} className="text-foreground/40 group-hover:text-primary transition-colors" />
+                              </div>
+                              <div className="text-center">
+                                <p className="text-sm font-medium text-foreground/60 group-hover:text-foreground transition-colors">Посмотреть все</p>
+                                <p className="mt-0.5 text-xs text-foreground/30">{cat.name}</p>
+                              </div>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </>
               )
