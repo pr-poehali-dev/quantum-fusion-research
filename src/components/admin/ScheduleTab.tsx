@@ -13,8 +13,20 @@ const PALETTE = [
   "#06b6d4","#f97316","#ec4899","#14b8a6","#6366f1",
 ]
 
+type EventType = "work" | "absent" | "dayoff"
+
+const EVENT_TYPES: { key: EventType; label: string; color: string; dot: string }[] = [
+  { key: "work",   label: "Рабочий день",  color: "bg-blue-600/20 border-blue-500/40 text-blue-400",   dot: "#3b82f6" },
+  { key: "absent", label: "Отсутствовал",  color: "bg-red-600/20 border-red-500/40 text-red-400",      dot: "#ef4444" },
+  { key: "dayoff", label: "Выходной",      color: "bg-green-600/20 border-green-500/40 text-green-400", dot: "#22c55e" },
+]
+
 interface Employee { id: number; name: string; color: string; is_active: boolean }
-interface Schedule { id: number; employee_id: number; work_date: string; time_start: string | null; time_end: string | null; is_day_off: boolean; note: string | null }
+interface Schedule {
+  id: number; employee_id: number; work_date: string
+  time_start: string | null; time_end: string | null
+  is_day_off: boolean; event_type?: EventType; note: string | null
+}
 
 function authH(sid: string) { return { "Content-Type": "application/json", "X-Session-Id": sid } }
 
@@ -31,7 +43,16 @@ function getMonthDays(year: number, month: number) {
 }
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10) }
-function isCurrentMonth(d: Date, year: number, month: number) { return d.getFullYear() === year && d.getMonth() === month - 1 }
+function isCurrentMonth(d: Date, year: number, month: number) {
+  return d.getFullYear() === year && d.getMonth() === month - 1
+}
+
+function shiftColor(s: Schedule, emp: Employee) {
+  const t = (s.event_type || (s.is_day_off ? "dayoff" : "work")) as EventType
+  if (t === "absent") return "#ef4444"
+  if (t === "dayoff") return "#22c55e"
+  return emp.color
+}
 
 export default function ScheduleTab() {
   const { sessionId } = useAuth()
@@ -43,13 +64,11 @@ export default function ScheduleTab() {
   const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Модалка смены
-  const [modal, setModal] = useState<{ date: string; empId: number } | null>(null)
-  const [modalStart, setModalStart] = useState("10:00")
-  const [modalEnd, setModalEnd] = useState("21:00")
-  const [modalDayOff, setModalDayOff] = useState(false)
-  const [modalNote, setModalNote] = useState("")
-  const [saving, setSaving] = useState(false)
+  // Штамп — панель внизу
+  const [stampType, setStampType] = useState<EventType>("work")
+  const [stampStart, setStampStart] = useState("10:00")
+  const [stampEnd, setStampEnd] = useState("21:00")
+  const [stampSaving, setStampSaving] = useState<string | null>(null) // ISO дата которую сохраняем
 
   // Модалка сотрудника
   const [empModal, setEmpModal] = useState<Partial<Employee> | null>(null)
@@ -94,42 +113,46 @@ export default function ScheduleTab() {
   const getShifts = (date: string) =>
     schedules.filter(s => s.work_date === date && (!selectedEmployee || s.employee_id === selectedEmployee))
 
-  const openModal = (date: string, empId: number) => {
-    const existing = schedules.find(s => s.work_date === date && s.employee_id === empId)
-    setModal({ date, empId })
-    setModalStart(existing?.time_start || "10:00")
-    setModalEnd(existing?.time_end || "21:00")
-    setModalDayOff(existing?.is_day_off || false)
-    setModalNote(existing?.note || "")
-  }
-
-  const saveShift = async () => {
-    if (!modal || !sessionId) return
-    setSaving(true)
+  // Клик по ячейке — применяем штамп
+  const applyStamp = async (date: string) => {
+    if (!selectedEmployee || !sessionId) return
+    setStampSaving(date)
+    const isDayOff = stampType !== "work"
     await call("action=schedule_set", {
       method: "POST",
       body: JSON.stringify({
-        employee_id: modal.empId, work_date: modal.date,
-        time_start: modalDayOff ? null : modalStart,
-        time_end: modalDayOff ? null : modalEnd,
-        is_day_off: modalDayOff, note: modalNote || null,
+        employee_id: selectedEmployee,
+        work_date: date,
+        time_start: stampType === "work" ? stampStart : null,
+        time_end: stampType === "work" ? stampEnd : null,
+        is_day_off: isDayOff,
+        note: stampType === "absent" ? "Отсутствовал" : null,
       })
     })
-    await loadSchedules()
-    setSaving(false)
-    setModal(null)
+    // Оптимистично обновляем локально
+    setSchedules(prev => {
+      const filtered = prev.filter(s => !(s.work_date === date && s.employee_id === selectedEmployee))
+      return [...filtered, {
+        id: Date.now(), employee_id: selectedEmployee, work_date: date,
+        time_start: stampType === "work" ? stampStart : null,
+        time_end: stampType === "work" ? stampEnd : null,
+        is_day_off: isDayOff,
+        event_type: stampType,
+        note: stampType === "absent" ? "Отсутствовал" : null,
+      }]
+    })
+    setStampSaving(null)
   }
 
-  const deleteShift = async () => {
-    if (!modal || !sessionId) return
-    setSaving(true)
+  // Клик на существующую смену — удаляем
+  const removeShift = async (e: React.MouseEvent, date: string, empId: number) => {
+    e.stopPropagation()
+    if (!sessionId) return
     await call("action=schedule_delete", {
       method: "POST",
-      body: JSON.stringify({ employee_id: modal.empId, work_date: modal.date })
+      body: JSON.stringify({ employee_id: empId, work_date: date })
     })
-    await loadSchedules()
-    setSaving(false)
-    setModal(null)
+    setSchedules(prev => prev.filter(s => !(s.work_date === date && s.employee_id === empId)))
   }
 
   const saveEmployee = async () => {
@@ -148,6 +171,8 @@ export default function ScheduleTab() {
   const days = getMonthDays(year, month)
   const weeks: Date[][] = []
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7))
+
+  const canStamp = !!selectedEmployee
 
   return (
     <div className="space-y-6">
@@ -189,104 +214,147 @@ export default function ScheduleTab() {
           </div>
         </div>
 
-        {/* ── Календарь ── */}
-        <div className="flex-1 min-w-0">
-          {/* Навигация */}
-          <div className="mb-4 flex items-center gap-3">
-            <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="ChevronLeft" size={15} />
-            </button>
-            <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="ChevronRight" size={15} />
-            </button>
-            <button onClick={goToday} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              Сегодня
-            </button>
-            <span className="text-base font-medium text-foreground">
-              {MONTHS[month-1]} {year} г.
-            </span>
-          </div>
+        {/* ── Календарь + штамп ── */}
+        <div className="flex flex-1 gap-4 min-w-0">
 
-          {/* Сетка */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            {/* Дни недели */}
-            <div className="grid grid-cols-7 border-b border-border bg-muted/40">
-              {WEEKDAYS.map(d => (
-                <div key={d} className="py-2 text-center text-xs font-semibold uppercase tracking-wide text-foreground/50">{d}</div>
-              ))}
+          {/* Календарь */}
+          <div className="flex-1 min-w-0">
+            <div className="mb-4 flex items-center gap-3">
+              <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="ChevronLeft" size={15} />
+              </button>
+              <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="ChevronRight" size={15} />
+              </button>
+              <button onClick={goToday} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                Сегодня
+              </button>
+              <span className="text-base font-medium text-foreground">
+                {MONTHS[month-1]} {year} г.
+              </span>
             </div>
 
-            {/* Недели */}
-            {loading ? (
-              <div className="h-64 flex items-center justify-center text-foreground/40">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="grid grid-cols-7 border-b border-border bg-muted/40">
+                {WEEKDAYS.map(d => (
+                  <div key={d} className="py-2 text-center text-xs font-semibold uppercase tracking-wide text-foreground/50">{d}</div>
+                ))}
               </div>
-            ) : (
-              weeks.map((week, wi) => (
-                <div key={wi} className="grid grid-cols-7 border-b border-border/50 last:border-0" style={{ minHeight: "80px" }}>
-                  {week.map((day, di) => {
-                    const iso = isoDate(day)
-                    const inMonth = isCurrentMonth(day, year, month)
-                    const isToday = iso === isoDate(today)
-                    const shifts = getShifts(iso)
-                    const dow = di // 0=пн, 5=сб, 6=вс
-                    const isWeekend = dow >= 5
 
-                    return (
-                      <div key={di} className={`border-r border-border/30 last:border-0 p-1 ${!inMonth ? "bg-muted/20" : ""} ${isWeekend && inMonth ? "bg-muted/10" : ""}`}
-                        style={{ minHeight: "80px" }}>
-                        {/* Число */}
-                        <div className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ml-auto
-                          ${isToday ? "bg-primary text-primary-foreground" : ""}
-                          ${!inMonth ? "text-foreground/25" : isWeekend ? "text-foreground/50" : "text-foreground/70"}`}>
-                          {day.getDate()}
-                        </div>
-
-                        {/* Смены */}
-                        <div className="space-y-0.5">
-                          {shifts.map(s => {
-                            const emp = employees.find(e => e.id === s.employee_id)
-                            if (!emp) return null
-                            const label = s.is_day_off
-                              ? emp.name
-                              : s.time_start && s.time_end
-                                ? `${emp.name} (${s.time_start}-${s.time_end})`
-                                : emp.name
-                            return (
-                              <button key={s.id}
-                                onClick={() => openModal(iso, s.employee_id)}
-                                className="w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium text-white leading-tight hover:opacity-80 transition-opacity"
-                                style={{ backgroundColor: s.is_day_off ? "#22c55e" : emp.color, cursor: "pointer" }}
-                                title={label}>
-                                {label}
-                              </button>
-                            )
-                          })}
-                          {/* Кнопка добавить смену — при наведении */}
-                          {inMonth && (
-                            <div className="grid grid-cols-2 gap-0.5 mt-0.5">
-                              {(selectedEmployee
-                                ? employees.filter(e => e.id === selectedEmployee && e.is_active)
-                                : employees.filter(e => e.is_active && !shifts.find(s => s.employee_id === e.id))
-                              ).slice(0, 4).map(e => (
-                                <button key={e.id}
-                                  onClick={() => openModal(iso, e.id)}
-                                  className="rounded px-1 py-0.5 text-[9px] text-foreground/30 hover:text-foreground hover:bg-muted transition-colors truncate"
-                                  style={{ cursor: "pointer" }}
-                                  title={`Добавить ${e.name}`}>
-                                  + {e.name.split(" ")[0]}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+              {loading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </div>
-              ))
-            )}
+              ) : (
+                weeks.map((week, wi) => (
+                  <div key={wi} className="grid grid-cols-7 border-b border-border/50 last:border-0" style={{ minHeight: "72px" }}>
+                    {week.map((day, di) => {
+                      const iso = isoDate(day)
+                      const inMonth = isCurrentMonth(day, year, month)
+                      const isToday = iso === isoDate(today)
+                      const shifts = getShifts(iso)
+                      const isWeekend = di >= 5
+                      const isSaving = stampSaving === iso
+
+                      return (
+                        <div key={di}
+                          onClick={() => inMonth && canStamp && applyStamp(iso)}
+                          className={`border-r border-border/30 last:border-0 p-1 transition-colors
+                            ${!inMonth ? "bg-muted/20" : ""}
+                            ${isWeekend && inMonth ? "bg-muted/10" : ""}
+                            ${inMonth && canStamp ? "cursor-pointer hover:bg-primary/5" : ""}
+                            ${isSaving ? "opacity-60" : ""}
+                          `}
+                          style={{ minHeight: "72px" }}>
+                          <div className={`mb-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium ml-auto
+                            ${isToday ? "bg-primary text-primary-foreground" : ""}
+                            ${!inMonth ? "text-foreground/25" : isWeekend ? "text-foreground/40" : "text-foreground/60"}`}>
+                            {day.getDate()}
+                          </div>
+
+                          <div className="space-y-0.5">
+                            {shifts.map(s => {
+                              const emp = employees.find(e => e.id === s.employee_id)
+                              if (!emp) return null
+                              const bg = shiftColor(s, emp)
+                              const label = s.is_day_off
+                                ? (s.event_type === "absent" ? `${emp.name}` : emp.name)
+                                : s.time_start && s.time_end
+                                  ? `${emp.name} (${s.time_start}-${s.time_end})`
+                                  : emp.name
+                              return (
+                                <div key={s.id} className="group relative flex items-center">
+                                  <div className="w-full truncate rounded px-1 py-0.5 text-[10px] font-medium text-white leading-tight"
+                                    style={{ backgroundColor: bg }}
+                                    title={label}>
+                                    {label}
+                                  </div>
+                                  <button
+                                    onClick={e => removeShift(e, iso, s.employee_id)}
+                                    className="absolute right-0 hidden group-hover:flex h-4 w-4 items-center justify-center rounded bg-black/40 text-white hover:bg-black/70"
+                                    style={{ cursor: "pointer" }}>
+                                    <Icon name="X" size={8} />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
+
+          {/* ── Панель штампа ── */}
+          <div className="w-52 shrink-0">
+            <div className="rounded-xl border border-border bg-card p-4 space-y-4 sticky top-4">
+              {/* Тип события */}
+              <div>
+                <p className="mb-2 text-xs font-semibold text-foreground/60">Тип события</p>
+                <div className="space-y-1.5">
+                  {EVENT_TYPES.map(et => (
+                    <button key={et.key}
+                      onClick={() => setStampType(et.key)}
+                      className={`w-full flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${stampType === et.key ? et.color : "border-border text-foreground/50 hover:border-border hover:text-foreground/70"}`}
+                      style={{ cursor: "pointer" }}>
+                      <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: et.dot }} />
+                      {et.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Время — только для рабочего дня */}
+              {stampType === "work" && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-foreground/60">Время работы</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] text-foreground/40">С</label>
+                      <input type="time" value={stampStart} onChange={e => setStampStart(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm focus:border-primary focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] text-foreground/40">До</label>
+                      <input type="time" value={stampEnd} onChange={e => setStampEnd(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm focus:border-primary focus:outline-none" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Подсказка */}
+              <div className={`rounded-lg px-3 py-2.5 text-xs leading-snug ${canStamp ? "bg-primary/10 text-primary" : "bg-muted/50 text-foreground/40"}`}>
+                {canStamp
+                  ? `Выбран: ${employees.find(e => e.id === selectedEmployee)?.name}. Кликайте по дням в календаре`
+                  : "Выберите сотрудника и тип события, затем кликните по дням в календаре"}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -334,83 +402,6 @@ export default function ScheduleTab() {
         )}
       </div>
 
-      {/* ── Модалка: смена ── */}
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setModal(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-            {(() => {
-              const emp = employees.find(e => e.id === modal.empId)
-              const d = new Date(modal.date + "T00:00:00")
-              return (
-                <>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                      style={{ backgroundColor: emp?.color }}>
-                      {emp?.name[0]?.toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground">{emp?.name}</p>
-                      <p className="text-xs text-foreground/50">
-                        {d.getDate()} {MONTHS_GEN[d.getMonth()]} {d.getFullYear()}
-                      </p>
-                    </div>
-                    <button onClick={() => setModal(null)} className="ml-auto text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}>
-                      <Icon name="X" size={18} />
-                    </button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <div onClick={() => setModalDayOff(v => !v)}
-                        className={`relative h-6 w-11 rounded-full transition-colors ${modalDayOff ? "bg-green-500" : "bg-muted"}`}
-                        style={{ cursor: "pointer" }}>
-                        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${modalDayOff ? "left-6" : "left-1"}`} />
-                      </div>
-                      <span className="text-sm text-foreground/70">Выходной день</span>
-                    </label>
-
-                    {!modalDayOff && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="mb-1 block text-xs text-foreground/50">Начало</label>
-                          <input type="time" value={modalStart} onChange={e => setModalStart(e.target.value)}
-                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-foreground/50">Конец</label>
-                          <input type="time" value={modalEnd} onChange={e => setModalEnd(e.target.value)}
-                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="mb-1 block text-xs text-foreground/50">Заметка (необязательно)</label>
-                      <input type="text" value={modalNote} onChange={e => setModalNote(e.target.value)}
-                        placeholder="Напр.: удалённо"
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={saveShift} disabled={saving}
-                        className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                        style={{ cursor: "pointer" }}>
-                        {saving ? "Сохранение..." : "Сохранить"}
-                      </button>
-                      <button onClick={deleteShift} disabled={saving}
-                        className="rounded-lg border border-border px-4 py-2.5 text-sm text-foreground/50 hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-50"
-                        style={{ cursor: "pointer" }}>
-                        <Icon name="Trash2" size={15} />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )
-            })()}
-          </div>
-        </div>
-      )}
-
       {/* ── Модалка: сотрудник ── */}
       {empModal !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setEmpModal(null)}>
@@ -421,7 +412,6 @@ export default function ScheduleTab() {
                 <Icon name="X" size={18} />
               </button>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-xs text-foreground/50">Имя</label>
@@ -430,7 +420,6 @@ export default function ScheduleTab() {
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                   placeholder="Например: Александр" />
               </div>
-
               <div>
                 <label className="mb-2 block text-xs text-foreground/50">Цвет</label>
                 <div className="flex flex-wrap gap-2">
@@ -441,7 +430,6 @@ export default function ScheduleTab() {
                   ))}
                 </div>
               </div>
-
               {empModal.id && (
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={empModal.is_active !== false}
@@ -449,7 +437,6 @@ export default function ScheduleTab() {
                   <span className="text-sm text-foreground/70">Активен</span>
                 </label>
               )}
-
               <button onClick={saveEmployee} disabled={empSaving || !empModal.name?.trim()}
                 className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 style={{ cursor: "pointer" }}>
