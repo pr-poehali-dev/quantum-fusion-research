@@ -6,7 +6,6 @@ import { ImageUploader } from "@/components/image-uploader"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 import { CableBody } from "@/components/cable-configurator"
 import WarehouseTab from "@/components/admin/WarehouseTab"
-import { useAuth } from "@/store/auth"
 
 const ADMIN_PASSWORD = "begraphics2024"
 
@@ -652,8 +651,6 @@ export default function Admin() {
     navigate(`/admin/${t}`, { replace: true })
   }
 
-  const { sessionId } = useAuth()
-
   // Users
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [userSearch, setUserSearch] = useState("")
@@ -841,8 +838,7 @@ export default function Admin() {
     } else if (tab === "articles" || tab === "add_article") {
       api.articles.getAll().then(d => { setArticles(d.articles || []); setLoading(false) })
     } else if (tab === "users") {
-      if (sessionId) api.auth.adminGetUsers(sessionId).then(d => { setAdminUsers(d.users || []); setLoading(false) })
-      else setLoading(false)
+      api.auth.adminGetUsers(ADMIN_PASSWORD).then(d => { setAdminUsers(d.users || []); setLoading(false) })
     }
   }, [authed, tab])
 
@@ -853,10 +849,9 @@ export default function Admin() {
   const logout = () => { sessionStorage.removeItem("begraphics_admin"); setAuthed(false) }
 
   const adminUserOp = async (userId: number, op: string, extra?: Record<string, unknown>) => {
-    if (!sessionId) return
     setUserActionLoading(userId)
-    await api.auth.adminUpdateUser({ user_id: userId, op, ...extra }, sessionId)
-    const d = await api.auth.adminGetUsers(sessionId, userSearch)
+    await api.auth.adminUpdateUser({ user_id: userId, op, ...extra }, ADMIN_PASSWORD)
+    const d = await api.auth.adminGetUsers(ADMIN_PASSWORD, userSearch)
     setAdminUsers(d.users || [])
     setUserActionLoading(null)
   }
@@ -2766,14 +2761,14 @@ export default function Admin() {
                   onKeyDown={e => {
                     if (e.key === "Enter") {
                       setUserSearch(userSearchInput)
-                      if (sessionId) api.auth.adminGetUsers(sessionId, userSearchInput).then(d => setAdminUsers(d.users || []))
+                      api.auth.adminGetUsers(ADMIN_PASSWORD, userSearchInput).then(d => setAdminUsers(d.users || []))
                     }
                   }}
                   placeholder="Поиск по имени или email... (Enter)"
                   className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
                   style={{ cursor: "text" }}
                 />
-                {userSearchInput && <button onClick={() => { setUserSearchInput(""); setUserSearch(""); if (sessionId) api.auth.adminGetUsers(sessionId).then(d => setAdminUsers(d.users || [])) }} className="text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="X" size={13} /></button>}
+                {userSearchInput && <button onClick={() => { setUserSearchInput(""); setUserSearch(""); api.auth.adminGetUsers(ADMIN_PASSWORD).then(d => setAdminUsers(d.users || [])) }} className="text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="X" size={13} /></button>}
               </div>
             </div>
 

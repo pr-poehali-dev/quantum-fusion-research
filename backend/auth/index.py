@@ -352,8 +352,8 @@ def handler(event: dict, context) -> dict:
         # ── ADMIN: управление пользователями ──
 
         elif action == "admin_users" and method == "GET":
-            u = get_user(cur, session_id)
-            if not u or u[14] not in ("admin", "superadmin"):
+            admin_key = headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
             search = params.get("search", "")
             where = f"WHERE username ILIKE {esc('%'+search+'%')} OR email ILIKE {esc('%'+search+'%')}" if search else ""
@@ -364,8 +364,8 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"users": users})}
 
         elif action == "admin_user_update" and method == "POST":
-            u = get_user(cur, session_id)
-            if not u or u[14] not in ("admin", "superadmin"):
+            admin_key = headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
             body = json.loads(event.get("body") or "{}")
             target_id = int(body["user_id"])
@@ -385,8 +385,6 @@ def handler(event: dict, context) -> dict:
                 val = "TRUE" if body.get("value") else "FALSE"
                 cur.execute(f"UPDATE {SCHEMA}.users SET is_muted={val} WHERE id={target_id}")
             elif op == "delete":
-                if u[14] != "superadmin":
-                    return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Только суперадмин может удалять"})}
                 cur.execute(f"DELETE FROM {SCHEMA}.user_sessions WHERE user_id={target_id}")
                 cur.execute(f"DELETE FROM {SCHEMA}.users WHERE id={target_id}")
             conn.commit()
