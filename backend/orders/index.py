@@ -327,7 +327,7 @@ def handler(event: dict, context) -> dict:
                                 pr2 = cur.fetchone()
                                 if pr2 and pr2[0]:
                                     price_per_unit = float(pr2[0])
-                            # Складские остатки
+                            # Складские остатки + резерв именно этого заказа
                             supplies = []
                             if product_id:
                                 cur.execute(
@@ -341,6 +341,19 @@ def handler(event: dict, context) -> dict:
                                              "free": r[1], "qty_negative": r[3],
                                              "warranty_months": r[4], "group_id": r[5]}
                                             for r in cur.fetchall()]
+                                # Считаем сколько зарезервировано именно под этот заказ
+                                if supplies:
+                                    cur.execute(
+                                        f"SELECT COALESCE(SUM(m.qty_delta), 0) FROM {schema}.warehouse_movements m "
+                                        f"JOIN {schema}.warehouse_groups wg ON wg.id = m.group_id "
+                                        f"WHERE wg.product_id = %s AND m.order_id = %s "
+                                        f"AND m.type IN ('reserved','unreserved')",
+                                        (product_id, int(params["id"]))
+                                    )
+                                    r_qty = cur.fetchone()
+                                    reserved_for_order = int(r_qty[0]) if r_qty and r_qty[0] else 0
+                                    for s in supplies:
+                                        s["reserved_for_order"] = reserved_for_order
                             wip_items.append({
                                 "id": product_id,
                                 "name": name,

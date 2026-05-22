@@ -25,8 +25,10 @@ interface Supply {
   qty: number
   qty_reserved: number
   free: number
+  qty_negative: number
   warranty_months: number
   group_id: number
+  reserved_for_order?: number
 }
 
 interface OrderItem {
@@ -517,9 +519,16 @@ export default function OrderProcessPage() {
                           pending:         { label: "Ожидание",  color: "text-foreground/40 bg-muted" },
                         }
                         const ws = WIP_STATUS_STYLE[item.wip_status] || WIP_STATUS_STYLE.pending
+                        const reservedForOrder = supplies.reduce((s, s2) => s + (s2.reserved_for_order || 0), 0)
+                        const needToOrder = item.wip_status === "need_order"
+                          ? Math.max(0, item.quantity - reservedForOrder)
+                          : 0
                         return (
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ws.color}`}>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${ws.color}`}>
                             {ws.label}
+                            {needToOrder > 0 && (
+                              <span className="font-bold">— {needToOrder} шт.</span>
+                            )}
                           </span>
                         )
                       })()}
