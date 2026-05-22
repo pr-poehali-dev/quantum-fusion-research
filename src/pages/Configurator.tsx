@@ -169,10 +169,17 @@ export default function Configurator() {
       api.auth.getBuildByToken(token).then(b => {
         if (b?.components) {
           const loaded: Record<string, SelectedComp | null> = {}
+          const extras: Record<string, SlotExtra> = {}
           for (const c of b.components) {
-            if (c.slot) loaded[c.slot] = { ...c, qty: c.qty || 1 }
+            if (c.slot) {
+              loaded[c.slot] = { ...c, qty: c.qty || 1 }
+              if (c.description || c.image_urls?.length) {
+                extras[c.slot] = { description: c.description || "", image_urls: c.image_urls || [] }
+              }
+            }
           }
           setSelected(loaded)
+          setSlotExtras(extras)
           setBuildName(b.name || "Загруженная сборка")
           if (b.username) {
             setBuildAuthor({ username: b.username, avatar: b.author_avatar || "", tag: b.author_tag || "" })
@@ -215,10 +222,7 @@ export default function Configurator() {
     const inp = customInputs[slot]
     if (!inp?.name || !inp?.price) return
     setSelected(s => ({ ...s, [slot]: { slot, name: inp.name, price: parseFloat(inp.price) || 0, qty: 1, link: inp.link || undefined, source: "custom" } }))
-    // Сохраняем description и image_urls в slotExtras
-    if (inp.description || inp.image_urls?.length) {
-      setSlotExtras(e => ({ ...e, [slot]: { description: inp.description || "", image_urls: inp.image_urls || [] } }))
-    }
+    setSlotExtras(e => ({ ...e, [slot]: { description: inp.description || "", image_urls: inp.image_urls || [] } }))
     setOpenSlot(null)
   }
 
@@ -231,10 +235,8 @@ export default function Configurator() {
     setSaving(true)
     const components = (Object.values(selected).filter(Boolean) as SelectedComp[]).map(c => ({
       ...c,
-      ...(user?.is_premium && slotExtras[c.slot] ? {
-        description: slotExtras[c.slot].description,
-        image_urls: slotExtras[c.slot].image_urls,
-      } : {}),
+      description: slotExtras[c.slot]?.description || "",
+      image_urls: slotExtras[c.slot]?.image_urls || [],
     }))
     const res = await api.auth.saveUserBuild({
       name: buildName, components,
