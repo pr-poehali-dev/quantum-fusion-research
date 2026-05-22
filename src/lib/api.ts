@@ -12,6 +12,8 @@ const URLS = {
   upload: "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81",
   warehouse: "https://functions.poehali.dev/828a962b-2051-4152-bc1e-e8521b07c291",
   generateWarranty: "https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618",
+  comments: "https://functions.poehali.dev/dac98ba7-a8e7-4a0f-9d4e-9c8541a144ab",
+  notifications: "https://functions.poehali.dev/58527d2a-e061-409c-b800-a935e34690c6",
 }
 
 function authHeaders(session?: string | null) {
@@ -160,5 +162,19 @@ export const api = {
     inventoryCreate: (data: { filter_cells: string[], filter_cats: string[] }) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_create", ...data }) }).then(r => r.json()),
     inventoryUpdateItem: (data: { item_id: number, qty_actual: number | null, note?: string }) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_update_item", ...data }) }).then(r => r.json()),
     inventoryApply: (inventory_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_apply", inventory_id }) }).then(r => r.json()),
+  },
+  comments: {
+    getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),
+    add: (data: { token: string; text: string; parent_id?: number }, session: string) =>
+      fetch(`${URLS.comments}?action=add`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number, session: string) =>
+      fetch(`${URLS.comments}?action=delete`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ id }) }).then(r => r.json()),
+  },
+  notifications: {
+    getAll: (session: string) => fetch(URLS.notifications, { headers: authHeaders(session) }).then(r => r.json()),
+    markRead: (id: number, session: string) =>
+      fetch(`${URLS.notifications}?action=read`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ id }) }).then(r => r.json()),
+    markAllRead: (session: string) =>
+      fetch(`${URLS.notifications}?action=read_all`, { method: "POST", headers: authHeaders(session) }).then(r => r.json()),
   },
 }

@@ -1,4 +1,6 @@
 {
+  "notifications": "https://functions.poehali.dev/58527d2a-e061-409c-b800-a935e34690c6",
+  "comments": "https://functions.poehali.dev/dac98ba7-a8e7-4a0f-9d4e-9c8541a144ab",
   "generate-warranty": "https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618",
   "warehouse": "https://functions.poehali.dev/828a962b-2051-4152-bc1e-e8521b07c291",
   "telegram-auth": "https://functions.poehali.dev/3fcf2e40-36d1-4064-99e2-3b422e0ca3f0",

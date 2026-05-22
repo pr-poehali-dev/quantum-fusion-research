@@ -13,6 +13,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import NotificationBell from "@/components/NotificationBell"
 import { useTheme } from "@/store/theme"
 import { useGpuDetection } from "@/hooks/useGpuDetection"
 
@@ -316,6 +317,7 @@ export default function Index() {
 
         <div className="flex items-center gap-3">
           <ThemeSwitcher />
+          <NotificationBell />
           <MagneticButton variant="secondary" onClick={() => navigate("/shop")}>
             Каталог
           </MagneticButton>

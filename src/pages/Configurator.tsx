@@ -7,6 +7,8 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 import { ImageUploader } from "@/components/image-uploader"
+import CommentSection from "@/components/CommentSection"
+import NotificationBell from "@/components/NotificationBell"
 
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
@@ -159,6 +161,11 @@ export default function Configurator() {
   const [buildToken, setBuildToken] = useState<string | null>(null)
   const [buildCopied, setBuildCopied] = useState(false)
   const [isReadOnly, setIsReadOnly] = useState(false)
+  const highlightCommentId = (() => {
+    const hash = window.location.hash
+    const m = hash.match(/comment-(\d+)/)
+    return m ? Number(m[1]) : null
+  })()
 
   useEffect(() => {
     api.configurator.getSlots().then(data => {
@@ -278,6 +285,7 @@ export default function Configurator() {
           </button>
           <div className="flex items-center gap-2">
             <ThemeSwitcher />
+            <NotificationBell />
             {isAuthed() ? (
               <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="User" size={15} />
@@ -450,6 +458,11 @@ export default function Configurator() {
                 <div className="flex items-center justify-between px-5 py-4 bg-muted/30 border-t border-border/60">
                   <span className="text-sm text-foreground/60">Итого железо</span>
                   <span className="text-lg font-bold text-foreground">{fmt(partsTotal)}</span>
+                </div>
+
+                {/* Комментарии */}
+                <div className="px-5 pb-5">
+                  <CommentSection buildToken={buildToken} highlightId={highlightCommentId} />
                 </div>
               </div>
             ) : (

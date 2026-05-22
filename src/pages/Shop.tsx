@@ -5,6 +5,7 @@ import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
 
@@ -228,6 +229,7 @@ export default function Shop() {
         </button>
         <div className="flex items-center gap-2">
           <ThemeSwitcher />
+          <NotificationBell />
           {isAuthed() ? (
             <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
               <Icon name="User" size={15} />

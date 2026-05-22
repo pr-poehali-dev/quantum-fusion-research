@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get notifications unauthorized",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 401,
+      "expectedBody": { "error": "Не авторизован" },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

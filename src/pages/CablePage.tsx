@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { CableConfigurator } from "@/components/cable-configurator"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import NotificationBell from "@/components/NotificationBell"
 import { useCart } from "@/store/cart"
 
 export default function CablePage() {
@@ -21,6 +22,7 @@ export default function CablePage() {
         </button>
         <div className="flex items-center gap-3">
           <ThemeSwitcher />
+          <NotificationBell />
           <button
             onClick={() => navigate("/cart")}
             className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors"

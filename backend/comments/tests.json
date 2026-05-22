@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get comments by token",
+      "method": "GET",
+      "path": "/?token=nonexistent",
+      "expectedStatus": 200,
+      "expectedBody": { "comments": [] },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
