@@ -322,13 +322,13 @@ export default function Index() {
       <div
         ref={scrollContainerRef}
         data-scroll-container
-        className={`relative z-10 flex h-screen flex-col overflow-x-hidden overflow-y-auto transition-opacity duration-700 ${
+        className={`relative z-10 h-screen overflow-x-hidden overflow-y-auto transition-opacity duration-700 ${
           isLoaded ? "opacity-100" : "opacity-0"
         }`}
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", scrollSnapType: "y mandatory" }}
       >
         {/* Hero Section */}
-        <section className="flex min-h-screen w-full shrink-0 flex-col justify-end px-6 pb-16 pt-24 md:px-12 md:pb-24">
+        <section className="flex h-screen w-full flex-col justify-end px-6 pb-16 pt-24 md:px-12 md:pb-24" style={{ scrollSnapAlign: "start", scrollSnapStop: "always" }}>
           <div className="max-w-3xl">
             <div className="mb-4 inline-block animate-in fade-in slide-in-from-bottom-4 rounded-full border border-foreground/20 bg-foreground/15 px-4 py-1.5 backdrop-blur-md duration-700">
               <p className="font-mono text-xs text-foreground/90">Сборка ПК на заказ и продажа комплектующих</p>
@@ -378,6 +378,10 @@ export default function Index() {
       <style>{`
         div::-webkit-scrollbar {
           display: none;
+        }
+        [data-scroll-container] > section {
+          scroll-snap-align: start;
+          scroll-snap-stop: always;
         }
       `}</style>
     </main>
