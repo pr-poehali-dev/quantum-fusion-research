@@ -5,6 +5,8 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import RichTextEditor from "@/components/ui/rich-text-editor"
+import { ImageUploader } from "@/components/image-uploader"
 
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
@@ -36,6 +38,13 @@ interface SelectedComp {
   link?: string
   source: "catalog" | "custom"
   source_id?: number
+  description?: string
+  image_urls?: string[]
+}
+
+interface SlotExtra {
+  description: string
+  image_urls: string[]
 }
 
 // Компонент счётчика qty
@@ -138,7 +147,8 @@ export default function Configurator() {
 
   const [buildAuthor, setBuildAuthor] = useState<{ username: string; avatar: string; tag: string } | null>(null)
   const [buildDescription, setBuildDescription] = useState("")
-  const [buildImageUrls, setBuildImageUrls] = useState<string[]>(["", "", ""])
+  const [buildImageUrls, setBuildImageUrls] = useState<string[]>([])
+  const [slotExtras, setSlotExtras] = useState<Record<string, SlotExtra>>({})
   const [slotSearch, setSlotSearch] = useState("")
   const slotSearchRef = useRef<HTMLInputElement>(null)
 
@@ -215,14 +225,19 @@ export default function Configurator() {
   const saveBuild = async () => {
     if (!isAuthed() || !sessionId) { navigate("/auth"); return }
     setSaving(true)
-    const components = Object.values(selected).filter(Boolean) as SelectedComp[]
-    const filteredUrls = buildImageUrls.filter(u => u.trim())
+    const components = (Object.values(selected).filter(Boolean) as SelectedComp[]).map(c => ({
+      ...c,
+      ...(user?.is_premium && slotExtras[c.slot] ? {
+        description: slotExtras[c.slot].description,
+        image_urls: slotExtras[c.slot].image_urls,
+      } : {}),
+    }))
     const res = await api.auth.saveUserBuild({
       name: buildName, components,
       parts_total: partsTotal, assembly_fee: assemblyFee, total_price: total,
       is_public: isPublic,
-      description: buildDescription,
-      image_urls: filteredUrls,
+      description: user?.is_premium ? buildDescription : "",
+      image_urls: user?.is_premium ? buildImageUrls : [],
     }, sessionId)
     setSaving(false)
     if (res?.share_token) setSaveResult({ token: res.share_token })
@@ -409,6 +424,27 @@ export default function Configurator() {
                             </span>
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Премиум: фото и описание компонента */}
+                    {current && user?.is_premium && (
+                      <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-3">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="Star" size={12} className="text-primary" />
+                          <span className="text-xs font-medium text-primary">Фото и описание компонента</span>
+                        </div>
+                        <ImageUploader
+                          images={slotExtras[slot]?.image_urls || []}
+                          onChange={urls => setSlotExtras(e => ({ ...e, [slot]: { ...e[slot] || { description: "" }, image_urls: urls } }))}
+                          folder="builds"
+                          maxImages={3}
+                        />
+                        <RichTextEditor
+                          value={slotExtras[slot]?.description || ""}
+                          onChange={val => setSlotExtras(e => ({ ...e, [slot]: { ...e[slot] || { image_urls: [] }, description: val } }))}
+                          placeholder="Описание компонента..."
+                        />
                       </div>
                     )}
 
@@ -650,37 +686,29 @@ export default function Configurator() {
                         Показывать в сборках сообщества
                       </label>
 
-                      {/* Премиум: описание и фото */}
+                      {/* Премиум: описание и фото сборки */}
                       {user?.is_premium ? (
-                        <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                          <div className="flex items-center gap-1.5 mb-2">
+                        <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                          <div className="flex items-center gap-1.5">
                             <Icon name="Star" size={13} className="text-primary" />
                             <span className="text-xs font-medium text-primary">Премиум возможности</span>
                           </div>
                           <div>
-                            <label className="mb-1 block text-xs text-foreground/50">Описание сборки</label>
-                            <textarea
-                              value={buildDescription}
-                              onChange={e => setBuildDescription(e.target.value)}
-                              rows={3}
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none"
-                              placeholder="Расскажите про свою сборку..."
-                              style={{ cursor: "text" }}
+                            <label className="mb-1.5 block text-xs text-foreground/50">Фото сборки (до 3 шт.)</label>
+                            <ImageUploader
+                              images={buildImageUrls}
+                              onChange={setBuildImageUrls}
+                              folder="builds"
+                              maxImages={3}
                             />
                           </div>
                           <div>
-                            <label className="mb-1 block text-xs text-foreground/50">Фото по ссылкам (до 3 шт.)</label>
-                            {buildImageUrls.map((url, i) => (
-                              <input
-                                key={i}
-                                type="url"
-                                value={url}
-                                onChange={e => setBuildImageUrls(prev => prev.map((u, j) => j === i ? e.target.value : u))}
-                                className="mb-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                                placeholder={`Ссылка на фото ${i + 1}`}
-                                style={{ cursor: "text" }}
-                              />
-                            ))}
+                            <label className="mb-1.5 block text-xs text-foreground/50">Описание сборки</label>
+                            <RichTextEditor
+                              value={buildDescription}
+                              onChange={setBuildDescription}
+                              placeholder="Расскажите про свою сборку..."
+                            />
                           </div>
                         </div>
                       ) : (
