@@ -339,7 +339,7 @@ export default function Configurator() {
                   !slotSearch || o.name.toLowerCase().includes(slotSearch.toLowerCase())
                 )
                 const current = selected[slot]
-                const isOpen = openSlot === slot
+                const isOpen = openSlot === slot || (!!slotSearch && options.length > 0)
                 const ci = customInputs[slot] || { name: "", price: "", link: "" }
 
                 // Скрываем слот если поиск активен и нет совпадений (и ничего не выбрано)
