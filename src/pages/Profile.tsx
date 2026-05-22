@@ -81,6 +81,7 @@ export default function Profile() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState<number | null>(null)
+  const [deletingBuild, setDeletingBuild] = useState<number | null>(null)
 
   // Profile edit state
   const [profileForm, setProfileForm] = useState({
@@ -133,6 +134,14 @@ export default function Profile() {
     navigator.clipboard.writeText(`${window.location.origin}/configurator?build=${token}`)
     setCopied(id)
     setTimeout(() => setCopied(null), 2000)
+  }
+
+  const deleteBuild = async (id: number) => {
+    if (!sessionId) return
+    setDeletingBuild(id)
+    await api.auth.deleteUserBuild(id, sessionId)
+    setUserBuilds(prev => prev.filter(b => b.id !== id))
+    setDeletingBuild(null)
   }
 
   const handleLogout = async () => {
@@ -631,6 +640,9 @@ export default function Profile() {
                         <button onClick={() => copyLink(b.share_token, b.id)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name={copied === b.id ? "Check" : "Share2"} size={13} />
                           {copied === b.id ? "Скопировано!" : "Поделиться"}
+                        </button>
+                        <button onClick={() => deleteBuild(b.id)} disabled={deletingBuild === b.id} className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-foreground/60 hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-40" style={{ cursor: "pointer" }}>
+                          <Icon name={deletingBuild === b.id ? "Loader" : "Trash2"} size={13} />
                         </button>
                       </div>
                     </div>

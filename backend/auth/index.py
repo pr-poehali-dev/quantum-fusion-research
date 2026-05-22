@@ -69,7 +69,7 @@ def handler(event: dict, context) -> dict:
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
     }
     if event.get("httpMethod") == "OPTIONS":
@@ -318,6 +318,16 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 f"UPDATE {SCHEMA}.user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, description={description}, image_urls={image_urls}, updated_at=NOW() WHERE id={build_id} AND user_id={u[0]}"
             )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        elif action == "delete_build" and method == "DELETE":
+            u = get_user(cur, session_id)
+            if not u:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+            body = json.loads(event.get("body") or "{}")
+            build_id = int(body["id"])
+            cur.execute(f"DELETE FROM {SCHEMA}.user_builds WHERE id={build_id} AND user_id={u[0]}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
