@@ -327,6 +327,7 @@ export default function Configurator() {
         </div>
 
         {/* Mode toggle */}
+        {!(buildToken && isReadOnly) && (
         <div className="mb-6 flex overflow-hidden rounded-xl border border-border">
           <button onClick={() => setMode("catalog")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>
             <Icon name="ShoppingBag" size={16} />Из нашего каталога
@@ -335,9 +336,10 @@ export default function Configurator() {
             <Icon name="PenLine" size={16} />Своё железо
           </button>
         </div>
+        )}
 
         {/* Banner: всё из каталога → предложить сборку */}
-        {mode === "custom" && hasComponents && allFromCatalog && (
+        {!(buildToken && isReadOnly) && mode === "custom" && hasComponents && allFromCatalog && (
           <div className="mb-5 flex items-center gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
             <Icon name="Sparkles" size={20} className="text-primary shrink-0" />
             <div className="flex-1">
@@ -405,7 +407,15 @@ export default function Configurator() {
                           <Icon name={meta.icon as "Cpu"} size={16} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-foreground/50 leading-none mb-1">{meta.label}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-xs text-foreground/50 leading-none">{meta.label}</p>
+                            {c.source === "catalog" && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-1.5 py-px text-[10px] font-medium text-green-400">
+                                <Icon name="CheckCircle" size={9} />
+                                Наш склад
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm font-medium text-foreground leading-snug">
                             {c.name}
                             {c.qty > 1 && <span className="ml-1.5 text-foreground/40 font-normal">×{c.qty}</span>}
@@ -722,6 +732,7 @@ export default function Configurator() {
             </div>
 
             {/* Save & Share card */}
+            {!(buildToken && isReadOnly) && (
             <div className="rounded-xl border border-border bg-card p-5">
               <button
                 onClick={() => setShowSavePanel(v => !v)}
@@ -877,6 +888,7 @@ export default function Configurator() {
                 </div>
               )}
             </div>
+            )}
 
             {/* ── Кастомные кабели ── */}
             <button
