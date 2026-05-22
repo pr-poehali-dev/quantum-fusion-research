@@ -120,20 +120,27 @@ def handler(event: dict, context) -> dict:
                 asm_fee_val = round(parts_total * 0.07) if with_assembly else 0
 
                 for it in items_list:
+                    item_qty = int(it.get("quantity", 1))
                     # Конфигуратор передаёт components прямо в item
                     if it.get("components"):
-                        result.extend(it["components"])
+                        for comp in it["components"]:
+                            c = dict(comp)
+                            c["qty"] = int(c.get("qty", 1)) * item_qty
+                            result.append(c)
                     elif it.get("item_type") == "config" and is_catalog_id(it.get("id")):
                         # Готовая сборка из каталога — берём компоненты из БД
                         cur.execute("SELECT components, assembly_type, assembly_fee FROM pc_builds WHERE id = %s", (it["id"],))
                         row = cur.fetchone()
                         if row and row[0]:
-                            result.extend(row[0])
+                            for comp in row[0]:
+                                c = dict(comp)
+                                c["qty"] = int(c.get("qty", 1)) * item_qty
+                                result.append(c)
                             asm_type = row[1] or asm_type
                             asm_fee_val = float(row[2] or asm_fee_val)
                         else:
                             result.append({"name": it.get("name", ""), "slot": "other",
-                                           "price": it.get("price", 0), "source": "order", "qty": 1})
+                                           "price": it.get("price", 0), "source": "order", "qty": item_qty})
                     elif it.get("item_type") == "product" and is_catalog_id(it.get("id")):
                         result.append({"name": it.get("name", ""), "slot": "other",
                                        "price": it.get("price", 0), "source": "catalog",
@@ -583,6 +590,16 @@ def handler(event: dict, context) -> dict:
                 slot_values = list(wip[1:9])    # названия компонентов
                 slot_statuses = list(wip[9:17]) # текущие статусы
 
+                # Кол-во сборок из заказа (quantity на config-айтеме)
+                cur.execute(f"SELECT items FROM {schema}.orders WHERE id = %s LIMIT 1", (order_id,))
+                order_row = cur.fetchone()
+                order_items_raw = order_row[0] if order_row else []
+                build_qty = 1
+                for oi in (order_items_raw or []):
+                    if oi.get("item_type") in ("config", "pc_build"):
+                        build_qty = int(oi.get("quantity", 1))
+                        break
+
                 # Получаем компоненты из pc_builds для сопоставления product_id
                 pc_components = []
                 if build_id:
@@ -592,7 +609,7 @@ def handler(event: dict, context) -> dict:
                         raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
                         pc_components = raw
 
-                # Строим маппинг slot -> source_id (product_id из каталога)
+                # Строим маппинг slot -> source_id + qty компонента
                 slot_product_map = {}
                 for comp in pc_components:
                     slot = comp.get("slot")
@@ -626,31 +643,39 @@ def handler(event: dict, context) -> dict:
                         negative_items.append({"slot": slot, "name": name, "reason": "product_not_found"})
                         continue
 
-                    # Проверяем свободный остаток
+                    # Проверяем свободный остаток (с учётом кол-ва сборок)
+                    need = build_qty
                     cur.execute(
-                        f"SELECT s.id, s.qty - s.qty_reserved as free FROM {schema}.warehouse_supplies s "
+                        f"SELECT s.id, s.qty as free FROM {schema}.warehouse_supplies s "
                         f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC LIMIT 1",
+                        f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
                         (product_id,)
                     )
-                    supply = cur.fetchone()
-
-                    if supply:
-                        # Резервируем
+                    supplies_list = cur.fetchall()
+                    total_reserved = 0
+                    for sup_id, sup_free in supplies_list:
+                        if need <= 0:
+                            break
+                        reserve = min(need, sup_free)
                         cur.execute(
-                            f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + 1 WHERE id = %s",
-                            (supply[0],)
+                            f"UPDATE {schema}.warehouse_supplies SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
+                            (reserve, reserve, sup_id)
                         )
                         cur.execute(
                             f"INSERT INTO {schema}.warehouse_movements "
                             f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', 1, %s, NOW())",
-                            (supply[0], supply[0], order_id, f"Авторезерв слот {slot} по заказу #{order_id}")
+                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', %s, %s, NOW())",
+                            (sup_id, sup_id, order_id, reserve, f"Авторезерв слот {slot} по заказу #{order_id}")
                         )
+                        total_reserved += reserve
+                        need -= reserve
+                    supply = (True,) if total_reserved > 0 else None
+
+                    if supply:
                         new_statuses[slot] = "ready"
-                        reserved_items.append({"slot": slot, "name": name, "product_id": product_id})
-                    else:
-                        # Ставим отрицательный резерв
+                        reserved_items.append({"slot": slot, "name": name, "product_id": product_id, "reserved": total_reserved})
+                    if need > 0:
+                        # Не хватило — ставим отрицательный резерв на дефицит
                         cur.execute(
                             f"SELECT s.id FROM {schema}.warehouse_supplies s "
                             f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
@@ -660,8 +685,8 @@ def handler(event: dict, context) -> dict:
                         neg_supply = cur.fetchone()
                         if neg_supply:
                             cur.execute(
-                                f"UPDATE {schema}.warehouse_supplies SET qty_negative = qty_negative + 1 WHERE id = %s",
-                                (neg_supply[0],)
+                                f"UPDATE {schema}.warehouse_supplies SET qty_negative = qty_negative + %s WHERE id = %s",
+                                (need, neg_supply[0],)
                             )
                         else:
                             # Нет ни одной поставки — создаём виртуальную запись с qty_negative
