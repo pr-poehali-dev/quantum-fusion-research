@@ -156,8 +156,12 @@ def handler(event: dict, context) -> dict:
                 return err("Нужны date_from и date_to")
             cur.execute(
                 f"SELECT e.id, e.name, e.color, "
-                f"COUNT(CASE WHEN s.is_day_off = FALSE THEN 1 END) as work_days, "
-                f"COUNT(CASE WHEN s.is_day_off = TRUE THEN 1 END) as day_offs "
+                f"COUNT(CASE WHEN s.is_day_off = FALSE AND (s.note IS NULL OR s.note != 'Отсутствовал') THEN 1 END) as work_days, "
+                f"COUNT(CASE WHEN s.is_day_off = TRUE THEN 1 END) as day_offs, "
+                f"COUNT(CASE WHEN s.note = 'Отсутствовал' THEN 1 END) as absent_days, "
+                f"COALESCE(SUM(CASE WHEN s.is_day_off = FALSE AND s.time_start IS NOT NULL AND s.time_end IS NOT NULL "
+                f"THEN EXTRACT(EPOCH FROM (TO_TIMESTAMP(s.time_end,'HH24:MI') - TO_TIMESTAMP(s.time_start,'HH24:MI')))/3600.0 "
+                f"ELSE 0 END), 0) as total_hours "
                 f"FROM {SCHEMA}.employees e "
                 f"LEFT JOIN {SCHEMA}.schedules s ON s.employee_id = e.id "
                 f"AND s.work_date BETWEEN {esc(date_from)} AND {esc(date_to)} "
@@ -170,6 +174,8 @@ def handler(event: dict, context) -> dict:
                     "id": r[0], "name": r[1], "color": r[2],
                     "work_days": int(r[3]) if r[3] else 0,
                     "day_offs": int(r[4]) if r[4] else 0,
+                    "absent_days": int(r[5]) if r[5] else 0,
+                    "total_hours": round(float(r[6]), 1) if r[6] else 0,
                 } for r in rows]
             })}
 

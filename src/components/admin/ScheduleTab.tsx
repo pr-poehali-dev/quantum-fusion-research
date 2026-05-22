@@ -82,7 +82,7 @@ export default function ScheduleTab() {
   // Сводка
   const [summaryFrom, setSummaryFrom] = useState(today.toISOString().slice(0, 10).replace(/\d{2}$/, "01"))
   const [summaryTo, setSummaryTo] = useState(today.toISOString().slice(0, 10))
-  const [summary, setSummary] = useState<{id:number;name:string;color:string;work_days:number;day_offs:number}[]>([])
+  const [summary, setSummary] = useState<{id:number;name:string;color:string;work_days:number;day_offs:number;absent_days:number;total_hours:number}[]>([])
 
   const call = useCallback(async (qs: string, opts?: RequestInit) => {
     if (!sessionId) return {}
@@ -178,6 +178,56 @@ export default function ScheduleTab() {
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7))
 
   const canStamp = !!selectedEmployee
+
+  const generatePDF = () => {
+    const fmtDate = (iso: string) => {
+      const [y, m, d] = iso.split("-")
+      return `${d}.${m}.${y}`
+    }
+    const rows = summary.map(s => `
+      <tr>
+        <td style="padding:10px 14px;border-bottom:1px solid #2a2a2a;font-weight:600">${s.name}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #2a2a2a;text-align:center;color:#3b82f6">${s.work_days}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #2a2a2a;text-align:center;color:#f59e0b">${s.total_hours} ч</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #2a2a2a;text-align:center;color:#ef4444">${s.absent_days}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #2a2a2a;text-align:center;color:#22c55e">${s.day_offs}</td>
+      </tr>
+    `).join("")
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>График работ</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #fff; color: #111; margin: 40px; }
+      h1 { font-size: 22px; margin-bottom: 4px; }
+      .period { color: #666; font-size: 14px; margin-bottom: 24px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th { background: #f3f4f6; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e5e7eb; }
+      th:not(:first-child) { text-align: center; }
+      .total { margin-top: 20px; font-size: 13px; color: #666; }
+    </style>
+    </head><body>
+    <h1>Отчёт по сотрудникам</h1>
+    <div class="period">Период: ${fmtDate(summaryFrom)} — ${fmtDate(summaryTo)}</div>
+    <table>
+      <thead><tr>
+        <th>Сотрудник</th>
+        <th>Рабочих дней</th>
+        <th>Часов работы</th>
+        <th>Пропущено дней</th>
+        <th>Выходных</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="total">Сформировано: ${new Date().toLocaleString("ru-RU")}</div>
+    </body></html>`
+
+    const win = window.open("", "_blank")
+    if (!win) return
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 400)
+  }
 
   return (
     <div className="space-y-6">
@@ -376,6 +426,15 @@ export default function ScheduleTab() {
               <input type="date" value={summaryTo} onChange={e => setSummaryTo(e.target.value)}
                 className="rounded-lg border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
             </div>
+            <button
+              onClick={generatePDF}
+              disabled={summary.length === 0}
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+              style={{ cursor: summary.length ? "pointer" : "not-allowed" }}
+            >
+              <Icon name="FileDown" size={15} />
+              Скачать PDF-отчёт
+            </button>
           </div>
         </div>
         {summary.length === 0 ? (
@@ -395,6 +454,14 @@ export default function ScheduleTab() {
                   <div className="rounded-lg bg-primary/10 p-2 text-center">
                     <p className="text-xl font-bold text-primary">{s.work_days}</p>
                     <p className="text-[10px] text-foreground/50 mt-0.5">Рабочих дней</p>
+                  </div>
+                  <div className="rounded-lg bg-yellow-500/10 p-2 text-center">
+                    <p className="text-xl font-bold text-yellow-400">{s.total_hours}</p>
+                    <p className="text-[10px] text-foreground/50 mt-0.5">Часов работы</p>
+                  </div>
+                  <div className="rounded-lg bg-red-500/10 p-2 text-center">
+                    <p className="text-xl font-bold text-red-400">{s.absent_days}</p>
+                    <p className="text-[10px] text-foreground/50 mt-0.5">Пропущено</p>
                   </div>
                   <div className="rounded-lg bg-green-500/10 p-2 text-center">
                     <p className="text-xl font-bold text-green-400">{s.day_offs}</p>
