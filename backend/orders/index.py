@@ -572,6 +572,12 @@ def handler(event: dict, context) -> dict:
 
             elif action == "sync_order":
                 # Синхронизировать заказ ПК: резервировать наличие, отрицательный резерв для отсутствующих
+                # Проверяем что заказ не отменён
+                cur.execute(f"SELECT status FROM {schema}.orders WHERE id = %s", (order_id,))
+                order_status_row = cur.fetchone()
+                if order_status_row and order_status_row[0] == "cancelled":
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Заказ отменён"})}
+
                 # Получаем wip_build и pc_build для этого заказа
                 cur.execute(
                     f"SELECT wb.id, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, wb.cooling, wb.extra, "
@@ -935,12 +941,14 @@ def handler(event: dict, context) -> dict:
 
             # При отмене — снимаем все резервы этого заказа со склада
             if new_status == "cancelled":
+                # Считаем чистый резерв по каждой поставке (reserved - unreserved)
+                # Включаем все движения заказа, кроме уже снятых
                 cur.execute(
-                    f"SELECT s.id, s.group_id, SUM(m.qty_delta) as reserved_qty "
+                    f"SELECT m.supply_id, s.group_id, SUM(m.qty_delta) as net_qty "
                     f"FROM {schema}.warehouse_movements m "
                     f"JOIN {schema}.warehouse_supplies s ON s.id = m.supply_id "
                     f"WHERE m.order_id = %s AND m.type IN ('reserved', 'unreserved') "
-                    f"GROUP BY s.id, s.group_id "
+                    f"GROUP BY m.supply_id, s.group_id "
                     f"HAVING SUM(m.qty_delta) > 0",
                     (order_id,)
                 )
