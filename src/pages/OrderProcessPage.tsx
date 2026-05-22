@@ -34,6 +34,7 @@ interface OrderItem {
   name: string
   price: number
   quantity: number
+  build_qty?: number
   item_type: string
   serial_number?: string
   serial_numbers?: string[]
@@ -72,6 +73,7 @@ interface Order {
   status: string
   created_at: string
   _wip_build?: WipBuildInfo
+  _build_qty?: number
 }
 
 function fmt(n: number) {
@@ -95,6 +97,11 @@ export default function OrderProcessPage() {
   // Синхронизация заказа ПК
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncResult, setSyncResult] = useState<{reserved: {slot:string,name:string}[], need_order: {slot:string,name:string}[], auto_status: string|null} | null>(null)
+
+  // Редактирование кол-ва ПК
+  const [editBuildQty, setEditBuildQty] = useState(false)
+  const [buildQtyInput, setBuildQtyInput] = useState(1)
+  const [buildQtySaving, setBuildQtySaving] = useState(false)
 
   const syncOrder = async () => {
     setSyncLoading(true)
@@ -134,6 +141,7 @@ export default function OrderProcessPage() {
     setLoading(true)
     const data = await api.orders.getById(Number(id))
     setOrder(data.order || null)
+    if (data.order?._build_qty) setBuildQtyInput(data.order._build_qty)
     setLoading(false)
   }, [id])
 
@@ -156,6 +164,15 @@ export default function OrderProcessPage() {
       }
     }
     return res
+  }
+
+  const saveBuildQty = async () => {
+    if (!id || buildQtyInput < 1) return
+    setBuildQtySaving(true)
+    await api.orders.updateItem({ id: Number(id), action: "set_build_qty", item_idx: 0, build_qty: buildQtyInput })
+    await load()
+    setBuildQtySaving(false)
+    setEditBuildQty(false)
   }
 
   const doWriteoff = async () => {
@@ -314,6 +331,40 @@ export default function OrderProcessPage() {
               <p className="text-xs text-foreground/40 mb-1">Тип заказа</p>
               <p className="text-sm">{order.order_type === "pc_build" ? "Сборка ПК" : "Комплектующие"}</p>
             </div>
+            {order.order_type === "pc_build" && (
+              <div>
+                <p className="text-xs text-foreground/40 mb-1">Кол-во ПК</p>
+                {editBuildQty ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number" min={1} value={buildQtyInput}
+                      onChange={e => setBuildQtyInput(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-16 rounded border border-border bg-background px-2 py-1 text-sm focus:border-primary focus:outline-none"
+                      style={{ cursor: "text" }}
+                    />
+                    <button onClick={saveBuildQty} disabled={buildQtySaving}
+                      className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      style={{ cursor: "pointer" }}>
+                      {buildQtySaving ? "..." : "✓"}
+                    </button>
+                    <button onClick={() => setEditBuildQty(false)}
+                      className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+                      <Icon name="X" size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold">{order._build_qty ?? 1} шт.</p>
+                    {order.status === "new" && (
+                      <button onClick={() => { setBuildQtyInput(order._build_qty ?? 1); setEditBuildQty(true) }}
+                        className="text-foreground/30 hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="Pencil" size={13} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <p className="text-xs text-foreground/40 mb-1">Дата</p>
               <p className="text-sm">{new Date(order.created_at).toLocaleDateString("ru-RU")}</p>
@@ -507,7 +558,9 @@ export default function OrderProcessPage() {
                       <p className="text-xs text-foreground/40 line-through">{fmt(item.price * item.quantity)}</p>
                     )}
                     <p className="text-lg font-bold">{fmt(finalPrice * item.quantity)}</p>
-                    {item.quantity > 1 && <p className="text-xs text-foreground/40">{fmt(finalPrice)} × {item.quantity}</p>}
+                    {item.quantity > 1 && (
+                      <p className="text-xs text-foreground/40">{fmt(finalPrice)} × {item.quantity} шт.</p>
+                    )}
                   </div>
                 </div>
 

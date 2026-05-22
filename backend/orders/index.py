@@ -234,9 +234,17 @@ def handler(event: dict, context) -> dict:
                         slot_labels = {"cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
                                        "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
                                        "case_name": "Корпус", "cooling": "Охлаждение", "extra": "Доп."}
+                        # Кол-во ПК из заказа
+                        build_qty = 1
+                        for oi in (order.get("items") or []):
+                            if oi.get("item_type") in ("config", "pc_build"):
+                                build_qty = int(oi.get("quantity", 1))
+                                break
+
                         # Маппинг slot -> source_id из pc_build
                         slot_product_map = {}  # slot -> product_id
-                        slot_price_map = {}    # slot -> price из pc_builds.components
+                        slot_price_map = {}    # slot -> price за 1 шт из pc_builds.components
+                        slot_qty_map = {}      # slot -> qty (уже умножено на build_qty)
                         assembly_fee = 0
                         build_id = wip[20]
                         if build_id:
@@ -250,7 +258,9 @@ def handler(event: dict, context) -> dict:
                                         if comp.get("source") == "catalog" and comp.get("source_id"):
                                             slot_product_map[s] = int(comp["source_id"])
                                         if comp.get("price"):
+                                            # Цена за 1 шт = цена компонента / build_qty
                                             slot_price_map[s] = float(comp["price"])
+                                        slot_qty_map[s] = int(comp.get("qty", build_qty))
                             if pc_row and pc_row[1]:
                                 assembly_fee = float(pc_row[1])
 
@@ -307,13 +317,16 @@ def handler(event: dict, context) -> dict:
                                 pr = cur.fetchone()
                                 if pr:
                                     product_id = pr[0]
-                            # Цена: финальная из заказа → из pc_builds.components → из warehouse_groups
-                            price = slot_final_price.get(slot) or slot_price_map.get(slot, 0)
-                            if not price and product_id:
+                            # Кол-во для этого слота
+                            slot_qty = slot_qty_map.get(slot, build_qty)
+                            # Цена за 1 шт: финальная → из pc_builds.components / build_qty → из warehouse
+                            raw_price = slot_price_map.get(slot, 0)
+                            price_per_unit = slot_final_price.get(slot) or (raw_price / build_qty if raw_price and build_qty else raw_price)
+                            if not price_per_unit and product_id:
                                 cur.execute(f"SELECT price_retail FROM {schema}.warehouse_groups WHERE product_id = %s LIMIT 1", (product_id,))
                                 pr2 = cur.fetchone()
                                 if pr2 and pr2[0]:
-                                    price = float(pr2[0])
+                                    price_per_unit = float(pr2[0])
                             # Складские остатки
                             supplies = []
                             if product_id:
@@ -325,14 +338,15 @@ def handler(event: dict, context) -> dict:
                                     (product_id,)
                                 )
                                 supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
-                                             "free": r[1] - r[2], "qty_negative": r[3],
+                                             "free": r[1], "qty_negative": r[3],
                                              "warranty_months": r[4], "group_id": r[5]}
                                             for r in cur.fetchall()]
                             wip_items.append({
                                 "id": product_id,
                                 "name": name,
-                                "price": price,
-                                "quantity": 1,
+                                "price": price_per_unit,
+                                "quantity": slot_qty,
+                                "build_qty": build_qty,
                                 "item_type": "product",
                                 "slot": slot,
                                 "slot_label": slot_labels.get(slot, slot),
@@ -361,6 +375,7 @@ def handler(event: dict, context) -> dict:
 
                         order["items"] = wip_items
                         order["_wip_stage"] = wip[1]
+                        order["_build_qty"] = build_qty
                 else:
                     # Для обычных заказов — подтягиваем складские остатки
                     for item in order["items"]:
@@ -424,7 +439,77 @@ def handler(event: dict, context) -> dict:
 
             item_idx = body.get("item_idx")  # индекс позиции в items
 
-            if action == "set_serial":
+            if action == "set_build_qty":
+                # Изменить кол-во ПК: обновить quantity в items и пересчитать компоненты pc_builds
+                new_build_qty = int(body.get("build_qty", 1))
+                if new_build_qty < 1:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Кол-во должно быть >= 1"})}
+                # Обновляем quantity в items (первый config-айтем)
+                for it in items:
+                    if it.get("item_type") in ("config", "pc_build"):
+                        it["quantity"] = new_build_qty
+                        break
+                cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), order_id))
+                # Пересчитываем компоненты в pc_builds (умножаем qty каждого на новое build_qty)
+                cur.execute(
+                    f"SELECT pb.id, pb.components FROM {schema}.pc_builds pb "
+                    f"JOIN {schema}.wip_builds wb ON wb.build_id = pb.id "
+                    f"WHERE wb.order_id = %s LIMIT 1",
+                    (order_id,)
+                )
+                pb_row = cur.fetchone()
+                if pb_row:
+                    pb_id = pb_row[0]
+                    pb_comps = pb_row[1] if isinstance(pb_row[1], list) else json.loads(pb_row[1])
+                    # Определяем базовый qty (qty / старое build_qty)
+                    # Берём старый build_qty из первого item
+                    old_qty = 1
+                    for it in items:
+                        if it.get("item_type") in ("config", "pc_build"):
+                            # quantity уже обновлён, берём из компонентов
+                            if pb_comps:
+                                old_qty = int(pb_comps[0].get("qty", 1))
+                            break
+                    # Пересчитываем: новый qty = round(старый / старый_build_qty * новый)
+                    # Проще: base = qty / old_build_qty (до обновления items)
+                    # Но мы уже обновили items, восстановим из компонентов
+                    # base = comp["qty"] / old_item_qty — не знаем старый
+                    # Надёжнее: смотрим что в компоненте qty содержит уже итог
+                    # Делим на первое попавшееся qty (если все равны), умножаем на новое
+                    if pb_comps and len(pb_comps) > 0:
+                        sample_qty = int(pb_comps[0].get("qty", 1))
+                        # base qty per component = sample_qty / (sample_qty // new_build_qty if sample_qty >= new_build_qty else 1)
+                        # Ищем старый build_qty через НОД
+                        import math
+                        all_qtys = [int(c.get("qty", 1)) for c in pb_comps]
+                        old_build_qty = all_qtys[0]
+                        for q in all_qtys[1:]:
+                            old_build_qty = math.gcd(old_build_qty, q)
+                        if old_build_qty < 1:
+                            old_build_qty = 1
+                        new_comps = []
+                        for comp in pb_comps:
+                            c = dict(comp)
+                            base = int(c.get("qty", 1)) // old_build_qty
+                            c["qty"] = base * new_build_qty
+                            new_comps.append(c)
+                        # Пересчитываем итоги pc_builds
+                        parts_total_new = sum(float(c.get("price", 0)) * int(c.get("qty", 1)) for c in new_comps)
+                        asm_type_row = cur.execute(f"SELECT assembly_type, assembly_fee FROM {schema}.pc_builds WHERE id = %s", (pb_id,)) or None
+                        cur.execute(f"SELECT assembly_type, assembly_fee FROM {schema}.pc_builds WHERE id = %s", (pb_id,))
+                        asm_row = cur.fetchone()
+                        asm_fee = float(asm_row[1]) if asm_row and asm_row[1] else 0
+                        if asm_row and asm_row[0] == "percent":
+                            asm_fee = round(parts_total_new * 0.07)
+                        cur.execute(
+                            f"UPDATE {schema}.pc_builds SET components=%s, parts_total=%s, assembly_fee=%s, total_price=%s WHERE id=%s",
+                            (json.dumps(new_comps), parts_total_new, asm_fee, parts_total_new + asm_fee, pb_id)
+                        )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+            elif action == "set_serial":
                 # Для ПК-заказов серийники хранятся в items[0].slot_serials[slot]
                 cur.execute("SELECT order_type FROM orders WHERE id=%s", (order_id,))
                 ot = cur.fetchone()
