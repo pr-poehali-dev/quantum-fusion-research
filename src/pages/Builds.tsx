@@ -228,14 +228,7 @@ export default function Builds() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
-          <nav className="hidden items-center gap-1 md:flex">
-            <button onClick={() => navigate("/shop")} className="rounded-lg px-4 py-2 text-sm text-foreground/60 hover:text-foreground hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
-              Каталог
-            </button>
-            <button onClick={() => navigate("/builds")} className="rounded-lg px-4 py-2 text-sm text-primary font-medium bg-primary/10 transition-colors" style={{ cursor: "pointer" }}>
-              Наши ПК
-            </button>
-          </nav>
+
           <div className="flex items-center gap-2">
             <ThemeSwitcher />
             {isAuthed() ? (
