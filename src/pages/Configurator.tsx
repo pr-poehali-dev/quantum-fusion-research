@@ -383,7 +383,7 @@ export default function Configurator() {
                       className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                     >
                       <Icon name={buildCopied ? "Check" : "Copy"} size={13} />
-                      {buildCopied ? "Скопировано!" : "Копировать"}
+                      {buildCopied ? "Скопировано!" : "Копировать ссылку"}
                     </button>
                     <button
                       onClick={() => setIsReadOnly(false)}
