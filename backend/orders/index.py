@@ -704,8 +704,8 @@ def handler(event: dict, context) -> dict:
                             if grp:
                                 cur.execute(
                                     f"INSERT INTO {schema}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price, created_at) "
-                                    f"VALUES (%s, 0, 0, 1, 0, NOW())",
-                                    (grp[0],)
+                                    f"VALUES (%s, 0, 0, %s, 0, NOW())",
+                                    (grp[0], need)
                                 )
                         new_statuses[slot] = "need_order"
                         negative_items.append({"slot": slot, "name": name, "product_id": product_id})

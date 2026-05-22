@@ -520,11 +520,17 @@ def handler(event: dict, context) -> dict:
 
                 if prod_name:
                     pn = prod_name.replace("'", "''")
-                    # Ищем активные заказы где этот товар в статусе need_order,
-                    # умножаем на quantity сборки из заказа
+                    # Ищем активные заказы где этот товар в статусе need_order.
+                    # Кол-во берём из pc_builds.components по source_id (product_id),
+                    # т.к. qty там уже содержит итоговое количество с учётом кол-ва сборок.
                     cur.execute(f"""
-                        SELECT order_id, customer_name, need_qty * build_qty AS total_need FROM (
+                        SELECT order_id, customer_name, need_qty FROM (
                             SELECT wb.order_id, o.customer_name,
+                                COALESCE((
+                                    SELECT SUM((comp->>'qty')::int)
+                                    FROM jsonb_array_elements(pb.components::jsonb) comp
+                                    WHERE (comp->>'source_id')::int = {product_id}
+                                ), 1) AS need_qty,
                                 (CASE WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 1 ELSE 0 END +
                                  CASE WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 1 ELSE 0 END +
                                  CASE WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 1 ELSE 0 END +
@@ -533,17 +539,13 @@ def handler(event: dict, context) -> dict:
                                  CASE WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 1 ELSE 0 END +
                                  CASE WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 1 ELSE 0 END +
                                  CASE WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 1 ELSE 0 END
-                                ) AS need_qty,
-                                COALESCE((
-                                    SELECT MAX((item->>'quantity')::int)
-                                    FROM jsonb_array_elements(o.items::jsonb) item
-                                    WHERE item->>'item_type' IN ('config','pc_build')
-                                ), 1) AS build_qty
+                                ) AS slot_match
                             FROM {SCHEMA}.wip_builds wb
                             JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                            LEFT JOIN {SCHEMA}.pc_builds pb ON pb.id = wb.build_id
                             WHERE o.status NOT IN ('cancelled', 'done')
                         ) sub
-                        WHERE need_qty > 0
+                        WHERE slot_match > 0
                         ORDER BY order_id ASC
                     """)
                     neg_rows = cur.fetchall()
