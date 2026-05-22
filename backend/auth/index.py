@@ -352,7 +352,7 @@ def handler(event: dict, context) -> dict:
         # ── ADMIN: управление пользователями ──
 
         elif action == "admin_users" and method == "GET":
-            admin_key = headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            admin_key = params.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
             if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
             search = params.get("search", "")
@@ -364,10 +364,11 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"users": users})}
 
         elif action == "admin_user_update" and method == "POST":
-            admin_key = headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            body_pre = json.loads(event.get("body") or "{}")
+            admin_key = body_pre.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
             if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
-            body = json.loads(event.get("body") or "{}")
+            body = body_pre
             target_id = int(body["user_id"])
             op = body.get("op")  # set_role, set_premium, set_status, warn, mute, delete
             if op == "set_role":

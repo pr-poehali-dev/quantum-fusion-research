@@ -112,8 +112,8 @@ export const api = {
     updateProfile: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_profile`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     viewProfile: (tag: string) => fetch(`${URLS.auth}?action=public&utag=${encodeURIComponent(tag)}`).then(r => r.json()),
     getUserBuild: (token: string) => fetch(`${URLS.auth}?action=user-build&token=${token}`).then(r => r.json()),
-    adminGetUsers: (adminKey: string, search?: string) => fetch(`${URLS.auth}?action=admin_users${search ? `&search=${encodeURIComponent(search)}` : ""}`, { headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey } }).then(r => r.json()),
-    adminUpdateUser: (data: unknown, adminKey: string) => fetch(`${URLS.auth}?action=admin_user_update`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify(data) }).then(r => r.json()),
+    adminGetUsers: (adminKey: string, search?: string) => fetch(`${URLS.auth}?action=admin_users&ak=${encodeURIComponent(adminKey)}${search ? `&search=${encodeURIComponent(search)}` : ""}`).then(r => r.json()),
+    adminUpdateUser: (data: unknown, adminKey: string) => fetch(`${URLS.auth}?action=admin_user_update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(data as object), ak: adminKey }) }).then(r => r.json()),
   },
   telegramAuth: {
     generateCode: (session: string) => fetch(`${URLS.telegramAuth}?action=generate`, { headers: authHeaders(session) }).then(r => r.json()),
