@@ -15,11 +15,13 @@ interface Comment {
 }
 
 function timeAgo(iso: string) {
+  const mskOffset = 3 * 60 * 60 * 1000
+  const date = new Date(new Date(iso).getTime() + mskOffset)
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
   if (diff < 60) return "только что"
   if (diff < 3600) return `${Math.floor(diff / 60)} мин. назад`
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч. назад`
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "Europe/Moscow" })
 }
 
 interface Props {
