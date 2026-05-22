@@ -6,6 +6,7 @@ import { ImageUploader } from "@/components/image-uploader"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 import { CableBody } from "@/components/cable-configurator"
 import WarehouseTab from "@/components/admin/WarehouseTab"
+import ScheduleTab from "@/components/admin/ScheduleTab"
 
 const ADMIN_PASSWORD = "begraphics2024"
 
@@ -627,9 +628,9 @@ function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, du
   )
 }
 
-type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "users"
+type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "users" | "schedule"
 
-const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "warehouse", "users"]
+const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "warehouse", "users", "schedule"]
 
 export default function Admin() {
   const navigate = useNavigate()
@@ -1175,6 +1176,7 @@ export default function Admin() {
     { key: "wip_archive", label: "Архив сборок", icon: "ArchiveRestore" },
     { key: "DIVIDER_5" },
     { key: "users", label: "Пользователи", icon: "Users" },
+    { key: "schedule", label: "Расписание", icon: "CalendarDays" },
   ]
 
   return (
@@ -2741,6 +2743,7 @@ export default function Admin() {
         )}
 
         {tab === "warehouse" && <WarehouseTab />}
+        {tab === "schedule" && <ScheduleTab />}
 
         {/* ── USERS ── */}
         {tab === "users" && (

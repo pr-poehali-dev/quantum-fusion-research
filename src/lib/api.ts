@@ -14,6 +14,7 @@ const URLS = {
   generateWarranty: "https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618",
   comments: "https://functions.poehali.dev/dac98ba7-a8e7-4a0f-9d4e-9c8541a144ab",
   notifications: "https://functions.poehali.dev/58527d2a-e061-409c-b800-a935e34690c6",
+  schedule: "https://functions.poehali.dev/10912f60-5fd3-4930-9724-ad4929621f72",
 }
 
 function authHeaders(session?: string | null) {

@@ -1,0 +1,11 @@
+{
+  "tests": [
+    {
+      "name": "No access without session",
+      "method": "GET",
+      "path": "/?action=employees",
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    }
+  ]
+}
