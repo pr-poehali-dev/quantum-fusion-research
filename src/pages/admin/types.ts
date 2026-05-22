@@ -65,6 +65,20 @@ export interface PCBuild {
   tags?: Tag[]
 }
 
+export interface AdminUser {
+  id: number
+  email: string
+  username: string
+  user_tag: string
+  avatar_url: string
+  role: string
+  is_premium: boolean
+  status: string
+  warning_count: number
+  is_muted: boolean
+  created_at: string
+}
+
 export interface Article {
   id: number
   title: string

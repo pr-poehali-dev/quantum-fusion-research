@@ -28,7 +28,7 @@ def get_user(cur, session_id):
     if not session_id:
         return None
     cur.execute(
-        f"SELECT u.id, u.email, u.username, u.bio, u.phone, u.vk_url, u.telegram_id, u.telegram_username, u.telegram_photo, u.email_verified, u.user_tag, u.is_public, u.avatar_url, u.telegram_tag "
+        f"SELECT u.id, u.email, u.username, u.bio, u.phone, u.vk_url, u.telegram_id, u.telegram_username, u.telegram_photo, u.email_verified, u.user_tag, u.is_public, u.avatar_url, u.telegram_tag, u.role, u.is_premium, u.status "
         f"FROM {SCHEMA}.user_sessions s JOIN {SCHEMA}.users u ON s.user_id = u.id "
         f"WHERE s.id = {esc(session_id)} AND s.expires_at > NOW()"
     )
@@ -51,6 +51,9 @@ def fmt_user(u):
         "is_public": u[11] if u[11] is not None else True,
         "avatar_url": u[12] or "",
         "telegram_tag": u[13] or "",
+        "role": u[14] or "user",
+        "is_premium": u[15] or False,
+        "status": u[16] or "active",
     }
 
 
@@ -286,8 +289,14 @@ def handler(event: dict, context) -> dict:
             assembly_fee = float(body.get("assembly_fee", 0))
             total_price = float(body.get("total_price", 0))
             is_public = "TRUE" if body.get("is_public", False) else "FALSE"
+            # Премиум поля
+            is_premium = u[15] or False
+            description = esc(body.get("description", "") if is_premium else "")
+            raw_urls = body.get("image_urls", []) if is_premium else []
+            image_urls = esc(json.dumps(raw_urls[:3]))
             cur.execute(
-                f"INSERT INTO {SCHEMA}.user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at, updated_at) VALUES ({u[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, NOW(), NOW()) RETURNING id"
+                f"INSERT INTO {SCHEMA}.user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, description, image_urls, created_at, updated_at) "
+                f"VALUES ({u[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, {description}, {image_urls}, NOW(), NOW()) RETURNING id"
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -305,9 +314,81 @@ def handler(event: dict, context) -> dict:
             total_price = float(body.get("total_price", 0))
             is_public = "TRUE" if body.get("is_public", False) else "FALSE"
             build_id = int(body["id"])
+            is_premium = u[15] or False
+            description = esc(body.get("description", "") if is_premium else "")
+            raw_urls = body.get("image_urls", []) if is_premium else []
+            image_urls = esc(json.dumps(raw_urls[:3]))
             cur.execute(
-                f"UPDATE {SCHEMA}.user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, updated_at=NOW() WHERE id={build_id} AND user_id={u[0]}"
+                f"UPDATE {SCHEMA}.user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, description={description}, image_urls={image_urls}, updated_at=NOW() WHERE id={build_id} AND user_id={u[0]}"
             )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        elif action == "user-build" and method == "GET":
+            # Публичная страница сборки по токену — полная информация
+            token = params.get("token")
+            cur.execute(
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag, b.description, b.image_urls "
+                f"FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id "
+                f"WHERE b.share_token = {esc(token)}"
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка не найдена"})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "id": row[0], "user_id": row[1], "name": row[2],
+                "components": row[3] or [],
+                "parts_total": float(row[4]) if row[4] else 0,
+                "assembly_fee": float(row[5]) if row[5] else 0,
+                "total_price": float(row[6]) if row[6] else 0,
+                "share_token": row[7], "is_public": row[8] or False,
+                "created_at": row[9].isoformat() if row[9] else None,
+                "username": row[10], "author_avatar": row[11] or "",
+                "author_tag": row[12] or "",
+                "description": row[13] or "",
+                "image_urls": row[14] or [],
+            })}
+
+        # ── ADMIN: управление пользователями ──
+
+        elif action == "admin_users" and method == "GET":
+            u = get_user(cur, session_id)
+            if not u or u[14] not in ("admin", "superadmin"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            search = params.get("search", "")
+            where = f"WHERE username ILIKE {esc('%'+search+'%')} OR email ILIKE {esc('%'+search+'%')}" if search else ""
+            cur.execute(f"SELECT id, email, username, user_tag, avatar_url, role, is_premium, status, warning_count, is_muted, created_at FROM {SCHEMA}.users {where} ORDER BY created_at DESC LIMIT 100")
+            users = []
+            for r in cur.fetchall():
+                users.append({"id": r[0], "email": r[1] or "", "username": r[2], "user_tag": r[3] or "", "avatar_url": r[4] or "", "role": r[5] or "user", "is_premium": r[6] or False, "status": r[7] or "active", "warning_count": r[8] or 0, "is_muted": r[9] or False, "created_at": r[10].isoformat() if r[10] else None})
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"users": users})}
+
+        elif action == "admin_user_update" and method == "POST":
+            u = get_user(cur, session_id)
+            if not u or u[14] not in ("admin", "superadmin"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            body = json.loads(event.get("body") or "{}")
+            target_id = int(body["user_id"])
+            op = body.get("op")  # set_role, set_premium, set_status, warn, mute, delete
+            if op == "set_role":
+                role = body.get("role", "user")
+                cur.execute(f"UPDATE {SCHEMA}.users SET role={esc(role)} WHERE id={target_id}")
+            elif op == "set_premium":
+                val = "TRUE" if body.get("value") else "FALSE"
+                cur.execute(f"UPDATE {SCHEMA}.users SET is_premium={val} WHERE id={target_id}")
+            elif op == "set_status":
+                status = body.get("status", "active")  # active, blocked
+                cur.execute(f"UPDATE {SCHEMA}.users SET status={esc(status)} WHERE id={target_id}")
+            elif op == "warn":
+                cur.execute(f"UPDATE {SCHEMA}.users SET warning_count=warning_count+1 WHERE id={target_id}")
+            elif op == "mute":
+                val = "TRUE" if body.get("value") else "FALSE"
+                cur.execute(f"UPDATE {SCHEMA}.users SET is_muted={val} WHERE id={target_id}")
+            elif op == "delete":
+                if u[14] != "superadmin":
+                    return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Только суперадмин может удалять"})}
+                cur.execute(f"DELETE FROM {SCHEMA}.user_sessions WHERE user_id={target_id}")
+                cur.execute(f"DELETE FROM {SCHEMA}.users WHERE id={target_id}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

@@ -137,11 +137,13 @@ export default function Configurator() {
   const [showSavePanel, setShowSavePanel] = useState(false)
 
   const [buildAuthor, setBuildAuthor] = useState<{ username: string; avatar: string; tag: string } | null>(null)
+  const [buildDescription, setBuildDescription] = useState("")
+  const [buildImageUrls, setBuildImageUrls] = useState<string[]>(["", "", ""])
   const [slotSearch, setSlotSearch] = useState("")
   const slotSearchRef = useRef<HTMLInputElement>(null)
 
   const { addItem, count } = useCart()
-  const { isAuthed, sessionId } = useAuth()
+  const { isAuthed, sessionId, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -214,7 +216,14 @@ export default function Configurator() {
     if (!isAuthed() || !sessionId) { navigate("/auth"); return }
     setSaving(true)
     const components = Object.values(selected).filter(Boolean) as SelectedComp[]
-    const res = await api.auth.saveUserBuild({ name: buildName, components, parts_total: partsTotal, assembly_fee: assemblyFee, total_price: total, is_public: isPublic }, sessionId)
+    const filteredUrls = buildImageUrls.filter(u => u.trim())
+    const res = await api.auth.saveUserBuild({
+      name: buildName, components,
+      parts_total: partsTotal, assembly_fee: assemblyFee, total_price: total,
+      is_public: isPublic,
+      description: buildDescription,
+      image_urls: filteredUrls,
+    }, sessionId)
     setSaving(false)
     if (res?.share_token) setSaveResult({ token: res.share_token })
   }
@@ -640,6 +649,46 @@ export default function Configurator() {
                         />
                         Показывать в сборках сообщества
                       </label>
+
+                      {/* Премиум: описание и фото */}
+                      {user?.is_premium ? (
+                        <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Icon name="Star" size={13} className="text-primary" />
+                            <span className="text-xs font-medium text-primary">Премиум возможности</span>
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs text-foreground/50">Описание сборки</label>
+                            <textarea
+                              value={buildDescription}
+                              onChange={e => setBuildDescription(e.target.value)}
+                              rows={3}
+                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none"
+                              placeholder="Расскажите про свою сборку..."
+                              style={{ cursor: "text" }}
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs text-foreground/50">Фото по ссылкам (до 3 шт.)</label>
+                            {buildImageUrls.map((url, i) => (
+                              <input
+                                key={i}
+                                type="url"
+                                value={url}
+                                onChange={e => setBuildImageUrls(prev => prev.map((u, j) => j === i ? e.target.value : u))}
+                                className="mb-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                                placeholder={`Ссылка на фото ${i + 1}`}
+                                style={{ cursor: "text" }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                          <Icon name="Star" size={13} className="text-foreground/30" />
+                          <p className="text-xs text-foreground/40">Описание и фото — только для премиум</p>
+                        </div>
+                      )}
 
                       <button
                         onClick={saveBuild}

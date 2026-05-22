@@ -12,6 +12,11 @@ interface User {
   telegram_username?: string
   telegram_photo?: string
   email_verified?: boolean
+  role?: string
+  is_premium?: boolean
+  status?: string
+  user_tag?: string
+  avatar_url?: string
 }
 
 interface AuthStore {
