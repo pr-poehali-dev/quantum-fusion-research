@@ -8,12 +8,15 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
-  cpu:     { label: "Процессор",        icon: "Cpu",        required: true  },
-  gpu:     { label: "Видеокарта",       icon: "Monitor",    required: true  },
-  ram:     { label: "Оперативная память",icon: "MemoryStick",required: true  },
-  storage: { label: "Накопитель",       icon: "HardDrive",  required: true  },
-  psu:     { label: "Блок питания",     icon: "Zap",        required: true  },
-  case:    { label: "Корпус",           icon: "Box",        required: false },
+  cpu:         { label: "Процессор",             icon: "Cpu",        required: true  },
+  motherboard: { label: "Материнская плата",     icon: "CircuitBoard",required: false },
+  gpu:         { label: "Видеокарта",            icon: "Monitor",    required: true  },
+  ram:         { label: "Оперативная память",    icon: "MemoryStick",required: true  },
+  storage:     { label: "Накопитель",            icon: "HardDrive",  required: true  },
+  cooling:     { label: "Система охлаждения",    icon: "Wind",       required: false },
+  psu:         { label: "Блок питания",          icon: "Zap",        required: true  },
+  case:        { label: "Корпус",                icon: "Box",        required: false },
+  fan:         { label: "Вентилятор",            icon: "Fan",        required: false },
 }
 
 interface CatalogComp {

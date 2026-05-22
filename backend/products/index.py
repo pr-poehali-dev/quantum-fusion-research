@@ -75,9 +75,8 @@ def handler(event: dict, context) -> dict:
                     f"""SELECT p.id, c.slug, p.name, c.name, p.price, p.specs, p.stock_qty, p.sort_order
                        FROM {schema}.products p
                        JOIN {schema}.categories c ON p.category_id = c.id
-                       WHERE c.slug IN ('cpu','gpu','ram','storage','psu','case','motherboard')
-                         AND p.in_stock = TRUE
-                       ORDER BY c.slug ASC, p.sort_order ASC, p.id ASC"""
+                       WHERE c.slug IN ('cpu','gpu','ram','storage','psu','case','motherboard','cooling','fan')
+                       ORDER BY p.in_stock DESC, c.slug ASC, p.sort_order ASC, p.id ASC"""
                 )
                 rows = cur.fetchall()
                 slots = {}
