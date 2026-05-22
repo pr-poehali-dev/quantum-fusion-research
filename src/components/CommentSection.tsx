@@ -111,7 +111,7 @@ export default function CommentSection({ buildToken, highlightId }: Props) {
                   Ответить
                 </button>
               )}
-              {user && user.id === c.user_id && (
+              {user && (user.id === c.user_id || user.role === "admin") && (
                 <button
                   onClick={() => deleteComment(c.id)}
                   className="text-xs text-foreground/30 hover:text-red-400 transition-colors"
