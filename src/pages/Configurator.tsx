@@ -389,6 +389,7 @@ export default function Configurator() {
                       onClick={() => {
                         setBuildToken(null)
                         setIsReadOnly(false)
+                        navigate("/configurator")
                       }}
                       style={{ cursor: "pointer" }}
                       className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -658,7 +659,7 @@ export default function Configurator() {
           <div className="space-y-4 lg:sticky lg:top-24 h-fit">
 
             {/* Author card */}
-            {buildAuthor && (
+            {buildAuthor && isReadOnly && (
               <button
                 onClick={() => buildAuthor.tag ? navigate(`/profile/${buildAuthor.tag}`) : undefined}
                 className="w-full flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 hover:border-primary transition-colors"
