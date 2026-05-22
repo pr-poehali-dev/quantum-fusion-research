@@ -253,24 +253,24 @@ export default function Configurator() {
         <div className="mb-6">
           <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
           {buildAuthor ? (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-sm text-foreground/50">Сборка от</span>
-              <button
-                onClick={() => buildAuthor.tag ? navigate(`/profile/${buildAuthor.tag}`) : undefined}
-                className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 hover:border-primary transition-colors"
-                style={{ cursor: buildAuthor.tag ? "pointer" : "default" }}
-              >
-                {buildAuthor.avatar ? (
-                  <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-5 w-5 rounded-full object-cover" />
-                ) : (
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
-                    {buildAuthor.username[0]?.toUpperCase()}
-                  </div>
-                )}
-                <span className="text-sm font-medium text-foreground">{buildAuthor.username}</span>
-                {buildAuthor.tag && <span className="text-xs text-foreground/40">@{buildAuthor.tag}</span>}
-              </button>
-            </div>
+            <button
+              onClick={() => buildAuthor.tag ? navigate(`/profile/${buildAuthor.tag}`) : undefined}
+              className="mt-6 flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 hover:border-primary transition-colors w-fit"
+              style={{ cursor: buildAuthor.tag ? "pointer" : "default" }}
+            >
+              {buildAuthor.avatar ? (
+                <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-14 w-14 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/20 text-2xl font-medium text-primary shrink-0">
+                  {buildAuthor.username[0]?.toUpperCase()}
+                </div>
+              )}
+              <div className="text-left">
+                <p className="text-xs text-foreground/50 mb-0.5">Сборка от</p>
+                <p className="text-base font-semibold text-foreground">{buildAuthor.username}</p>
+                {buildAuthor.tag && <p className="text-xs text-foreground/40">@{buildAuthor.tag}</p>}
+              </div>
+            </button>
           ) : (
             <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
           )}
