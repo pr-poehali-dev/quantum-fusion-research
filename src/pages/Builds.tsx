@@ -254,24 +254,15 @@ export default function Builds() {
       {/* Табы — как в Shop */}
       <div className="border-b border-border">
         <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto">
-          {[
-            { label: "Каталог товаров", icon: "Package", action: () => navigate("/shop") },
-            { label: "Сборки сообщества", icon: "Users", action: () => navigate("/shop") },
-          ].map(t => (
-            <button
-              key={t.label}
-              onClick={t.action}
-              className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-              style={{ cursor: "pointer" }}
-            >
-              <Icon name={t.icon as "Package"} size={15} />
-              {t.label}
-            </button>
-          ))}
-          <button
-            className="flex shrink-0 items-center gap-2 border-b-2 border-primary px-5 py-3 text-sm font-medium text-primary transition-colors"
-            style={{ cursor: "pointer" }}
-          >
+          <button onClick={() => navigate("/shop")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="Package" size={15} />
+            Каталог товаров
+          </button>
+          <button onClick={() => navigate("/community-builds")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="Users" size={15} />
+            Сборки сообщества
+          </button>
+          <button className="flex shrink-0 items-center gap-2 border-b-2 border-primary px-5 py-3 text-sm font-medium text-primary transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="Monitor" size={15} />
             Наши ПК
           </button>

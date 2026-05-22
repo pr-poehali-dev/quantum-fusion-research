@@ -259,20 +259,22 @@ export default function Shop() {
       {/* Tab selector */}
       <div className="border-b border-border">
         <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto">
-          {[
-            { key: "catalog", label: "Каталог товаров", icon: "Package" },
-            { key: "community", label: "Сборки сообщества", icon: "Users" },
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setShopTab(t.key as typeof shopTab)}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${shopTab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
-              style={{ cursor: "pointer" }}
-            >
-              <Icon name={t.icon as "Package"} size={15} />
-              {t.label}
-            </button>
-          ))}
+          <button
+            onClick={() => setShopTab("catalog")}
+            className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${shopTab === "catalog" ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Package" size={15} />
+            Каталог товаров
+          </button>
+          <button
+            onClick={() => navigate("/community-builds")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Users" size={15} />
+            Сборки сообщества
+          </button>
           <button
             onClick={() => navigate("/builds")}
             className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
