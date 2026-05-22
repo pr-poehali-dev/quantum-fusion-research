@@ -156,6 +156,9 @@ export default function Configurator() {
   const { isAuthed, sessionId, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const [buildToken, setBuildToken] = useState<string | null>(null)
+  const [buildCopied, setBuildCopied] = useState(false)
+  const [isReadOnly, setIsReadOnly] = useState(false)
 
   useEffect(() => {
     api.configurator.getSlots().then(data => {
@@ -166,6 +169,8 @@ export default function Configurator() {
     // Загрузка сборки по токену из URL
     const token = searchParams.get("build")
     if (token) {
+      setBuildToken(token)
+      setIsReadOnly(true)
       api.auth.getBuildByToken(token).then(b => {
         if (b?.components) {
           const loaded: Record<string, SelectedComp | null> = {}
@@ -320,6 +325,80 @@ export default function Configurator() {
             <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
           )}
         </div>
+
+        {/* ── Загруженная сборка: перечень + действия ── */}
+        {buildToken && hasComponents && isReadOnly && (
+          <div className="mb-6 rounded-2xl border border-primary/30 bg-card overflow-hidden">
+            {/* Шапка */}
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/60">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon name="Cpu" size={16} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{buildName}</p>
+                  {buildAuthor && (
+                    <p className="text-xs text-foreground/50">Сборка от {buildAuthor.username}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/configurator?build=${buildToken}`
+                    navigator.clipboard.writeText(url)
+                    setBuildCopied(true)
+                    setTimeout(() => setBuildCopied(false), 2500)
+                  }}
+                  style={{ cursor: "pointer" }}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                >
+                  <Icon name={buildCopied ? "Check" : "Copy"} size={13} />
+                  {buildCopied ? "Скопировано!" : "Копировать"}
+                </button>
+                <button
+                  onClick={() => setIsReadOnly(false)}
+                  style={{ cursor: "pointer" }}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <Icon name="Pencil" size={13} />
+                  Редактировать
+                </button>
+              </div>
+            </div>
+
+            {/* Список компонентов */}
+            <div className="divide-y divide-border/40">
+              {Object.entries(SLOT_LABELS).map(([slot, meta]) => {
+                const c = selected[slot]
+                if (!c) return null
+                return (
+                  <div key={slot} className="flex items-center gap-3 px-5 py-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                      <Icon name={meta.icon as "Cpu"} size={13} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-foreground/50 leading-none mb-0.5">{meta.label}</p>
+                      <p className="text-sm text-foreground truncate">
+                        {c.name}
+                        {c.qty > 1 && <span className="ml-1 text-foreground/40">×{c.qty}</span>}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold text-primary tabular-nums">
+                      {fmt(c.price * c.qty)}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Итог */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-muted/30 border-t border-border/60">
+              <span className="text-sm text-foreground/60">Итого железо</span>
+              <span className="text-base font-bold text-foreground">{fmt(partsTotal)}</span>
+            </div>
+          </div>
+        )}
 
         {/* Mode toggle */}
         <div className="mb-6 flex overflow-hidden rounded-xl border border-border">
