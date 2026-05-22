@@ -25,6 +25,7 @@ const Builds = lazy(() => import("./pages/Builds"));
 const CommunityBuilds = lazy(() => import("./pages/CommunityBuilds"));
 const UserProfile = lazy(() => import("./pages/UserProfile"));
 const UserBuild = lazy(() => import("./pages/UserBuild"));
+const B2B = lazy(() => import("./pages/B2B"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +70,7 @@ const App = () => (
               <Route path="/community-builds" element={<CommunityBuilds />} />
               <Route path="/profile/:tag" element={<UserProfile />} />
               <Route path="/user-build/:token" element={<UserBuild />} />
+              <Route path="/b2b" element={<B2B />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
