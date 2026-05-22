@@ -486,10 +486,12 @@ def handler(event: dict, context) -> dict:
 
         # ── РЕЗЕРВЫ ПО ГРУППЕ ─────────────────────────────────────────────────
         if action == "group_reserves" and method == "GET":
-            """Возвращает активные резервы по group_id с разбивкой по заказам"""
+            """Возвращает активные резервы и отрицательные резервы по group_id с разбивкой по заказам"""
             gid = params.get("group_id")
             if not gid:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "group_id required"})}
+
+            # Обычные резервы
             cur.execute(
                 f"SELECT m.order_id, SUM(m.qty_delta) as qty, "
                 f"o.customer_name "
@@ -503,7 +505,67 @@ def handler(event: dict, context) -> dict:
             )
             rows = cur.fetchall()
             reserves = [{"order_id": r[0], "qty": int(r[1]), "customer_name": r[2]} for r in rows]
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"reserves": reserves})}
+
+            # Отрицательные резервы (нехватка) — ищем через wip_builds слоты need_order
+            # Находим product_id группы
+            cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid}")
+            grp_row = cur.fetchone()
+            negative_reserves = []
+            if grp_row and grp_row[0]:
+                product_id = grp_row[0]
+                # Получаем название продукта для сопоставления со слотами wip_builds
+                cur.execute(f"SELECT name FROM {SCHEMA}.products WHERE id = {product_id}")
+                prod_row = cur.fetchone()
+                prod_name = prod_row[0] if prod_row else None
+
+                if prod_name:
+                    # Ищем активные заказы где этот товар в статусе need_order
+                    cur.execute(f"""
+                        SELECT wb.order_id, o.customer_name,
+                            CASE
+                                WHEN LOWER(wb.cpu) = LOWER('{prod_name}') AND wb.cpu_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.gpu) = LOWER('{prod_name}') AND wb.gpu_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.ram) = LOWER('{prod_name}') AND wb.ram_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.storage) = LOWER('{prod_name}') AND wb.storage_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.psu) = LOWER('{prod_name}') AND wb.psu_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.case_name) = LOWER('{prod_name}') AND wb.case_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.motherboard) = LOWER('{prod_name}') AND wb.motherboard_status = 'need_order' THEN 1
+                                ELSE 0 END +
+                            CASE
+                                WHEN LOWER(wb.cooling) = LOWER('{prod_name}') AND wb.cooling_status = 'need_order' THEN 1
+                                ELSE 0 END as need_qty
+                        FROM {SCHEMA}.wip_builds wb
+                        JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                        WHERE o.status NOT IN ('cancelled', 'done')
+                        HAVING (CASE WHEN LOWER(wb.cpu) = LOWER('{prod_name}') AND wb.cpu_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.gpu) = LOWER('{prod_name}') AND wb.gpu_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.ram) = LOWER('{prod_name}') AND wb.ram_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.storage) = LOWER('{prod_name}') AND wb.storage_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.psu) = LOWER('{prod_name}') AND wb.psu_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.case_name) = LOWER('{prod_name}') AND wb.case_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.motherboard) = LOWER('{prod_name}') AND wb.motherboard_status = 'need_order' THEN 1 ELSE 0 END +
+                                CASE WHEN LOWER(wb.cooling) = LOWER('{prod_name}') AND wb.cooling_status = 'need_order' THEN 1 ELSE 0 END) > 0
+                        ORDER BY wb.order_id ASC
+                    """)
+                    neg_rows = cur.fetchall()
+                    negative_reserves = [{"order_id": r[0], "customer_name": r[1], "qty": int(r[2])} for r in neg_rows]
+
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "reserves": reserves,
+                "negative_reserves": negative_reserves,
+            })}
 
         # ── ИСТОРИЯ ДВИЖЕНИЙ ──────────────────────────────────────────────────
         if action == "movements" and method == "GET":

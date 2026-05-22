@@ -717,14 +717,32 @@ export default function WarehouseTab() {
 
 function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }) {
   const [reserves, setReserves] = useState<{ order_id: number; qty: number; customer_name: string | null }[]>([])
+  const [negReserves, setNegReserves] = useState<{ order_id: number; qty: number; customer_name: string | null }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     api.warehouse.getGroupReserves(group.id).then(d => {
       setReserves(d.reserves || [])
+      setNegReserves(d.negative_reserves || [])
       setLoading(false)
     })
   }, [group.id])
+
+  const OrderRow = ({ r, color }: { r: { order_id: number; qty: number; customer_name: string | null }; color: string }) => (
+    <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
+      <a
+        href={`/admin/orders?id=${r.order_id}`}
+        onClick={e => e.stopPropagation()}
+        className="text-sm font-mono font-semibold text-primary hover:underline"
+      >
+        #{String(r.order_id).padStart(4, "0")}
+        {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
+      </a>
+      <span className={`text-sm font-semibold ${color}`}>{r.qty} шт.</span>
+    </div>
+  )
+
+  const isEmpty = reserves.length === 0 && negReserves.length === 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -734,29 +752,53 @@ function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }
             <h2 className="text-base font-semibold">Резервы</h2>
             <p className="text-xs text-foreground/40 mt-0.5">{group.name}</p>
           </div>
-          <button onClick={onClose}><Icon name="X" size={16} className="text-foreground/40" /></button>
+          <button onClick={onClose} style={{ cursor: "pointer" }}><Icon name="X" size={16} className="text-foreground/40" /></button>
         </div>
         {loading ? (
           <div className="flex items-center gap-2 py-6 justify-center text-foreground/40 text-sm">
             <Icon name="Loader" size={14} className="animate-spin" />Загружаю...
           </div>
-        ) : reserves.length === 0 ? (
+        ) : isEmpty ? (
           <p className="py-6 text-center text-sm text-foreground/40">Нет активных резервов</p>
         ) : (
-          <div className="space-y-2">
-            {reserves.map(r => (
-              <div key={r.order_id} className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
-                <a
-                  href={`/admin/orders?id=${r.order_id}`}
-                  onClick={e => e.stopPropagation()}
-                  className="text-sm font-mono font-semibold text-primary hover:underline"
-                >
-                  #{String(r.order_id).padStart(4, "0")}
-                  {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
-                </a>
-                <span className="text-sm font-semibold text-orange-400">{r.qty} шт.</span>
+          <div className="space-y-4">
+            {/* Обычные резервы */}
+            {reserves.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-orange-400/80 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />
+                  В резерве — {reserves.reduce((s, r) => s + r.qty, 0)} шт.
+                </p>
+                <div className="space-y-1.5">
+                  {reserves.map(r => <OrderRow key={r.order_id} r={r} color="text-orange-400" />)}
+                </div>
               </div>
-            ))}
+            )}
+
+            {/* Отрицательные резервы (нехватка) */}
+            {negReserves.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-400/80 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-red-400 inline-block" />
+                  Нехватка — {negReserves.reduce((s, r) => s + r.qty, 0)} шт.
+                </p>
+                <div className="space-y-1.5">
+                  {negReserves.map(r => (
+                    <div key={r.order_id} className="flex items-center justify-between rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2.5">
+                      <a
+                        href={`/admin/orders?id=${r.order_id}`}
+                        onClick={e => e.stopPropagation()}
+                        className="text-sm font-mono font-semibold text-primary hover:underline"
+                      >
+                        #{String(r.order_id).padStart(4, "0")}
+                        {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
+                      </a>
+                      <span className="text-sm font-semibold text-red-400">−{r.qty} шт.</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
