@@ -660,6 +660,9 @@ export default function Admin() {
 
   const [orders, setOrders] = useState<Order[]>([])
   const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "pc_build" | "parts">("all")
+  const [newOrderModal, setNewOrderModal] = useState(false)
+  const [newOrderForm, setNewOrderForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" as "parts" | "pc_build" })
+  const [newOrderSaving, setNewOrderSaving] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [productCatFilter, setProductCatFilter] = useState("all")
@@ -855,6 +858,27 @@ export default function Admin() {
     const d = await api.auth.adminGetUsers(ADMIN_PASSWORD, userSearch)
     setAdminUsers(d.users || [])
     setUserActionLoading(null)
+  }
+
+  const createOrder = async () => {
+    if (!newOrderForm.customer_name.trim() || !newOrderForm.customer_phone.trim()) return
+    setNewOrderSaving(true)
+    const res = await api.orders.create({
+      customer_name: newOrderForm.customer_name.trim(),
+      customer_phone: newOrderForm.customer_phone.trim(),
+      customer_email: newOrderForm.customer_email.trim(),
+      comment: newOrderForm.comment.trim(),
+      order_type: newOrderForm.order_type,
+      items: [],
+      total: 0,
+    })
+    if (res.id) {
+      const d = await api.orders.getAll()
+      setOrders(d.orders || [])
+    }
+    setNewOrderSaving(false)
+    setNewOrderModal(false)
+    setNewOrderForm({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" })
   }
 
   const updateStatus = async (id: number, status: string) => {
@@ -1244,16 +1268,89 @@ export default function Admin() {
                 <h2 className="text-xl font-light text-foreground">
                   {isArchive ? "Архив заказов" : "Активные заказы"} ({filtered.length})
                 </h2>
-                <div className="flex items-center gap-1.5">
-                  {(["all", "pc_build", "parts"] as const).map(f => (
-                    <button key={f} onClick={() => setOrderTypeFilter(f)}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {(["all", "pc_build", "parts"] as const).map(f => (
+                      <button key={f} onClick={() => setOrderTypeFilter(f)}
+                        style={{ cursor: "pointer" }}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${orderTypeFilter === f ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/60 hover:text-foreground"}`}>
+                        {f === "all" ? "Все" : f === "pc_build" ? "Сборки ПК" : "Комплектующие"}
+                      </button>
+                    ))}
+                  </div>
+                  {!isArchive && (
+                    <button onClick={() => setNewOrderModal(true)}
                       style={{ cursor: "pointer" }}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${orderTypeFilter === f ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/60 hover:text-foreground"}`}>
-                      {f === "all" ? "Все" : f === "pc_build" ? "Сборки ПК" : "Комплектующие"}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                      <Icon name="Plus" size={13} />
+                      Создать заказ
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
+
+              {/* Модалка создания заказа */}
+              {newOrderModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setNewOrderModal(false)}>
+                  <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-5">
+                      <h3 className="font-semibold text-foreground">Создать заказ</h3>
+                      <button onClick={() => setNewOrderModal(false)} className="text-foreground/30 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="X" size={18} />
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Тип заказа</label>
+                        <div className="flex gap-2">
+                          {(["parts", "pc_build"] as const).map(t => (
+                            <button key={t} onClick={() => setNewOrderForm(f => ({ ...f, order_type: t }))}
+                              style={{ cursor: "pointer" }}
+                              className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${newOrderForm.order_type === t ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary"}`}>
+                              {t === "parts" ? "Комплектующие" : "Сборка ПК"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Имя клиента *</label>
+                        <input type="text" value={newOrderForm.customer_name}
+                          onChange={e => setNewOrderForm(f => ({ ...f, customer_name: e.target.value }))}
+                          placeholder="Иван Иванов"
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Телефон *</label>
+                        <input type="tel" value={newOrderForm.customer_phone}
+                          onChange={e => setNewOrderForm(f => ({ ...f, customer_phone: e.target.value }))}
+                          placeholder="+7 (999) 999-99-99"
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Email</label>
+                        <input type="email" value={newOrderForm.customer_email}
+                          onChange={e => setNewOrderForm(f => ({ ...f, customer_email: e.target.value }))}
+                          placeholder="ivan@example.com"
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Комментарий</label>
+                        <textarea value={newOrderForm.comment}
+                          onChange={e => setNewOrderForm(f => ({ ...f, comment: e.target.value }))}
+                          placeholder="Детали заказа..."
+                          rows={3}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none resize-none" />
+                      </div>
+                      <button onClick={createOrder}
+                        disabled={newOrderSaving || !newOrderForm.customer_name.trim() || !newOrderForm.customer_phone.trim()}
+                        style={{ cursor: "pointer" }}
+                        className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors">
+                        {newOrderSaving ? "Создание..." : "Создать заказ"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {loading ? <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />)}</div>
                 : filtered.length === 0 ? (
                   <div className="py-16 text-center text-foreground/40">
