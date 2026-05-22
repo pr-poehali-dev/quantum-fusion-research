@@ -128,7 +128,7 @@ def handler(event: dict, context) -> dict:
             password = body.get("password", "")
             pw_hash = hash_pw(password)
             cur.execute(
-                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified, user_tag, is_public, avatar_url, telegram_tag "
+                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified, user_tag, is_public, avatar_url, telegram_tag, role, is_premium, status "
                 f"FROM {SCHEMA}.users WHERE email = {esc(email)} AND password_hash = {esc(pw_hash)}"
             )
             u = cur.fetchone()
