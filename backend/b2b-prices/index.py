@@ -75,8 +75,7 @@ def handler(event: dict, context) -> dict:
                 g.price_opt1,
                 g.price_opt2,
                 g.warranty_months,
-                COALESCE(SUM(s.qty), 0) AS qty_total,
-                COALESCE(SUM(s.qty_reserved), 0) AS qty_reserved
+                COALESCE(SUM(s.qty), 0) AS qty_total
             FROM {SCHEMA}.warehouse_groups g
             LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
             WHERE {where_sql}
@@ -96,9 +95,7 @@ def handler(event: dict, context) -> dict:
 
         items = []
         for r in rows:
-            qty_total = int(r[8]) if r[8] else 0
-            qty_reserved = int(r[9]) if r[9] else 0
-            qty_available = max(0, qty_total - qty_reserved)
+            qty_available = max(0, int(r[8]) if r[8] else 0)
             items.append({
                 "id": r[0],
                 "name": r[1],
