@@ -230,16 +230,17 @@ export default function Configurator() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
-          <nav className="hidden items-center gap-6 md:flex">
-            <button onClick={() => navigate("/shop")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Каталог</button>
-            <button className="text-sm font-medium text-primary" style={{ cursor: "pointer" }}>Конфигуратор</button>
-          </nav>
           <div className="flex items-center gap-2">
             <ThemeSwitcher />
-            {isAuthed()
-              ? <button onClick={() => navigate("/profile")} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-sm text-foreground/70 hover:border-primary transition-colors" style={{ cursor: "pointer" }}><Icon name="User" size={15} /></button>
-              : <button onClick={() => navigate("/auth")} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-sm text-foreground/70 hover:border-primary transition-colors" style={{ cursor: "pointer" }}><Icon name="LogIn" size={15} /><span>Войти</span></button>
-            }
+            {isAuthed() ? (
+              <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="User" size={15} />
+              </button>
+            ) : (
+              <button onClick={() => navigate("/auth")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="LogIn" size={15} />
+              </button>
+            )}
             <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
               <Icon name="ShoppingCart" size={16} />
               <span>Корзина</span>

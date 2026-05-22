@@ -226,8 +226,6 @@ export default function Shop() {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
           <span className="font-semibold text-lg text-foreground">BeGraphics</span>
         </button>
-        <nav className="hidden items-center gap-6 md:flex">
-        </nav>
         <div className="flex items-center gap-2">
           <ThemeSwitcher />
           {isAuthed() ? (
