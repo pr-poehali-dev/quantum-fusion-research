@@ -168,9 +168,10 @@ export default function Configurator() {
 
     // Загрузка сборки по токену из URL
     const token = searchParams.get("build")
+    const editMode = searchParams.get("edit") === "1"
     if (token) {
-      setBuildToken(token)
-      setIsReadOnly(true)
+      setBuildToken(editMode ? null : token)
+      setIsReadOnly(!editMode)
       api.auth.getBuildByToken(token).then(b => {
         if (b?.components) {
           const loaded: Record<string, SelectedComp | null> = {}

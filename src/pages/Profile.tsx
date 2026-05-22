@@ -623,7 +623,10 @@ export default function Profile() {
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => navigate(`/configurator?build=${b.share_token}`)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                          <Icon name="Edit2" size={13} />Открыть
+                          <Icon name="Eye" size={13} />Открыть
+                        </button>
+                        <button onClick={() => navigate(`/configurator?build=${b.share_token}&edit=1`)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                          <Icon name="Pencil" size={13} />Редактировать
                         </button>
                         <button onClick={() => copyLink(b.share_token, b.id)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name={copied === b.id ? "Check" : "Share2"} size={13} />
