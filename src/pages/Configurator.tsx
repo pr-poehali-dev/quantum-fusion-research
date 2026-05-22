@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useCart, CartItem } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
@@ -137,6 +137,8 @@ export default function Configurator() {
   const [showSavePanel, setShowSavePanel] = useState(false)
 
   const [buildAuthor, setBuildAuthor] = useState<{ username: string; avatar: string; tag: string } | null>(null)
+  const [slotSearch, setSlotSearch] = useState("")
+  const slotSearchRef = useRef<HTMLInputElement>(null)
 
   const { addItem, count } = useCart()
   const { isAuthed, sessionId } = useAuth()
@@ -310,13 +312,38 @@ export default function Configurator() {
 
           {/* ── Slots ── */}
           <div className="space-y-3">
+            {/* Поиск по компонентам */}
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 focus-within:border-primary transition-colors">
+              <Icon name="Search" size={15} className="text-foreground/40 shrink-0" />
+              <input
+                ref={slotSearchRef}
+                type="text"
+                value={slotSearch}
+                onChange={e => setSlotSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === "Escape") setSlotSearch("") }}
+                placeholder="Поиск по компонентам..."
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+                style={{ cursor: "text" }}
+              />
+              {slotSearch && (
+                <button type="button" onClick={() => { setSlotSearch(""); slotSearchRef.current?.focus() }} className="text-foreground/30 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                  <Icon name="X" size={13} />
+                </button>
+              )}
+            </div>
+
             {loading
               ? [...Array(6)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-card animate-pulse" />)
               : Object.entries(SLOT_LABELS).map(([slot, meta]) => {
-                const options = slots[slot] || []
+                const options = (slots[slot] || []).filter(o =>
+                  !slotSearch || o.name.toLowerCase().includes(slotSearch.toLowerCase())
+                )
                 const current = selected[slot]
                 const isOpen = openSlot === slot
                 const ci = customInputs[slot] || { name: "", price: "", link: "" }
+
+                // Скрываем слот если поиск активен и нет совпадений (и ничего не выбрано)
+                if (slotSearch && options.length === 0 && !current) return null
 
                 return (
                   <div key={slot} className={`rounded-xl border bg-card transition-all duration-200 ${current ? "border-primary/40" : "border-border"}`}>
