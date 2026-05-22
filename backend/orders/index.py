@@ -77,12 +77,12 @@ def handler(event: dict, context) -> dict:
                 if item.get("item_type") == "product" and item.get("id"):
                     pid = int(item["id"])
                     need_qty = int(item.get("quantity", 1))
-                    # берём поставки с доступным остатком, сортируем по FIFO
+                    # берём поставки со свободным остатком (qty > 0), сортируем по FIFO
                     cur.execute(
-                        f"SELECT s.id, s.qty - s.qty_reserved as free "
+                        f"SELECT s.id, s.qty as free "
                         f"FROM {schema}.warehouse_supplies s "
                         f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 "
+                        f"WHERE g.product_id = %s AND s.qty > 0 "
                         f"ORDER BY s.id ASC",
                         (pid,)
                     )
@@ -91,10 +91,12 @@ def handler(event: dict, context) -> dict:
                         if need_qty <= 0:
                             break
                         reserve = min(need_qty, free)
+                        # qty уменьшается (товар уходит в резерв), qty_reserved растёт
                         cur.execute(
-                            f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s "
-                            f"WHERE id = %s AND qty - qty_reserved >= %s",
-                            (reserve, supply_id, reserve)
+                            f"UPDATE {schema}.warehouse_supplies "
+                            f"SET qty = qty - %s, qty_reserved = qty_reserved + %s "
+                            f"WHERE id = %s AND qty >= %s",
+                            (reserve, reserve, supply_id, reserve)
                         )
                         cur.execute(
                             f"INSERT INTO {schema}.warehouse_movements "
@@ -480,9 +482,9 @@ def handler(event: dict, context) -> dict:
                         if left <= 0: break
                         cur.execute(
                             f"UPDATE {schema}.warehouse_supplies "
-                            f"SET qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s "
+                            f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s "
                             f"RETURNING group_id",
-                            (left, sid)
+                            (left, left, sid)
                         )
                         r = cur.fetchone()
                         if r:
@@ -849,26 +851,26 @@ def handler(event: dict, context) -> dict:
                     if not pid or item_status == "returned":
                         continue
                     sale_price = float(it.get("final_price") or it.get("price", 0))
-                    # Находим поставки с достаточным qty (не только резерв — резерв мог быть снят вручную)
+                    # Товар уже в резерве (qty вычтен при резерве), списываем из qty_reserved
                     cur.execute(
-                        f"SELECT s.id, s.qty, s.qty_reserved, s.cost_price, g.id as gid "
+                        f"SELECT s.id, s.qty_reserved, s.cost_price, g.id as gid "
                         f"FROM {schema}.warehouse_supplies s "
                         f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
+                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
                         (int(pid),)
                     )
                     supplies = cur.fetchall()
                     left = qty
-                    for sid, s_qty, s_reserved, s_cost, gid in supplies:
+                    for sid, s_reserved, s_cost, gid in supplies:
                         if left <= 0:
                             break
-                        write = min(left, s_qty)
+                        write = min(left, s_reserved)
                         margin = round((sale_price - float(s_cost)) * write, 2)
                         cur.execute(
                             f"UPDATE {schema}.warehouse_supplies "
-                            f"SET qty = qty - %s, qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
-                            f"WHERE id = %s AND qty >= %s",
-                            (write, write, sid, write)
+                            f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                            f"WHERE id = %s",
+                            (write, sid)
                         )
                         cur.execute(
                             f"INSERT INTO {schema}.warehouse_movements "
@@ -921,9 +923,9 @@ def handler(event: dict, context) -> dict:
                 for sid, gid, qty in reserves:
                     cur.execute(
                         f"UPDATE {schema}.warehouse_supplies "
-                        f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                        f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
                         f"WHERE id = %s",
-                        (int(qty), sid)
+                        (int(qty), int(qty), sid)
                     )
                     cur.execute(
                         f"INSERT INTO {schema}.warehouse_movements "
