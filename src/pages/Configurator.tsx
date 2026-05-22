@@ -133,6 +133,8 @@ export default function Configurator() {
   const [copied, setCopied] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
 
+  const [buildAuthor, setBuildAuthor] = useState<{ username: string; avatar: string; tag: string } | null>(null)
+
   const { addItem, count } = useCart()
   const { isAuthed, sessionId } = useAuth()
   const navigate = useNavigate()
@@ -155,6 +157,9 @@ export default function Configurator() {
           }
           setSelected(loaded)
           setBuildName(b.name || "Загруженная сборка")
+          if (b.username) {
+            setBuildAuthor({ username: b.username, avatar: b.author_avatar || "", tag: b.author_tag || "" })
+          }
         }
       }).catch(() => {})
     }
@@ -247,7 +252,28 @@ export default function Configurator() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">
           <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
-          <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
+          {buildAuthor ? (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-sm text-foreground/50">Сборка от</span>
+              <button
+                onClick={() => buildAuthor.tag ? navigate(`/profile/${buildAuthor.tag}`) : undefined}
+                className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 hover:border-primary transition-colors"
+                style={{ cursor: buildAuthor.tag ? "pointer" : "default" }}
+              >
+                {buildAuthor.avatar ? (
+                  <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-5 w-5 rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
+                    {buildAuthor.username[0]?.toUpperCase()}
+                  </div>
+                )}
+                <span className="text-sm font-medium text-foreground">{buildAuthor.username}</span>
+                {buildAuthor.tag && <span className="text-xs text-foreground/40">@{buildAuthor.tag}</span>}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
+          )}
         </div>
 
         {/* Mode toggle */}

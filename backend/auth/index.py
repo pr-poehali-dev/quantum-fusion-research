@@ -239,26 +239,30 @@ def handler(event: dict, context) -> dict:
 
         elif action == "community" and method == "GET":
             cur.execute(
-                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
             )
             rows = cur.fetchall()
             builds = []
             for row in rows:
                 b = fmt_build(row)
                 b["username"] = row[10]
+                b["author_avatar"] = row[11] or ""
+                b["author_tag"] = row[12] or ""
                 builds.append(b)
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": builds})}
 
         elif action == "build" and method == "GET":
             token = params.get("token")
             cur.execute(
-                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
             )
             row = cur.fetchone()
             if not row:
                 return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка не найдена"})}
             b = fmt_build(row)
             b["username"] = row[10]
+            b["author_avatar"] = row[11] or ""
+            b["author_tag"] = row[12] or ""
             return {"statusCode": 200, "headers": cors, "body": json.dumps(b)}
 
         elif action == "builds" and method == "GET":

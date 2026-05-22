@@ -10,6 +10,8 @@ interface CommunityBuild {
   id: number
   name: string
   username: string
+  author_avatar: string
+  author_tag: string
   components: Array<{ slot: string; name: string; price: number; qty: number }>
   parts_total: number
   assembly_fee: number
@@ -18,16 +20,30 @@ interface CommunityBuild {
   created_at: string
 }
 
-function CommunityBuildCard({ build: b, fmt, onLoad }: { build: CommunityBuild; fmt: (n: number) => string; onLoad: () => void }) {
+function CommunityBuildCard({ build: b, fmt, onLoad, onAuthor }: { build: CommunityBuild; fmt: (n: number) => string; onLoad: () => void; onAuthor: () => void }) {
   const slotNames: Record<string, string> = { cpu: "CPU", gpu: "GPU", ram: "RAM", storage: "SSD", psu: "БП", case: "Корпус" }
   return (
     <div className="rounded-xl border border-border bg-card p-5 hover:border-primary/40 transition-all">
       <div className="mb-3 flex items-start justify-between">
-        <div>
+        <div className="flex-1 min-w-0 mr-2">
           <h3 className="font-medium text-foreground">{b.name}</h3>
-          <p className="text-xs text-foreground/40">от {b.username} · {new Date(b.created_at).toLocaleDateString("ru-RU")}</p>
+          <button
+            onClick={b.author_tag ? onAuthor : undefined}
+            className="mt-1 flex items-center gap-1.5 group"
+            style={{ cursor: b.author_tag ? "pointer" : "default" }}
+          >
+            {b.author_avatar ? (
+              <img src={b.author_avatar} alt={b.username} className="h-4 w-4 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/20 text-[10px] font-medium text-primary shrink-0">
+                {b.username[0]?.toUpperCase()}
+              </div>
+            )}
+            <span className={`text-xs text-foreground/50 ${b.author_tag ? "group-hover:text-primary transition-colors" : ""}`}>{b.username}</span>
+            <span className="text-xs text-foreground/30">· {new Date(b.created_at).toLocaleDateString("ru-RU")}</span>
+          </button>
         </div>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{b.components.length} компонентов</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50 shrink-0">{b.components.length} компонентов</span>
       </div>
       <div className="mb-4 space-y-1.5">
         {b.components.slice(0, 4).map((c, i) => (
@@ -151,6 +167,7 @@ export default function CommunityBuilds() {
                 build={b}
                 fmt={fmt}
                 onLoad={() => navigate(`/configurator?build=${b.share_token}`)}
+                onAuthor={() => b.author_tag && navigate(`/profile/${b.author_tag}`)}
               />
             ))}
           </div>
