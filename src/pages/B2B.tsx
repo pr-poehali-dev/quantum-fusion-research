@@ -39,6 +39,7 @@ export default function B2B() {
   const [activeCategory, setActiveCategory] = useState("")
   const [sortField, setSortField] = useState<"name" | "price_retail" | "qty_available">("name")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+  const [showOutOfStock, setShowOutOfStock] = useState(false)
 
   const load = useCallback(async () => {
     if (!isAuthed() || !sessionId) return
@@ -64,13 +65,15 @@ export default function B2B() {
     return () => clearTimeout(t)
   }, [load, isAuthed, search])
 
-  const sorted = [...items].sort((a, b) => {
+  const filtered = showOutOfStock ? items : items.filter(i => i.qty_available > 0)
+  const sorted = [...filtered].sort((a, b) => {
     let va: string | number = a[sortField]
     let vb: string | number = b[sortField]
     if (typeof va === "string") va = va.toLowerCase()
     if (typeof vb === "string") vb = vb.toLowerCase()
     return sortDir === "asc" ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1)
   })
+  const hiddenCount = items.length - items.filter(i => i.qty_available > 0).length
 
   const toggleSort = (field: typeof sortField) => {
     if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -135,15 +138,28 @@ export default function B2B() {
               </p>
             )}
           </div>
-          <button
-            onClick={exportCSV}
-            disabled={!items.length}
-            className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40"
-            style={{ cursor: items.length ? "pointer" : "not-allowed" }}
-          >
-            <Icon name="Download" size={15} />
-            Скачать CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowOutOfStock(v => !v)}
+              className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-colors ${showOutOfStock ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}
+            >
+              <Icon name={showOutOfStock ? "EyeOff" : "Eye"} size={15} />
+              <span className="hidden sm:inline">{showOutOfStock ? "Скрыть отсутствующие" : "Показать не в наличии"}</span>
+              {!showOutOfStock && hiddenCount > 0 && (
+                <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs text-foreground/40">{hiddenCount}</span>
+              )}
+            </button>
+            <button
+              onClick={exportCSV}
+              disabled={!items.length}
+              className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40"
+              style={{ cursor: items.length ? "pointer" : "not-allowed" }}
+            >
+              <Icon name="Download" size={15} />
+              <span className="hidden sm:inline">Скачать CSV</span>
+            </button>
+          </div>
         </div>
 
         {/* Фильтры */}
