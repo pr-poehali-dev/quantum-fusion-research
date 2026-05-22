@@ -519,45 +519,26 @@ def handler(event: dict, context) -> dict:
                 prod_name = prod_row[0] if prod_row else None
 
                 if prod_name:
+                    pn = prod_name.replace("'", "''")
                     # Ищем активные заказы где этот товар в статусе need_order
                     cur.execute(f"""
-                        SELECT wb.order_id, o.customer_name,
-                            CASE
-                                WHEN LOWER(wb.cpu) = LOWER('{prod_name}') AND wb.cpu_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.gpu) = LOWER('{prod_name}') AND wb.gpu_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.ram) = LOWER('{prod_name}') AND wb.ram_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.storage) = LOWER('{prod_name}') AND wb.storage_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.psu) = LOWER('{prod_name}') AND wb.psu_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.case_name) = LOWER('{prod_name}') AND wb.case_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.motherboard) = LOWER('{prod_name}') AND wb.motherboard_status = 'need_order' THEN 1
-                                ELSE 0 END +
-                            CASE
-                                WHEN LOWER(wb.cooling) = LOWER('{prod_name}') AND wb.cooling_status = 'need_order' THEN 1
-                                ELSE 0 END as need_qty
-                        FROM {SCHEMA}.wip_builds wb
-                        JOIN {SCHEMA}.orders o ON o.id = wb.order_id
-                        WHERE o.status NOT IN ('cancelled', 'done')
-                        HAVING (CASE WHEN LOWER(wb.cpu) = LOWER('{prod_name}') AND wb.cpu_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.gpu) = LOWER('{prod_name}') AND wb.gpu_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.ram) = LOWER('{prod_name}') AND wb.ram_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.storage) = LOWER('{prod_name}') AND wb.storage_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.psu) = LOWER('{prod_name}') AND wb.psu_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.case_name) = LOWER('{prod_name}') AND wb.case_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.motherboard) = LOWER('{prod_name}') AND wb.motherboard_status = 'need_order' THEN 1 ELSE 0 END +
-                                CASE WHEN LOWER(wb.cooling) = LOWER('{prod_name}') AND wb.cooling_status = 'need_order' THEN 1 ELSE 0 END) > 0
-                        ORDER BY wb.order_id ASC
+                        SELECT order_id, customer_name, need_qty FROM (
+                            SELECT wb.order_id, o.customer_name,
+                                (CASE WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 1 ELSE 0 END +
+                                 CASE WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 1 ELSE 0 END
+                                ) AS need_qty
+                            FROM {SCHEMA}.wip_builds wb
+                            JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                            WHERE o.status NOT IN ('cancelled', 'done')
+                        ) sub
+                        WHERE need_qty > 0
+                        ORDER BY order_id ASC
                     """)
                     neg_rows = cur.fetchall()
                     negative_reserves = [{"order_id": r[0], "customer_name": r[1], "qty": int(r[2])} for r in neg_rows]
