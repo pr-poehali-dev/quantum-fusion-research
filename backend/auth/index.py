@@ -289,10 +289,8 @@ def handler(event: dict, context) -> dict:
             assembly_fee = float(body.get("assembly_fee", 0))
             total_price = float(body.get("total_price", 0))
             is_public = "TRUE" if body.get("is_public", False) else "FALSE"
-            # Премиум поля
-            is_premium = u[15] or False
-            description = esc(body.get("description", "") if is_premium else "")
-            raw_urls = body.get("image_urls", []) if is_premium else []
+            description = esc(body.get("description", "") or "")
+            raw_urls = body.get("image_urls", []) or []
             image_urls = esc(json.dumps(raw_urls[:3]))
             cur.execute(
                 f"INSERT INTO {SCHEMA}.user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, description, image_urls, created_at, updated_at) "
@@ -314,9 +312,8 @@ def handler(event: dict, context) -> dict:
             total_price = float(body.get("total_price", 0))
             is_public = "TRUE" if body.get("is_public", False) else "FALSE"
             build_id = int(body["id"])
-            is_premium = u[15] or False
-            description = esc(body.get("description", "") if is_premium else "")
-            raw_urls = body.get("image_urls", []) if is_premium else []
+            description = esc(body.get("description", "") or "")
+            raw_urls = body.get("image_urls", []) or []
             image_urls = esc(json.dumps(raw_urls[:3]))
             cur.execute(
                 f"UPDATE {SCHEMA}.user_builds SET name={esc(name)}, components={esc(components)}, parts_total={parts_total}, assembly_fee={assembly_fee}, total_price={total_price}, is_public={is_public}, description={description}, image_urls={image_urls}, updated_at=NOW() WHERE id={build_id} AND user_id={u[0]}"

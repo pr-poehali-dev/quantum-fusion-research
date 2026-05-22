@@ -242,8 +242,8 @@ export default function Configurator() {
       name: buildName, components,
       parts_total: partsTotal, assembly_fee: assemblyFee, total_price: total,
       is_public: isPublic,
-      description: user?.is_premium ? buildDescription : "",
-      image_urls: user?.is_premium ? buildImageUrls : [],
+      description: buildDescription,
+      image_urls: buildImageUrls,
     }, sessionId)
     setSaving(false)
     if (res?.share_token) setSaveResult({ token: res.share_token })
