@@ -966,16 +966,50 @@ def handler(event: dict, context) -> dict:
                         f"VALUES (%s, %s, %s, 'unreserved', %s, %s, NOW())",
                         (gid, sid, order_id, -int(qty), f"Снят резерв при отмене заказа #{order_id}")
                     )
-                # Снимаем также отрицательные резервы (qty_negative) по товарам заказа
-                cur.execute("SELECT items FROM orders WHERE id = %s", (order_id,))
+                # Снимаем отрицательные резервы (qty_negative) через wip_builds
+                # Для config/pc_build заказов — смотрим слоты need_order в wip_builds
+                cur.execute(
+                    f"SELECT wb.id, wb.build_id FROM {schema}.wip_builds wb WHERE wb.order_id = %s LIMIT 1",
+                    (order_id,)
+                )
+                wip_neg = cur.fetchone()
+                if wip_neg:
+                    wip_neg_id, build_neg_id = wip_neg
+                    if build_neg_id:
+                        cur.execute(
+                            f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1",
+                            (build_neg_id,)
+                        )
+                        pc_neg_row = cur.fetchone()
+                        if pc_neg_row and pc_neg_row[0]:
+                            pc_neg_comps = pc_neg_row[0] if isinstance(pc_neg_row[0], list) else json.loads(pc_neg_row[0])
+                            for comp in pc_neg_comps:
+                                src_id = comp.get("source_id")
+                                comp_qty = int(comp.get("qty", 1))
+                                if not src_id:
+                                    continue
+                                cur.execute(
+                                    f"SELECT s.id FROM {schema}.warehouse_supplies s "
+                                    f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                                    f"WHERE g.product_id = %s AND s.qty_negative > 0 ORDER BY s.id DESC LIMIT 1",
+                                    (int(src_id),)
+                                )
+                                neg_row = cur.fetchone()
+                                if neg_row:
+                                    cur.execute(
+                                        f"UPDATE {schema}.warehouse_supplies "
+                                        f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
+                                        (comp_qty, neg_row[0])
+                                    )
+                # Также снимаем qty_negative для обычных product-позиций с item_status=need_order
+                cur.execute(f"SELECT items FROM {schema}.orders WHERE id = %s", (order_id,))
                 row = cur.fetchone()
                 order_items = row[0] if row else []
                 for it in (order_items or []):
                     pid = it.get("id")
                     if not pid or it.get("item_type") != "product":
                         continue
-                    item_status = it.get("item_status", "")
-                    if item_status == "need_order":
+                    if it.get("item_status") == "need_order":
                         qty_neg = int(it.get("quantity", 1))
                         cur.execute(
                             f"SELECT s.id FROM {schema}.warehouse_supplies s "
