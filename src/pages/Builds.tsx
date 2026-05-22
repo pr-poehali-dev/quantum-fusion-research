@@ -258,6 +258,33 @@ export default function Builds() {
 
       <CartToast key={toastKey} show={toastShow} productName={toastName} />
 
+      {/* Табы — как в Shop */}
+      <div className="border-b border-border">
+        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto">
+          {[
+            { label: "Каталог товаров", icon: "Package", action: () => navigate("/shop") },
+            { label: "Сборки сообщества", icon: "Users", action: () => navigate("/shop") },
+          ].map(t => (
+            <button
+              key={t.label}
+              onClick={t.action}
+              className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+              style={{ cursor: "pointer" }}
+            >
+              <Icon name={t.icon as "Package"} size={15} />
+              {t.label}
+            </button>
+          ))}
+          <button
+            className="flex shrink-0 items-center gap-2 border-b-2 border-primary px-5 py-3 text-sm font-medium text-primary transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Monitor" size={15} />
+            Наши ПК
+          </button>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">
           <h1 className="mb-2 text-3xl font-light text-foreground">Наши ПК</h1>
