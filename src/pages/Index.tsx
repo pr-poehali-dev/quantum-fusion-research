@@ -68,9 +68,9 @@ export default function Index() {
 
   const scrollToSection = (index: number) => {
     if (scrollContainerRef.current) {
-      const sectionWidth = scrollContainerRef.current.offsetWidth
+      const sectionHeight = scrollContainerRef.current.offsetHeight
       scrollContainerRef.current.scrollTo({
-        left: sectionWidth * index,
+        top: sectionHeight * index,
         behavior: "smooth",
       })
       setCurrentSection(index)
@@ -96,7 +96,7 @@ export default function Index() {
       const deltaX = touchStartX.current - touchEndX
 
       if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
-        if (deltaY > 0 && currentSection < 6) {
+        if (deltaY > 0 && currentSection < 7) {
           scrollToSection(currentSection + 1)
         } else if (deltaY < 0 && currentSection > 0) {
           scrollToSection(currentSection - 1)
@@ -131,7 +131,7 @@ export default function Index() {
       wheelLockRef.current = true
       setTimeout(() => { wheelLockRef.current = false }, 900)
 
-      if (e.deltaY > 0 && currentSection < 6) {
+      if (e.deltaY > 0 && currentSection < 7) {
         scrollToSection(currentSection + 1)
       } else if (e.deltaY < 0 && currentSection > 0) {
         scrollToSection(currentSection - 1)
@@ -160,9 +160,9 @@ export default function Index() {
           return
         }
 
-        const sectionWidth = scrollContainerRef.current.offsetWidth
-        const scrollLeft = scrollContainerRef.current.scrollLeft
-        const newSection = Math.round(scrollLeft / sectionWidth)
+        const sectionHeight = scrollContainerRef.current.offsetHeight
+        const scrollTop = scrollContainerRef.current.scrollTop
+        const newSection = Math.round(scrollTop / sectionHeight)
 
         if (newSection !== currentSection && newSection >= 0 && newSection <= 7) {
           setCurrentSection(newSection)
@@ -199,13 +199,11 @@ export default function Index() {
         style={{ contain: "strict" }}
         onMouseMove={handleMouseMove}
       >
-        {/* 1. Базовый фон — тёмный или светлый */}
         <div
           className="absolute inset-0 transition-colors duration-500"
           style={{ background: "hsl(var(--background))" }}
         />
 
-        {/* 2. WebGL-шейдер — цвета из акцента */}
         <Shader className="absolute inset-0 h-full w-full">
           <Swirl
             colorA={shaderColors.colorA}
@@ -234,7 +232,6 @@ export default function Index() {
           />
         </Shader>
 
-        {/* 3. Акцентный радиальный градиент в центре */}
         <div
           className="absolute inset-0 transition-opacity duration-500"
           style={{
@@ -243,9 +240,8 @@ export default function Index() {
           }}
         />
 
-        {/* 4. Огненный всплеск при движении мыши */}
         <div
-          className="absolute inset-0 transition-opacity duration-300"
+          className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
             opacity: mouseIntensity * (mode === "light" ? 0.4 : 1),
             background: `radial-gradient(ellipse 75% 55% at 50% 45%, ${shaderColors.glow} 0%, transparent 80%)`,
@@ -253,7 +249,6 @@ export default function Index() {
           }}
         />
 
-        {/* 5. Лёгкий оверлей для светлой темы — белый туман */}
         {mode === "light" && (
           <div
             className="absolute inset-0 transition-opacity duration-500"
@@ -311,16 +306,29 @@ export default function Index() {
         </div>
       </nav>
 
+      {/* Вертикальные точки-индикаторы */}
+      <div className={`fixed right-6 top-1/2 z-50 -translate-y-1/2 flex flex-col gap-2 transition-opacity duration-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <button
+            key={i}
+            onClick={() => scrollToSection(i)}
+            className={`h-2 w-2 rounded-full transition-all duration-300 ${
+              currentSection === i ? "bg-foreground scale-125" : "bg-foreground/30 hover:bg-foreground/60"
+            }`}
+          />
+        ))}
+      </div>
+
       <div
         ref={scrollContainerRef}
         data-scroll-container
-        className={`relative z-10 flex h-screen overflow-x-auto overflow-y-hidden transition-opacity duration-700 ${
+        className={`relative z-10 flex h-screen flex-col overflow-x-hidden overflow-y-auto transition-opacity duration-700 ${
           isLoaded ? "opacity-100" : "opacity-0"
         }`}
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {/* Hero Section */}
-        <section className="flex min-h-screen w-screen shrink-0 flex-col justify-end px-6 pb-16 pt-24 md:px-12 md:pb-24">
+        <section className="flex min-h-screen w-full shrink-0 flex-col justify-end px-6 pb-16 pt-24 md:px-12 md:pb-24">
           <div className="max-w-3xl">
             <div className="mb-4 inline-block animate-in fade-in slide-in-from-bottom-4 rounded-full border border-foreground/20 bg-foreground/15 px-4 py-1.5 backdrop-blur-md duration-700">
               <p className="font-mono text-xs text-foreground/90">Сборка ПК на заказ и продажа комплектующих</p>
@@ -350,9 +358,9 @@ export default function Index() {
 
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-in fade-in duration-1000 delay-500">
             <div className="flex items-center gap-2">
-              <p className="font-mono text-xs text-foreground/80">Листайте вправо</p>
-              <div className="flex h-6 w-12 items-center justify-center rounded-full border border-foreground/20 bg-foreground/15 backdrop-blur-md">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-foreground/80" />
+              <p className="font-mono text-xs text-foreground/80">Листайте вниз</p>
+              <div className="flex h-6 w-6 items-center justify-center rounded-full border border-foreground/20 bg-foreground/15 backdrop-blur-md">
+                <div className="h-2 w-2 animate-bounce rounded-full bg-foreground/80" />
               </div>
             </div>
           </div>

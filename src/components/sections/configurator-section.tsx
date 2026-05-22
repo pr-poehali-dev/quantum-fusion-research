@@ -27,7 +27,7 @@ export function ConfiguratorSection() {
   return (
     <section
       ref={ref}
-      className="flex h-screen w-screen shrink-0 snap-start items-center px-6 pt-20 md:px-12 md:pt-0 lg:px-16"
+      className="flex h-screen w-full items-center px-6 pt-20 md:px-12 md:pt-0 lg:px-16"
     >
       <div className="mx-auto w-full max-w-7xl">
         <div className={`transition-all duration-700 ${isVisible ? "translate-y-0 opacity-100" : "-translate-y-12 opacity-0"}`}>

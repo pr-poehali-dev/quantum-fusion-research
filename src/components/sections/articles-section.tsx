@@ -35,7 +35,7 @@ export function ArticlesSection() {
   return (
     <section
       ref={ref as React.RefObject<HTMLElement>}
-      className="flex h-screen w-screen shrink-0 snap-start items-center px-4 pt-20 md:px-12 md:pt-0 lg:px-16"
+      className="flex h-screen w-full items-center px-4 pt-20 md:px-12 md:pt-0 lg:px-16"
     >
       <div className="mx-auto w-full max-w-7xl">
         {/* Заголовок */}
