@@ -524,13 +524,23 @@ def handler(event: dict, context) -> dict:
                     # Кол-во берём из pc_builds.components по source_id (product_id),
                     # т.к. qty там уже содержит итоговое количество с учётом кол-ва сборок.
                     cur.execute(f"""
-                        SELECT order_id, customer_name, need_qty FROM (
+                        SELECT order_id, customer_name,
+                               GREATEST(0, need_qty - reserved_for_order) AS shortage
+                        FROM (
                             SELECT wb.order_id, o.customer_name,
                                 COALESCE((
                                     SELECT SUM((comp->>'qty')::int)
                                     FROM jsonb_array_elements(pb.components::jsonb) comp
                                     WHERE (comp->>'source_id')::int = {product_id}
                                 ), 1) AS need_qty,
+                                COALESCE((
+                                    SELECT SUM(m.qty_delta)
+                                    FROM {SCHEMA}.warehouse_movements m
+                                    JOIN {SCHEMA}.warehouse_groups wg ON wg.id = m.group_id
+                                    WHERE wg.product_id = {product_id}
+                                      AND m.order_id = wb.order_id
+                                      AND m.type IN ('reserved', 'unreserved')
+                                ), 0) AS reserved_for_order,
                                 (CASE WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 1 ELSE 0 END +
                                  CASE WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 1 ELSE 0 END +
                                  CASE WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 1 ELSE 0 END +
@@ -545,7 +555,7 @@ def handler(event: dict, context) -> dict:
                             LEFT JOIN {SCHEMA}.pc_builds pb ON pb.id = wb.build_id
                             WHERE o.status NOT IN ('cancelled', 'done')
                         ) sub
-                        WHERE slot_match > 0
+                        WHERE slot_match > 0 AND need_qty - reserved_for_order > 0
                         ORDER BY order_id ASC
                     """)
                     neg_rows = cur.fetchall()
