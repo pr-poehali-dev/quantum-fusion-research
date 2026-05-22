@@ -259,9 +259,9 @@ export default function Configurator() {
               style={{ cursor: buildAuthor.tag ? "pointer" : "default" }}
             >
               {buildAuthor.avatar ? (
-                <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-14 w-14 rounded-full object-cover shrink-0" />
+                <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-28 w-28 rounded-full object-cover shrink-0" />
               ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/20 text-2xl font-medium text-primary shrink-0">
+                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-primary/20 text-5xl font-medium text-primary shrink-0">
                   {buildAuthor.username[0]?.toUpperCase()}
                 </div>
               )}
