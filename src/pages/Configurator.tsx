@@ -131,7 +131,7 @@ function ExtrasSection() {
 export default function Configurator() {
   const [slots, setSlots] = useState<Record<string, CatalogComp[]>>({})
   const [selected, setSelected] = useState<Record<string, SelectedComp | null>>({})
-  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string }>>({})
+  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>>({})
   const [mode, setMode] = useState<"catalog" | "custom">("catalog")
   const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -215,6 +215,10 @@ export default function Configurator() {
     const inp = customInputs[slot]
     if (!inp?.name || !inp?.price) return
     setSelected(s => ({ ...s, [slot]: { slot, name: inp.name, price: parseFloat(inp.price) || 0, qty: 1, link: inp.link || undefined, source: "custom" } }))
+    // Сохраняем description и image_urls в slotExtras
+    if (inp.description || inp.image_urls?.length) {
+      setSlotExtras(e => ({ ...e, [slot]: { description: inp.description || "", image_urls: inp.image_urls || [] } }))
+    }
     setOpenSlot(null)
   }
 
@@ -364,7 +368,7 @@ export default function Configurator() {
                 )
                 const current = selected[slot]
                 const isOpen = openSlot === slot || (!!slotSearch && options.length > 0)
-                const ci = customInputs[slot] || { name: "", price: "", link: "" }
+                const ci = customInputs[slot] || { name: "", price: "", link: "", description: "", image_urls: [] }
 
                 // Скрываем слот если поиск активен и нет совпадений (и ничего не выбрано)
                 if (slotSearch && options.length === 0 && !current) return null
@@ -494,20 +498,35 @@ export default function Configurator() {
                                 style={{ cursor: "text" }}
                               />
                             </div>
-                            <div className="flex gap-2">
-                              <input type="url" placeholder="Ссылка на товар (необязательно)"
-                                value={ci.link}
-                                onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, link: e.target.value } }))}
-                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                                style={{ cursor: "text" }}
+                            <input type="url" placeholder="Ссылка на товар (необязательно)"
+                              value={ci.link}
+                              onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, link: e.target.value } }))}
+                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                              style={{ cursor: "text" }}
+                            />
+                            <div>
+                              <p className="mb-1.5 text-xs text-foreground/40">Фото (до 3 шт., необязательно)</p>
+                              <ImageUploader
+                                images={ci.image_urls}
+                                onChange={urls => setCustomInputs(c => ({ ...c, [slot]: { ...ci, image_urls: urls } }))}
+                                folder="builds"
+                                maxImages={3}
                               />
-                              <button onClick={() => applyCustom(slot)}
-                                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                                style={{ cursor: "pointer" }}
-                              >
-                                OK
-                              </button>
                             </div>
+                            <div>
+                              <p className="mb-1.5 text-xs text-foreground/40">Описание (необязательно)</p>
+                              <RichTextEditor
+                                value={ci.description}
+                                onChange={val => setCustomInputs(c => ({ ...c, [slot]: { ...ci, description: val } }))}
+                                placeholder="Описание компонента..."
+                              />
+                            </div>
+                            <button onClick={() => applyCustom(slot)}
+                              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                              style={{ cursor: "pointer" }}
+                            >
+                              Применить
+                            </button>
                           </div>
                         )}
                       </div>
