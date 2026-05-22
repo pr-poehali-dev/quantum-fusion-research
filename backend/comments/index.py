@@ -39,7 +39,11 @@ def handler(event: dict, context) -> dict:
     def get_user(sid):
         if not sid:
             return None
-        cur.execute(f"SELECT id, username, avatar_url FROM {SCHEMA}.users WHERE session_id = {esc(sid)}")
+        cur.execute(
+            f"SELECT u.id, u.username, u.avatar_url FROM {SCHEMA}.user_sessions s "
+            f"JOIN {SCHEMA}.users u ON s.user_id = u.id "
+            f"WHERE s.id = {esc(sid)} AND s.expires_at > NOW()"
+        )
         return cur.fetchone()
 
     try:
