@@ -252,26 +252,7 @@ export default function Configurator() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">
           <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
-          {buildAuthor ? (
-            <button
-              onClick={() => buildAuthor.tag ? navigate(`/profile/${buildAuthor.tag}`) : undefined}
-              className="mt-6 flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 hover:border-primary transition-colors w-fit"
-              style={{ cursor: buildAuthor.tag ? "pointer" : "default" }}
-            >
-              {buildAuthor.avatar ? (
-                <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-28 w-28 rounded-full object-cover shrink-0" />
-              ) : (
-                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-primary/20 text-5xl font-medium text-primary shrink-0">
-                  {buildAuthor.username[0]?.toUpperCase()}
-                </div>
-              )}
-              <div className="text-left">
-                <p className="text-xs text-foreground/50 mb-0.5">Сборка от</p>
-                <p className="text-base font-semibold text-foreground">{buildAuthor.username}</p>
-                {buildAuthor.tag && <p className="text-xs text-foreground/40">@{buildAuthor.tag}</p>}
-              </div>
-            </button>
-          ) : (
+          {!buildAuthor && (
             <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
           )}
         </div>
@@ -443,6 +424,28 @@ export default function Configurator() {
 
           {/* ── Summary panel ── */}
           <div className="space-y-4 lg:sticky lg:top-24 h-fit">
+
+            {/* Author card */}
+            {buildAuthor && (
+              <button
+                onClick={() => buildAuthor.tag ? navigate(`/profile/${buildAuthor.tag}`) : undefined}
+                className="w-full flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 hover:border-primary transition-colors"
+                style={{ cursor: buildAuthor.tag ? "pointer" : "default" }}
+              >
+                {buildAuthor.avatar ? (
+                  <img src={buildAuthor.avatar} alt={buildAuthor.username} className="h-28 w-28 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="flex h-28 w-28 items-center justify-center rounded-full bg-primary/20 text-5xl font-medium text-primary shrink-0">
+                    {buildAuthor.username[0]?.toUpperCase()}
+                  </div>
+                )}
+                <div className="text-left">
+                  <p className="text-xs text-foreground/50 mb-0.5">Сборка от</p>
+                  <p className="text-base font-semibold text-foreground">{buildAuthor.username}</p>
+                  {buildAuthor.tag && <p className="text-xs text-foreground/40">@{buildAuthor.tag}</p>}
+                </div>
+              </button>
+            )}
 
             {/* Totals card */}
             <div className="rounded-xl border border-border bg-card p-5">
