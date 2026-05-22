@@ -326,80 +326,6 @@ export default function Configurator() {
           )}
         </div>
 
-        {/* ── Загруженная сборка: перечень + действия ── */}
-        {buildToken && hasComponents && isReadOnly && (
-          <div className="mb-6 rounded-2xl border border-primary/30 bg-card overflow-hidden">
-            {/* Шапка */}
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/60">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Icon name="Cpu" size={16} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{buildName}</p>
-                  {buildAuthor && (
-                    <p className="text-xs text-foreground/50">Сборка от {buildAuthor.username}</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => {
-                    const url = `${window.location.origin}/configurator?build=${buildToken}`
-                    navigator.clipboard.writeText(url)
-                    setBuildCopied(true)
-                    setTimeout(() => setBuildCopied(false), 2500)
-                  }}
-                  style={{ cursor: "pointer" }}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-                >
-                  <Icon name={buildCopied ? "Check" : "Copy"} size={13} />
-                  {buildCopied ? "Скопировано!" : "Копировать"}
-                </button>
-                <button
-                  onClick={() => setIsReadOnly(false)}
-                  style={{ cursor: "pointer" }}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  <Icon name="Pencil" size={13} />
-                  Редактировать
-                </button>
-              </div>
-            </div>
-
-            {/* Список компонентов */}
-            <div className="divide-y divide-border/40">
-              {Object.entries(SLOT_LABELS).map(([slot, meta]) => {
-                const c = selected[slot]
-                if (!c) return null
-                return (
-                  <div key={slot} className="flex items-center gap-3 px-5 py-3">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                      <Icon name={meta.icon as "Cpu"} size={13} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-foreground/50 leading-none mb-0.5">{meta.label}</p>
-                      <p className="text-sm text-foreground truncate">
-                        {c.name}
-                        {c.qty > 1 && <span className="ml-1 text-foreground/40">×{c.qty}</span>}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-sm font-semibold text-primary tabular-nums">
-                      {fmt(c.price * c.qty)}
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Итог */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-muted/30 border-t border-border/60">
-              <span className="text-sm text-foreground/60">Итого железо</span>
-              <span className="text-base font-bold text-foreground">{fmt(partsTotal)}</span>
-            </div>
-          </div>
-        )}
-
         {/* Mode toggle */}
         <div className="mb-6 flex overflow-hidden rounded-xl border border-border">
           <button onClick={() => setMode("catalog")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>
@@ -424,8 +350,95 @@ export default function Configurator() {
 
         <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
 
-          {/* ── Slots ── */}
+          {/* ── Slots / Read-only view ── */}
           <div className="space-y-3">
+
+            {/* Режим просмотра загруженной сборки */}
+            {buildToken && isReadOnly ? (
+              <div className="rounded-2xl border border-primary/30 bg-card overflow-hidden">
+                {/* Шапка */}
+                <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/60">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon name="Cpu" size={16} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{buildName}</p>
+                      {buildAuthor && (
+                        <p className="text-xs text-foreground/50">Сборка от {buildAuthor.username}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/configurator?build=${buildToken}`
+                        navigator.clipboard.writeText(url)
+                        setBuildCopied(true)
+                        setTimeout(() => setBuildCopied(false), 2500)
+                      }}
+                      style={{ cursor: "pointer" }}
+                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                    >
+                      <Icon name={buildCopied ? "Check" : "Copy"} size={13} />
+                      {buildCopied ? "Скопировано!" : "Копировать"}
+                    </button>
+                    <button
+                      onClick={() => setIsReadOnly(false)}
+                      style={{ cursor: "pointer" }}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      <Icon name="Pencil" size={13} />
+                      Редактировать
+                    </button>
+                  </div>
+                </div>
+
+                {/* Список компонентов */}
+                <div className="divide-y divide-border/40">
+                  {Object.entries(SLOT_LABELS).map(([slot, meta]) => {
+                    const c = selected[slot]
+                    if (!c) return null
+                    return (
+                      <div key={slot} className="flex items-center gap-3 px-5 py-4">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Icon name={meta.icon as "Cpu"} size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-foreground/50 leading-none mb-1">{meta.label}</p>
+                          <p className="text-sm font-medium text-foreground leading-snug">
+                            {c.name}
+                            {c.qty > 1 && <span className="ml-1.5 text-foreground/40 font-normal">×{c.qty}</span>}
+                          </p>
+                          {c.link && (
+                            <a href={c.link} target="_blank" rel="noopener noreferrer"
+                              className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                              style={{ cursor: "pointer" }}
+                            >
+                              <Icon name="ExternalLink" size={10} />
+                              Ссылка на товар
+                            </a>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {c.qty > 1 && (
+                            <p className="text-xs text-foreground/40 mb-0.5">{fmt(c.price)} × {c.qty}</p>
+                          )}
+                          <p className="text-sm font-bold text-primary tabular-nums">{fmt(c.price * c.qty)}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Итог */}
+                <div className="flex items-center justify-between px-5 py-4 bg-muted/30 border-t border-border/60">
+                  <span className="text-sm text-foreground/60">Итого железо</span>
+                  <span className="text-lg font-bold text-foreground">{fmt(partsTotal)}</span>
+                </div>
+              </div>
+            ) : (
+            <>
             {/* Поиск по компонентам */}
             <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 focus-within:border-primary transition-colors">
               <Icon name="Search" size={15} className="text-foreground/40 shrink-0" />
@@ -624,6 +637,8 @@ export default function Configurator() {
 
             {/* ── Прочее: кастомные кабели ── */}
             <ExtrasSection />
+            </>
+            )}
           </div>
 
           {/* ── Summary panel ── */}
