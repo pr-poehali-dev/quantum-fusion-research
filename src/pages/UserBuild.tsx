@@ -16,7 +16,7 @@ interface BuildData {
   id: number
   name: string
   description: string
-  components: Array<{ slot: string; name: string; price: number; qty?: number }>
+  components: Array<{ slot: string; name: string; price: number; qty?: number; description?: string; image_urls?: string[]; link?: string }>
   parts_total: number
   assembly_fee: number
   total_price: number
@@ -146,28 +146,58 @@ export default function UserBuild() {
             </div>
 
             {/* Описание */}
-            {build.description && (
-              <div className="rounded-xl border border-border bg-card p-5">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">{build.description}</p>
-              </div>
+            {build.description && build.description !== "<p></p>" && (
+              <div className="rounded-xl border border-border bg-card p-5 prose prose-sm max-w-none text-foreground/80 prose-headings:text-foreground prose-a:text-primary"
+                dangerouslySetInnerHTML={{ __html: build.description }}
+              />
             )}
 
             {/* Компоненты */}
             <div className="rounded-xl border border-border bg-card p-5">
               <h2 className="mb-4 text-base font-medium text-foreground">Состав сборки</h2>
-              <div className="space-y-2">
+              <div className="space-y-4">
                 {grouped.map(({ slot, label, items }) => (
-                  <div key={slot}>
-                    {items.map((c, i) => (
-                      <div key={i} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-muted/40 transition-colors">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="w-28 shrink-0 text-xs text-foreground/40">{label}</span>
-                          <span className="truncate text-sm text-foreground">{c.name}</span>
-                          {c.qty && c.qty > 1 && <span className="shrink-0 text-xs text-foreground/40">×{c.qty}</span>}
+                  <div key={slot} className="space-y-3">
+                    {items.map((c, i) => {
+                      const imgs = (c.image_urls || []).filter(Boolean)
+                      const hasExtra = imgs.length > 0 || (c.description && c.description !== "<p></p>")
+                      return (
+                        <div key={i} className={`rounded-xl border transition-colors ${hasExtra ? "border-border bg-muted/20 p-4" : "border-transparent px-2 py-2 hover:bg-muted/40"}`}>
+                          {/* Строка с названием и ценой */}
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="w-28 shrink-0 text-xs text-foreground/40">{label}</span>
+                              <div className="min-w-0">
+                                <span className="text-sm text-foreground">{c.name}</span>
+                                {c.qty && c.qty > 1 && <span className="ml-1.5 text-xs text-foreground/40">×{c.qty}</span>}
+                                {c.link && (
+                                  <a href={c.link} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex items-center gap-0.5 text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>
+                                    <Icon name="ExternalLink" size={10} />ссылка
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                            <span className="shrink-0 text-sm font-medium text-foreground">{fmt(c.price * (c.qty || 1))}</span>
+                          </div>
+                          {/* Фото компонента */}
+                          {imgs.length > 0 && (
+                            <div className="mt-3 flex gap-2">
+                              {imgs.map((img, j) => (
+                                <a key={j} href={img} target="_blank" rel="noopener noreferrer" className="h-20 w-28 overflow-hidden rounded-lg border border-border bg-muted shrink-0" style={{ cursor: "pointer" }}>
+                                  <img src={img} alt="" className="h-full w-full object-cover hover:opacity-90 transition-opacity" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          {/* Описание компонента */}
+                          {c.description && c.description !== "<p></p>" && (
+                            <div className="mt-3 prose prose-sm max-w-none text-foreground/70 prose-headings:text-foreground prose-a:text-primary"
+                              dangerouslySetInnerHTML={{ __html: c.description }}
+                            />
+                          )}
                         </div>
-                        <span className="shrink-0 text-sm font-medium text-foreground">{fmt(c.price * (c.qty || 1))}</span>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ))}
               </div>

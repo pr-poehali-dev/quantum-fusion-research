@@ -247,9 +247,14 @@ export default function Configurator() {
     if (res?.share_token) setSaveResult({ token: res.share_token })
   }
 
+  const buildShareUrl = (token: string) =>
+    user?.is_premium
+      ? `${window.location.origin}/user-build/${token}`
+      : `${window.location.origin}/configurator?build=${token}`
+
   const copyLink = () => {
     if (!saveResult) return
-    navigator.clipboard.writeText(`${window.location.origin}/configurator?build=${saveResult.token}`)
+    navigator.clipboard.writeText(buildShareUrl(saveResult.token))
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
   }
@@ -655,7 +660,7 @@ export default function Configurator() {
 
                       <button
                         onClick={() => {
-                          const url = `${window.location.origin}/configurator?build=${saveResult.token}`
+                          const url = buildShareUrl(saveResult.token)
                           const text = `Смотри мою сборку на PCPRO: ${url}`
                           if (navigator.share) {
                             navigator.share({ title: buildName, text, url })
@@ -671,6 +676,17 @@ export default function Configurator() {
                         <Icon name="Share2" size={15} />
                         Поделиться
                       </button>
+
+                      {user?.is_premium && (
+                        <button
+                          onClick={() => navigate(`/user-build/${saveResult.token}`)}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <Icon name="ExternalLink" size={15} />
+                          Открыть страницу сборки
+                        </button>
+                      )}
 
                       <button
                         onClick={() => { setSaveResult(null) }}
