@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useTheme } from "@/store/theme"
+import { useGpuDetection } from "@/hooks/useGpuDetection"
 
 export default function Index() {
   const navigate = useNavigate()
@@ -29,6 +30,7 @@ export default function Index() {
   const touchStartX = useRef(0)
   const shaderContainerRef = useRef<HTMLDivElement>(null)
   const scrollThrottleRef = useRef<number>()
+  const { shaderEnabled, detecting } = useGpuDetection()
 
   const handleMouseMove = useCallback(() => {
     setMouseIntensity(1)
@@ -37,6 +39,14 @@ export default function Index() {
   }, [])
 
   useEffect(() => {
+    // Если шейдер выключен или ещё определяется — просто ждём конца detecting
+    if (!detecting && !shaderEnabled) {
+      setIsLoaded(true)
+      return
+    }
+
+    if (detecting) return
+
     const checkShaderReady = () => {
       if (shaderContainerRef.current) {
         const canvas = shaderContainerRef.current.querySelector("canvas")
@@ -64,7 +74,7 @@ export default function Index() {
       clearInterval(intervalId)
       clearTimeout(fallbackTimer)
     }
-  }, [])
+  }, [detecting, shaderEnabled])
 
   const scrollToSection = (index: number) => {
     if (scrollContainerRef.current) {
@@ -195,7 +205,7 @@ export default function Index() {
       {/* Фон: слои снизу вверх */}
       <div
         ref={shaderContainerRef}
-        className={`fixed inset-0 z-0 transition-opacity duration-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}
+        className={`fixed inset-0 z-0 transition-opacity duration-700 ${(isLoaded && !detecting) ? "opacity-100" : "opacity-0"}`}
         style={{ contain: "strict" }}
         onMouseMove={handleMouseMove}
       >
@@ -204,50 +214,63 @@ export default function Index() {
           style={{ background: "hsl(var(--background))" }}
         />
 
-        <Shader className="absolute inset-0 h-full w-full">
-          <Swirl
-            colorA={shaderColors.colorA}
-            colorB={shaderColors.colorB}
-            speed={0.5}
-            detail={0.6}
-            blend={55}
-            coarseX={45}
-            coarseY={45}
-            mediumX={45}
-            mediumY={45}
-            fineX={45}
-            fineY={45}
-          />
-          <ChromaFlow
-            baseColor={shaderColors.base}
-            upColor={shaderColors.base}
-            downColor={mode === "light" ? "#dddddd" : "#080000"}
-            leftColor={shaderColors.base}
-            rightColor={shaderColors.base}
-            intensity={mode === "light" ? 0.5 : 0.7}
-            radius={1.9}
-            momentum={22}
-            maskType="alpha"
-            opacity={mode === "light" ? 0.55 : 0.8}
-          />
-        </Shader>
+        {shaderEnabled && (
+          <>
+            <Shader className="absolute inset-0 h-full w-full">
+              <Swirl
+                colorA={shaderColors.colorA}
+                colorB={shaderColors.colorB}
+                speed={0.5}
+                detail={0.6}
+                blend={55}
+                coarseX={45}
+                coarseY={45}
+                mediumX={45}
+                mediumY={45}
+                fineX={45}
+                fineY={45}
+              />
+              <ChromaFlow
+                baseColor={shaderColors.base}
+                upColor={shaderColors.base}
+                downColor={mode === "light" ? "#dddddd" : "#080000"}
+                leftColor={shaderColors.base}
+                rightColor={shaderColors.base}
+                intensity={mode === "light" ? 0.5 : 0.7}
+                radius={1.9}
+                momentum={22}
+                maskType="alpha"
+                opacity={mode === "light" ? 0.55 : 0.8}
+              />
+            </Shader>
 
-        <div
-          className="absolute inset-0 transition-opacity duration-500"
-          style={{
-            background: `radial-gradient(ellipse 90% 70% at 50% 45%, ${shaderColors.glow.replace("88", "50")} 0%, transparent 70%)`,
-            opacity: mode === "light" ? 0.5 : 0.8,
-          }}
-        />
+            <div
+              className="absolute inset-0 transition-opacity duration-500"
+              style={{
+                background: `radial-gradient(ellipse 90% 70% at 50% 45%, ${shaderColors.glow.replace("88", "50")} 0%, transparent 70%)`,
+                opacity: mode === "light" ? 0.5 : 0.8,
+              }}
+            />
 
-        <div
-          className="absolute inset-0 pointer-events-none transition-opacity duration-500"
-          style={{
-            opacity: mouseIntensity * (mode === "light" ? 0.4 : 1),
-            background: `radial-gradient(ellipse 75% 55% at 50% 45%, ${shaderColors.glow} 0%, transparent 80%)`,
-            mixBlendMode: "screen",
-          }}
-        />
+            <div
+              className="absolute inset-0 pointer-events-none transition-opacity duration-500"
+              style={{
+                opacity: mouseIntensity * (mode === "light" ? 0.4 : 1),
+                background: `radial-gradient(ellipse 75% 55% at 50% 45%, ${shaderColors.glow} 0%, transparent 80%)`,
+                mixBlendMode: "screen",
+              }}
+            />
+          </>
+        )}
+
+        {!shaderEnabled && !detecting && (
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `radial-gradient(ellipse 80% 60% at 50% 40%, ${shaderColors.glow.replace("88", "25")} 0%, transparent 70%)`,
+            }}
+          />
+        )}
 
         {mode === "light" && (
           <div
