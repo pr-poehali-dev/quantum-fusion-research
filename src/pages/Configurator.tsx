@@ -891,7 +891,7 @@ export default function Configurator() {
             )}
 
             {/* ── Кастомные кабели ── */}
-            <button
+            {!(buildToken && isReadOnly) && <button
               onClick={() => navigate("/cables")}
               className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-5 hover:border-primary/50 transition-colors group"
               style={{ cursor: "pointer" }}
@@ -906,7 +906,7 @@ export default function Configurator() {
                 </div>
               </div>
               <Icon name="ArrowRight" size={16} className="text-foreground/30 group-hover:text-primary transition-colors" />
-            </button>
+            </button>}
 
           </div>
         </div>
