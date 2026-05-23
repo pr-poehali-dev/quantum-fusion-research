@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import React, { useEffect, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
@@ -545,6 +545,25 @@ export default function WarehouseTab() {
   const [page, setPage] = useState(0)
   const PAGE = 50
 
+  // Фильтр просмотра резервов: null → 'all' → 'only' → 'negative' → null
+  type ReserveFilter = null | 'all' | 'only' | 'negative'
+  const [reserveFilter, setReserveFilter] = useState<ReserveFilter>(null)
+
+  const RESERVE_FILTER_CYCLE: ReserveFilter[] = [null, 'all', 'only', 'negative']
+  const RESERVE_FILTER_LABELS: Record<string, string> = {
+    all: 'Все резервы',
+    only: 'Только резервы',
+    negative: 'Только отрицательные',
+  }
+
+  const cycleReserveFilter = () => {
+    setReserveFilter(prev => {
+      const idx = RESERVE_FILTER_CYCLE.indexOf(prev)
+      return RESERVE_FILTER_CYCLE[(idx + 1) % RESERVE_FILTER_CYCLE.length]
+    })
+    setPage(0)
+  }
+
   const [groupModal, setGroupModal] = useState<Partial<Group> | null | false>(false)
   const [storesModal, setStoresModal] = useState(false)
   const [quickSupplyModal, setQuickSupplyModal] = useState(false)
@@ -552,7 +571,10 @@ export default function WarehouseTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const params: Record<string, string> = { limit: String(PAGE), offset: String(page * PAGE) }
+    // При активном фильтре резервов — грузим все товары (большой limit), пагинация не нужна
+    const params: Record<string, string> = reserveFilter
+      ? { limit: "9999", offset: "0" }
+      : { limit: String(PAGE), offset: String(page * PAGE) }
     if (search) params.search = search
     if (filterCat) params.category = filterCat
     const [gData, sData, cData] = await Promise.all([
@@ -564,7 +586,7 @@ export default function WarehouseTab() {
     if (!gData.error) { setGroups(gData.groups || []); setTotal(gData.total || 0) }
     if (!sData.error && Array.isArray(sData)) setStores(sData)
     if (!cData.error && Array.isArray(cData)) setCategories(cData)
-  }, [search, filterCat, page])
+  }, [search, filterCat, page, reserveFilter])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(0) }, [search, filterCat])
@@ -576,6 +598,24 @@ export default function WarehouseTab() {
   }
 
   const totalPages = Math.ceil(total / PAGE)
+
+  // Применяем фильтр и сортировку резервов
+  const displayGroups = (() => {
+    if (!reserveFilter) return groups
+    if (reserveFilter === 'only') {
+      return [...groups].filter(g => g.qty_reserved > 0).sort((a, b) => b.qty_reserved - a.qty_reserved)
+    }
+    if (reserveFilter === 'negative') {
+      return [...groups].filter(g => g.qty_negative > 0).sort((a, b) => b.qty_negative - a.qty_negative)
+    }
+    // 'all': сначала обычные резервы (без отрицательных), потом отрицательные
+    const withReserve = groups.filter(g => g.qty_reserved > 0).sort((a, b) => b.qty_reserved - a.qty_reserved)
+    const withNegative = groups.filter(g => g.qty_negative > 0).sort((a, b) => b.qty_negative - a.qty_negative)
+    // убираем дубли: товары которые есть в обоих списках — только в negative
+    const negativeIds = new Set(withNegative.map(g => g.id))
+    const pureReserve = withReserve.filter(g => !negativeIds.has(g.id))
+    return [...pureReserve, ...withNegative]
+  })()
 
   return (
     <div className="space-y-4">
@@ -592,6 +632,27 @@ export default function WarehouseTab() {
         </Button>
         <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
           <Icon name="ClipboardList" size={14} className="mr-1.5" />Инвентаризация
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={cycleReserveFilter}
+          className={
+            reserveFilter === 'negative'
+              ? "border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-400"
+              : reserveFilter === 'only'
+              ? "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 hover:text-orange-400"
+              : reserveFilter === 'all'
+              ? "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-400"
+              : ""
+          }
+        >
+          <Icon
+            name={reserveFilter === 'negative' ? "AlertTriangle" : "Layers"}
+            size={14}
+            className="mr-1.5"
+          />
+          {reserveFilter ? RESERVE_FILTER_LABELS[reserveFilter] : "Просмотр резервов"}
         </Button>
         <Button size="sm" onClick={() => setGroupModal({})}>
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
@@ -646,27 +707,77 @@ export default function WarehouseTab() {
             {loading && (
               <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-foreground/40">Загрузка...</td></tr>
             )}
-            {!loading && groups.length === 0 && (
+            {!loading && displayGroups.length === 0 && (
               <tr><td colSpan={16} className="px-3 py-12 text-center text-sm text-foreground/30">
-                Товаров нет. Добавьте первый через кнопку выше.
+                {reserveFilter
+                  ? reserveFilter === 'negative'
+                    ? "Отрицательных резервов нет"
+                    : "Товаров с резервами нет"
+                  : "Товаров нет. Добавьте первый через кнопку выше."}
               </td></tr>
             )}
-            {!loading && groups.map(g => (
-              <GroupRow
-                key={g.id}
-                group={g}
-                stores={stores}
-                onEdit={gr => setGroupModal(gr)}
-                onArchive={handleArchive}
-                onRefresh={load}
-              />
-            ))}
+            {!loading && (() => {
+              if (reserveFilter === 'all') {
+                const negativeIds = new Set(
+                  groups.filter(g => g.qty_negative > 0).map(g => g.id)
+                )
+                const pureReserveCount = displayGroups.filter(g => !negativeIds.has(g.id)).length
+                const rows: React.ReactNode[] = []
+                if (pureReserveCount > 0) {
+                  rows.push(
+                    <tr key="divider-reserve">
+                      <td colSpan={16} className="px-3 py-1.5 bg-orange-500/5 border-y border-orange-500/20">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-orange-400">
+                          <Icon name="Layers" size={12} />
+                          Резервы
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                }
+                displayGroups.forEach((g, idx) => {
+                  if (idx === pureReserveCount && displayGroups.length > pureReserveCount) {
+                    rows.push(
+                      <tr key="divider-negative">
+                        <td colSpan={16} className="px-3 py-1.5 bg-red-500/5 border-y border-red-500/20">
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+                            <Icon name="AlertTriangle" size={12} />
+                            Отрицательные резервы
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  }
+                  rows.push(
+                    <GroupRow
+                      key={g.id}
+                      group={g}
+                      stores={stores}
+                      onEdit={gr => setGroupModal(gr)}
+                      onArchive={handleArchive}
+                      onRefresh={load}
+                    />
+                  )
+                })
+                return rows
+              }
+              return displayGroups.map(g => (
+                <GroupRow
+                  key={g.id}
+                  group={g}
+                  stores={stores}
+                  onEdit={gr => setGroupModal(gr)}
+                  onArchive={handleArchive}
+                  onRefresh={load}
+                />
+              ))
+            })()}
           </tbody>
         </table>
       </div>
 
       {/* Пагинация */}
-      {totalPages > 1 && (
+      {totalPages > 1 && !reserveFilter && (
         <div className="flex items-center justify-center gap-2">
           <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
             <Icon name="ChevronLeft" size={14} />
