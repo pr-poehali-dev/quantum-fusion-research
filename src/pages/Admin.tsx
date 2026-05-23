@@ -701,6 +701,13 @@ export default function Admin() {
     try { return JSON.parse(localStorage.getItem("wip_col_widths") || "{}") } catch { return {} }
   })
   const [wipEditMode, setWipEditMode] = useState(false)
+  const [orderListOpen, setOrderListOpen] = useState(false)
+  const [orderListGroups, setOrderListGroups] = useState<{
+    id: number; name: string; sku: string; qty_negative: number;
+    url_supplier: string | null; url_site: string | null; product_id: number | null;
+    order_status: string
+  }[]>([])
+  const [orderListLoading, setOrderListLoading] = useState(false)
 
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
@@ -2189,6 +2196,26 @@ export default function Admin() {
               </h2>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={async () => {
+                    setOrderListOpen(true)
+                    setOrderListLoading(true)
+                    const d = await api.warehouse.getGroups({ limit: "9999", offset: "0" })
+                    const neg = (d.groups || []).filter((g: { qty_negative: number }) => g.qty_negative > 0)
+                    const saved = (() => {
+                      try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} }
+                    })()
+                    setOrderListGroups(neg.map((g: { id: number; name: string; sku: string; qty_negative: number; url_supplier: string | null; url_site: string | null; product_id: number | null }) => ({
+                      ...g,
+                      order_status: saved[g.id] || "need_order"
+                    })))
+                    setOrderListLoading(false)
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-orange-400 hover:text-orange-400 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="ShoppingCart" size={15} />
+                  Заказной список
+                </button>
+                <button
                   onClick={() => setWipEditMode(v => !v)}
                   className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
                   style={{ cursor: "pointer" }}>
@@ -2976,6 +3003,112 @@ export default function Admin() {
         )}
 
       </div>
+
+      {/* ── ORDER LIST MODAL ── */}
+      {orderListOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-10" style={{ cursor: "auto" }}>
+          <div className="relative w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <button onClick={() => setOrderListOpen(false)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="X" size={18} />
+            </button>
+            <div className="mb-5 flex items-center gap-3">
+              <Icon name="ShoppingCart" size={20} className="text-orange-400" />
+              <h3 className="text-lg font-medium text-foreground">Заказной список</h3>
+              {!orderListLoading && (
+                <span className="ml-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-400">
+                  {orderListGroups.length} позиций в дефиците
+                </span>
+              )}
+            </div>
+
+            {orderListLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              </div>
+            ) : orderListGroups.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-14 text-center">
+                <Icon name="CheckCircle" size={32} className="mx-auto mb-3 text-green-400/50" />
+                <p className="text-sm text-foreground/40">Отрицательного резерва нет — всё в порядке!</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {orderListGroups.map((g) => (
+                  <div key={g.id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 hover:border-border/80 transition-colors">
+                    {/* Название и кол-во */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{g.name}</p>
+                      {g.sku && <p className="text-xs text-foreground/40 mt-0.5">{g.sku}</p>}
+                    </div>
+                    {/* Дефицит */}
+                    <div className="shrink-0 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1">
+                      <Icon name="TrendingDown" size={12} className="text-red-400" />
+                      <span className="text-sm font-semibold text-red-400">−{g.qty_negative}</span>
+                      <span className="text-xs text-red-400/70">шт</span>
+                    </div>
+                    {/* Ссылки */}
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {g.url_supplier && (
+                        <a href={g.url_supplier} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
+                          title="Купить у поставщика">
+                          <Icon name="ExternalLink" size={12} />
+                          Купить
+                        </a>
+                      )}
+                      {!g.url_supplier && (g.url_site || g.product_id) && (
+                        <a href={g.url_site || `/product/${g.product_id}`} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
+                          title="Карточка на сайте">
+                          <Icon name="Globe" size={12} />
+                          Сайт
+                        </a>
+                      )}
+                      {!g.url_supplier && !g.url_site && !g.product_id && (
+                        <span className="text-xs text-foreground/25">нет ссылки</span>
+                      )}
+                    </div>
+                    {/* Статус */}
+                    <div className="shrink-0">
+                      <select
+                        value={g.order_status}
+                        onChange={e => {
+                          const newStatus = e.target.value
+                          setOrderListGroups(prev => prev.map(item =>
+                            item.id === g.id ? { ...item, order_status: newStatus } : item
+                          ))
+                          const saved = (() => {
+                            try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} }
+                          })()
+                          saved[g.id] = newStatus
+                          localStorage.setItem("order_list_statuses", JSON.stringify(saved))
+                        }}
+                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none transition-colors cursor-pointer ${
+                          g.order_status === "need_order"      ? "border-red-400/40 bg-red-500/10 text-red-400" :
+                          g.order_status === "ordered_delay"   ? "border-orange-400/40 bg-orange-500/10 text-orange-400" :
+                          g.order_status === "ordered_transit" ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-400" :
+                          g.order_status === "ready"           ? "border-green-400/40 bg-green-500/10 text-green-400" :
+                          "border-border bg-muted/50 text-foreground/40"
+                        }`}
+                        style={{ cursor: "pointer" }}>
+                        <option value="need_order">Заказать</option>
+                        <option value="ordered_delay">Задержка</option>
+                        <option value="ordered_transit">Едет</option>
+                        <option value="ready">Есть</option>
+                        <option value="pending">—</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!orderListLoading && orderListGroups.length > 0 && (
+              <p className="mt-4 text-xs text-foreground/30 text-center">Статусы сохраняются локально в браузере</p>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
