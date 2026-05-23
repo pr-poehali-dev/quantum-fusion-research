@@ -678,9 +678,9 @@ def handler(event: dict, context) -> dict:
 
                 # Получаем wip_build и pc_build для этого заказа
                 cur.execute(
-                    f"SELECT wb.id, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, wb.cooling, wb.extra, "
+                    f"SELECT wb.id, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, wb.case_name, wb.cooling, wb.extra, "
                     f"wb.cpu_status, wb.motherboard_status, wb.ram_status, wb.gpu_status, wb.storage_status, "
-                    f"wb.psu_status, wb.cooling_status, wb.extra_status, wb.build_id "
+                    f"wb.psu_status, wb.case_status, wb.cooling_status, wb.extra_status, wb.build_id "
                     f"FROM wip_builds wb WHERE wb.order_id = %s LIMIT 1",
                     (order_id,)
                 )
@@ -689,10 +689,10 @@ def handler(event: dict, context) -> dict:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка в процессе не найдена"})}
 
                 wip_id = wip[0]
-                build_id = wip[17]
-                slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "cooling", "extra"]
-                slot_values = list(wip[1:9])    # названия компонентов
-                slot_statuses = list(wip[9:17]) # текущие статусы
+                build_id = wip[19]
+                slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case", "cooling", "extra"]
+                slot_values = list(wip[1:10])    # названия компонентов
+                slot_statuses = list(wip[10:19]) # текущие статусы
 
                 # Кол-во сборок из заказа (quantity на config-айтеме)
                 cur.execute(f"SELECT items FROM {schema}.orders WHERE id = %s LIMIT 1", (order_id,))
