@@ -319,9 +319,9 @@ def handler(event: dict, context) -> dict:
                                     product_id = pr[0]
                             # Кол-во для этого слота
                             slot_qty = slot_qty_map.get(slot, build_qty)
-                            # Цена за 1 шт: финальная → из pc_builds.components / build_qty → из warehouse
+                            # Цена за 1 шт: финальная → из pc_builds.components (цена уже за 1 шт) → из warehouse
                             raw_price = slot_price_map.get(slot, 0)
-                            price_per_unit = slot_final_price.get(slot) or (raw_price / build_qty if raw_price and build_qty else raw_price)
+                            price_per_unit = slot_final_price.get(slot) or raw_price
                             if not price_per_unit and product_id:
                                 cur.execute(f"SELECT price_retail FROM {schema}.warehouse_groups WHERE product_id = %s LIMIT 1", (product_id,))
                                 pr2 = cur.fetchone()
