@@ -394,83 +394,76 @@ def handler(event: dict, context) -> dict:
             prod_row = cur.fetchone() if grp_product_id else None
             prod_name = prod_row[0] if prod_row else "Товар"
 
-            # Проверяем отрицательный резерв — если есть, резервируем из новой поставки и уведомляем
+            # Снимаем qty_negative если есть (старые долги)
             negative_alerts = []
-            remaining_qty = qty  # сколько из новой поставки ещё можно зарезервировать
+            remaining_qty = qty
             cur.execute(
                 f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
                 f"WHERE s.group_id = {group_id} AND s.id != {supply_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
             )
-            neg_supplies = cur.fetchall()
-            total_reserved = 0
-            for (neg_sid, neg_qty) in neg_supplies:
-                if remaining_qty <= 0:
-                    break
-                to_reserve = min(neg_qty, remaining_qty)
-                if to_reserve <= 0:
-                    continue
-                # Снимаем отрицательный резерв со старой записи
+            for (neg_sid, neg_qty) in cur.fetchall():
+                if remaining_qty <= 0: break
+                to_clear = min(neg_qty, remaining_qty)
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
                     f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
-                    (to_reserve, neg_sid)
+                    (to_clear, neg_sid)
                 )
-                remaining_qty -= to_reserve
-                total_reserved += to_reserve
+                remaining_qty -= to_clear
 
-            # Резерв кладём на новую поставку: qty уменьшается, qty_reserved растёт (новая логика)
-            if total_reserved > 0:
-                cur.execute(
-                    f"UPDATE {SCHEMA}.warehouse_supplies "
-                    f"SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
-                    (total_reserved, total_reserved, supply_id)
-                )
-                # Находим активные заказы с этим товаром в need_order и меняем статус слота на ready
-                # + добавляем движение reserved + логируем в negative_alerts
-                if grp_product_id:
-                    pn = prod_name.replace("'", "''")
-                    cur.execute(f"""
-                        SELECT wb.id, wb.order_id,
-                            CASE
-                                WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 'cpu'
-                                WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 'gpu'
-                                WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 'ram'
-                                WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 'storage'
-                                WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 'psu'
-                                WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 'case'
-                                WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 'motherboard'
-                                WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 'cooling'
-                                ELSE NULL
-                            END as slot
-                        FROM {SCHEMA}.wip_builds wb
-                        JOIN {SCHEMA}.orders o ON o.id = wb.order_id
-                        WHERE o.status NOT IN ('cancelled','done')
-                        HAVING slot IS NOT NULL
-                        ORDER BY wb.id ASC
-                    """)
-                    wip_rows = cur.fetchall()
-                    affected_orders = []
-                    reserved_left = total_reserved
-                    for (wip_id_r, order_id_r, slot_r) in wip_rows:
-                        if reserved_left <= 0:
-                            break
-                        status_field = f"{slot_r}_status"
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.wip_builds SET {status_field}='ready', updated_at=NOW() WHERE id=%s",
-                            (wip_id_r,)
-                        )
-                        cur.execute(
-                            f"INSERT INTO {SCHEMA}.warehouse_movements "
-                            f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                            f"VALUES ({group_id}, {supply_id}, {order_id_r}, 'reserved', 1, "
-                            f"'Авторезерв при поставке: {pn}', NOW())"
-                        )
-                        affected_orders.append(order_id_r)
-                        reserved_left -= 1
+            # Всегда ищем активные wip_builds с need_order для этого товара
+            # и резервируем из новой поставки
+            if grp_product_id:
+                pn = prod_name.replace("'", "''")
+                cur.execute(f"""
+                    SELECT wb.id, wb.order_id,
+                        CASE
+                            WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 'cpu'
+                            WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 'gpu'
+                            WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 'ram'
+                            WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 'storage'
+                            WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 'psu'
+                            WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 'case'
+                            WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 'motherboard'
+                            WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 'cooling'
+                            ELSE NULL
+                        END as slot
+                    FROM {SCHEMA}.wip_builds wb
+                    JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                    WHERE o.status NOT IN ('cancelled','done')
+                    HAVING slot IS NOT NULL
+                    ORDER BY wb.id ASC
+                """)
+                wip_rows = cur.fetchall()
+                affected_orders = []
+                avail = qty  # сколько можем зарезервировать из новой поставки
+                for (wip_id_r, order_id_r, slot_r) in wip_rows:
+                    if avail <= 0:
+                        break
+                    status_field = f"{slot_r}_status"
+                    # Меняем статус слота на ready
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.wip_builds SET {status_field}='ready', updated_at=NOW() WHERE id=%s",
+                        (wip_id_r,)
+                    )
+                    # Резервируем: qty--, qty_reserved++
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_supplies SET qty=qty-1, qty_reserved=qty_reserved+1 WHERE id=%s",
+                        (supply_id,)
+                    )
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.warehouse_movements "
+                        f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                        f"VALUES ({group_id}, {supply_id}, {order_id_r}, 'reserved', 1, "
+                        f"'Авторезерв при поставке: {pn}', NOW())"
+                    )
+                    affected_orders.append(order_id_r)
+                    avail -= 1
 
+                if affected_orders:
                     negative_alerts.append({
                         "product": prod_name,
-                        "reserved": total_reserved,
+                        "reserved": len(affected_orders),
                         "orders": affected_orders
                     })
 
