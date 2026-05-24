@@ -1122,6 +1122,8 @@ def handler(event: dict, context) -> dict:
 
             # При отмене — снимаем все резервы этого заказа со склада
             if new_status == "cancelled":
+                # Считаем чистый резерв по каждой поставке (reserved - unreserved)
+                # Включаем все движения заказа, кроме уже снятых
                 cur.execute(
                     f"SELECT m.supply_id, s.group_id, SUM(m.qty_delta) as net_qty "
                     f"FROM {schema}.warehouse_movements m "
@@ -1132,7 +1134,6 @@ def handler(event: dict, context) -> dict:
                     (order_id,)
                 )
                 reserves = cur.fetchall()
-                print(f"[CANCEL #{order_id}] found {len(reserves)} supply reserves to clear")
                 for sid, gid, qty in reserves:
                     cur.execute(
                         f"UPDATE {schema}.warehouse_supplies "
@@ -1216,7 +1217,7 @@ def handler(event: dict, context) -> dict:
             }
             if new_status in STATUS_TO_STAGE:
                 cur.execute(
-                    f"UPDATE {schema}.wip_builds SET stage=%s, updated_at=NOW() WHERE order_id=%s",
+                    "UPDATE wip_builds SET stage=%s, updated_at=NOW() WHERE order_id=%s",
                     (STATUS_TO_STAGE[new_status], order_id)
                 )
             conn.commit()
