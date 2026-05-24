@@ -385,6 +385,15 @@ def handler(event: dict, context) -> dict:
                 f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {group_id})"
             )
 
+            # Получаем product_id и название товара группы
+            cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {group_id}")
+            grp_product = cur.fetchone()
+            grp_product_id = grp_product[0] if grp_product else None
+
+            cur.execute(f"SELECT name FROM {SCHEMA}.products WHERE id = {grp_product_id}") if grp_product_id else None
+            prod_row = cur.fetchone() if grp_product_id else None
+            prod_name = prod_row[0] if prod_row else "Товар"
+
             # Проверяем отрицательный резерв — если есть, резервируем из новой поставки и уведомляем
             negative_alerts = []
             remaining_qty = qty  # сколько из новой поставки ещё можно зарезервировать
@@ -400,42 +409,70 @@ def handler(event: dict, context) -> dict:
                 to_reserve = min(neg_qty, remaining_qty)
                 if to_reserve <= 0:
                     continue
-                # Снимаем отрицательный резерв с виртуальной/старой записи
+                # Снимаем отрицательный резерв со старой записи
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
-                    f"SET qty_negative = GREATEST(0, qty_negative - %s) "
-                    f"WHERE id = %s",
+                    f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
                     (to_reserve, neg_sid)
                 )
                 remaining_qty -= to_reserve
                 total_reserved += to_reserve
-                # Находим заказы с этим товаром в отрицательном резерве
-                cur.execute(
-                    f"SELECT p.id, p.name FROM {SCHEMA}.products p "
-                    f"JOIN {SCHEMA}.warehouse_groups g ON g.id = {group_id} "
-                    f"WHERE g.product_id = p.id LIMIT 1"
-                )
-                prod = cur.fetchone()
-                prod_name = prod[1] if prod else "Товар"
-                cur.execute(
-                    f"SELECT o.id FROM orders o "
-                    f"JOIN wip_builds wb ON wb.order_id = o.id "
-                    f"WHERE o.status = 'ordering' LIMIT 10"
-                )
-                affected_orders = [r[0] for r in cur.fetchall()]
-                negative_alerts.append({
-                    "product": prod_name,
-                    "reserved": to_reserve,
-                    "orders": affected_orders
-                })
-            # Резерв кладём на новую поставку (не на виртуальную)
+
+            # Резерв кладём на новую поставку: qty уменьшается, qty_reserved растёт (новая логика)
             if total_reserved > 0:
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
-                    f"SET qty_reserved = qty_reserved + %s "
-                    f"WHERE id = %s",
-                    (total_reserved, supply_id)
+                    f"SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
+                    (total_reserved, total_reserved, supply_id)
                 )
+                # Находим активные заказы с этим товаром в need_order и меняем статус слота на ready
+                # + добавляем движение reserved + логируем в negative_alerts
+                if grp_product_id:
+                    pn = prod_name.replace("'", "''")
+                    cur.execute(f"""
+                        SELECT wb.id, wb.order_id,
+                            CASE
+                                WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 'cpu'
+                                WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 'gpu'
+                                WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 'ram'
+                                WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 'storage'
+                                WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 'psu'
+                                WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 'case'
+                                WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 'motherboard'
+                                WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 'cooling'
+                                ELSE NULL
+                            END as slot
+                        FROM {SCHEMA}.wip_builds wb
+                        JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                        WHERE o.status NOT IN ('cancelled','done')
+                        HAVING slot IS NOT NULL
+                        ORDER BY wb.id ASC
+                    """)
+                    wip_rows = cur.fetchall()
+                    affected_orders = []
+                    reserved_left = total_reserved
+                    for (wip_id_r, order_id_r, slot_r) in wip_rows:
+                        if reserved_left <= 0:
+                            break
+                        status_field = f"{slot_r}_status"
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.wip_builds SET {status_field}='ready', updated_at=NOW() WHERE id=%s",
+                            (wip_id_r,)
+                        )
+                        cur.execute(
+                            f"INSERT INTO {SCHEMA}.warehouse_movements "
+                            f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                            f"VALUES ({group_id}, {supply_id}, {order_id_r}, 'reserved', 1, "
+                            f"'Авторезерв при поставке: {pn}', NOW())"
+                        )
+                        affected_orders.append(order_id_r)
+                        reserved_left -= 1
+
+                    negative_alerts.append({
+                        "product": prod_name,
+                        "reserved": total_reserved,
+                        "orders": affected_orders
+                    })
 
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
