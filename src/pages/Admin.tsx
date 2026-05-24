@@ -709,6 +709,8 @@ export default function Admin() {
     order_status: string
   }[]>([])
   const [orderListLoading, setOrderListLoading] = useState(false)
+  const [orderListApplying, setOrderListApplying] = useState(false)
+  const [orderListApplied, setOrderListApplied] = useState(false)
 
   // Build constructor state
   const [buildForm, setBuildForm] = useState({
@@ -3011,13 +3013,56 @@ export default function Admin() {
             <button onClick={() => setOrderListOpen(false)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
               <Icon name="X" size={18} />
             </button>
-            <div className="mb-5 flex items-center gap-3">
+            <div className="mb-5 flex items-center gap-3 flex-wrap">
               <Icon name="ShoppingCart" size={20} className="text-orange-400" />
               <h3 className="text-lg font-medium text-foreground">Заказной список</h3>
               {!orderListLoading && (
                 <span className="ml-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-400">
                   {orderListGroups.length} позиций в дефиците
                 </span>
+              )}
+              {!orderListLoading && orderListGroups.length > 0 && (
+                <button
+                  onClick={async () => {
+                    setOrderListApplying(true)
+                    setOrderListApplied(false)
+                    // Для каждой позиции находим все wip_builds заказов и обновляем статус нужного слота
+                    const SLOT_FIELDS = ["cpu","motherboard","ram","gpu","storage","psu","case_name","cooling","extra"]
+                    const allWips = wipBuilds
+                    for (const g of orderListGroups) {
+                      // Находим wip_builds для заказов этой позиции
+                      for (const ord of g.orders) {
+                        const wip = allWips.find(w => w.order_id === ord.order_id)
+                        if (!wip) continue
+                        // Ищем слот где name совпадает
+                        for (const slot of SLOT_FIELDS) {
+                          const nameKey = slot === "case_name" ? "case_name" : slot
+                          const statusKey = (slot === "case_name" ? "case" : slot) + "_status"
+                          const wipName = (wip as Record<string,string>)[nameKey]
+                          const wipStatus = (wip as Record<string,string>)[statusKey]
+                          if (wipName && wipName.toLowerCase() === g.name.toLowerCase() && wipStatus === "need_order") {
+                            const component = slot === "case_name" ? "case" : slot
+                            await api.wipBuilds.patch({ id: wip.id, component, status: g.order_status })
+                          }
+                        }
+                      }
+                    }
+                    // Перезагружаем wip_builds
+                    api.wipBuilds.getAll().then(d => { setWipBuilds(d.wip_builds || []); setWipStages(d.stages || WIP_STAGES) })
+                    setOrderListApplying(false)
+                    setOrderListApplied(true)
+                    setTimeout(() => setOrderListApplied(false), 3000)
+                  }}
+                  disabled={orderListApplying}
+                  className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  {orderListApplying
+                    ? <><Icon name="Loader" size={14} className="animate-spin" /> Применяю...</>
+                    : orderListApplied
+                    ? <><Icon name="Check" size={14} /> Применено!</>
+                    : <><Icon name="RefreshCw" size={14} /> Применить статусы</>
+                  }
+                </button>
               )}
             </div>
 
