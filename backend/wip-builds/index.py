@@ -2,6 +2,8 @@ import json
 import os
 import psycopg2
 
+SCHEMA = "t_p72635010_quantum_fusion_resea"
+
 def get_conn():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
@@ -170,9 +172,71 @@ def handler(event: dict, context) -> dict:
             # Обновить статус одного компонента
             if "component" in body and "status" in body:
                 field = body["component"] + "_status"
-                if field.replace("_status", "") not in COMPONENT_FIELDS:
+                component = field.replace("_status", "")
+                if component not in COMPONENT_FIELDS:
                     return resp(400, {"error": "Неизвестный компонент"})
-                cur.execute(f"UPDATE wip_builds SET {field}=%s, updated_at=NOW() WHERE id=%s", (body["status"], wip_id))
+
+                # Получаем старый статус и product_id компонента перед обновлением
+                name_field = "case_name" if component == "case" else component
+                cur.execute(
+                    f"SELECT wb.{field}, wb.{name_field}, wb.build_id "
+                    f"FROM {SCHEMA}.wip_builds wb WHERE wb.id = %s", (wip_id,)
+                )
+                old_row = cur.fetchone()
+                old_status = old_row[0] if old_row else None
+                comp_name = old_row[1] if old_row else None
+                build_id = old_row[2] if old_row else None
+                new_status = body["status"]
+
+                cur.execute(f"UPDATE wip_builds SET {field}=%s, updated_at=NOW() WHERE id=%s", (new_status, wip_id))
+
+                # Пересчитываем qty_negative в supplies:
+                # need_order → другой: qty_negative -= qty компонента
+                # другой → need_order: qty_negative += qty компонента
+                if old_status != new_status and comp_name and build_id:
+                    # Узнаём qty из pc_builds.components по названию
+                    cur.execute(
+                        f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (build_id,)
+                    )
+                    pb = cur.fetchone()
+                    comp_qty = 1
+                    if pb and pb[0]:
+                        comps = pb[0] if isinstance(pb[0], list) else __import__('json').loads(pb[0])
+                        slot_key = "case" if component == "case" else component
+                        for c in comps:
+                            if c.get("slot") == slot_key:
+                                comp_qty = int(c.get("qty", 1))
+                                break
+                        # Находим supply по product_id компонента
+                        product_id = None
+                        for c in comps:
+                            if c.get("slot") == slot_key and c.get("source_id"):
+                                product_id = int(c["source_id"])
+                                break
+                        if product_id:
+                            cur.execute(
+                                f"SELECT s.id FROM {SCHEMA}.warehouse_supplies s "
+                                f"JOIN {SCHEMA}.warehouse_groups g ON g.id = s.group_id "
+                                f"WHERE g.product_id = %s ORDER BY s.id DESC LIMIT 1",
+                                (product_id,)
+                            )
+                            sup = cur.fetchone()
+                            if sup:
+                                if old_status == "need_order" and new_status != "need_order":
+                                    # Убираем нехватку
+                                    cur.execute(
+                                        f"UPDATE {SCHEMA}.warehouse_supplies "
+                                        f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
+                                        (comp_qty, sup[0])
+                                    )
+                                elif old_status != "need_order" and new_status == "need_order":
+                                    # Добавляем нехватку
+                                    cur.execute(
+                                        f"UPDATE {SCHEMA}.warehouse_supplies "
+                                        f"SET qty_negative = qty_negative + %s WHERE id = %s",
+                                        (comp_qty, sup[0])
+                                    )
+
                 conn.commit()
                 return resp(200, {"ok": True})
 

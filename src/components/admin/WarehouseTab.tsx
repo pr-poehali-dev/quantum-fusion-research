@@ -839,16 +839,20 @@ function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }
     })
   }, [group.id])
 
-  const OrderRow = ({ r, color }: { r: { order_id: number; qty: number; customer_name: string | null }; color: string }) => (
+  const OrderRow = ({ r, color }: { r: { order_id: number | null; qty: number; customer_name: string | null }; color: string }) => (
     <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
-      <a
-        href={`/admin/orders?id=${r.order_id}`}
-        onClick={e => e.stopPropagation()}
-        className="text-sm font-mono font-semibold text-primary hover:underline"
-      >
-        #{String(r.order_id).padStart(4, "0")}
-        {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
-      </a>
+      {r.order_id ? (
+        <a
+          href={`/admin/orders?id=${r.order_id}`}
+          onClick={e => e.stopPropagation()}
+          className="text-sm font-mono font-semibold text-primary hover:underline"
+        >
+          #{String(r.order_id).padStart(4, "0")}
+          {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
+        </a>
+      ) : (
+        <span className="text-sm text-foreground/50">Нет привязки к заказу</span>
+      )}
       <span className={`text-sm font-semibold ${color}`}>{r.qty} шт.</span>
     </div>
   )
