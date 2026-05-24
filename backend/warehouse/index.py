@@ -262,7 +262,7 @@ def handler(event: dict, context) -> dict:
 
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.products (name, category_id, price, in_stock, created_at) "
-                    f"VALUES ({esc(name)}, {cat_id if cat_id else 'NULL'}, {price_retail or 0}, TRUE, NOW()) "
+                    f"VALUES ({esc(name)}, {cat_id if cat_id else 'NULL'}, {price_retail or 0}, FALSE, NOW()) "
                     f"RETURNING id"
                 )
                 product_id = cur.fetchone()[0]
@@ -320,6 +320,23 @@ def handler(event: dict, context) -> dict:
                 )
 
             log_movement(cur, gid, None, None, None, "group_updated", 0, note="Обновлена карточка группы")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "category_rename" and method == "PUT":
+            old_name = body.get("old_name", "").strip()
+            new_name = body.get("new_name", "").strip()
+            if not old_name or not new_name:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужны old_name и new_name"})}
+            cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET category = {esc(new_name)} WHERE category = {esc(old_name)}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "category_delete" and method == "PUT":
+            name = body.get("name", "").strip()
+            if not name:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужно name"})}
+            cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET category = NULL WHERE category = {esc(name)}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

@@ -549,6 +549,7 @@ export default function WarehouseTab() {
   const [stores, setStores] = useState<Store[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [catModal, setCatModal] = useState(false)
 
   const [search, setSearch] = useState("")
   const [filterCat, setFilterCat] = useState("")
@@ -636,6 +637,9 @@ export default function WarehouseTab() {
         <div className="flex-1" />
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
           <Icon name="Store" size={14} className="mr-1.5" />Магазины
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setCatModal(true)}>
+          <Icon name="Tag" size={14} className="mr-1.5" />Категории
         </Button>
         <Button variant="outline" size="sm" onClick={() => setQuickSupplyModal(true)}>
           <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
@@ -831,6 +835,124 @@ export default function WarehouseTab() {
           onApplied={load}
         />
       )}
+      {catModal && (
+        <CategoriesModal
+          categories={categories}
+          onClose={() => setCatModal(false)}
+          onSaved={() => { load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Модалка управления категориями ──────────────────────────────────────────
+
+function CategoriesModal({ categories, onClose, onSaved }: {
+  categories: string[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [list, setList] = useState<string[]>(categories)
+  const [editIdx, setEditIdx] = useState<number | null>(null)
+  const [editVal, setEditVal] = useState("")
+  const [newCat, setNewCat] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const rename = async (idx: number) => {
+    const old = list[idx]
+    const val = editVal.trim()
+    if (!val || val === old) { setEditIdx(null); return }
+    setSaving(true)
+    await api.warehouse.renameCategory(old, val)
+    setList(prev => prev.map((c, i) => i === idx ? val : c))
+    setEditIdx(null)
+    setSaving(false)
+    onSaved()
+  }
+
+  const del = async (cat: string) => {
+    if (!confirm(`Удалить категорию «${cat}»? Все товары потеряют категорию.`)) return
+    setSaving(true)
+    await api.warehouse.deleteCategory(cat)
+    setList(prev => prev.filter(c => c !== cat))
+    setSaving(false)
+    onSaved()
+  }
+
+  const add = async () => {
+    const val = newCat.trim()
+    if (!val || list.includes(val)) return
+    // Категория появится в списке только после добавления товара — просто показываем её локально
+    setList(prev => [...prev, val].sort())
+    setNewCat("")
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold">Категории склада</h2>
+          <button onClick={onClose} style={{ cursor: "pointer" }}><Icon name="X" size={16} className="text-foreground/40" /></button>
+        </div>
+
+        <div className="mb-4 space-y-1.5 max-h-72 overflow-y-auto">
+          {list.map((cat, i) => (
+            <div key={cat} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+              {editIdx === i ? (
+                <input
+                  autoFocus
+                  value={editVal}
+                  onChange={e => setEditVal(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") rename(i); if (e.key === "Escape") setEditIdx(null) }}
+                  className="flex-1 bg-transparent text-sm focus:outline-none"
+                  style={{ cursor: "text" }}
+                />
+              ) : (
+                <span className="flex-1 text-sm text-foreground">{cat}</span>
+              )}
+              <div className="flex items-center gap-1 shrink-0">
+                {editIdx === i ? (
+                  <>
+                    <button onClick={() => rename(i)} disabled={saving} className="text-green-400 hover:text-green-300 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Check" size={14} />
+                    </button>
+                    <button onClick={() => setEditIdx(null)} className="text-foreground/30 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="X" size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => { setEditIdx(i); setEditVal(cat) }} className="text-foreground/30 hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Pencil" size={13} />
+                    </button>
+                    <button onClick={() => del(cat)} disabled={saving} className="text-foreground/20 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Trash2" size={13} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          {list.length === 0 && <p className="text-sm text-foreground/40 text-center py-4">Нет категорий</p>}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            value={newCat}
+            onChange={e => setNewCat(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") add() }}
+            placeholder="Новая категория..."
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            style={{ cursor: "text" }}
+          />
+          <button onClick={add} disabled={!newCat.trim()}
+            className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Plus" size={15} />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
