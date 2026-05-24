@@ -682,7 +682,7 @@ export default function OrderProcessPage() {
                         {searchResults.map(p => (
                           <button key={p.id}
                             onClick={async () => {
-                              await callPut("replace_item", idx, { new_product_id: p.id })
+                              await callPut("replace_item", idx, { new_product_id: p.id, slot: item.slot })
                               await load()
                               setReplaceIdx(null)
                               setSearchQ("")

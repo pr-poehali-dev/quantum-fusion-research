@@ -607,8 +607,10 @@ def handler(event: dict, context) -> dict:
             elif action == "replace_item":
                 # Заменить товар в позиции на другой из склада
                 new_product_id = int(body["new_product_id"])
+                slot = body.get("slot")  # для pc_build заказов
+
                 cur.execute(
-                    f"SELECT p.name, p.price, wg.warranty_months "
+                    f"SELECT p.name, p.price, wg.warranty_months, wg.id as wg_id "
                     f"FROM {schema}.products p "
                     f"LEFT JOIN {schema}.warehouse_groups wg ON wg.product_id = p.id "
                     f"WHERE p.id = %s LIMIT 1",
@@ -617,10 +619,35 @@ def handler(event: dict, context) -> dict:
                 pr = cur.fetchone()
                 if not pr:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Товар не найден"})}
-                qty = int(items[item_idx].get("quantity", 1))
-                # Проверить наличие нового товара
+
+                new_name = pr[0]
+                new_price = float(pr[1])
+
+                # Для pc_build — qty из pc_builds.components по слоту
+                qty = 1
+                if slot:
+                    cur.execute(
+                        f"SELECT wb.id, wb.build_id FROM {schema}.wip_builds wb WHERE wb.order_id = %s LIMIT 1",
+                        (order_id,)
+                    )
+                    wip_row = cur.fetchone()
+                    if wip_row:
+                        wip_id_r, build_id_r = wip_row
+                        if build_id_r:
+                            cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s", (build_id_r,))
+                            pb = cur.fetchone()
+                            if pb and pb[0]:
+                                comps = pb[0] if isinstance(pb[0], list) else json.loads(pb[0])
+                                for c in comps:
+                                    if c.get("slot") == slot:
+                                        qty = int(c.get("qty", 1))
+                                        break
+                else:
+                    qty = int(items[item_idx].get("quantity", 1))
+
+                # Проверить наличие нового товара (qty = свободных по новой логике)
                 cur.execute(
-                    f"SELECT COALESCE(SUM(s.qty - s.qty_reserved), 0) FROM {schema}.warehouse_supplies s "
+                    f"SELECT COALESCE(SUM(s.qty), 0) FROM {schema}.warehouse_supplies s "
                     f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id WHERE g.product_id = %s",
                     (new_product_id,)
                 )
@@ -629,21 +656,49 @@ def handler(event: dict, context) -> dict:
                     return {"statusCode": 400, "headers": cors, "body": json.dumps({
                         "error": f"Недостаточно товара на складе. Свободно: {available} шт."
                     })}
-                # Снять резерв со старого товара
-                old_pid = items[item_idx].get("id")
+
+                # Снять резерв со старого товара и вернуть qty
+                old_pid = items[item_idx].get("id") if item_idx is not None else None
+                if slot and wip_row:
+                    # Для pc_build — ищем old_pid из pc_builds.components
+                    if build_id_r:
+                        cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s", (build_id_r,))
+                        pb2 = cur.fetchone()
+                        if pb2 and pb2[0]:
+                            comps2 = pb2[0] if isinstance(pb2[0], list) else json.loads(pb2[0])
+                            for c in comps2:
+                                if c.get("slot") == slot and c.get("source_id"):
+                                    old_pid = int(c["source_id"])
+                                    break
+
                 if old_pid:
+                    # Возвращаем qty на склад (снимаем из резерва)
                     cur.execute(
-                        f"UPDATE {schema}.warehouse_supplies SET qty_reserved = GREATEST(0, qty_reserved - %s) "
-                        f"WHERE id = (SELECT s.id FROM {schema}.warehouse_supplies s "
+                        f"SELECT s.id, s.qty_reserved FROM {schema}.warehouse_supplies s "
                         f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 LIMIT 1)",
-                        (qty, int(old_pid))
+                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
+                        (int(old_pid),)
                     )
-                # Зарезервировать новый (FIFO)
+                    left_unreserve = qty
+                    for (sid_u, sr) in cur.fetchall():
+                        if left_unreserve <= 0: break
+                        un = min(left_unreserve, sr)
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s",
+                            (un, un, sid_u)
+                        )
+                        cur.execute(
+                            f"INSERT INTO {schema}.warehouse_movements (group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'unreserved', %s, %s, NOW())",
+                            (sid_u, sid_u, order_id, -un, f"Снят резерв при замене товара в заказе #{order_id}")
+                        )
+                        left_unreserve -= un
+
+                # Зарезервировать новый товар (FIFO, qty уменьшается)
                 cur.execute(
-                    f"SELECT s.id, s.qty - s.qty_reserved as free FROM {schema}.warehouse_supplies s "
+                    f"SELECT s.id, s.qty FROM {schema}.warehouse_supplies s "
                     f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                    f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC",
+                    f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
                     (new_product_id,)
                 )
                 left = qty
@@ -651,22 +706,50 @@ def handler(event: dict, context) -> dict:
                     if left <= 0: break
                     reserve = min(left, sfree)
                     cur.execute(
-                        f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s WHERE id = %s",
-                        (reserve, sid)
+                        f"UPDATE {schema}.warehouse_supplies SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
+                        (reserve, reserve, sid)
+                    )
+                    cur.execute(
+                        f"INSERT INTO {schema}.warehouse_movements (group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                        f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', %s, %s, NOW())",
+                        (sid, sid, order_id, reserve, f"Авторезерв при замене товара в заказе #{order_id}")
                     )
                     left -= reserve
-                # Обновляем позицию
-                items[item_idx]["id"] = new_product_id
-                items[item_idx]["name"] = pr[0]
-                items[item_idx]["price"] = float(pr[1])
-                items[item_idx].pop("final_price", None)
-                items[item_idx].pop("serial_number", None)
-                items[item_idx].pop("serial_numbers", None)
-                items[item_idx]["item_status"] = "reserved"
-                total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
-                            for it in items)
-                cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
-                            (json.dumps(items), total, order_id))
+
+                # Для pc_build: обновляем wip_builds и pc_builds
+                if slot and wip_row:
+                    wip_id_r, build_id_r = wip_row
+                    name_field = "case_name" if slot == "case" else slot
+                    cur.execute(
+                        f"UPDATE {schema}.wip_builds SET {name_field}=%s, {slot if slot != 'case' else 'case'}_status='ready', updated_at=NOW() WHERE id=%s",
+                        (new_name, wip_id_r)
+                    )
+                    if build_id_r:
+                        cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id_r,))
+                        pb3 = cur.fetchone()
+                        if pb3 and pb3[0]:
+                            comps3 = pb3[0] if isinstance(pb3[0], list) else json.loads(pb3[0])
+                            for c in comps3:
+                                if c.get("slot") == slot:
+                                    c["name"] = new_name
+                                    c["price"] = new_price
+                                    c["source"] = "catalog"
+                                    c["source_id"] = new_product_id
+                                    break
+                            cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
+                                        (json.dumps(comps3), build_id_r))
+                else:
+                    # Обычный заказ: обновляем items JSON
+                    items[item_idx]["id"] = new_product_id
+                    items[item_idx]["name"] = new_name
+                    items[item_idx]["price"] = new_price
+                    items[item_idx].pop("final_price", None)
+                    items[item_idx].pop("serial_number", None)
+                    items[item_idx].pop("serial_numbers", None)
+                    items[item_idx]["item_status"] = "reserved"
+                    total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1) for it in items)
+                    cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                                (json.dumps(items), total, order_id))
 
             elif action == "sync_order":
                 # Синхронизировать заказ ПК: резервировать наличие, отрицательный резерв для отсутствующих
@@ -847,9 +930,9 @@ def handler(event: dict, context) -> dict:
                 pr = cur.fetchone()
                 if not pr:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Товар не найден"})}
-                # Проверить наличие
+                # Проверить наличие (новая логика: qty = свободные)
                 cur.execute(
-                    f"SELECT COALESCE(SUM(s.qty - s.qty_reserved), 0) FROM {schema}.warehouse_supplies s "
+                    f"SELECT COALESCE(SUM(s.qty), 0) FROM {schema}.warehouse_supplies s "
                     f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id WHERE g.product_id = %s",
                     (new_product_id,)
                 )
@@ -858,11 +941,11 @@ def handler(event: dict, context) -> dict:
                     return {"statusCode": 400, "headers": cors, "body": json.dumps({
                         "error": f"Недостаточно товара на складе. Свободно: {available} шт."
                     })}
-                # Зарезервировать (FIFO)
+                # Зарезервировать (FIFO): qty уменьшается, qty_reserved растёт
                 cur.execute(
-                    f"SELECT s.id, s.qty - s.qty_reserved as free FROM {schema}.warehouse_supplies s "
+                    f"SELECT s.id, s.qty FROM {schema}.warehouse_supplies s "
                     f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                    f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC",
+                    f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
                     (new_product_id,)
                 )
                 left = qty
@@ -870,8 +953,8 @@ def handler(event: dict, context) -> dict:
                     if left <= 0: break
                     reserve = min(left, sfree)
                     cur.execute(
-                        f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s WHERE id = %s",
-                        (reserve, sid)
+                        f"UPDATE {schema}.warehouse_supplies SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
+                        (reserve, reserve, sid)
                     )
                     cur.execute(
                         f"INSERT INTO {schema}.warehouse_movements "

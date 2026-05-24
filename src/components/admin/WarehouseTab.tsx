@@ -99,9 +99,10 @@ function PriceHistoryBadge({ history, currentRetail, currentCost }: {
 
 // ─── Модалка группы ──────────────────────────────────────────────────────────
 
-function GroupModal({ group, stores, onClose, onSaved }: {
+function GroupModal({ group, stores, categories, onClose, onSaved }: {
   group: Partial<Group> | null
   stores: Store[]
+  categories: string[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -153,7 +154,16 @@ function GroupModal({ group, stores, onClose, onSaved }: {
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Категория</label>
-            <Input value={form.category} onChange={f("category")} placeholder="CPU" />
+            <input
+              list="group-categories"
+              value={form.category}
+              onChange={f("category")}
+              placeholder="Выберите или введите..."
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <datalist id="group-categories">
+              {categories.map(c => <option key={c} value={c} />)}
+            </datalist>
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Партнамбер</label>
@@ -794,6 +804,7 @@ export default function WarehouseTab() {
         <GroupModal
           group={groupModal}
           stores={stores}
+          categories={categories}
           onClose={() => setGroupModal(false)}
           onSaved={load}
         />
