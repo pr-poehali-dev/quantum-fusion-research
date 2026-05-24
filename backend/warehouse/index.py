@@ -241,13 +241,32 @@ def handler(event: dict, context) -> dict:
             category = body.get("category", "")
             part_number = body.get("part_number", "")
             warranty_months = body.get("warranty_months", 12)
-            price_retail = body.get("price_retail", 0)
-            price_opt1 = body.get("price_opt1", 0)
-            price_opt2 = body.get("price_opt2", 0)
+            price_retail = float(body.get("price_retail") or 0)
+            price_opt1 = float(body.get("price_opt1") or 0)
+            price_opt2 = float(body.get("price_opt2") or 0)
             url_site = body.get("url_site", "")
             url_supplier = body.get("url_supplier", "")
-
             cell = body.get("cell", "")
+
+            # Автоматически создаём карточку товара если не привязана
+            if not product_id:
+                # Ищем category_id по названию категории
+                cat_id = None
+                if category:
+                    cur.execute(
+                        f"SELECT id FROM {SCHEMA}.categories WHERE LOWER(name) = LOWER({esc(category)}) LIMIT 1"
+                    )
+                    cat_row = cur.fetchone()
+                    if cat_row:
+                        cat_id = cat_row[0]
+
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.products (name, category_id, price, in_stock, created_at) "
+                    f"VALUES ({esc(name)}, {cat_id if cat_id else 'NULL'}, {price_retail or 0}, TRUE, NOW()) "
+                    f"RETURNING id"
+                )
+                product_id = cur.fetchone()[0]
+
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_groups "
                 f"(product_id, name, sku, category, part_number, warranty_months, "
@@ -258,8 +277,11 @@ def handler(event: dict, context) -> dict:
             )
             new_id = cur.fetchone()[0]
 
-            # синхронизируем цену на сайте если привязан product
-            if product_id and price_retail:
+            # Обновляем product.warehouse_group_id
+            cur.execute(f"UPDATE {SCHEMA}.products SET warehouse_group_id = {new_id} WHERE id = {product_id}")
+
+            # Синхронизируем цену
+            if price_retail:
                 cur.execute(f"UPDATE {SCHEMA}.products SET price = {price_retail} WHERE id = {product_id}")
 
             log_movement(cur, new_id, None, None, None, "group_created", 0, note=f"Создана группа: {name}")
