@@ -484,6 +484,83 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        # ── ЗАКАЗНОЙ СПИСОК: только need_order из активных сборок ────────────────
+        if action == "order_list" and method == "GET":
+            cur.execute(f"""
+                SELECT
+                    p.id as product_id,
+                    p.name as product_name,
+                    wg.id as group_id,
+                    wg.sku,
+                    wg.url_supplier,
+                    wg.url_site,
+                    SUM((comp->>'qty')::int) AS need_total,
+                    COALESCE((
+                        SELECT SUM(m.qty_delta)
+                        FROM {SCHEMA}.warehouse_movements m
+                        JOIN {SCHEMA}.warehouse_groups mg ON mg.id = m.group_id
+                        WHERE mg.product_id = p.id
+                          AND m.order_id = o.id
+                          AND m.type IN ('reserved','unreserved')
+                    ), 0) AS reserved_for_order,
+                    o.id as order_id,
+                    o.customer_name
+                FROM {SCHEMA}.wip_builds wb
+                JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                JOIN {SCHEMA}.pc_builds pb ON pb.id = wb.build_id,
+                jsonb_array_elements(pb.components::jsonb) comp
+                JOIN {SCHEMA}.products p ON p.id = (comp->>'source_id')::int
+                JOIN {SCHEMA}.warehouse_groups wg ON wg.product_id = p.id AND wg.is_archived = false
+                WHERE o.status NOT IN ('cancelled','done')
+                  AND (
+                    (LOWER(wb.cpu) = LOWER(p.name) AND wb.cpu_status = 'need_order') OR
+                    (LOWER(wb.gpu) = LOWER(p.name) AND wb.gpu_status = 'need_order') OR
+                    (LOWER(wb.ram) = LOWER(p.name) AND wb.ram_status = 'need_order') OR
+                    (LOWER(wb.storage) = LOWER(p.name) AND wb.storage_status = 'need_order') OR
+                    (LOWER(wb.psu) = LOWER(p.name) AND wb.psu_status = 'need_order') OR
+                    (LOWER(wb.case_name) = LOWER(p.name) AND wb.case_status = 'need_order') OR
+                    (LOWER(wb.motherboard) = LOWER(p.name) AND wb.motherboard_status = 'need_order') OR
+                    (LOWER(wb.cooling) = LOWER(p.name) AND wb.cooling_status = 'need_order')
+                  )
+                GROUP BY p.id, p.name, wg.id, wg.sku, wg.url_supplier, wg.url_site, o.id, o.customer_name
+                ORDER BY p.name, o.id
+            """)
+            rows = cur.fetchall()
+            # Группируем по product_id: суммируем shortage по всем заказам
+            from collections import defaultdict
+            by_product = defaultdict(lambda: {"need_total": 0, "reserved_total": 0, "orders": [], "group_id": None, "sku": None, "url_supplier": None, "url_site": None, "name": None})
+            for r in rows:
+                pid, pname, gid, sku, url_sup, url_site, need, reserved, oid, cname = r
+                shortage = max(0, int(need) - int(reserved))
+                if shortage == 0:
+                    continue
+                by_product[pid]["name"] = pname
+                by_product[pid]["group_id"] = gid
+                by_product[pid]["sku"] = sku
+                by_product[pid]["url_supplier"] = url_sup
+                by_product[pid]["url_site"] = url_site
+                by_product[pid]["need_total"] += int(need)
+                by_product[pid]["reserved_total"] += int(reserved)
+                by_product[pid]["orders"].append({"order_id": oid, "customer_name": cname, "shortage": shortage})
+
+            items = []
+            for pid, data in by_product.items():
+                total_shortage = data["need_total"] - data["reserved_total"]
+                if total_shortage <= 0:
+                    continue
+                items.append({
+                    "product_id": pid,
+                    "name": data["name"],
+                    "group_id": data["group_id"],
+                    "sku": data["sku"],
+                    "url_supplier": data["url_supplier"],
+                    "url_site": data["url_site"],
+                    "shortage": total_shortage,
+                    "orders": data["orders"],
+                })
+            items.sort(key=lambda x: x["name"])
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"items": items})}
+
         # ── РЕЗЕРВЫ ПО ГРУППЕ ─────────────────────────────────────────────────
         if action == "group_reserves" and method == "GET":
             """Возвращает активные резервы и отрицательные резервы по group_id с разбивкой по заказам"""

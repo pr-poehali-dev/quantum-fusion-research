@@ -703,8 +703,9 @@ export default function Admin() {
   const [wipEditMode, setWipEditMode] = useState(false)
   const [orderListOpen, setOrderListOpen] = useState(false)
   const [orderListGroups, setOrderListGroups] = useState<{
-    id: number; name: string; sku: string; qty_negative: number;
-    url_supplier: string | null; url_site: string | null; product_id: number | null;
+    group_id: number; product_id: number; name: string; sku: string; shortage: number;
+    url_supplier: string | null; url_site: string | null;
+    orders: { order_id: number; customer_name: string; shortage: number }[];
     order_status: string
   }[]>([])
   const [orderListLoading, setOrderListLoading] = useState(false)
@@ -2199,14 +2200,13 @@ export default function Admin() {
                   onClick={async () => {
                     setOrderListOpen(true)
                     setOrderListLoading(true)
-                    const d = await api.warehouse.getGroups({ limit: "9999", offset: "0" })
-                    const neg = (d.groups || []).filter((g: { qty_negative: number }) => g.qty_negative > 0)
+                    const d = await api.warehouse.getOrderList()
                     const saved = (() => {
                       try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} }
                     })()
-                    setOrderListGroups(neg.map((g: { id: number; name: string; sku: string; qty_negative: number; url_supplier: string | null; url_site: string | null; product_id: number | null }) => ({
+                    setOrderListGroups((d.items || []).map((g: { group_id: number; product_id: number; name: string; sku: string; shortage: number; url_supplier: string | null; url_site: string | null; orders: { order_id: number; customer_name: string; shortage: number }[] }) => ({
                       ...g,
-                      order_status: saved[g.id] || "need_order"
+                      order_status: saved[g.group_id] || "need_order"
                     })))
                     setOrderListLoading(false)
                   }}
@@ -3033,70 +3033,86 @@ export default function Admin() {
             ) : (
               <div className="space-y-2">
                 {orderListGroups.map((g) => (
-                  <div key={g.id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 hover:border-border/80 transition-colors">
-                    {/* Название и кол-во */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{g.name}</p>
-                      {g.sku && <p className="text-xs text-foreground/40 mt-0.5">{g.sku}</p>}
+                  <div key={g.group_id} className="rounded-xl border border-border bg-background px-4 py-3 hover:border-border/80 transition-colors">
+                    <div className="flex items-center gap-3">
+                      {/* Название */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{g.name}</p>
+                        {g.sku && <p className="text-xs text-foreground/40 mt-0.5">{g.sku}</p>}
+                      </div>
+                      {/* Нехватка */}
+                      <div className="shrink-0 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1">
+                        <Icon name="TrendingDown" size={12} className="text-red-400" />
+                        <span className="text-sm font-semibold text-red-400">−{g.shortage}</span>
+                        <span className="text-xs text-red-400/70">шт</span>
+                      </div>
+                      {/* Ссылки */}
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        {g.url_supplier && (
+                          <a href={g.url_supplier} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
+                            title="Купить у поставщика">
+                            <Icon name="ExternalLink" size={12} />
+                            Купить
+                          </a>
+                        )}
+                        {!g.url_supplier && (g.url_site || g.product_id) && (
+                          <a href={g.url_site || `/product/${g.product_id}`} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
+                            title="Карточка на сайте">
+                            <Icon name="Globe" size={12} />
+                            Сайт
+                          </a>
+                        )}
+                        {!g.url_supplier && !g.url_site && !g.product_id && (
+                          <span className="text-xs text-foreground/25">нет ссылки</span>
+                        )}
+                      </div>
+                      {/* Статус */}
+                      <div className="shrink-0">
+                        <select
+                          value={g.order_status}
+                          onChange={e => {
+                            const newStatus = e.target.value
+                            setOrderListGroups(prev => prev.map(item =>
+                              item.group_id === g.group_id ? { ...item, order_status: newStatus } : item
+                            ))
+                            const saved = (() => {
+                              try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} }
+                            })()
+                            saved[g.group_id] = newStatus
+                            localStorage.setItem("order_list_statuses", JSON.stringify(saved))
+                          }}
+                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none transition-colors cursor-pointer ${
+                            g.order_status === "need_order"      ? "border-red-400/40 bg-red-500/10 text-red-400" :
+                            g.order_status === "ordered_delay"   ? "border-orange-400/40 bg-orange-500/10 text-orange-400" :
+                            g.order_status === "ordered_transit" ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-400" :
+                            g.order_status === "ready"           ? "border-green-400/40 bg-green-500/10 text-green-400" :
+                            "border-border bg-muted/50 text-foreground/40"
+                          }`}
+                          style={{ cursor: "pointer" }}>
+                          <option value="need_order">Заказать</option>
+                          <option value="ordered_delay">Задержка</option>
+                          <option value="ordered_transit">Едет</option>
+                          <option value="ready">Есть</option>
+                          <option value="pending">—</option>
+                        </select>
+                      </div>
                     </div>
-                    {/* Дефицит */}
-                    <div className="shrink-0 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1">
-                      <Icon name="TrendingDown" size={12} className="text-red-400" />
-                      <span className="text-sm font-semibold text-red-400">−{g.qty_negative}</span>
-                      <span className="text-xs text-red-400/70">шт</span>
-                    </div>
-                    {/* Ссылки */}
-                    <div className="shrink-0 flex items-center gap-1.5">
-                      {g.url_supplier && (
-                        <a href={g.url_supplier} target="_blank" rel="noreferrer"
-                          className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
-                          title="Купить у поставщика">
-                          <Icon name="ExternalLink" size={12} />
-                          Купить
-                        </a>
-                      )}
-                      {!g.url_supplier && (g.url_site || g.product_id) && (
-                        <a href={g.url_site || `/product/${g.product_id}`} target="_blank" rel="noreferrer"
-                          className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
-                          title="Карточка на сайте">
-                          <Icon name="Globe" size={12} />
-                          Сайт
-                        </a>
-                      )}
-                      {!g.url_supplier && !g.url_site && !g.product_id && (
-                        <span className="text-xs text-foreground/25">нет ссылки</span>
-                      )}
-                    </div>
-                    {/* Статус */}
-                    <div className="shrink-0">
-                      <select
-                        value={g.order_status}
-                        onChange={e => {
-                          const newStatus = e.target.value
-                          setOrderListGroups(prev => prev.map(item =>
-                            item.id === g.id ? { ...item, order_status: newStatus } : item
-                          ))
-                          const saved = (() => {
-                            try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} }
-                          })()
-                          saved[g.id] = newStatus
-                          localStorage.setItem("order_list_statuses", JSON.stringify(saved))
-                        }}
-                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none transition-colors cursor-pointer ${
-                          g.order_status === "need_order"      ? "border-red-400/40 bg-red-500/10 text-red-400" :
-                          g.order_status === "ordered_delay"   ? "border-orange-400/40 bg-orange-500/10 text-orange-400" :
-                          g.order_status === "ordered_transit" ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-400" :
-                          g.order_status === "ready"           ? "border-green-400/40 bg-green-500/10 text-green-400" :
-                          "border-border bg-muted/50 text-foreground/40"
-                        }`}
-                        style={{ cursor: "pointer" }}>
-                        <option value="need_order">Заказать</option>
-                        <option value="ordered_delay">Задержка</option>
-                        <option value="ordered_transit">Едет</option>
-                        <option value="ready">Есть</option>
-                        <option value="pending">—</option>
-                      </select>
-                    </div>
+                    {/* Разбивка по заказам */}
+                    {g.orders.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {g.orders.map(o => (
+                          <a key={o.order_id} href={`/admin/order/${o.order_id}`}
+                            className="inline-flex items-center gap-1 rounded-full bg-muted/50 px-2 py-0.5 text-xs text-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
+                            title={o.customer_name}>
+                            <span className="font-mono font-semibold text-foreground/70">#{String(o.order_id).padStart(4,"0")}</span>
+                            <span className="text-foreground/40">{o.customer_name}</span>
+                            <span className="text-red-400 font-medium">−{o.shortage}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
