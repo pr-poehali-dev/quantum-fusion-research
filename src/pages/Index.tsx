@@ -199,8 +199,7 @@ export default function Index() {
   }, [currentSection])
 
   return (
-    <main className="custom-cursor-active relative h-screen w-full overflow-hidden" style={{ background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}>
-      <CustomCursor />
+    <main className="relative h-screen w-full overflow-hidden" style={{ background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}>
       <GrainOverlay />
 
       {/* Фон: слои снизу вверх */}
