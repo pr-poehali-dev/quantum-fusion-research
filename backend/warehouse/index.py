@@ -387,66 +387,67 @@ def handler(event: dict, context) -> dict:
 
             # Получаем product_id и название товара группы
             cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {group_id}")
-            grp_product = cur.fetchone()
-            grp_product_id = grp_product[0] if grp_product else None
+            grp_row = cur.fetchone()
+            grp_product_id = grp_row[0] if grp_row else None
 
-            cur.execute(f"SELECT name FROM {SCHEMA}.products WHERE id = {grp_product_id}") if grp_product_id else None
-            prod_row = cur.fetchone() if grp_product_id else None
-            prod_name = prod_row[0] if prod_row else "Товар"
+            prod_name = "Товар"
+            if grp_product_id:
+                cur.execute(f"SELECT name FROM {SCHEMA}.products WHERE id = %s", (grp_product_id,))
+                prow = cur.fetchone()
+                if prow:
+                    prod_name = prow[0]
 
-            # Снимаем qty_negative если есть (старые долги)
+            # Снимаем qty_negative если есть (старые долги) и считаем сколько реально доступно для резерва
             negative_alerts = []
-            remaining_qty = qty
+            avail = qty  # сколько из новой поставки можно зарезервировать
             cur.execute(
                 f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
                 f"WHERE s.group_id = {group_id} AND s.id != {supply_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
             )
             for (neg_sid, neg_qty) in cur.fetchall():
-                if remaining_qty <= 0: break
-                to_clear = min(neg_qty, remaining_qty)
+                if avail <= 0:
+                    break
+                to_clear = min(neg_qty, avail)
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
                     f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
                     (to_clear, neg_sid)
                 )
-                remaining_qty -= to_clear
+                avail -= to_clear
 
-            # Всегда ищем активные wip_builds с need_order для этого товара
-            # и резервируем из новой поставки
-            if grp_product_id:
+            # Ищем активные wip_builds с need_order для этого товара и резервируем
+            if grp_product_id and avail > 0:
                 pn = prod_name.replace("'", "''")
                 cur.execute(f"""
-                    SELECT wb.id, wb.order_id,
-                        CASE
-                            WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 'cpu'
-                            WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 'gpu'
-                            WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 'ram'
-                            WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 'storage'
-                            WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 'psu'
-                            WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 'case'
-                            WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 'motherboard'
-                            WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 'cooling'
-                            ELSE NULL
-                        END as slot
-                    FROM {SCHEMA}.wip_builds wb
-                    JOIN {SCHEMA}.orders o ON o.id = wb.order_id
-                    WHERE o.status NOT IN ('cancelled','done')
-                    HAVING slot IS NOT NULL
-                    ORDER BY wb.id ASC
+                    SELECT wip_id, order_id, slot FROM (
+                        SELECT wb.id as wip_id, wb.order_id,
+                            CASE
+                                WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 'cpu'
+                                WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 'gpu'
+                                WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 'ram'
+                                WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 'storage'
+                                WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 'psu'
+                                WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 'case'
+                                WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 'motherboard'
+                                WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 'cooling'
+                                ELSE NULL
+                            END as slot
+                        FROM {SCHEMA}.wip_builds wb
+                        JOIN {SCHEMA}.orders o ON o.id = wb.order_id
+                        WHERE o.status NOT IN ('cancelled','done')
+                    ) sub WHERE slot IS NOT NULL
+                    ORDER BY wip_id ASC
                 """)
                 wip_rows = cur.fetchall()
                 affected_orders = []
-                avail = qty  # сколько можем зарезервировать из новой поставки
                 for (wip_id_r, order_id_r, slot_r) in wip_rows:
                     if avail <= 0:
                         break
                     status_field = f"{slot_r}_status"
-                    # Меняем статус слота на ready
                     cur.execute(
                         f"UPDATE {SCHEMA}.wip_builds SET {status_field}='ready', updated_at=NOW() WHERE id=%s",
                         (wip_id_r,)
                     )
-                    # Резервируем: qty--, qty_reserved++
                     cur.execute(
                         f"UPDATE {SCHEMA}.warehouse_supplies SET qty=qty-1, qty_reserved=qty_reserved+1 WHERE id=%s",
                         (supply_id,)
@@ -454,8 +455,8 @@ def handler(event: dict, context) -> dict:
                     cur.execute(
                         f"INSERT INTO {SCHEMA}.warehouse_movements "
                         f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                        f"VALUES ({group_id}, {supply_id}, {order_id_r}, 'reserved', 1, "
-                        f"'Авторезерв при поставке: {pn}', NOW())"
+                        f"VALUES (%s, %s, %s, 'reserved', 1, %s, NOW())",
+                        (group_id, supply_id, order_id_r, f"Авторезерв при поставке: {pn}")
                     )
                     affected_orders.append(order_id_r)
                     avail -= 1
