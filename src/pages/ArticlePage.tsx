@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
@@ -141,12 +141,17 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
   )
 }
 
-function ArticleCarousel({ images }: { images: string[] }) {
+function ArticleCarousel({ images, onOpenLightbox, standalone = false }: { images: string[]; onOpenLightbox?: (images: string[], idx: number) => void; standalone?: boolean }) {
   const [idx, setIdx] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval>>()
 
   const changeIdx = useCallback((next: number) => setIdx(next), [])
+
+  const openLightbox = (i: number) => {
+    if (onOpenLightbox) onOpenLightbox(images, i)
+    else setLightboxOpen(true)
+  }
 
   useEffect(() => {
     if (images.length <= 1) return
@@ -166,9 +171,11 @@ function ArticleCarousel({ images }: { images: string[] }) {
 
   if (images.length === 0) return null
 
+  const wrapCls = standalone ? "mb-8" : ""
+
   if (images.length === 1) {
     return (
-      <div className="mb-8 overflow-hidden rounded-2xl border border-border cursor-zoom-in" onClick={() => setLightboxOpen(true)}>
+      <div className={`${wrapCls} overflow-hidden rounded-2xl border border-border cursor-zoom-in`} onClick={() => openLightbox(0)}>
         <img src={images[0]} alt="" className="w-full object-contain" style={{ maxHeight: "50vh" }} />
         {lightboxOpen && <Lightbox images={images} startIdx={0} onClose={() => setLightboxOpen(false)} />}
       </div>
@@ -176,64 +183,86 @@ function ArticleCarousel({ images }: { images: string[] }) {
   }
 
   return (
-    <div className="mb-8">
+    <div className={wrapCls}>
       <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
-        {/* Основное фото */}
-        <div className="relative cursor-zoom-in" style={{ maxHeight: "55vh" }} onClick={() => setLightboxOpen(true)}>
-          <img
-            key={idx}
-            src={images[idx]}
-            alt=""
-            className="w-full object-contain"
-            style={{ maxHeight: "55vh", transition: "opacity 0.3s ease" }}
-          />
-          {/* Счётчик */}
+        <div className="relative cursor-zoom-in" style={{ maxHeight: "55vh" }} onClick={() => openLightbox(idx)}>
+          <img key={idx} src={images[idx]} alt="" className="w-full object-contain" style={{ maxHeight: "55vh", transition: "opacity 0.3s ease" }} />
           <div className="absolute top-3 right-3 rounded-full bg-black/50 px-2.5 py-1 text-xs text-white/80 backdrop-blur-sm">
             {idx + 1} / {images.length}
           </div>
         </div>
-
-        {/* Кнопки навигации */}
-        <button
-          onClick={e => { e.stopPropagation(); go((idx - 1 + images.length) % images.length) }}
-          className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
-          style={{ cursor: "pointer" }}>
+        <button onClick={e => { e.stopPropagation(); go((idx - 1 + images.length) % images.length) }}
+          className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm" style={{ cursor: "pointer" }}>
           <Icon name="ChevronLeft" size={18} />
         </button>
-        <button
-          onClick={e => { e.stopPropagation(); go((idx + 1) % images.length) }}
-          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
-          style={{ cursor: "pointer" }}>
+        <button onClick={e => { e.stopPropagation(); go((idx + 1) % images.length) }}
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm" style={{ cursor: "pointer" }}>
           <Icon name="ChevronRight" size={18} />
         </button>
-
-        {/* Точки */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
           {images.map((_, i) => (
-            <button
-              key={i}
-              onClick={e => { e.stopPropagation(); go(i) }}
-              className={`h-1.5 rounded-full transition-all ${i === idx ? "w-5 bg-white" : "w-1.5 bg-white/40 hover:bg-white/70"}`}
-              style={{ cursor: "pointer" }}
-            />
+            <button key={i} onClick={e => { e.stopPropagation(); go(i) }}
+              className={`h-1.5 rounded-full transition-all ${i === idx ? "w-5 bg-white" : "w-1.5 bg-white/40 hover:bg-white/70"}`} style={{ cursor: "pointer" }} />
           ))}
         </div>
       </div>
-
-      {/* Миниатюры */}
       <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
         {images.map((src, i) => (
-          <button
-            key={i}
-            onClick={() => go(i)}
-            className={`shrink-0 h-16 w-20 overflow-hidden rounded-lg border-2 transition-colors ${i === idx ? "border-primary" : "border-border hover:border-primary/50"}`}
-            style={{ cursor: "pointer" }}>
+          <button key={i} onClick={() => go(i)}
+            className={`shrink-0 h-16 w-20 overflow-hidden rounded-lg border-2 transition-colors ${i === idx ? "border-primary" : "border-border hover:border-primary/50"}`} style={{ cursor: "pointer" }}>
             <img src={src} alt="" className="h-full w-full object-cover" />
           </button>
         ))}
       </div>
-
       {lightboxOpen && <Lightbox images={images} startIdx={idx} onClose={() => setLightboxOpen(false)} />}
+    </div>
+  )
+}
+
+// Разбивает HTML на блоки, заменяя data-carousel на интерактивную карусель
+function ArticleContent({ html }: { html: string }) {
+  const blocks = useMemo(() => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, "text/html")
+    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] }> = []
+    let buf = ""
+    doc.body.childNodes.forEach(node => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element
+        if (el.getAttribute("data-carousel") === "true") {
+          if (buf) { result.push({ type: "html", content: buf }); buf = "" }
+          let images: string[] = []
+          try { images = JSON.parse(el.getAttribute("data-images") || "[]") } catch { /* skip */ }
+          if (!images.length) {
+            images = Array.from(el.querySelectorAll("img")).map(img => img.getAttribute("src") || "").filter(Boolean)
+          }
+          if (images.length) result.push({ type: "carousel", images })
+          return
+        }
+      }
+      buf += (node as Element).outerHTML || node.textContent || ""
+    })
+    if (buf) result.push({ type: "html", content: buf })
+    return result
+  }, [html])
+
+  const [lightboxState, setLightboxState] = useState<{ images: string[]; idx: number } | null>(null)
+
+  return (
+    <div>
+      {blocks.map((block, i) =>
+        block.type === "html" ? (
+          <div key={i} className="rich-content text-foreground/80 leading-relaxed text-base"
+            dangerouslySetInnerHTML={{ __html: block.content }} />
+        ) : (
+          <div key={i} className="my-4">
+            <ArticleCarousel images={block.images} onOpenLightbox={(images, idx) => setLightboxState({ images, idx })} />
+          </div>
+        )
+      )}
+      {lightboxState && (
+        <Lightbox images={lightboxState.images} startIdx={lightboxState.idx} onClose={() => setLightboxState(null)} />
+      )}
     </div>
   )
 }
@@ -307,14 +336,9 @@ export default function ArticlePage() {
             )}
           </div>
 
-          <ArticleCarousel images={images} />
+          <ArticleCarousel images={images} standalone />
 
-          {article.content && (
-            <div
-              className="rich-content text-foreground/80 leading-relaxed text-base"
-              dangerouslySetInnerHTML={{ __html: article.content }}
-            />
-          )}
+          {article.content && <ArticleContent html={article.content} />}
 
           {article.html_attachment && (
             <div className="mt-10">
