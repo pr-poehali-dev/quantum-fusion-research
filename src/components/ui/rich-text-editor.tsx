@@ -3,75 +3,46 @@ import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Underline from "@tiptap/extension-underline"
 import TextAlign from "@tiptap/extension-text-align"
-import Image from "@tiptap/extension-image"
 import { useEffect, useCallback, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import Icon from "@/components/ui/icon"
 
 const UPLOAD_URL = "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81"
 
-// React-компонент для отображения карусели внутри редактора
+// ─── Просмотр карусели внутри редактора ───────────────────────────────────────
 function CarouselNodeView({ node }: { node: { attrs: { images: string[] } } }) {
   const images: string[] = node.attrs.images || []
   const [idx, setIdx] = useState(0)
-
   return (
     <NodeViewWrapper>
-      <div
-        contentEditable={false}
-        className="relative my-3 overflow-hidden rounded-xl border-2 border-primary/40 bg-card select-none"
-        style={{ userSelect: "none" }}
-      >
-        {/* Лейбл */}
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 rounded-full bg-primary/80 px-2 py-0.5 text-[11px] text-white backdrop-blur-sm">
+      <div contentEditable={false} className="relative my-3 overflow-hidden rounded-xl border-2 border-primary/40 bg-card select-none">
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 rounded-full bg-primary/80 px-2 py-0.5 text-[11px] text-white">
           <Icon name="GalleryHorizontal" size={11} />
           Карусель · {images.length} фото
         </div>
-
-        {/* Главное фото */}
-        <div className="relative" style={{ maxHeight: "320px", overflow: "hidden" }}>
-          <img
-            src={images[idx]}
-            alt=""
-            style={{ width: "100%", maxHeight: "320px", objectFit: "contain", display: "block" }}
-          />
+        <div className="relative" style={{ maxHeight: 280, overflow: "hidden" }}>
+          <img src={images[idx]} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "contain", display: "block" }} />
           {images.length > 1 && (
             <>
-              <button
-                type="button"
-                onMouseDown={e => { e.preventDefault(); setIdx(i => (i - 1 + images.length) % images.length) }}
-                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-                style={{ cursor: "pointer" }}
-              >
+              <button type="button" onMouseDown={e => { e.preventDefault(); setIdx(i => (i - 1 + images.length) % images.length) }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white" style={{ cursor: "pointer" }}>
                 <Icon name="ChevronLeft" size={16} />
               </button>
-              <button
-                type="button"
-                onMouseDown={e => { e.preventDefault(); setIdx(i => (i + 1) % images.length) }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-                style={{ cursor: "pointer" }}
-              >
+              <button type="button" onMouseDown={e => { e.preventDefault(); setIdx(i => (i + 1) % images.length) }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white" style={{ cursor: "pointer" }}>
                 <Icon name="ChevronRight" size={16} />
               </button>
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                {images.map((_, i) => (
-                  <span key={i} className={`h-1.5 rounded-full transition-all ${i === idx ? "w-4 bg-white" : "w-1.5 bg-white/50"}`} />
-                ))}
+                {images.map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all ${i === idx ? "w-4 bg-white" : "w-1.5 bg-white/50"}`} />)}
               </div>
             </>
           )}
         </div>
-
-        {/* Миниатюры */}
         {images.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto px-2 py-2">
             {images.map((src, i) => (
-              <button
-                key={i}
-                type="button"
-                onMouseDown={e => { e.preventDefault(); setIdx(i) }}
-                className={`shrink-0 h-12 w-14 overflow-hidden rounded border-2 transition-colors ${i === idx ? "border-primary" : "border-transparent opacity-60 hover:opacity-100"}`}
-                style={{ cursor: "pointer" }}
-              >
+              <button key={i} type="button" onMouseDown={e => { e.preventDefault(); setIdx(i) }}
+                className={`shrink-0 h-12 w-14 overflow-hidden rounded border-2 transition-colors ${i === idx ? "border-primary" : "border-transparent opacity-60"}`} style={{ cursor: "pointer" }}>
                 <img src={src} alt="" className="h-full w-full object-cover" />
               </button>
             ))}
@@ -82,37 +53,192 @@ function CarouselNodeView({ node }: { node: { attrs: { images: string[] } } }) {
   )
 }
 
-// Tiptap Node-расширение для карусели
 const CarouselExtension = Node.create({
   name: "imageCarousel",
   group: "block",
   atom: true,
-
   addAttributes() {
     return {
       images: {
         default: [],
-        parseHTML: el => {
-          try { return JSON.parse(el.getAttribute("data-images") || "[]") } catch { return [] }
-        },
+        parseHTML: el => { try { return JSON.parse(el.getAttribute("data-images") || "[]") } catch { return [] } },
         renderHTML: attrs => ({ "data-images": JSON.stringify(attrs.images) }),
       },
     }
   },
-
-  parseHTML() {
-    return [{ tag: "div[data-carousel]" }]
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["div", mergeAttributes({ "data-carousel": "true" }, HTMLAttributes)]
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(CarouselNodeView)
-  },
+  parseHTML() { return [{ tag: "div[data-carousel]" }] },
+  renderHTML({ HTMLAttributes }) { return ["div", mergeAttributes({ "data-carousel": "true" }, HTMLAttributes)] },
+  addNodeView() { return ReactNodeViewRenderer(CarouselNodeView) },
 })
 
+// ─── Модальное окно добавления фото ──────────────────────────────────────────
+type ModalMode = "image" | "carousel" | null
+
+interface PhotoModalProps {
+  mode: ModalMode
+  folder: string
+  onInsert: (urls: string[], mode: "image" | "carousel") => void
+  onClose: () => void
+}
+
+function PhotoModal({ mode, folder, onInsert, onClose }: PhotoModalProps) {
+  const [images, setImages] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [urlInput, setUrlInput] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const dragIdx = useRef<number | null>(null)
+  const dragOverIdx = useRef<number | null>(null)
+
+  const uploadFile = async (file: File): Promise<string | null> => {
+    return new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const res = await fetch(UPLOAD_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file: reader.result, name: file.name, folder }),
+          })
+          const data = await res.json()
+          resolve(data.url || null)
+        } catch { resolve(null) }
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handleFiles = async (files: FileList) => {
+    setUploading(true)
+    const urls = await Promise.all(Array.from(files).map(uploadFile))
+    const valid = urls.filter(Boolean) as string[]
+    setImages(prev => [...prev, ...valid])
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const addUrl = () => {
+    const url = urlInput.trim()
+    if (!url || images.includes(url)) return
+    setImages(prev => [...prev, url])
+    setUrlInput("")
+  }
+
+  const handleInsert = () => {
+    if (!images.length) return
+    onInsert(images, mode!)
+    onClose()
+  }
+
+  const isCarousel = mode === "carousel"
+  const canInsert = isCarousel ? images.length >= 2 : images.length >= 1
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Заголовок */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Icon name={isCarousel ? "GalleryHorizontal" : "Image"} size={16} className="text-primary" />
+            <h3 className="text-sm font-medium text-foreground">
+              {isCarousel ? "Карусель фото" : "Вставить фото"}
+            </h3>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-foreground/40 hover:bg-muted hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={15} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Превью загруженных */}
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {images.map((url, i) => (
+                <div
+                  key={url + i}
+                  draggable={isCarousel}
+                  onDragStart={() => { dragIdx.current = i }}
+                  onDragEnter={() => { dragOverIdx.current = i }}
+                  onDragOver={e => e.preventDefault()}
+                  onDragEnd={() => {
+                    const from = dragIdx.current; const to = dragOverIdx.current
+                    if (from === null || to === null || from === to) return
+                    setImages(imgs => { const a = [...imgs]; const [item] = a.splice(from, 1); a.splice(to, 0, item); return a })
+                    dragIdx.current = null; dragOverIdx.current = null
+                  }}
+                  className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-muted"
+                  style={{ cursor: isCarousel ? "grab" : "default" }}
+                >
+                  <img src={url} alt="" className="h-full w-full object-cover pointer-events-none" />
+                  {i === 0 && isCarousel && (
+                    <span className="absolute top-1 left-1 rounded bg-primary/80 px-1 py-0.5 text-[9px] text-white leading-none pointer-events-none">1</span>
+                  )}
+                  <button type="button" onClick={() => setImages(imgs => imgs.filter((_, j) => j !== i))}
+                    className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="X" size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Зона загрузки */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-3 rounded-xl border-2 border-dashed border-border hover:border-primary/50 px-4 py-3 transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={e => e.target.files && handleFiles(e.target.files)} />
+            {uploading
+              ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              : <Icon name="Upload" size={18} className="text-foreground/40" />}
+            <div>
+              <p className="text-sm text-foreground/60">{uploading ? "Загружаем..." : "Нажмите чтобы загрузить"}</p>
+              <p className="text-xs text-foreground/30">JPG, PNG, WebP</p>
+            </div>
+          </div>
+
+          {/* Вставить URL */}
+          <div className="flex gap-2">
+            <input
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addUrl())}
+              placeholder="Или вставьте ссылку на фото..."
+              className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none"
+              style={{ cursor: "text" }}
+            />
+            <button type="button" onClick={addUrl} disabled={!urlInput.trim()}
+              className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground/60 hover:text-foreground disabled:opacity-40 transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="Plus" size={14} />
+            </button>
+          </div>
+
+          {isCarousel && images.length < 2 && (
+            <p className="text-[11px] text-foreground/40">Добавьте минимум 2 фото для карусели. Перетащите для сортировки.</p>
+          )}
+        </div>
+
+        {/* Футер */}
+        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <button type="button" onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            Отмена
+          </button>
+          <button type="button" onClick={handleInsert} disabled={!canInsert || uploading}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name={isCarousel ? "GalleryHorizontal" : "ImagePlus"} size={14} />
+            {isCarousel ? `Вставить карусель (${images.length})` : `Вставить фото`}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// ─── Основной редактор ────────────────────────────────────────────────────────
 interface RichTextEditorProps {
   value: string
   onChange: (value: string) => void
@@ -122,27 +248,15 @@ interface RichTextEditorProps {
 }
 
 export default function RichTextEditor({ value, onChange, placeholder, className, folder = "articles" }: RichTextEditorProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const carouselInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
-  const [carouselMode, setCarouselMode] = useState(false)
-  const [carouselImages, setCarouselImages] = useState<string[]>([])
-  const dragIdx = useRef<number | null>(null)
-  const dragOverIdx = useRef<number | null>(null)
-
+  const [modal, setModal] = useState<ModalMode>(null)
   const isInternalUpdate = useRef(false)
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        // Отключаем встроенные link/underline — подключаем отдельно с кастомными настройками
-        link: false,
-        underline: false,
-      }),
+      StarterKit.configure({ link: false, underline: false }),
       Link.configure({ openOnClick: false, HTMLAttributes: { class: "text-primary underline cursor-pointer" } }),
       Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Image.configure({ HTMLAttributes: { class: "max-w-full rounded-lg my-2", style: "max-height:420px;object-fit:contain;" } }),
       CarouselExtension,
     ],
     content: value,
@@ -159,13 +273,8 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
   useEffect(() => {
     if (!editor) return
-    if (isInternalUpdate.current) {
-      isInternalUpdate.current = false
-      return
-    }
-    if (value !== editor.getHTML()) {
-      editor.commands.setContent(value, false)
-    }
+    if (isInternalUpdate.current) { isInternalUpdate.current = false; return }
+    if (value !== editor.getHTML()) editor.commands.setContent(value, false)
   }, [value, editor])
 
   const setLink = useCallback(() => {
@@ -177,63 +286,23 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
   }, [editor])
 
-  const uploadFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = async () => {
-        try {
-          const res = await fetch(UPLOAD_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ file: reader.result, name: file.name, folder }),
-          })
-          const data = await res.json()
-          if (data.url) resolve(data.url)
-          else reject(new Error("No URL"))
-        } catch (e) { reject(e) }
-      }
-      reader.readAsDataURL(file)
-    })
-  }
-
-  const handleImageUpload = useCallback(async (files: FileList) => {
+  // Вставка через прямое изменение HTML — минуя Tiptap команды
+  const handleInsert = useCallback((urls: string[], mode: "image" | "carousel") => {
     if (!editor) return
-    setUploading(true)
-    const urls = await Promise.all(Array.from(files).map(f => uploadFile(f).catch(() => null)))
-    const valid = urls.filter(Boolean) as string[]
-    setUploading(false)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-    if (!valid.length) return
-    // Небольшая задержка чтобы фокус вернулся в редактор после закрытия file dialog
-    setTimeout(() => {
-      for (const url of valid) {
-        editor.chain().focus().setImage({ src: url }).run()
-        editor.commands.insertContent("<p></p>")
-      }
-    }, 50)
-  }, [editor, folder])
-
-  const handleCarouselUpload = useCallback(async (files: FileList) => {
-    setUploading(true)
-    const urls = await Promise.all(Array.from(files).map(f => uploadFile(f).catch(() => null)))
-    const valid = urls.filter(Boolean) as string[]
-    setCarouselImages(prev => [...prev, ...valid])
-    setUploading(false)
-    if (carouselInputRef.current) carouselInputRef.current.value = ""
-  }, [folder])
-
-  const insertCarousel = useCallback(() => {
-    if (!editor || carouselImages.length === 0) return
-    const imgs = [...carouselImages]
-    setCarouselImages([])
-    setCarouselMode(false)
-    setTimeout(() => {
-      editor.chain().focus()
-        .insertContent({ type: "imageCarousel", attrs: { images: imgs } })
-        .insertContent({ type: "paragraph" })
-        .run()
-    }, 50)
-  }, [editor, carouselImages])
+    const currentHtml = editor.getHTML()
+    let insertion = ""
+    if (mode === "image") {
+      insertion = urls.map(url => `<img src="${url}" alt="" />`).join("")
+    } else {
+      insertion = `<div data-carousel="true" data-images='${JSON.stringify(urls)}'></div>`
+    }
+    const newHtml = currentHtml === "<p></p>" || !currentHtml
+      ? `<p></p>${insertion}<p></p>`
+      : `${currentHtml}${insertion}<p></p>`
+    editor.commands.setContent(newHtml, false)
+    isInternalUpdate.current = true
+    onChange(newHtml)
+  }, [editor, onChange])
 
   if (!editor) return null
 
@@ -282,19 +351,10 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
         <div className="mx-1 h-5 w-px bg-border" />
 
-        {/* Вставить одно фото */}
-        <button type="button" onClick={() => fileInputRef.current?.click()} className={btn(false)} title={uploading ? "Загрузка..." : "Вставить фото"} disabled={uploading}>
-          {uploading ? (
-            <div className="h-3 w-3 animate-spin rounded-full border border-foreground/60 border-t-transparent" />
-          ) : (
-            <Icon name="Image" size={13} />
-          )}
+        <button type="button" onClick={() => setModal("image")} className={btn(modal === "image")} title="Вставить фото">
+          <Icon name="Image" size={13} />
         </button>
-        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
-          onChange={e => e.target.files && handleImageUpload(e.target.files)} />
-
-        {/* Вставить карусель */}
-        <button type="button" onClick={() => setCarouselMode(m => !m)} className={btn(carouselMode)} title="Вставить карусель фото">
+        <button type="button" onClick={() => setModal("carousel")} className={btn(modal === "carousel")} title="Вставить карусель">
           <Icon name="GalleryHorizontal" size={13} />
         </button>
 
@@ -308,85 +368,6 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         </button>
       </div>
 
-      {/* Панель карусели */}
-      {carouselMode && (
-        <div className="border-b border-border bg-muted/30 px-3 py-2.5 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-foreground/70">Карусель фото</p>
-            <button type="button" onClick={() => { setCarouselMode(false); setCarouselImages([]) }}
-              className="text-xs text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="X" size={13} />
-            </button>
-          </div>
-
-          {carouselImages.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {carouselImages.map((url, i) => (
-                <div
-                  key={url + i}
-                  draggable
-                  onDragStart={() => { dragIdx.current = i }}
-                  onDragEnter={() => { dragOverIdx.current = i }}
-                  onDragOver={e => e.preventDefault()}
-                  onDragEnd={() => {
-                    const from = dragIdx.current
-                    const to = dragOverIdx.current
-                    if (from === null || to === null || from === to) return
-                    setCarouselImages(imgs => {
-                      const a = [...imgs]
-                      const [item] = a.splice(from, 1)
-                      a.splice(to, 0, item)
-                      return a
-                    })
-                    dragIdx.current = null
-                    dragOverIdx.current = null
-                  }}
-                  className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted select-none"
-                  style={{ cursor: "grab" }}
-                >
-                  <img src={url} alt="" className="h-full w-full object-cover pointer-events-none" />
-                  {i === 0 && (
-                    <span className="absolute top-0.5 left-0.5 rounded bg-primary/80 px-1 py-0.5 text-[9px] text-white leading-none pointer-events-none">1</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setCarouselImages(imgs => imgs.filter((_, j) => j !== i))}
-                    className="absolute top-0.5 right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ cursor: "pointer" }}>
-                    <Icon name="X" size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button type="button" onClick={() => carouselInputRef.current?.click()} disabled={uploading}
-              className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-              style={{ cursor: "pointer" }}>
-              {uploading ? <div className="h-3 w-3 animate-spin rounded-full border border-foreground/60 border-t-transparent" /> : <Icon name="Upload" size={12} />}
-              {uploading ? "Загружаем..." : "Добавить фото"}
-            </button>
-            <input ref={carouselInputRef} type="file" accept="image/*" multiple className="hidden"
-              onChange={e => e.target.files && handleCarouselUpload(e.target.files)} />
-
-            {carouselImages.length >= 2 && (
-              <button
-                type="button"
-                onClick={insertCarousel}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                style={{ cursor: "pointer" }}>
-                <Icon name="GalleryHorizontal" size={12} />
-                Вставить карусель ({carouselImages.length})
-              </button>
-            )}
-          </div>
-          {carouselImages.length < 2 && (
-            <p className="text-[11px] text-foreground/30">Добавьте минимум 2 фото для карусели</p>
-          )}
-        </div>
-      )}
-
       {/* Editor area */}
       <div className="relative px-3 py-2.5">
         {!value || value === "<p></p>" ? (
@@ -394,6 +375,16 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         ) : null}
         <EditorContent editor={editor} />
       </div>
+
+      {/* Модальное окно */}
+      {modal && (
+        <PhotoModal
+          mode={modal}
+          folder={folder}
+          onInsert={handleInsert}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }
