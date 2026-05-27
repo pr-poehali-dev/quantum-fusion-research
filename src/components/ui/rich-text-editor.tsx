@@ -134,9 +134,13 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ history: {} }),
-      Underline,
+      StarterKit.configure({
+        // Отключаем встроенные link/underline — подключаем отдельно с кастомными настройками
+        link: false,
+        underline: false,
+      }),
       Link.configure({ openOnClick: false, HTMLAttributes: { class: "text-primary underline cursor-pointer" } }),
+      Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Image.configure({ HTMLAttributes: { class: "max-w-full rounded-lg my-2", style: "max-height:420px;object-fit:contain;" } }),
       CarouselExtension,
@@ -277,7 +281,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         <div className="mx-1 h-5 w-px bg-border" />
 
         {/* Вставить одно фото */}
-        <button type="button" onClick={() => fileInputRef.current?.click()} className={btn(false)} title={uploading ? "Загрузка..." : "Вставить фото"} disabled={uploading}>
+        <button type="button" onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click() }} className={btn(false)} title={uploading ? "Загрузка..." : "Вставить фото"} disabled={uploading}>
           {uploading ? (
             <div className="h-3 w-3 animate-spin rounded-full border border-foreground/60 border-t-transparent" />
           ) : (
@@ -294,10 +298,10 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
         <div className="mx-1 h-5 w-px bg-border" />
 
-        <button type="button" onClick={() => editor.chain().focus().undo().run()} className={btn(false)} title="Отменить" disabled={!editor.can().undo()}>
+        <button type="button" onClick={() => editor.chain().focus().undo().run()} className={btn(false)} title="Отменить">
           <Icon name="Undo2" size={13} />
         </button>
-        <button type="button" onClick={() => editor.chain().focus().redo().run()} className={btn(false)} title="Повторить" disabled={!editor.can().redo()}>
+        <button type="button" onClick={() => editor.chain().focus().redo().run()} className={btn(false)} title="Повторить">
           <Icon name="Redo2" size={13} />
         </button>
       </div>
