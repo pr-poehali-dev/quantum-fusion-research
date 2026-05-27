@@ -14,11 +14,11 @@ def esc(v):
 
 def handler(event: dict, context) -> dict:
     """
-    Комментарии к сборкам пользователей.
-    GET ?token=... — получить комментарии сборки
-    POST ?action=add — добавить комментарий (требует X-Session-Id)
-    POST ?action=delete — удалить комментарий (требует X-Session-Id, только свои)
-    POST ?action=mark_read — пометить уведомления прочитанными
+    Комментарии к сборкам и статьям.
+    GET ?token=...              — комментарии к сборке
+    GET ?article_id=...         — комментарии к статье
+    POST ?action=add            — добавить комментарий (token или article_id в body, требует X-Session-Id)
+    POST ?action=delete         — удалить комментарий (требует X-Session-Id, только свои)
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
@@ -46,27 +46,38 @@ def handler(event: dict, context) -> dict:
         )
         return cur.fetchone()
 
+    def fetch_comments(token):
+        cur.execute(
+            f"SELECT c.id, c.parent_id, c.text, c.created_at, c.user_id, u.username, u.avatar_url "
+            f"FROM {SCHEMA}.build_comments c "
+            f"JOIN {SCHEMA}.users u ON c.user_id = u.id "
+            f"WHERE c.build_token = {esc(token)} "
+            f"ORDER BY c.created_at ASC"
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "id": r[0], "parent_id": r[1], "text": r[2],
+                "created_at": r[3].isoformat() if r[3] else None,
+                "user_id": r[4], "username": r[5], "avatar_url": r[6] or "",
+            }
+            for r in rows
+        ]
+
     try:
         if method == "GET":
+            # Статья
+            article_id = params.get("article_id")
+            if article_id:
+                token = f"article-{article_id}"
+                comments = fetch_comments(token)
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"comments": comments})}
+
+            # Сборка
             token = params.get("token")
             if not token:
-                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нет token"})}
-            cur.execute(
-                f"SELECT c.id, c.parent_id, c.text, c.created_at, c.user_id, u.username, u.avatar_url "
-                f"FROM {SCHEMA}.build_comments c "
-                f"JOIN {SCHEMA}.users u ON c.user_id = u.id "
-                f"WHERE c.build_token = {esc(token)} "
-                f"ORDER BY c.created_at ASC"
-            )
-            rows = cur.fetchall()
-            comments = [
-                {
-                    "id": r[0], "parent_id": r[1], "text": r[2],
-                    "created_at": r[3].isoformat() if r[3] else None,
-                    "user_id": r[4], "username": r[5], "avatar_url": r[6] or "",
-                }
-                for r in rows
-            ]
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нет token или article_id"})}
+            comments = fetch_comments(token)
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"comments": comments})}
 
         elif method == "POST" and action == "add":
@@ -74,11 +85,17 @@ def handler(event: dict, context) -> dict:
             if not u:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             body = json.loads(event.get("body") or "{}")
-            token = body.get("token")
-            text = (body.get("text") or "").strip()
             parent_id = body.get("parent_id")
+
+            # Определяем token: либо явный (сборка), либо по article_id
+            token = body.get("token")
+            article_id = body.get("article_id")
+            if not token and article_id:
+                token = f"article-{article_id}"
+
+            text = (body.get("text") or "").strip()
             if not token or not text:
-                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нет token или text"})}
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нет token/article_id или text"})}
 
             parent_sql = str(parent_id) if parent_id else "NULL"
             cur.execute(
@@ -87,27 +104,30 @@ def handler(event: dict, context) -> dict:
             )
             new_id, created_at = cur.fetchone()
 
-            # Уведомление автору сборки (или автору родительского комментария)
+            # Уведомления
             notify_user_id = None
             notify_text = None
-            link = f"/configurator?build={token}#comment-{new_id}"
 
             if parent_id:
-                # Ответ на комментарий — уведомляем автора родительского
                 cur.execute(f"SELECT user_id, text FROM {SCHEMA}.build_comments WHERE id = {parent_id}")
                 parent_row = cur.fetchone()
                 if parent_row and parent_row[0] != u[0]:
                     notify_user_id = parent_row[0]
                     preview = parent_row[1][:40] + ("..." if len(parent_row[1]) > 40 else "")
                     notify_text = f"{u[1]} ответил на ваш комментарий: «{preview}»"
+                    link = f"/articles/{article_id}#comment-{new_id}" if article_id else f"/configurator?build={token}#comment-{new_id}"
             else:
-                # Комментарий к сборке — уведомляем автора сборки
-                cur.execute(f"SELECT user_id FROM {SCHEMA}.user_builds WHERE share_token = {esc(token)}")
-                build_row = cur.fetchone()
-                if build_row and build_row[0] != u[0]:
-                    notify_user_id = build_row[0]
-                    preview = text[:40] + ("..." if len(text) > 40 else "")
-                    notify_text = f"{u[1]} прокомментировал вашу сборку: «{preview}»"
+                if article_id:
+                    link = f"/articles/{article_id}#comment-{new_id}"
+                    # Уведомление авторам статьи не реализуем (нет поля user_id в articles)
+                else:
+                    link = f"/configurator?build={token}#comment-{new_id}"
+                    cur.execute(f"SELECT user_id FROM {SCHEMA}.user_builds WHERE share_token = {esc(token)}")
+                    build_row = cur.fetchone()
+                    if build_row and build_row[0] != u[0]:
+                        notify_user_id = build_row[0]
+                        preview = text[:40] + ("..." if len(text) > 40 else "")
+                        notify_text = f"{u[1]} прокомментировал вашу сборку: «{preview}»"
 
             if notify_user_id and notify_text:
                 cur.execute(

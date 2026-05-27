@@ -7,6 +7,14 @@
       "expectedStatus": 200,
       "expectedBody": { "comments": [] },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get comments by article_id",
+      "method": "GET",
+      "path": "/?article_id=1",
+      "expectedStatus": 200,
+      "expectedBody": { "comments": [] },
+      "bodyMatcher": "partial"
     }
   ]
 }

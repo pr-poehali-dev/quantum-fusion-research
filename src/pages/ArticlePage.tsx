@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import CommentSection from "@/components/CommentSection"
 
 interface Article {
   id: number
@@ -346,6 +347,10 @@ export default function ArticlePage() {
               </div>
             </div>
           )}
+
+          <div className="mt-12">
+            <CommentSection articleId={article.id} />
+          </div>
         </main>
       </div>
     </>

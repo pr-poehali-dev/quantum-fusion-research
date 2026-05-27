@@ -169,7 +169,8 @@ export const api = {
   },
   comments: {
     getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),
-    add: (data: { token: string; text: string; parent_id?: number }, session: string) =>
+    getByArticle: (articleId: number) => fetch(`${URLS.comments}?article_id=${articleId}`).then(r => r.json()),
+    add: (data: { token?: string; article_id?: number; text: string; parent_id?: number }, session: string) =>
       fetch(`${URLS.comments}?action=add`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number, session: string) =>
       fetch(`${URLS.comments}?action=delete`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ id }) }).then(r => r.json()),

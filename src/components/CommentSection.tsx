@@ -25,11 +25,12 @@ function timeAgo(iso: string) {
 }
 
 interface Props {
-  buildToken: string
+  buildToken?: string
+  articleId?: number
   highlightId?: number | null
 }
 
-export default function CommentSection({ buildToken, highlightId }: Props) {
+export default function CommentSection({ buildToken, articleId, highlightId }: Props) {
   const { isAuthed, sessionId, user } = useAuth()
   const navigate = useNavigate()
   const [comments, setComments] = useState<Comment[]>([])
@@ -41,11 +42,14 @@ export default function CommentSection({ buildToken, highlightId }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    api.comments.getByToken(buildToken).then(d => {
+    const fetch = articleId
+      ? api.comments.getByArticle(articleId)
+      : api.comments.getByToken(buildToken!)
+    fetch.then(d => {
       setComments(d.comments || [])
       setLoading(false)
     })
-  }, [buildToken])
+  }, [buildToken, articleId])
 
   useEffect(() => {
     if (highlightId && highlightRef.current) {
@@ -56,10 +60,10 @@ export default function CommentSection({ buildToken, highlightId }: Props) {
   const send = async () => {
     if (!text.trim() || !sessionId) return
     setSending(true)
-    const res = await api.comments.add(
-      { token: buildToken, text: text.trim(), parent_id: replyTo?.id },
-      sessionId
-    )
+    const payload = articleId
+      ? { article_id: articleId, text: text.trim(), parent_id: replyTo?.id }
+      : { token: buildToken!, text: text.trim(), parent_id: replyTo?.id }
+    const res = await api.comments.add(payload, sessionId)
     if (res.id) {
       setComments(prev => [...prev, res])
       setText("")
