@@ -134,7 +134,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ history: {} }),
       Underline,
       Link.configure({ openOnClick: false, HTMLAttributes: { class: "text-primary underline cursor-pointer" } }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -216,11 +216,15 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
   const insertCarousel = useCallback(() => {
     if (!editor || carouselImages.length === 0) return
-    editor.chain().focus().insertContent({
-      type: "imageCarousel",
-      attrs: { images: carouselImages },
-    }).run()
-    editor.commands.insertContent("<p></p>")
+    const imgs = [...carouselImages]
+    editor.commands.focus()
+    editor.chain()
+      .insertContent({
+        type: "imageCarousel",
+        attrs: { images: imgs },
+      })
+      .insertContent({ type: "paragraph" })
+      .run()
     setCarouselImages([])
     setCarouselMode(false)
   }, [editor, carouselImages])
@@ -361,7 +365,9 @@ export default function RichTextEditor({ value, onChange, placeholder, className
               onChange={e => e.target.files && handleCarouselUpload(e.target.files)} />
 
             {carouselImages.length >= 2 && (
-              <button type="button" onClick={insertCarousel}
+              <button
+                type="button"
+                onMouseDown={e => { e.preventDefault(); insertCarousel() }}
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                 style={{ cursor: "pointer" }}>
                 <Icon name="GalleryHorizontal" size={12} />
