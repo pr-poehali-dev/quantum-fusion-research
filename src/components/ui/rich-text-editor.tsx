@@ -247,6 +247,51 @@ const CarouselExtension = Node.create({
   addNodeView() { return ReactNodeViewRenderer(CarouselNodeView) },
 })
 
+// ─── Одиночное фото как NodeView ──────────────────────────────────────────────
+function SingleImageNodeView({ node, deleteNode }: NodeViewProps) {
+  const src: string = node.attrs.src || ""
+
+  const handleDelete = () => {
+    if (window.confirm("Удалить фото?")) deleteNode()
+  }
+
+  return (
+    <NodeViewWrapper>
+      <div contentEditable={false} className="group relative my-2 overflow-visible">
+        <div className="absolute -top-4 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div data-drag-handle
+            className="flex h-7 w-7 cursor-grab items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-foreground hover:border-primary/40 transition-colors active:cursor-grabbing"
+            title="Перетащить">
+            <Icon name="GripVertical" size={14} />
+          </div>
+          <button type="button" onMouseDown={e => { e.preventDefault(); handleDelete() }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-destructive hover:border-destructive/40 transition-colors"
+            style={{ cursor: "pointer" }} title="Удалить фото">
+            <Icon name="Trash2" size={13} />
+          </button>
+        </div>
+        <img src={src} alt="" className="max-w-full rounded-lg" style={{ maxHeight: 420, objectFit: "contain", display: "block" }} />
+      </div>
+    </NodeViewWrapper>
+  )
+}
+
+const SingleImageExtension = Node.create({
+  name: "singleImage",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      src: { default: "" },
+      alt: { default: "" },
+    }
+  },
+  parseHTML() { return [{ tag: "img[data-single]" }] },
+  renderHTML({ HTMLAttributes }) { return ["img", mergeAttributes({ "data-single": "true" }, HTMLAttributes)] },
+  addNodeView() { return ReactNodeViewRenderer(SingleImageNodeView) },
+})
+
 // ─── Модальное окно добавления фото ──────────────────────────────────────────
 type ModalMode = "image" | "carousel" | null
 
@@ -434,6 +479,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       CarouselExtension,
+      SingleImageExtension,
     ],
     content: value,
     editorProps: {
@@ -462,26 +508,23 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
   }, [editor])
 
-  // Вставка через прямое изменение HTML — минуя Tiptap команды
+  // Вставка через insertContent — тот же путь что карусель (через NodeView, без setContent)
   const handleInsert = useCallback((urls: string[], mode: "image" | "carousel") => {
     if (!editor) return
-    const currentHtml = editor.getHTML()
-    let insertion = ""
-    if (mode === "image") {
-      insertion = urls.map(url => `<img src="${url}" alt="" />`).join("")
+    if (mode === "carousel") {
+      editor.chain().focus().insertContent({
+        type: "imageCarousel",
+        attrs: { images: urls },
+      }).run()
     } else {
-      insertion = `<div data-carousel="true" data-images='${JSON.stringify(urls)}'></div>`
+      for (const url of urls) {
+        editor.chain().focus().insertContent({
+          type: "singleImage",
+          attrs: { src: url, alt: "" },
+        }).run()
+      }
     }
-    const newHtml = currentHtml === "<p></p>" || !currentHtml
-      ? `<p></p>${insertion}<p></p>`
-      : `${currentHtml}${insertion}<p></p>`
-    // setTimeout чтобы выйти из React-рендера перед вызовом Tiptap (иначе flushSync конфликт)
-    setTimeout(() => {
-      editor.commands.setContent(newHtml, false)
-      isInternalUpdate.current = true
-      onChange(newHtml)
-    }, 0)
-  }, [editor, onChange])
+  }, [editor])
 
   if (!editor) return null
 
