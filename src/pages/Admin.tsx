@@ -675,7 +675,7 @@ export default function Admin() {
   const [articleForm, setArticleForm] = useState({
     id: null as number | null,
     title: "", slug: "", excerpt: "", content: "",
-    image_url: "", category: "article", is_published: false,
+    image_url: "", image_urls: [] as string[], category: "article", is_published: false,
     html_attachment: "",
   })
 
@@ -1131,14 +1131,15 @@ export default function Admin() {
       slug: articleForm.slug,
       excerpt: articleForm.excerpt || null,
       content: articleForm.content,
-      image_url: articleForm.image_url || null,
+      image_url: articleForm.image_urls[0] || articleForm.image_url || null,
+      image_urls: articleForm.image_urls,
       category: articleForm.category,
       is_published: articleForm.is_published,
       html_attachment: articleForm.html_attachment || null,
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
-    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", category: "article", is_published: false, html_attachment: "" })
+    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "" })
     setTab("articles")
   }
 
@@ -1146,11 +1147,12 @@ export default function Admin() {
     setArticleForm({
       id: a.id, title: a.title, slug: a.slug,
       excerpt: a.excerpt || "", content: "",
-      image_url: a.image_url || "", category: a.category, is_published: a.is_published,
+      image_url: a.image_url || "", image_urls: (a as Article & { image_urls?: string[] }).image_urls || (a.image_url ? [a.image_url] : []),
+      category: a.category, is_published: a.is_published,
       html_attachment: "",
     })
     api.articles.getById(a.id).then(full => {
-      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "" }))
+      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls }))
     })
     setTab("add_article")
   }
@@ -2770,11 +2772,12 @@ export default function Admin() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-foreground/60">URL изображения</label>
-                  <input value={articleForm.image_url}
-                    onChange={e => setArticleForm(f => ({ ...f, image_url: e.target.value }))}
-                    placeholder="https://..."
-                    className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                  <label className="mb-2 block text-xs text-foreground/60">Изображения статьи</label>
+                  <ImageUploader
+                    images={articleForm.image_urls}
+                    onChange={urls => setArticleForm(f => ({ ...f, image_urls: urls }))}
+                    folder="articles"
+                  />
                 </div>
               </div>
               <div>

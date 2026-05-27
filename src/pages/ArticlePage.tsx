@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
+import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 
@@ -9,6 +10,7 @@ interface Article {
   slug: string
   excerpt: string | null
   image_url: string | null
+  image_urls?: string[]
   category: string
   content: string
   html_attachment: string | null
@@ -23,36 +25,217 @@ const CATEGORY_LABELS: Record<string, string> = {
   guide: "Гайд",
 }
 
-function renderMarkdown(text: string): string {
-  // Разбиваем по двойному переносу — это параграфы
-  const paragraphs = text.split(/\n{2,}/)
-
-  const processLine = (line: string) =>
-    line
-      .replace(/^### (.+)$/, "<h3>$1</h3>")
-      .replace(/^## (.+)$/, "<h2>$1</h2>")
-      .replace(/^# (.+)$/, "<h1>$1</h1>")
-      .replace(/^- (.+)$/, "<li>$1</li>")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/`(.+?)`/g, "<code>$1</code>")
-
-  return paragraphs.map(para => {
-    const lines = para.split("\n").map(processLine)
-    const content = lines.join("<br/>")
-    // Не оборачиваем в <p> если уже есть блочный тег
-    if (/^<(h[1-3]|ul|li|blockquote)/.test(content)) return content
-    return `<p>${content}</p>`
-  }).join("\n")
-}
-
-// Открывает HTML-вложение в новой вкладке через Blob URL
 function openHtmlInNewTab(html: string) {
   const blob = new Blob([html], { type: "text/html" })
   const url = URL.createObjectURL(blob)
   window.open(url, "_blank")
-  // Освобождаем URL через небольшую задержку
   setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(startIdx)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const imgRef = useRef<HTMLImageElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const changeIdx = useCallback((next: number) => { setIdx(next); setZoom(1); setPan({ x: 0, y: 0 }) }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+      if (e.key === "ArrowRight") changeIdx((idx + 1) % images.length)
+      if (e.key === "ArrowLeft") changeIdx((idx - 1 + images.length) % images.length)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [images.length, onClose, idx, changeIdx])
+
+  const clampPan = (x: number, y: number, z: number) => {
+    if (!imgRef.current || !containerRef.current) return { x, y }
+    const img = imgRef.current
+    const maxX = (img.offsetWidth * (z - 1)) / 2
+    const maxY = (img.offsetHeight * (z - 1)) / 2
+    return { x: Math.min(maxX, Math.max(-maxX, x)), y: Math.min(maxY, Math.max(-maxY, y)) }
+  }
+
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    const newZoom = Math.min(5, Math.max(1, zoom * (1 - e.deltaY * 0.001)))
+    setPan(p => clampPan(p.x, p.y, newZoom))
+    setZoom(newZoom)
+  }
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (zoom <= 1 || !imgRef.current) return
+    const img = imgRef.current
+    const rect = img.getBoundingClientRect()
+    const relX = (e.clientX - (rect.left + rect.width / 2)) / rect.width
+    const relY = (e.clientY - (rect.top + rect.height / 2)) / rect.height
+    const maxX = (img.offsetWidth * (zoom - 1)) / 2
+    const maxY = (img.offsetHeight * (zoom - 1)) / 2
+    setPan({
+      x: Math.min(maxX, Math.max(-maxX, -relX * img.offsetWidth * (zoom - 1))),
+      y: Math.min(maxY, Math.max(-maxY, -relY * img.offsetHeight * (zoom - 1))),
+    })
+  }
+
+  const onImgClick = () => {
+    if (zoom > 1) { setZoom(1); setPan({ x: 0, y: 0 }); return }
+    setZoom(2.5)
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex flex-col bg-black/95 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+        <span className="text-sm text-white/40">{idx + 1} / {images.length}</span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="text-xs text-white/40 hover:text-white transition-colors" style={{ cursor: "pointer" }}>
+            Сбросить зум
+          </button>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={16} />
+          </button>
+        </div>
+      </div>
+      <div ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden" style={{ userSelect: "none" }} onWheel={onWheel} onMouseMove={onMouseMove}>
+        <img
+          ref={imgRef}
+          src={images[idx]}
+          alt=""
+          draggable={false}
+          onClick={onImgClick}
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transition: "transform 0.08s ease-out",
+            cursor: zoom > 1 ? "zoom-out" : "zoom-in",
+            maxWidth: "88vw",
+            maxHeight: "73vh",
+            objectFit: "contain",
+          }}
+        />
+        {images.length > 1 && <>
+          <button onClick={() => changeIdx((idx - 1 + images.length) % images.length)}
+            className="absolute left-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ChevronLeft" size={20} />
+          </button>
+          <button onClick={() => changeIdx((idx + 1) % images.length)}
+            className="absolute right-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="ChevronRight" size={20} />
+          </button>
+        </>}
+      </div>
+      {images.length > 1 && (
+        <div className="flex justify-center gap-2 overflow-x-auto px-4 py-3 shrink-0">
+          {images.map((src, i) => (
+            <button key={i} onClick={() => changeIdx(i)}
+              className={`shrink-0 h-14 w-14 overflow-hidden rounded-lg border-2 transition-colors ${i === idx ? "border-white" : "border-white/20 hover:border-white/50"}`}
+              style={{ cursor: "pointer" }}>
+              <img src={src} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>,
+    document.body
+  )
+}
+
+function ArticleCarousel({ images }: { images: string[] }) {
+  const [idx, setIdx] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval>>()
+
+  const changeIdx = useCallback((next: number) => setIdx(next), [])
+
+  useEffect(() => {
+    if (images.length <= 1) return
+    timerRef.current = setInterval(() => {
+      setIdx(i => (i + 1) % images.length)
+    }, 15000)
+    return () => clearInterval(timerRef.current)
+  }, [images.length])
+
+  const go = (next: number) => {
+    clearInterval(timerRef.current)
+    changeIdx(next)
+    timerRef.current = setInterval(() => {
+      setIdx(i => (i + 1) % images.length)
+    }, 15000)
+  }
+
+  if (images.length === 0) return null
+
+  if (images.length === 1) {
+    return (
+      <div className="mb-8 overflow-hidden rounded-2xl border border-border cursor-zoom-in" onClick={() => setLightboxOpen(true)}>
+        <img src={images[0]} alt="" className="w-full object-contain" style={{ maxHeight: "50vh" }} />
+        {lightboxOpen && <Lightbox images={images} startIdx={0} onClose={() => setLightboxOpen(false)} />}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-8">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
+        {/* Основное фото */}
+        <div className="relative cursor-zoom-in" style={{ maxHeight: "55vh" }} onClick={() => setLightboxOpen(true)}>
+          <img
+            key={idx}
+            src={images[idx]}
+            alt=""
+            className="w-full object-contain"
+            style={{ maxHeight: "55vh", transition: "opacity 0.3s ease" }}
+          />
+          {/* Счётчик */}
+          <div className="absolute top-3 right-3 rounded-full bg-black/50 px-2.5 py-1 text-xs text-white/80 backdrop-blur-sm">
+            {idx + 1} / {images.length}
+          </div>
+        </div>
+
+        {/* Кнопки навигации */}
+        <button
+          onClick={e => { e.stopPropagation(); go((idx - 1 + images.length) % images.length) }}
+          className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
+          style={{ cursor: "pointer" }}>
+          <Icon name="ChevronLeft" size={18} />
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); go((idx + 1) % images.length) }}
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
+          style={{ cursor: "pointer" }}>
+          <Icon name="ChevronRight" size={18} />
+        </button>
+
+        {/* Точки */}
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); go(i) }}
+              className={`h-1.5 rounded-full transition-all ${i === idx ? "w-5 bg-white" : "w-1.5 bg-white/40 hover:bg-white/70"}`}
+              style={{ cursor: "pointer" }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Миниатюры */}
+      <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+        {images.map((src, i) => (
+          <button
+            key={i}
+            onClick={() => go(i)}
+            className={`shrink-0 h-16 w-20 overflow-hidden rounded-lg border-2 transition-colors ${i === idx ? "border-primary" : "border-border hover:border-primary/50"}`}
+            style={{ cursor: "pointer" }}>
+            <img src={src} alt="" className="h-full w-full object-cover" />
+          </button>
+        ))}
+      </div>
+
+      {lightboxOpen && <Lightbox images={images} startIdx={idx} onClose={() => setLightboxOpen(false)} />}
+    </div>
+  )
 }
 
 export default function ArticlePage() {
@@ -92,10 +275,11 @@ export default function ArticlePage() {
     </div>
   )
 
+  const images = article.image_urls?.length ? article.image_urls : article.image_url ? [article.image_url] : []
+
   return (
     <>
       <div className="min-h-screen bg-background text-foreground">
-        {/* Хедер */}
         <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-sm">
           <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
             <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
@@ -110,7 +294,6 @@ export default function ArticlePage() {
         </header>
 
         <main className="mx-auto max-w-4xl px-4 py-10 sm:py-16">
-          {/* Мета */}
           <div className="mb-6">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
@@ -124,14 +307,8 @@ export default function ArticlePage() {
             )}
           </div>
 
-          {/* Обложка */}
-          {article.image_url && (
-            <div className="mb-8 overflow-hidden rounded-2xl border border-border">
-              <img src={article.image_url} alt={article.title} className="w-full object-contain" style={{ maxHeight: "50vh" }} />
-            </div>
-          )}
+          <ArticleCarousel images={images} />
 
-          {/* Контент */}
           {article.content && (
             <div
               className="rich-content text-foreground/80 leading-relaxed text-base"
@@ -139,7 +316,6 @@ export default function ArticlePage() {
             />
           )}
 
-          {/* HTML-вложение — кнопка открытия в новой вкладке */}
           {article.html_attachment && (
             <div className="mt-10">
               <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">

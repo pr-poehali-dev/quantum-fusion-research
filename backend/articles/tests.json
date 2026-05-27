@@ -5,7 +5,7 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,
-      "expectedBody": {"articles": []},
+      "expectedBody": {"total": 1},
       "bodyMatcher": "partial"
     }
   ]
