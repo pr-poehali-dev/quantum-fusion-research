@@ -1152,7 +1152,7 @@ export default function Admin() {
       html_attachment: "",
     })
     api.articles.getById(a.id).then(full => {
-      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls }))
+      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [] }))
     })
     setTab("add_article")
   }

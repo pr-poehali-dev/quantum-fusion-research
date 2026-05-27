@@ -10,7 +10,8 @@ interface Props {
   maxImages?: number
 }
 
-export function ImageUploader({ images, onChange, folder = "builds", maxImages = 8 }: Props) {
+export function ImageUploader({ images: imagesProp, onChange, folder = "builds", maxImages = 8 }: Props) {
+  const images = imagesProp || []
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadUrl, setUploadUrl] = useState("")
