@@ -201,12 +201,16 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     setUploading(true)
     const urls = await Promise.all(Array.from(files).map(f => uploadFile(f).catch(() => null)))
     const valid = urls.filter(Boolean) as string[]
-    for (const url of valid) {
-      editor.chain().focus().setImage({ src: url }).run()
-      editor.commands.insertContent("<p></p>")
-    }
     setUploading(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
+    if (!valid.length) return
+    // Небольшая задержка чтобы фокус вернулся в редактор после закрытия file dialog
+    setTimeout(() => {
+      for (const url of valid) {
+        editor.chain().focus().setImage({ src: url }).run()
+        editor.commands.insertContent("<p></p>")
+      }
+    }, 50)
   }, [editor, folder])
 
   const handleCarouselUpload = useCallback(async (files: FileList) => {
@@ -221,16 +225,14 @@ export default function RichTextEditor({ value, onChange, placeholder, className
   const insertCarousel = useCallback(() => {
     if (!editor || carouselImages.length === 0) return
     const imgs = [...carouselImages]
-    editor.commands.focus()
-    editor.chain()
-      .insertContent({
-        type: "imageCarousel",
-        attrs: { images: imgs },
-      })
-      .insertContent({ type: "paragraph" })
-      .run()
     setCarouselImages([])
     setCarouselMode(false)
+    setTimeout(() => {
+      editor.chain().focus()
+        .insertContent({ type: "imageCarousel", attrs: { images: imgs } })
+        .insertContent({ type: "paragraph" })
+        .run()
+    }, 50)
   }, [editor, carouselImages])
 
   if (!editor) return null
@@ -281,7 +283,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         <div className="mx-1 h-5 w-px bg-border" />
 
         {/* Вставить одно фото */}
-        <button type="button" onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click() }} className={btn(false)} title={uploading ? "Загрузка..." : "Вставить фото"} disabled={uploading}>
+        <button type="button" onClick={() => fileInputRef.current?.click()} className={btn(false)} title={uploading ? "Загрузка..." : "Вставить фото"} disabled={uploading}>
           {uploading ? (
             <div className="h-3 w-3 animate-spin rounded-full border border-foreground/60 border-t-transparent" />
           ) : (
@@ -371,7 +373,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
             {carouselImages.length >= 2 && (
               <button
                 type="button"
-                onMouseDown={e => { e.preventDefault(); insertCarousel() }}
+                onClick={insertCarousel}
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                 style={{ cursor: "pointer" }}>
                 <Icon name="GalleryHorizontal" size={12} />
