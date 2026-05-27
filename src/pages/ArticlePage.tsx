@@ -144,7 +144,6 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
 function ArticleCarousel({ images, onOpenLightbox, standalone = false }: { images: string[]; onOpenLightbox?: (images: string[], idx: number) => void; standalone?: boolean }) {
   const [idx, setIdx] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setInterval>>()
 
   const changeIdx = useCallback((next: number) => setIdx(next), [])
 
@@ -153,21 +152,7 @@ function ArticleCarousel({ images, onOpenLightbox, standalone = false }: { image
     else setLightboxOpen(true)
   }
 
-  useEffect(() => {
-    if (images.length <= 1) return
-    timerRef.current = setInterval(() => {
-      setIdx(i => (i + 1) % images.length)
-    }, 15000)
-    return () => clearInterval(timerRef.current)
-  }, [images.length])
-
-  const go = (next: number) => {
-    clearInterval(timerRef.current)
-    changeIdx(next)
-    timerRef.current = setInterval(() => {
-      setIdx(i => (i + 1) % images.length)
-    }, 15000)
-  }
+  const go = (next: number) => changeIdx(next)
 
   if (images.length === 0) return null
 
