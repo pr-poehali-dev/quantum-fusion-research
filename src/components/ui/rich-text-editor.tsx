@@ -56,6 +56,8 @@ export default function RichTextEditor({ value, onChange, placeholder, className
   const [uploading, setUploading] = useState(false)
   const [carouselMode, setCarouselMode] = useState(false)
   const [carouselImages, setCarouselImages] = useState<string[]>([])
+  const dragIdx = useRef<number | null>(null)
+  const dragOverIdx = useRef<number | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -252,14 +254,38 @@ export default function RichTextEditor({ value, onChange, placeholder, className
           {carouselImages.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {carouselImages.map((url, i) => (
-                <div key={i} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted">
-                  <img src={url} alt="" className="h-full w-full object-cover" />
+                <div
+                  key={url + i}
+                  draggable
+                  onDragStart={() => { dragIdx.current = i }}
+                  onDragEnter={() => { dragOverIdx.current = i }}
+                  onDragOver={e => e.preventDefault()}
+                  onDragEnd={() => {
+                    const from = dragIdx.current
+                    const to = dragOverIdx.current
+                    if (from === null || to === null || from === to) return
+                    setCarouselImages(imgs => {
+                      const a = [...imgs]
+                      const [item] = a.splice(from, 1)
+                      a.splice(to, 0, item)
+                      return a
+                    })
+                    dragIdx.current = null
+                    dragOverIdx.current = null
+                  }}
+                  className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted select-none"
+                  style={{ cursor: "grab" }}
+                >
+                  <img src={url} alt="" className="h-full w-full object-cover pointer-events-none" />
+                  {i === 0 && (
+                    <span className="absolute top-0.5 left-0.5 rounded bg-primary/80 px-1 py-0.5 text-[9px] text-white leading-none pointer-events-none">1</span>
+                  )}
                   <button
                     type="button"
                     onClick={() => setCarouselImages(imgs => imgs.filter((_, j) => j !== i))}
-                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-0.5 right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ cursor: "pointer" }}>
-                    <Icon name="X" size={14} className="text-white" />
+                    <Icon name="X" size={10} />
                   </button>
                 </div>
               ))}
