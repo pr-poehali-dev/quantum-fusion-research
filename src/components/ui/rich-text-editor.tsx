@@ -475,9 +475,12 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     const newHtml = currentHtml === "<p></p>" || !currentHtml
       ? `<p></p>${insertion}<p></p>`
       : `${currentHtml}${insertion}<p></p>`
-    editor.commands.setContent(newHtml, false)
-    isInternalUpdate.current = true
-    onChange(newHtml)
+    // setTimeout чтобы выйти из React-рендера перед вызовом Tiptap (иначе flushSync конфликт)
+    setTimeout(() => {
+      editor.commands.setContent(newHtml, false)
+      isInternalUpdate.current = true
+      onChange(newHtml)
+    }, 0)
   }, [editor, onChange])
 
   if (!editor) return null
