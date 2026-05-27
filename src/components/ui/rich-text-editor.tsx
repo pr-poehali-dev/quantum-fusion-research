@@ -130,6 +130,8 @@ export default function RichTextEditor({ value, onChange, placeholder, className
   const dragIdx = useRef<number | null>(null)
   const dragOverIdx = useRef<number | null>(null)
 
+  const isInternalUpdate = useRef(false)
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -146,12 +148,18 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       },
     },
     onUpdate({ editor }) {
+      isInternalUpdate.current = true
       onChange(editor.getHTML())
     },
   })
 
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
+    if (!editor) return
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false
+      return
+    }
+    if (value !== editor.getHTML()) {
       editor.commands.setContent(value, false)
     }
   }, [value, editor])
