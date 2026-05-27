@@ -97,7 +97,8 @@ export function ArticlesSection() {
                   {a.title}
                 </h3>
                 {a.excerpt && (
-                  <p className="text-sm leading-relaxed text-foreground/60 line-clamp-2">{a.excerpt}</p>
+                  <p className="text-sm leading-relaxed text-foreground/60"
+                    dangerouslySetInnerHTML={{ __html: a.excerpt.replace(/<[^>]+>/g, "") }} />
                 )}
                 <div className="mt-3 flex items-center gap-1 text-xs text-foreground/40">
                   <Icon name="Eye" size={12} />
