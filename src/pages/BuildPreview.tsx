@@ -184,6 +184,11 @@ export default function BuildPreview() {
 
   const build = variants[activeVariant] ?? null
   const hasMultipleVariants = variants.length > 1
+
+  // Считаем суммы из компонентов (поля в БД могут быть устаревшими)
+  const calcPartsTotal = components.reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0)
+  const calcAssemblyFee = build?.assembly_fee || 0
+  const calcTotalPrice = calcPartsTotal + calcAssemblyFee
   const totalSections = components.length + 2
 
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -452,11 +457,11 @@ export default function BuildPreview() {
                   <div className="mb-6 flex flex-wrap items-end gap-4 sm:gap-6">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Итоговая стоимость</p>
-                      <p className="font-bold text-foreground" style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)" }}>{fmt(build.total_price)}</p>
+                      <p className="font-bold text-foreground" style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)" }}>{fmt(calcTotalPrice)}</p>
                     </div>
                     <div className="mb-0.5 flex flex-col gap-0.5">
-                      <p className="text-xs text-muted-foreground">Железо: <span className="text-foreground/70">{fmt(build.parts_total)}</span></p>
-                      <p className="text-xs text-muted-foreground">Сборка: <span className="text-foreground/70">{fmt(build.assembly_fee)}</span></p>
+                      <p className="text-xs text-muted-foreground">Железо: <span className="text-foreground/70">{fmt(calcPartsTotal)}</span></p>
+                      <p className="text-xs text-muted-foreground">Сборка: <span className="text-foreground/70">{fmt(calcAssemblyFee)}</span></p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">

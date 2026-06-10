@@ -35,7 +35,9 @@ export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoa
         </div>
         <div className="flex items-center gap-3 text-xs text-foreground/50">
           <span>{b.components?.length || 0} комп.</span>
-          <span className="font-semibold text-foreground/70">{fmt(b.total_price)}</span>
+          <span className="font-semibold text-foreground/70">{fmt(
+            (b.components?.reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0) ?? 0) + (b.assembly_fee || 0)
+          )}</span>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 shrink-0">
