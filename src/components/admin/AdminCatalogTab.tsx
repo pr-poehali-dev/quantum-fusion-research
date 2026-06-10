@@ -194,6 +194,7 @@ export function AdminCatalogTab({
       name: buildForm.name, description: buildForm.description, status: buildForm.status,
       is_featured: buildForm.is_featured, in_stock: buildForm.in_stock,
       assembly_type: buildForm.assembly_type, assembly_fee: asm_fee,
+      parts_total: partsTotal, total_price: partsTotal + asm_fee,
       image_urls: buildForm.image_urls,
       components: buildComponents.map(c => ({
         slot: c.slot, source: c.source, source_id: c.source_id,
