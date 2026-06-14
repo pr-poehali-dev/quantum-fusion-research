@@ -128,10 +128,10 @@ export function AdminWipTab({
     setWipFormOpen(false)
   }
 
-  const deleteWip = async (id: number) => {
-    if (!confirm("Удалить сборку из списка?")) return
-    await api.wipBuilds.delete(id)
-    setWipBuilds(bs => bs.filter(b => b.id !== id))
+  const deleteWip = async (w: WipBuild) => {
+    if (!confirm(`Удалить сборку #${w.order_number}?\nВсе резервы по заказу будут сняты.`)) return
+    await api.warehouse.deleteWip(w.id!)
+    setWipBuilds(bs => bs.filter(b => b.id !== w.id))
   }
 
   // Маппинг статусов: purchase_basket (NEW/ORDERED/RECEIVED) ↔ wip_builds slot_status
@@ -634,7 +634,7 @@ export function AdminWipTab({
                                 {syncDoneWipId === w.id ? "Готово" : "Синх."}
                               </button>
                             )}
-                            {w.id && <button onClick={() => deleteWip(w.id!)}
+                            {w.id && <button onClick={() => deleteWip(w)}
                               className="flex h-5 w-5 items-center justify-center rounded text-foreground/20 hover:bg-red-400/10 hover:text-red-400 transition-colors"
                               style={{ cursor: "pointer" }}>
                               <Icon name="Trash2" size={10} />

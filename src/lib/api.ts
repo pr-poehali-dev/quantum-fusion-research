@@ -167,6 +167,7 @@ export const api = {
     inventoryCreate: (data: { filter_cells: string[], filter_cats: string[] }) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_create", ...data }) }).then(r => r.json()),
     inventoryUpdateItem: (data: { item_id: number, qty_actual: number | null, note?: string }) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_update_item", ...data }) }).then(r => r.json()),
     inventoryApply: (inventory_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_apply", inventory_id }) }).then(r => r.json()),
+    deleteWip: (wip_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete_wip", wip_id }) }).then(r => r.json()),
   },
   comments: {
     getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),

@@ -1,6 +1,7 @@
 import json
 import os
 import psycopg2
+import warehouse_core as core
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -326,9 +327,17 @@ def handler(event: dict, context) -> dict:
             wip_id = params.get("id")
             if not wip_id:
                 return resp(400, {"error": "Нет id"})
-            cur.execute("UPDATE wip_builds SET stage='Забрали', updated_at=NOW() WHERE id=%s", (wip_id,))
+            # Получаем order_id чтобы снять резервы
+            cur.execute(f"SELECT order_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
+            row = cur.fetchone()
+            order_id = row[0] if row else None
+            # Снимаем все резервы по заказу
+            if order_id:
+                core.release_order_reserves(cur, order_id, only_new_negative=False)
+            # Удаляем запись сборки
+            cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             conn.commit()
-            return resp(200, {"ok": True})
+            return resp(200, {"ok": True, "order_id": order_id})
 
     finally:
         cur.close()

@@ -11,6 +11,12 @@
       "method": "OPTIONS",
       "path": "/",
       "expectedStatus": 200
+    },
+    {
+      "name": "DELETE missing id returns 400",
+      "method": "DELETE",
+      "path": "/",
+      "expectedStatus": 400
     }
   ]
 }
