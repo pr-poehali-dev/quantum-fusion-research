@@ -601,6 +601,29 @@ export default function WarehouseTab() {
   const [quickSupplyModal, setQuickSupplyModal] = useState(false)
   const [inventoryModal, setInventoryModal] = useState(false)
 
+  // Ресайз колонок
+  const COL_DEFAULTS: Record<string, number> = {
+    name: 220, type: 140, sku: 100, partnum: 110, qty: 70, reserve: 70,
+    warranty: 90, price: 100, cell: 80, opt1: 90, opt2: 90,
+    avg_cost: 90, margin: 80, price_history: 100, links: 70, actions: 90,
+  }
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return { ...COL_DEFAULTS, ...JSON.parse(localStorage.getItem("wh_col_widths") || "{}") } }
+    catch { return COL_DEFAULTS }
+  })
+  const startColResize = (col: string, startX: number) => {
+    const startW = colWidths[col] ?? COL_DEFAULTS[col] ?? 100
+    const onMove = (e: MouseEvent) => {
+      const next = { ...colWidths, [col]: Math.max(40, startW + e.clientX - startX) }
+      setColWidths(next)
+      localStorage.setItem("wh_col_widths", JSON.stringify(next))
+    }
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp) }
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup", onUp)
+  }
+  const w = (col: string) => colWidths[col] ?? COL_DEFAULTS[col] ?? 100
+
   const load = useCallback(async () => {
     setLoading(true)
     // При активном фильтре резервов — грузим все товары (большой limit), пагинация не нужна
@@ -717,25 +740,35 @@ export default function WarehouseTab() {
 
       {/* Таблица */}
       <div className="rounded-xl border border-border overflow-x-auto">
-        <table className="w-full" style={{ minWidth: "100%" }}>
-          <thead className="border-b border-border bg-muted/30">
+        <table className="border-collapse" style={{ minWidth: "100%", tableLayout: "fixed" }}>
+          <colgroup>
+            {(["name","type","sku","partnum","qty","reserve","warranty","price","cell","opt1","opt2","avg_cost","margin","price_history","links","actions"] as const).map(col => (
+              <col key={col} style={{ width: w(col) }} />
+            ))}
+          </colgroup>
+          <thead className="border-b-2 border-border bg-muted/40">
             <tr className="text-xs text-foreground/50">
-              <th className="px-3 py-2.5 text-left font-medium">Наименование</th>
-              <th className="px-3 py-2.5 text-left font-medium">Тип</th>
-              <th className="px-3 py-2.5 text-left font-medium">Артикул</th>
-              <th className="px-3 py-2.5 text-left font-medium">Партнамбер</th>
-              <th className="px-3 py-2.5 text-center font-medium">Кол-во</th>
-              <th className="px-3 py-2.5 text-center font-medium">Резерв</th>
-              <th className="px-3 py-2.5 text-left font-medium">Гарантия</th>
-              <th className="px-3 py-2.5 text-left font-medium">Продажа</th>
-              <th className="px-3 py-2.5 text-left font-medium">Ячейка</th>
-              <th className="px-3 py-2.5 text-left font-medium">Опт 1</th>
-              <th className="px-3 py-2.5 text-left font-medium">Опт 2</th>
-              <th className="px-3 py-2.5 text-left font-medium">Заход ср.</th>
-              <th className="px-3 py-2.5 text-left font-medium">Маржа</th>
-              <th className="px-3 py-2.5 text-left font-medium">История цены</th>
-              <th className="px-3 py-2.5 text-left font-medium">Ссылки</th>
-              <th className="px-3 py-2.5 text-left font-medium sticky right-0 bg-muted/30 z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.15)]">Действия</th>
+              {([
+                ["name","Наименование","left"],["type","Тип","left"],["sku","Артикул","left"],
+                ["partnum","Партнамбер","left"],["qty","Кол-во","center"],["reserve","Резерв","center"],
+                ["warranty","Гарантия","left"],["price","Продажа","left"],["cell","Ячейка","left"],
+                ["opt1","Опт 1","left"],["opt2","Опт 2","left"],["avg_cost","Заход ср.","left"],
+                ["margin","Маржа","left"],["price_history","История цены","left"],["links","Ссылки","left"],
+              ] as [string,string,string][]).map(([col, label, align]) => (
+                <th key={col} className="relative font-medium border-r border-border/50 select-none"
+                  style={{ width: w(col), minWidth: w(col), textAlign: align as "left"|"center" }}>
+                  <div className="px-3 py-2.5 truncate">{label}</div>
+                  <div
+                    onMouseDown={e => { e.preventDefault(); startColResize(col, e.clientX) }}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors z-10"
+                    style={{ cursor: "col-resize" }}
+                  />
+                </th>
+              ))}
+              <th className="relative font-medium sticky right-0 bg-muted/40 z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.15)]"
+                style={{ width: w("actions"), minWidth: w("actions") }}>
+                <div className="px-3 py-2.5">Действия</div>
+              </th>
             </tr>
           </thead>
           <tbody>
