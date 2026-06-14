@@ -1,0 +1,34 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Basket list responds 200",
+      "method": "GET",
+      "path": "/?action=basket",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Stock log responds 200",
+      "method": "GET",
+      "path": "/?action=stock_log&limit=5",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Unknown action returns 400",
+      "method": "GET",
+      "path": "/?action=nonexistent",
+      "expectedStatus": 400
+    },
+    {
+      "name": "Selftest runs all scenarios with rollback",
+      "method": "GET",
+      "path": "/?action=selftest",
+      "expectedStatus": 200
+    }
+  ]
+}

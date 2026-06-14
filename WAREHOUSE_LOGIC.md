@@ -1,0 +1,64 @@
+# Складская логика: Минус-резерв + Автозакупка (Этап 1)
+
+## Контекст и термины
+
+Схема БД: `t_p72635010_quantum_fusion_resea`
+
+**SKU** = строка в `warehouse_groups` (поле `sku`, 8 символов). Товар (`products`) ссылается на группу через `products.warehouse_group_id`. Группа ссылается на товар через `warehouse_groups.product_id`.
+
+**Партия (supply)** = строка в `warehouse_supplies`. У одного SKU (group_id) может быть несколько партий с разной себестоимостью (FIFO по cost_price). Поля партии:
+- `qty` — физически лежит на полке (свободно к резерву)
+- `qty_reserved` — обычный резерв (POSITIVE), товар физически есть, заблокирован под заказ
+- `qty_negative` — минус-резерв (NEGATIVE), товара нет, «долг склада»
+
+## Инвариант остатков (на уровне SKU = group_id)
+
+```
+physical_on_hand(group) = Σ supplies.qty                 -- лежит на складе
+total_reserved(group)   = Σ supplies.qty_reserved        -- POSITIVE резервы
+total_negative(group)   = Σ supplies.qty_negative        -- NEGATIVE (долг → закупка)
+free(group)             = physical_on_hand - total_reserved
+```
+
+POSITIVE-резерв уменьшает `qty` партии и увеличивает `qty_reserved`.
+NEGATIVE-резерв НЕ трогает `qty` — только `qty_negative` (сигнал закупки).
+
+## Алгоритм резервирования заказа (handle_reserve_and_purchase)
+
+Запускается:
+- для заказов-комплектующих (parts) — сразу при создании заказа;
+- для заказов-ПК — на этапе **«Заказ»** (НЕ на «Согласовании»).
+
+Для каждой позиции заказа (по group_id):
+1. Если у позиции нет `product_id`/`group_id` (пользовательское железо) → пропустить, пометить «Пользовательское железо, пересогласуй».
+2. Если qty ≤ 0 (возврат) → пропустить (минус-резерв не применяем).
+3. `SELECT ... FOR UPDATE` по партиям группы (блокировка от гонок).
+4. `free = Σqty - Σqty_reserved`.
+5. `take = min(max(free,0), qty)` → разложить POSITIVE по партиям FIFO (по cost_price/дате): `qty -= take_i`, `qty_reserved += take_i`.
+6. `shortage = qty - take`. Если `shortage > 0`:
+   - добавить NEGATIVE: `qty_negative += shortage` (в партию-«буфер» группы);
+   - upsert в `warehouse_backorders` (+shortage) — единый источник корзины закупки.
+7. Записать движения в `warehouse_movements`.
+
+## Гашение минус-резерва при приёмке (Этап 2)
+
+Приход N штук гасит NEGATIVE FIFO **по дате заказа** (приоритет — кто раньше заказал):
+- найти заказы с NEGATIVE по этой группе, отсортировать по `orders.created_at`;
+- `qty_negative -= clear`, и эта часть переходит в POSITIVE (`qty_reserved += clear`) — товар приехал и лёг под заказ;
+- уменьшить `warehouse_backorders.qty` соответственно.
+
+## Отмена заказа
+
+- POSITIVE резерв → вернуть в наличие (`qty += r`, `qty_reserved -= r`).
+- NEGATIVE резерв:
+  - если строка backorder ещё `NEW` (не заказана поставщику) → уменьшить `qty_negative` и `backorders.qty`;
+  - если уже `ORDERED` → НЕ трогать (товар уже едет).
+
+## Пересчёт заказа (RecalcOrderReserves)
+
+При изменении состава/кол-ва зарезервированного заказа: снять все резервы заказа и наложить заново через handle_reserve_and_purchase. ⚠️ ПРОВЕРИТЬ НА БАГИ (см. WAREHOUSE_BUGS.md).
+
+## Источник истины
+
+- Корзина закупки → `warehouse_backorders` (БД), НЕ localStorage. Статусы в БД.
+- Старый механизм (wip_builds.{slot}_status='need_order') постепенно мигрируем на backorders.
