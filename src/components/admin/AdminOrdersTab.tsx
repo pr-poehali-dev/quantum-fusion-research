@@ -24,16 +24,6 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
   const [newOrderForm, setNewOrderForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" as "parts" | "pc_build" })
   const [newOrderSaving, setNewOrderSaving] = useState(false)
 
-  // OrderList modal
-  const [orderListOpen, setOrderListOpen] = useState(false)
-  const [orderListLoading, setOrderListLoading] = useState(false)
-  const [orderListGroups, setOrderListGroups] = useState<{
-    group_id: string; name: string; total_qty: number; shortage: number
-    url_supplier?: string; url_site?: string; product_id?: number
-    order_status: string
-    orders: { order_id: number; customer_name: string; shortage: number }[]
-  }[]>([])
-
   const [copiedOrderId, setCopiedOrderId] = useState<number | null>(null)
   const [warrantyLoadingId, setWarrantyLoadingId] = useState<number | null>(null)
   const [syncingId, setSyncingId] = useState<number | null>(null)
@@ -112,51 +102,6 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     URL.revokeObjectURL(url)
   }
 
-  const openOrderList = async () => {
-    setOrderListOpen(true)
-    setOrderListLoading(true)
-    try {
-      const saved = (() => { try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} } })()
-      const activeOrders = orders.filter(o => ACTIVE_STATUSES.includes(o.status))
-      const groups: Record<string, typeof orderListGroups[0]> = {}
-      for (const order of activeOrders) {
-        const data = await api.builds.getAll()
-        const allBuilds = data.builds || []
-        const padded = String(order.id).padStart(5, "0")
-        const build = allBuilds.find((b: { name: string; description?: string }) =>
-          b.name.includes(padded) || b.description?.includes(`#${padded}`)
-        )
-        if (!build) continue
-        for (const comp of build.components || []) {
-          const qty = comp.qty || 1
-          const inStock = (build.in_stock ? qty : 0)
-          const shortage = qty - inStock
-          if (shortage <= 0) continue
-          const key = `${comp.name}::${comp.source_id || comp.name}`
-          if (!groups[key]) {
-            groups[key] = {
-              group_id: key,
-              name: comp.name,
-              total_qty: 0,
-              shortage: 0,
-              url_supplier: comp.url_supplier,
-              url_site: comp.url_site,
-              product_id: comp.source_id,
-              order_status: saved[key] || "need_order",
-              orders: [],
-            }
-          }
-          groups[key].total_qty += qty
-          groups[key].shortage += shortage
-          groups[key].orders.push({ order_id: order.id, customer_name: order.customer_name, shortage })
-        }
-      }
-      setOrderListGroups(Object.values(groups).sort((a, b) => b.shortage - a.shortage))
-    } catch (e) {
-      console.error(e)
-    }
-    setOrderListLoading(false)
-  }
 
   return (
     <div>
@@ -165,14 +110,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
           {isArchive ? "Архив заказов" : "Активные заказы"} ({filtered.length})
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          {!isArchive && (
-            <button onClick={openOrderList}
-              className="flex items-center gap-2 rounded-lg border border-orange-400/40 bg-orange-400/5 px-4 py-2 text-sm font-medium text-orange-400 hover:bg-orange-400/10 transition-colors"
-              style={{ cursor: "pointer" }}>
-              <Icon name="ShoppingCart" size={15} />
-              Заказной список
-            </button>
-          )}
+
           {!isArchive && (
             <button onClick={() => setNewOrderModal(true)}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -362,104 +300,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
         </div>
       )}
 
-      {/* Order List Modal */}
-      {orderListOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-10" style={{ cursor: "auto" }}>
-          <div className="relative w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <button onClick={() => setOrderListOpen(false)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="X" size={18} />
-            </button>
-            <div className="mb-5 flex items-center gap-3 flex-wrap">
-              <Icon name="ShoppingCart" size={20} className="text-orange-400" />
-              <h3 className="text-lg font-medium text-foreground">Заказной список</h3>
-              {!orderListLoading && <span className="rounded-full bg-orange-400/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">{orderListGroups.length} позиций</span>}
-            </div>
-            {orderListLoading ? (
-              <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-muted/40 animate-pulse" />)}</div>
-            ) : orderListGroups.length === 0 ? (
-              <div className="py-12 text-center">
-                <Icon name="CheckCircle" size={40} className="mx-auto mb-3 text-green-400/40" />
-                <p className="text-sm text-foreground/40">Всё в наличии или нет активных заказов</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {orderListGroups.map(g => (
-                  <div key={g.group_id} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-medium text-sm text-foreground">{g.name}</span>
-                          <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400 font-medium">−{g.shortage} шт.</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {g.url_supplier && (
-                            <a href={g.url_supplier} target="_blank" rel="noreferrer"
-                              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
-                              title="Купить у поставщика">
-                              <Icon name="ExternalLink" size={12} />Купить
-                            </a>
-                          )}
-                          {!g.url_supplier && (g.url_site || g.product_id) && (
-                            <a href={g.url_site || `/product/${g.product_id}`} target="_blank" rel="noreferrer"
-                              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/50 hover:border-primary hover:text-primary transition-colors"
-                              title="Карточка на сайте">
-                              <Icon name="Globe" size={12} />Сайт
-                            </a>
-                          )}
-                          {!g.url_supplier && !g.url_site && !g.product_id && (
-                            <span className="text-xs text-foreground/25">нет ссылки</span>
-                          )}
-                        </div>
-                        {g.orders.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {g.orders.map(o => (
-                              <a key={o.order_id} href={`/admin/order/${o.order_id}`}
-                                className="inline-flex items-center gap-1 rounded-full bg-muted/50 px-2 py-0.5 text-xs text-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
-                                title={o.customer_name}>
-                                <span className="font-mono font-semibold text-foreground/70">#{String(o.order_id).padStart(4, "0")}</span>
-                                <span className="text-foreground/40">{o.customer_name}</span>
-                                <span className="text-red-400 font-medium">−{o.shortage}</span>
-                              </a>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="shrink-0">
-                        <select
-                          value={g.order_status}
-                          onChange={e => {
-                            const newStatus = e.target.value
-                            setOrderListGroups(prev => prev.map(item => item.group_id === g.group_id ? { ...item, order_status: newStatus } : item))
-                            const saved = (() => { try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} } })()
-                            saved[g.group_id] = newStatus
-                            localStorage.setItem("order_list_statuses", JSON.stringify(saved))
-                          }}
-                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none transition-colors cursor-pointer ${
-                            g.order_status === "need_order"      ? "border-red-400/40 bg-red-500/10 text-red-400" :
-                            g.order_status === "ordered_delay"   ? "border-orange-400/40 bg-orange-500/10 text-orange-400" :
-                            g.order_status === "ordered_transit" ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-400" :
-                            g.order_status === "ready"           ? "border-green-400/40 bg-green-500/10 text-green-400" :
-                            "border-border bg-muted/50 text-foreground/40"
-                          }`}
-                          style={{ cursor: "pointer" }}>
-                          <option value="need_order">Заказать</option>
-                          <option value="ordered_delay">Задержка</option>
-                          <option value="ordered_transit">Едет</option>
-                          <option value="ready">Есть</option>
-                          <option value="pending">—</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {!orderListLoading && orderListGroups.length > 0 && (
-              <p className="mt-4 text-xs text-foreground/30 text-center">Статусы сохраняются локально в браузере</p>
-            )}
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }
