@@ -468,7 +468,7 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
             )}
           </div>
         </td>
-        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+        <td className="px-3 py-2.5 sticky right-0 bg-card z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.1)]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1">
             <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => onEdit(group)}>
               <Icon name="Pencil" size={13} className="text-foreground/40" />
@@ -820,7 +820,7 @@ export default function WarehouseTab() {
 
       {/* Таблица */}
       <div className="rounded-xl border border-border overflow-x-auto">
-        <table className="w-full min-w-[1200px]">
+        <table className="w-full" style={{ minWidth: "100%" }}>
           <thead className="border-b border-border bg-muted/30">
             <tr className="text-xs text-foreground/50">
               <th className="px-3 py-2.5 text-left font-medium">Наименование</th>
@@ -838,7 +838,7 @@ export default function WarehouseTab() {
               <th className="px-3 py-2.5 text-left font-medium">Маржа</th>
               <th className="px-3 py-2.5 text-left font-medium">История цены</th>
               <th className="px-3 py-2.5 text-left font-medium">Ссылки</th>
-              <th className="px-3 py-2.5 text-left font-medium">Действия</th>
+              <th className="px-3 py-2.5 text-left font-medium sticky right-0 bg-muted/30 z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.15)]">Действия</th>
             </tr>
           </thead>
           <tbody>
