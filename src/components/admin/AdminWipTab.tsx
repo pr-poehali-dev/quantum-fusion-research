@@ -88,16 +88,89 @@ export function AdminWipTab({
     setWipBuilds(bs => bs.filter(b => b.id !== id))
   }
 
+  // Маппинг статусов: purchase_basket (NEW/ORDERED/RECEIVED) ↔ wip_builds slot_status
+  const BASKET_TO_WIP: Record<string, string> = {
+    NEW: "need_order",
+    ORDERED: "ordered_transit",
+    RECEIVED: "ready",
+  }
+  const WIP_TO_BASKET: Record<string, string> = {
+    need_order: "NEW",
+    ordered_delay: "ORDERED",
+    ordered_transit: "ORDERED",
+    ready: "RECEIVED",
+    pending: "NEW",
+  }
+
   const openOrderList = async () => {
     setOrderListOpen(true)
     setOrderListLoading(true)
-    const d = await api.warehouse.getOrderList()
-    const saved = (() => { try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} } })()
-    setOrderListGroups((d.items || []).map((g: { group_id: number; product_id: number; name: string; shortage: number; url_supplier: string | null; url_site: string | null; orders: { order_id: number; customer_name: string; shortage: number }[] }) => ({
+    const [orderListData, basketData] = await Promise.all([
+      api.warehouse.getOrderList(),
+      fetch("https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957?action=basket").then(r => r.json()),
+    ])
+    // Строим маппинг group_id → статус из purchase_basket (источник истины)
+    const basketMap: Record<string | number, string> = {}
+    for (const b of (basketData.items || [])) {
+      basketMap[b.group_id] = BASKET_TO_WIP[b.status] || "need_order"
+    }
+    const items = (orderListData.items || []).map((g: { group_id: number; product_id: number; name: string; shortage: number; url_supplier: string | null; url_site: string | null; orders: { order_id: number; customer_name: string; shortage: number }[] }) => ({
       ...g,
-      order_status: saved[g.group_id] || "need_order"
-    })))
+      order_status: basketMap[g.group_id] || "need_order",
+    }))
+    // Сортировка: need_order вверх, потом по имени
+    items.sort((a: { order_status: string; name: string }, b: { order_status: string; name: string }) => {
+      if (a.order_status === "need_order" && b.order_status !== "need_order") return -1
+      if (a.order_status !== "need_order" && b.order_status === "need_order") return 1
+      return a.name.localeCompare(b.name, "ru")
+    })
+    setOrderListGroups(items)
     setOrderListLoading(false)
+  }
+
+  const updateOrderListStatus = async (groupId: string | number, newStatus: string) => {
+    // 1. Обновляем локальный стейт
+    setOrderListGroups(prev => {
+      const updated = prev.map(item => item.group_id === groupId ? { ...item, order_status: newStatus } : item)
+      // Пересортируем
+      return [...updated].sort((a, b) => {
+        if (a.order_status === "need_order" && b.order_status !== "need_order") return -1
+        if (a.order_status !== "need_order" && b.order_status === "need_order") return 1
+        return a.name.localeCompare(b.name, "ru")
+      })
+    })
+
+    // 2. Сохраняем в purchase_basket (источник истины в БД)
+    const basketStatus = WIP_TO_BASKET[newStatus] || "NEW"
+    await fetch("https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957?action=basket_status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group_id: groupId, status: basketStatus }),
+    })
+
+    // 3. Синхронизируем wip_builds.{slot}_status для всех активных сборок
+    // Находим product_id для данной группы и обновляем слоты в wipBuilds
+    for (const w of wipBuilds.filter(wb => !["Архив", "Забрали", "Отменён"].includes(wb.stage))) {
+      const slots = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
+      const slotApiNames = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case", "cooling", "extra"]
+      for (let i = 0; i < slots.length; i++) {
+        const slotKey = slots[i]
+        const slotApiName = slotApiNames[i]
+        const statusKey = slotKey === "case_name" ? "case_status" : slotKey + "_status"
+        const curStatus = (w as Record<string, string>)[statusKey]
+        // Проверяем соответствие по названию товара (упрощённо)
+        // Для точного маппинга нужно знать product_id слота — используем wipBuilds order_id
+        if (curStatus === "need_order" && newStatus !== "need_order" ||
+            curStatus !== "ready" && newStatus === "ready") {
+          // Проверяем через order данной сборки совпадение с group_id
+          const g = orderListGroups.find(x => x.group_id === groupId)
+          if (g && w.order_id && g.orders.some(o => o.order_id === w.order_id)) {
+            setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: newStatus } : b))
+            api.wipBuilds.patch({ id: w.id, component: slotApiName, status: newStatus })
+          }
+        }
+      }
+    }
   }
 
   const DEFAULT_COL_W = 220
@@ -537,13 +610,7 @@ export function AdminWipTab({
                       </div>
                       <div className="shrink-0">
                         <select value={g.order_status}
-                          onChange={e => {
-                            const newStatus = e.target.value
-                            setOrderListGroups(prev => prev.map(item => item.group_id === g.group_id ? { ...item, order_status: newStatus } : item))
-                            const saved = (() => { try { return JSON.parse(localStorage.getItem("order_list_statuses") || "{}") } catch { return {} } })()
-                            saved[String(g.group_id)] = newStatus
-                            localStorage.setItem("order_list_statuses", JSON.stringify(saved))
-                          }}
+                          onChange={e => updateOrderListStatus(g.group_id, e.target.value)}
                           className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none transition-colors ${g.order_status === "need_order" ? "border-red-400/40 bg-red-500/10 text-red-400" : g.order_status === "ordered_delay" ? "border-orange-400/40 bg-orange-500/10 text-orange-400" : g.order_status === "ordered_transit" ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-400" : g.order_status === "ready" ? "border-green-400/40 bg-green-500/10 text-green-400" : "border-border bg-muted/50 text-foreground/40"}`}
                           style={{ cursor: "pointer" }}>
                           <option value="need_order">Заказать</option>
@@ -559,7 +626,7 @@ export function AdminWipTab({
               </div>
             )}
             {!orderListLoading && orderListGroups.length > 0 && (
-              <p className="mt-4 text-xs text-foreground/30 text-center">Статусы сохраняются локально в браузере</p>
+              <p className="mt-4 text-xs text-foreground/30 text-center">Статусы синхронизируются со сборками в процессе</p>
             )}
           </div>
         </div>
