@@ -59,13 +59,11 @@ def _run_selftest(cur):
     )
     order_id = cur.fetchone()[0]
 
-    report = []
-    for c in cases:
-        # временный товар + группа + партия
+    def mk_product(stock):
         cur.execute(
             f"INSERT INTO {SCHEMA}.products (name, price, in_stock, stock_qty) "
             f"VALUES ('__selftest_prod__', 0, true, %s) RETURNING id",
-            (c["stock"],),
+            (stock,),
         )
         pid = cur.fetchone()[0]
         cur.execute(
@@ -74,30 +72,104 @@ def _run_selftest(cur):
             (pid, "ST" + str(pid)[:6]),
         )
         gid = cur.fetchone()[0]
-        if c["stock"] > 0:
+        if stock > 0:
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price) "
                 f"VALUES (%s, %s, 0, 0, 0)",
-                (gid, c["stock"]),
+                (gid, stock),
             )
+        return pid, gid
 
+    report = []
+
+    # ── Базовые сценарии резервирования (Этап 1) ──
+    for c in cases:
+        pid, gid = mk_product(c["stock"])
         core.handle_reserve_and_purchase(cur, order_id, [{"product_id": pid, "qty": c["order"], "slot": "test"}])
-
         st = _group_state(cur, gid)
         basket = _basket_qty(cur, gid)
-        actual_pos = st["reserved"]
-        actual_neg = st["negative"]
-        ok = (actual_pos == c["exp_pos"] and actual_neg == c["exp_neg"] and basket == c["exp_neg"])
-        report.append({
-            "case": c["name"], "passed": ok,
-            "expected": {"pos": c["exp_pos"], "neg": c["exp_neg"], "basket": c["exp_neg"]},
-            "actual": {"pos": actual_pos, "neg": actual_neg, "basket": basket,
-                       "on_hand": st["on_hand"]},
-        })
+        ok = (st["reserved"] == c["exp_pos"] and st["negative"] == c["exp_neg"] and basket == c["exp_neg"])
+        report.append({"case": c["name"], "passed": ok,
+                       "expected": {"pos": c["exp_pos"], "neg": c["exp_neg"], "basket": c["exp_neg"]},
+                       "actual": {"pos": st["reserved"], "neg": st["negative"], "basket": basket,
+                                  "on_hand": st["on_hand"]}})
 
-    # Доп. проверка: отмена (release) первого кейса возвращает POSITIVE в наличие
+    # ── Хвост Этапа 1: пользовательское железо (нет product_id) → пропуск ──
+    res = core.handle_reserve_and_purchase(cur, order_id, [{"product_id": None, "qty": 3, "slot": "test"}])
+    ok = (res[0]["status"] == "skipped" and res[0]["skipped_reason"] == "user_hardware")
+    report.append({"case": "user_hardware -> skipped", "passed": ok, "actual": res[0]})
+
+    # ── Хвост Этапа 1: возврат qty<=0 → минус-резерв НЕ применяется ──
+    pid, gid = mk_product(0)
+    res = core.handle_reserve_and_purchase(cur, order_id, [{"product_id": pid, "qty": -2, "slot": "test"}])
+    st = _group_state(cur, gid)
+    ok = (res[0]["status"] == "skipped" and st["negative"] == 0 and _basket_qty(cur, gid) == 0)
+    report.append({"case": "negative qty -> skipped", "passed": ok,
+                   "actual": {"res": res[0], "neg": st["negative"]}})
+
+    # ── Хвост Этапа 1: отмена заказа возвращает POSITIVE в наличие ──
+    pid, gid = mk_product(10)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftest2__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid2 = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid2, [{"product_id": pid, "qty": 4}])
+    before = _group_state(cur, gid)
+    core.release_order_reserves(cur, oid2)
+    after = _group_state(cur, gid)
+    ok = (before["reserved"] == 4 and before["on_hand"] == 6 and
+          after["reserved"] == 0 and after["on_hand"] == 10)
+    report.append({"case": "cancel order -> stock restored", "passed": ok,
+                   "actual": {"before": before, "after": after}})
+
+    # ── ЭТАП 2: приход гасит минус-резерв (0/0/5 -> приход 5 -> pos5 neg0) ──
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftest3__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid3 = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid3, [{"product_id": pid, "qty": 5}])
+    mid = _group_state(cur, gid)  # ожидаем neg5
+    recv = core.receive_stock(cur, gid, 5, cost_price=100)
+    fin = _group_state(cur, gid)
+    ok = (mid["negative"] == 5 and fin["negative"] == 0 and fin["reserved"] == 5 and
+          fin["on_hand"] == 0 and recv["fulfilled"] == 5 and _basket_qty(cur, gid) == 0)
+    report.append({"case": "receive fully clears negative -> positive", "passed": ok,
+                   "actual": {"after_order": mid, "after_receive": fin, "recv": recv}})
+
+    # ── ЭТАП 2: FIFO по дате заказа (2 заказа, приход 3 = первому 2, второму 1) ──
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestA__','0','parts','[]'::jsonb,0,'new', NOW() - INTERVAL '2 hours', NOW()) RETURNING id"
+    )
+    oid_a = cur.fetchone()[0]
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestB__','0','parts','[]'::jsonb,0,'new', NOW() - INTERVAL '1 hours', NOW()) RETURNING id"
+    )
+    oid_b = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid_a, [{"product_id": pid, "qty": 2}])
+    core.handle_reserve_and_purchase(cur, oid_b, [{"product_id": pid, "qty": 3}])
+    recv = core.receive_stock(cur, gid, 3, cost_price=100)
+    # Проверяем, что первый заказ (раньше) погашен полностью, второй частично
+    cur.execute(
+        f"SELECT order_id, COALESCE(SUM(CASE WHEN type='POSITIVE' AND status='ACTIVE' THEN qty ELSE 0 END),0), "
+        f"COALESCE(SUM(CASE WHEN type='NEGATIVE' AND status='ACTIVE' THEN qty ELSE 0 END),0) "
+        f"FROM {SCHEMA}.warehouse_reserves WHERE order_id IN (%s,%s) GROUP BY order_id ORDER BY order_id",
+        (oid_a, oid_b),
+    )
+    rows = {r[0]: {"pos": int(r[1]), "neg": int(r[2])} for r in cur.fetchall()}
+    a, b = rows.get(oid_a, {}), rows.get(oid_b, {})
+    ok = (a.get("pos") == 2 and a.get("neg") == 0 and  # первый: полностью погашен
+          b.get("pos") == 1 and b.get("neg") == 2)      # второй: 1 погашен, 2 ещё в минусе
+    report.append({"case": "FIFO by order date (2+3, recv 3)", "passed": ok,
+                   "actual": {"order_a": a, "order_b": b, "recv": recv}})
+
     report.append({"summary": {
-        "total": len(cases),
+        "total": len([r for r in report if "passed" in r]),
         "passed": sum(1 for r in report if r.get("passed")),
     }})
     return report
@@ -141,6 +213,22 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"ok": True, "results": results})}
+
+        # ── ЭТАП 2: Приход товара + FIFO-гашение минус-резервов ─────────────
+        if action == "receive" and method == "POST":
+            group_id = int(body["group_id"])
+            qty = int(body.get("qty", 0))
+            res = core.receive_stock(
+                cur, group_id, qty,
+                cost_price=float(body.get("cost_price", 0)),
+                store_id=body.get("store_id"),
+                cell=body.get("cell"),
+                purchase_date=body.get("purchase_date"),
+                supply_id=body.get("supply_id"),
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"ok": True, "result": res})}
 
         # ── Корзина закупки ─────────────────────────────────────────────────
         if action == "basket" and method == "GET":

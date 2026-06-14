@@ -40,12 +40,17 @@ NEGATIVE-резерв НЕ трогает `qty` — только `qty_negative` 
    - upsert в `warehouse_backorders` (+shortage) — единый источник корзины закупки.
 7. Записать движения в `warehouse_movements`.
 
-## Гашение минус-резерва при приёмке (Этап 2)
+## Гашение минус-резерва при приёмке (Этап 2 — РЕАЛИЗОВАНО)
 
-Приход N штук гасит NEGATIVE FIFO **по дате заказа** (приоритет — кто раньше заказал):
-- найти заказы с NEGATIVE по этой группе, отсортировать по `orders.created_at`;
-- `qty_negative -= clear`, и эта часть переходит в POSITIVE (`qty_reserved += clear`) — товар приехал и лёг под заказ;
-- уменьшить `warehouse_backorders.qty` соответственно.
+Функция `receive_stock(cur, group_id, qty, ...)`:
+- создаёт партию прихода (или использует переданную supply_id);
+- находит активные NEGATIVE-резервы группы, сортирует по `orders.created_at ASC` (раньше заказ = приоритет), блокирует `FOR UPDATE OF r`;
+- гасит по очереди: `qty_negative -= clear` на буфере; на партии прихода `qty -= clear`, `qty_reserved += clear`;
+- NEGATIVE-резерв переходит в POSITIVE (полностью — меняем type; частично — split на две строки);
+- уменьшает `warehouse_purchase_basket.required_qty`;
+- остаток прихода сверх потребности остаётся свободным наличием (`free_added`).
+
+HTTP: POST `?action=receive` {group_id, qty, cost_price, store_id?, cell?, purchase_date?, supply_id?}.
 
 ## Отмена заказа
 

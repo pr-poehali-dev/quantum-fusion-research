@@ -279,6 +279,110 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
     return released
 
 
+# ── ЭТАП 2: Приход товара + FIFO-гашение минус-резервов ──────────────────────
+def receive_stock(cur, group_id, qty, cost_price=0, store_id=None, cell=None,
+                  purchase_date=None, supply_id=None):
+    """
+    Приход товара на склад.
+    1. Создаёт новую партию (или использует переданную supply_id).
+    2. Гасит NEGATIVE-резервы группы FIFO по дате заказа (раньше заказ = приоритет):
+       NEGATIVE -> POSITIVE (товар приехал и лёг под заказ).
+    3. Уменьшает корзину закупки.
+
+    Возвращает {supply_id, received, fulfilled, free_added, fulfilled_orders[]}.
+    """
+    if qty <= 0:
+        return {"supply_id": supply_id, "received": 0, "fulfilled": 0,
+                "free_added": 0, "fulfilled_orders": []}
+
+    # 1. Создаём партию прихода (если не передана готовая)
+    if supply_id is None:
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.warehouse_supplies "
+            f"(group_id, store_id, qty, qty_reserved, qty_negative, cost_price, cell, purchase_date) "
+            f"VALUES (%s, %s, %s, 0, 0, %s, %s, %s) RETURNING id",
+            (group_id, store_id, qty, cost_price, cell, purchase_date),
+        )
+        supply_id = cur.fetchone()[0]
+    _movement(cur, group_id, supply_id, None, "supply_in", qty,
+              note=f"Приход {qty} шт. на группу #{group_id}")
+    log(cur, "receive_stock", group_id=group_id, delta=qty, payload={"supply_id": supply_id})
+
+    # 2. Гасим NEGATIVE-резервы FIFO по дате заказа
+    cur.execute(
+        f"SELECT r.id, r.order_id, r.supply_id, r.qty "
+        f"FROM {SCHEMA}.warehouse_reserves r "
+        f"JOIN {SCHEMA}.orders o ON o.id = r.order_id "
+        f"WHERE r.group_id = %s AND r.type = '{NEGATIVE}' AND r.status = 'ACTIVE' "
+        f"ORDER BY o.created_at ASC, r.id ASC "
+        f"FOR UPDATE OF r",
+        (group_id,),
+    )
+    neg_reserves = cur.fetchall()
+
+    available = qty           # сколько из прихода можем направить на гашение
+    fulfilled_total = 0
+    fulfilled_orders = []
+
+    for rid, order_id, neg_supply_id, neg_qty in neg_reserves:
+        if available <= 0:
+            break
+        clear = min(neg_qty, available)
+
+        # Снимаем минус-резерв с его партии-буфера
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_supplies "
+            f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() WHERE id = %s",
+            (clear, neg_supply_id),
+        )
+        # Переводим товар прихода в POSITIVE-резерв под этот заказ
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_supplies "
+            f"SET qty = qty - %s, qty_reserved = qty_reserved + %s, updated_at = NOW() WHERE id = %s",
+            (clear, clear, supply_id),
+        )
+
+        if clear == neg_qty:
+            # Полностью погашен: NEGATIVE-резерв становится POSITIVE
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_reserves "
+                f"SET type = '{POSITIVE}', status = 'ACTIVE', supply_id = %s, updated_at = NOW() "
+                f"WHERE id = %s",
+                (supply_id, rid),
+            )
+        else:
+            # Частично: помечаем исходный FULFILLED на clear, создаём POSITIVE на clear,
+            # уменьшаем остаток NEGATIVE
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_reserves "
+                f"SET qty = qty - %s, updated_at = NOW() WHERE id = %s",
+                (clear, rid),
+            )
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.warehouse_reserves "
+                f"(order_id, group_id, supply_id, slot, qty, type, status) "
+                f"SELECT order_id, group_id, %s, slot, %s, '{POSITIVE}', 'ACTIVE' "
+                f"FROM {SCHEMA}.warehouse_reserves WHERE id = %s",
+                (supply_id, clear, rid),
+            )
+
+        _movement(cur, group_id, supply_id, order_id, "fulfilled", clear,
+                  note=f"Гашение минус-резерва заказа #{order_id} приходом")
+        basket_reduce(cur, group_id, clear)
+        available -= clear
+        fulfilled_total += clear
+        fulfilled_orders.append({"order_id": order_id, "qty": clear})
+        log(cur, "fulfill_negative", group_id=group_id, order_id=order_id, delta=clear)
+
+    return {
+        "supply_id": supply_id,
+        "received": qty,
+        "fulfilled": fulfilled_total,
+        "free_added": available,           # осталось свободным на складе
+        "fulfilled_orders": fulfilled_orders,
+    }
+
+
 # ── Пересчёт резервов заказа (при изменении состава) ─────────────────────────
 def recalc_order_reserves(cur, order_id, lines):
     """
