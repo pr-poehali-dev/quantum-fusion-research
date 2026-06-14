@@ -58,7 +58,7 @@ function CommunityBuildCard({ build: b, fmt, onLoad, onAuthor }: { build: Commun
       </div>
       <div className="mb-4 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-xs">
         <span className="text-foreground/50">Итого со сборкой</span>
-        <span className="font-bold text-foreground">{fmt(b.total_price)}</span>
+        <span className="font-bold text-foreground">{fmt(b.components.reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0) + (b.assembly_fee || 0))}</span>
       </div>
       <button onClick={onLoad} className="w-full flex items-center justify-center gap-2 rounded-lg border border-border py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
         <Icon name="Copy" size={13} />Открыть в конфигураторе

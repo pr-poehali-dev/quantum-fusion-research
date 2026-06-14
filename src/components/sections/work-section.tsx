@@ -44,7 +44,7 @@ export function WorkSection() {
         number: String(i + 1).padStart(2, "0"),
         title: b.name,
         category: b.components.slice(0, 2).map(c => c.name).join(" · "),
-        price: fmt(b.total_price),
+        price: fmt(b.components.reduce((s: number, c: {price: number}) => s + (c.price || 0), 0) + (b.assembly_fee || 0)),
         direction: i % 2 === 0 ? "left" : "right",
         onClick: () => navigate(`/build-preview/${b.id}`),
       }))

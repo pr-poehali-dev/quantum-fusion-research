@@ -533,7 +533,8 @@ export default function Shop() {
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {filtered.map(b => (
                     <BuildCard key={b.id} build={b} onOpen={() => navigate(`/build-preview/${b.id}`)} onOrder={() => {
-                      addItem({ id: b.id, name: b.name, price: b.total_price, type: "config" })
+                      const p = b.components.reduce((s, c) => s + (c.price || 0), 0) + (b.assembly_fee || 0)
+                      addItem({ id: b.id, name: b.name, price: p, type: "config" })
                       navigate("/cart")
                     }} fmt={fmt} />
                   ))}
@@ -598,7 +599,8 @@ export default function Shop() {
       {/* Build Modal */}
       {selectedBuild && (
         <BuildModal build={selectedBuild} onClose={closeModal} onOrder={() => {
-          addItem({ id: selectedBuild.id, name: selectedBuild.name, price: selectedBuild.total_price, type: "config" })
+          const p = selectedBuild.components.reduce((s, c) => s + (c.price || 0), 0) + (selectedBuild.assembly_fee || 0)
+          addItem({ id: selectedBuild.id, name: selectedBuild.name, price: p, type: "config" })
           navigate("/cart")
         }} fmt={fmt} />
       )}
@@ -1109,20 +1111,26 @@ function BuildModal({ build: b, onClose, onOrder, fmt }: { build: Build; onClose
                   </div>
                 ))}
               </div>
-              <div className="mb-6 rounded-xl border border-border/50 bg-muted/30 p-4 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-foreground/60">Железо:</span>
-                  <span className="text-foreground">{fmt(b.parts_total)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-foreground/60">Сборка:</span>
-                  <span className="text-foreground">{fmt(b.assembly_fee)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-border pt-2">
-                  <span className="font-medium text-foreground">Итого:</span>
-                  <span className="text-xl font-bold text-foreground">{fmt(b.total_price)}</span>
-                </div>
-              </div>
+              {(() => {
+                const calcParts = b.components.reduce((s, c) => s + (c.current_price ?? c.price ?? 0), 0)
+                const calcFee = b.assembly_fee || 0
+                return (
+                  <div className="mb-6 rounded-xl border border-border/50 bg-muted/30 p-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-foreground/60">Железо:</span>
+                      <span className="text-foreground">{fmt(calcParts)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-foreground/60">Сборка:</span>
+                      <span className="text-foreground">{fmt(calcFee)}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-border pt-2">
+                      <span className="font-medium text-foreground">Итого:</span>
+                      <span className="text-xl font-bold text-foreground">{fmt(calcParts + calcFee)}</span>
+                    </div>
+                  </div>
+                )
+              })()}
               <button onClick={onOrder} className="w-full rounded-xl bg-primary py-3.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>Заказать эту сборку</button>
               <p className="mt-2 text-center text-xs text-foreground/40">После оформления менеджер свяжется для подтверждения</p>
             </div>

@@ -54,6 +54,9 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
   const [hovered, setHovered] = useState(false)
   const cpu = b.components.find(c => c.slot === "cpu")
   const gpu = b.components.find(c => c.slot === "gpu")
+  // Считаем цену из компонентов (поле total_price в БД может быть устаревшим)
+  const calcPartsTotal = b.components.reduce((s, c) => s + (c.price || 0), 0)
+  const calcTotal = calcPartsTotal + (b.assembly_fee || 0)
   const tags = b.tags || []
   const previewTags = tags.slice(0, 2)
 
@@ -163,7 +166,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
           {b.name}
         </h3>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-2xl font-bold text-white">{fmt(b.total_price)}</p>
+          <p className="text-2xl font-bold text-white">{fmt(calcTotal)}</p>
           <button
             onClick={e => { e.stopPropagation(); onOrder() }}
             className="shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -323,7 +326,8 @@ export default function Builds() {
               <BuildCard key={b.id} build={b}
                 onOpen={() => navigate(`/build-preview/${b.id}`)}
                 onOrder={() => {
-                  addItem({ id: b.id, name: b.name, price: b.total_price, type: "config" })
+                  const calcPrice = b.components.reduce((s, c) => s + (c.price || 0), 0) + (b.assembly_fee || 0)
+                  addItem({ id: b.id, name: b.name, price: calcPrice, type: "config" })
                   showToast(b.name)
                 }}
                 fmt={fmt}

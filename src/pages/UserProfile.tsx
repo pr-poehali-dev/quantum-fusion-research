@@ -148,7 +148,7 @@ export default function UserProfile() {
                     <span className="text-xs text-foreground/40">
                       {new Date(b.created_at).toLocaleDateString("ru-RU")}
                     </span>
-                    <span className="text-sm font-semibold text-foreground">{fmt(b.total_price)}</span>
+                    <span className="text-sm font-semibold text-foreground">{fmt(b.components?.reduce((s: number, c: {price: number}) => s + (c.price || 0), 0) + (b.assembly_fee || 0))}</span>
                   </div>
                 </div>
               ))}
