@@ -134,6 +134,38 @@ export function AdminWipTab({
     setWipBuilds(bs => bs.filter(b => b.id !== w.id))
   }
 
+  // Отмена заказа с паролем
+  const [cancelModal, setCancelModal] = useState<WipBuild | null>(null)
+  const [cancelPassword, setCancelPassword] = useState("")
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelError, setCancelError] = useState("")
+
+  const openCancelModal = (w: WipBuild) => {
+    setCancelModal(w)
+    setCancelPassword("")
+    setCancelError("")
+  }
+
+  const confirmCancel = async () => {
+    if (!cancelModal) return
+    setCancelLoading(true)
+    setCancelError("")
+    const WIP_URL = "https://functions.poehali.dev/6a3fdc40-04ab-4ef6-932b-4b24e530ee98"
+    const res = await fetch(WIP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancel_order", wip_id: cancelModal.id, password: cancelPassword }),
+    })
+    const data = await res.json()
+    setCancelLoading(false)
+    if (!res.ok || data.error) {
+      setCancelError(data.error || "Ошибка при отмене")
+      return
+    }
+    setWipBuilds(bs => bs.filter(b => b.id !== cancelModal.id))
+    setCancelModal(null)
+  }
+
   // Маппинг статусов: purchase_basket (NEW/ORDERED/RECEIVED) ↔ wip_builds slot_status
   const BASKET_TO_WIP: Record<string, string> = {
     NEW: "need_order",
@@ -401,20 +433,24 @@ export function AdminWipTab({
                                 <Icon name="ExternalLink" size={13} />
                               </a>
                             )}
-                            <select
-                              value={item.status}
-                              onChange={e => updateBasketStatus(item.group_id, e.target.value, item.slot, build.wip_id)}
-                              className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors ${
-                                item.status === "NEW"      ? "border-red-400/40 bg-red-400/5 text-red-400" :
-                                item.status === "ORDERED"  ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
-                                item.status === "RECEIVED" ? "border-green-400/40 bg-green-400/5 text-green-400" :
-                                "border-border text-foreground/50"
-                              }`}
-                              style={{ cursor: "pointer" }}>
-                              <option value="NEW">Заказать</option>
-                              <option value="ORDERED">Заказано</option>
-                              <option value="RECEIVED">Получено</option>
-                            </select>
+                            {item.status === "RECEIVED" ? (
+                              <span className="shrink-0 rounded-lg border border-green-400/40 bg-green-400/5 px-2 py-1 text-xs font-medium text-green-400">
+                                Получено
+                              </span>
+                            ) : (
+                              <select
+                                value={item.status}
+                                onChange={e => updateBasketStatus(item.group_id, e.target.value, item.slot, build.wip_id)}
+                                className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors ${
+                                  item.status === "NEW"     ? "border-red-400/40 bg-red-400/5 text-red-400" :
+                                  item.status === "ORDERED" ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
+                                  "border-border text-foreground/50"
+                                }`}
+                                style={{ cursor: "pointer" }}>
+                                <option value="NEW">Заказать</option>
+                                <option value="ORDERED">Заказано</option>
+                              </select>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -571,6 +607,58 @@ export function AdminWipTab({
         )
       })()}
 
+      {/* Модалка отмены заказа */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-400/10">
+                <Icon name="XCircle" size={20} className="text-red-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Отмена заказа #{cancelModal.order_number}</p>
+                <p className="text-xs text-foreground/40">{cancelModal.customer_name}</p>
+              </div>
+            </div>
+            <div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-xs text-red-400/80 space-y-1">
+              <p>• Резервы товаров вернутся в наличие</p>
+              <p>• Заказанные позиции (статус ORDERED) — резервы будут удалены</p>
+              <p>• Заказ получит статус «Отменён»</p>
+              <p>• Сборка будет удалена</p>
+            </div>
+            <label className="mb-1 block text-xs text-foreground/50">Пароль подтверждения</label>
+            <input
+              type="password"
+              value={cancelPassword}
+              onChange={e => { setCancelPassword(e.target.value); setCancelError("") }}
+              onKeyDown={e => e.key === "Enter" && confirmCancel()}
+              placeholder="Введите пароль отмены"
+              autoFocus
+              className="mb-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-red-400 focus:outline-none"
+              style={{ cursor: "text" }}
+            />
+            {cancelError && (
+              <p className="mb-3 text-xs text-red-400">{cancelError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCancelModal(null)}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                Отмена
+              </button>
+              <button
+                onClick={confirmCancel}
+                disabled={cancelLoading || !cancelPassword}
+                className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                style={{ cursor: "pointer" }}>
+                {cancelLoading ? "Отменяю..." : "Подтвердить отмену"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Таблица */}
       {loading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-card animate-pulse" />)}</div>
@@ -634,11 +722,14 @@ export function AdminWipTab({
                                 {syncDoneWipId === w.id ? "Готово" : "Синх."}
                               </button>
                             )}
-                            {w.id && <button onClick={() => deleteWip(w)}
-                              className="flex h-5 w-5 items-center justify-center rounded text-foreground/20 hover:bg-red-400/10 hover:text-red-400 transition-colors"
-                              style={{ cursor: "pointer" }}>
-                              <Icon name="Trash2" size={10} />
-                            </button>}
+                            {w.id && (
+                              <button onClick={() => openCancelModal(w)}
+                                title="Отменить заказ"
+                                className="flex items-center gap-1 rounded-lg border border-red-400/20 px-2 py-1 text-[10px] text-red-400/50 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="XCircle" size={10} />Отмена
+                              </button>
+                            )}
                           </div>
                         )}
                         {row.key === "_stage" && (

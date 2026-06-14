@@ -112,20 +112,24 @@ export default function PurchaseBasket() {
                       <Icon name="ExternalLink" size={13} />
                     </a>
                   )}
-                  <select
-                    value={item.status}
-                    onChange={e => updateStatus(item.group_id, e.target.value)}
-                    className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors ${
-                      item.status === "NEW"      ? "border-red-400/40 bg-red-400/5 text-red-400" :
-                      item.status === "ORDERED"  ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
-                      item.status === "RECEIVED" ? "border-green-400/40 bg-green-400/5 text-green-400" :
-                      "border-border text-foreground/50"
-                    }`}
-                    style={{ cursor: "pointer" }}>
-                    <option value="NEW">Заказать</option>
-                    <option value="ORDERED">Заказано</option>
-                    <option value="RECEIVED">Получено</option>
-                  </select>
+                  {item.status === "RECEIVED" ? (
+                    <span className="shrink-0 rounded-lg border border-green-400/40 bg-green-400/5 px-2 py-1 text-xs font-medium text-green-400">
+                      Получено
+                    </span>
+                  ) : (
+                    <select
+                      value={item.status}
+                      onChange={e => updateStatus(item.group_id, e.target.value)}
+                      className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors ${
+                        item.status === "NEW"     ? "border-red-400/40 bg-red-400/5 text-red-400" :
+                        item.status === "ORDERED" ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
+                        "border-border text-foreground/50"
+                      }`}
+                      style={{ cursor: "pointer" }}>
+                      <option value="NEW">Заказать</option>
+                      <option value="ORDERED">Заказано</option>
+                    </select>
+                  )}
                 </div>
               ))}
             </div>

@@ -226,9 +226,110 @@ def handler(event: dict, context) -> dict:
                 purchase_date=body.get("purchase_date"),
                 supply_id=body.get("supply_id"),
             )
+
+            # ── Авто-обновление slot_status в wip_builds ────────────────────
+            # Для каждого заказа которому пришёл товар — найти слот в wip_builds,
+            # обновить его статус на "ready" и проверить: всё ли железо готово.
+            wip_updates = []
+            if res.get("fulfilled_orders"):
+                # Узнаём product_id группы
+                cur.execute(
+                    f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = %s",
+                    (group_id,)
+                )
+                grp_row = cur.fetchone()
+                product_id = grp_row[0] if grp_row else None
+
+                for fo in res["fulfilled_orders"]:
+                    order_id_fo = fo["order_id"]
+                    if not product_id:
+                        continue
+                    # Найти wip_build по order_id
+                    cur.execute(
+                        f"SELECT wb.id, wb.build_id, wb.stage FROM {SCHEMA}.wip_builds wb "
+                        f"WHERE wb.order_id = %s LIMIT 1",
+                        (order_id_fo,)
+                    )
+                    wb_row = cur.fetchone()
+                    if not wb_row:
+                        continue
+                    wb_id, build_id, wb_stage = wb_row
+                    if not build_id:
+                        continue
+                    # Найти слот компонента по product_id
+                    cur.execute(
+                        f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (build_id,)
+                    )
+                    pb = cur.fetchone()
+                    if not pb or not pb[0]:
+                        continue
+                    import json as _json
+                    comps = pb[0] if isinstance(pb[0], list) else _json.loads(pb[0] or "[]")
+                    slot = None
+                    for c in comps:
+                        if c.get("source_id") and int(c["source_id"]) == product_id:
+                            slot = c.get("slot")
+                            break
+                    if not slot:
+                        continue
+                    # Обновляем статус слота на "ready"
+                    field = "case_status" if slot == "case" else slot + "_status"
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.wip_builds SET {field}='ready', updated_at=NOW() WHERE id=%s",
+                        (wb_id,)
+                    )
+                    # Обновляем статус в purchase_basket на RECEIVED
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_purchase_basket "
+                        f"SET status='RECEIVED', updated_at=NOW() WHERE group_id=%s",
+                        (group_id,)
+                    )
+                    # Проверяем: все ли слоты сборки теперь "ready" или "pending"
+                    slot_fields = [
+                        "cpu_status", "motherboard_status", "ram_status", "gpu_status",
+                        "storage_status", "psu_status", "case_status", "cooling_status", "extra_status"
+                    ]
+                    cur.execute(
+                        f"SELECT wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, "
+                        f"wb.case_name, wb.cooling, wb.extra, "
+                        f"wb.cpu_status, wb.motherboard_status, wb.ram_status, wb.gpu_status, "
+                        f"wb.storage_status, wb.psu_status, wb.case_status, wb.cooling_status, "
+                        f"wb.extra_status, wb.stage "
+                        f"FROM {SCHEMA}.wip_builds wb WHERE wb.id = %s",
+                        (wb_id,)
+                    )
+                    wrow = cur.fetchone()
+                    if wrow:
+                        comp_names = wrow[:9]   # значения компонентов (None если не заполнен)
+                        comp_statuses = wrow[9:18]  # статусы
+                        current_stage = wrow[18]
+                        # Считаем только заполненные слоты
+                        all_ready = all(
+                            st in ("ready", "pending") or name is None
+                            for name, st in zip(comp_names, comp_statuses)
+                            if name is not None
+                        )
+                        not_ready = [
+                            st for name, st in zip(comp_names, comp_statuses)
+                            if name is not None and st not in ("ready", "pending")
+                        ]
+                        if len(not_ready) == 0 and current_stage == "Ожидание железа":
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.wip_builds SET stage='Ожидание сборки', updated_at=NOW() WHERE id=%s",
+                                (wb_id,)
+                            )
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.orders SET status='waiting_assembly', updated_at=NOW() "
+                                f"WHERE id=(SELECT order_id FROM {SCHEMA}.wip_builds WHERE id=%s)",
+                                (wb_id,)
+                            )
+                            wip_updates.append({"wip_id": wb_id, "auto_stage": "Ожидание сборки"})
+                        else:
+                            wip_updates.append({"wip_id": wb_id, "slot": slot, "slot_status": "ready"})
+
             conn.commit()
             return {"statusCode": 200, "headers": cors,
-                    "body": json.dumps({"ok": True, "result": res})}
+                    "body": json.dumps({"ok": True, "result": res, "wip_updates": wip_updates})}
 
         # ── Корзина закупки ─────────────────────────────────────────────────
         if action == "basket" and method == "GET":

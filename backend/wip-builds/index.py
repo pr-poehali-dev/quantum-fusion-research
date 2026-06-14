@@ -2,6 +2,7 @@ import json
 import os
 import psycopg2
 import warehouse_core as core
+# v4 - cancel_order endpoint
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -338,6 +339,54 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             conn.commit()
             return resp(200, {"ok": True, "order_id": order_id})
+
+        # ── Отмена заказа с проверкой пароля ────────────────────────────────
+        elif method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            action_post = body.get("action")
+
+            if action_post == "cancel_order":
+                wip_id = body.get("wip_id")
+                password = body.get("password", "")
+                expected = os.environ.get("CANCEL_ORDER_PASSWORD", "")
+                if not expected or password != expected:
+                    return resp(403, {"error": "Неверный пароль подтверждения"})
+                if not wip_id:
+                    return resp(400, {"error": "Нет wip_id"})
+
+                # Получаем order_id и build_id
+                cur.execute(
+                    f"SELECT order_id, build_id FROM {SCHEMA}.wip_builds WHERE id = %s",
+                    (wip_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return resp(404, {"error": "Сборка не найдена"})
+                order_id, build_id = row
+
+                # POSITIVE резервы → возвращаем в наличие
+                # NEGATIVE резервы → удаляем (любой статус корзины)
+                if order_id:
+                    core.release_order_reserves(cur, order_id, only_new_negative=False)
+
+                # Заказ → статус cancelled
+                if order_id:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.orders SET status='cancelled', updated_at=NOW() WHERE id=%s",
+                        (order_id,)
+                    )
+
+                # pc_build → архив
+                if build_id:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.pc_builds SET status='archive' WHERE id=%s",
+                        (build_id,)
+                    )
+
+                # Сборка → удаляем
+                cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,))
+                conn.commit()
+                return resp(200, {"ok": True, "order_id": order_id})
 
     finally:
         cur.close()
