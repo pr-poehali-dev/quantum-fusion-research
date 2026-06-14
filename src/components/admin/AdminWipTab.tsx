@@ -39,6 +39,27 @@ export function AdminWipTab({
     try { return JSON.parse(localStorage.getItem("wip_col_widths") || "{}") } catch { return {} }
   })
 
+  const [syncingWipId, setSyncingWipId] = useState<number | null>(null)
+  const [syncDoneWipId, setSyncDoneWipId] = useState<number | null>(null)
+
+  const syncWipOrder = async (w: WipBuild) => {
+    if (!w.order_id || !w.id) return
+    setSyncingWipId(w.id)
+    setSyncDoneWipId(null)
+    const res = await api.orders.updateItem({ id: w.order_id, action: "sync_order", item_idx: 0 })
+    setSyncingWipId(null)
+    if (res.error) { alert(res.error); return }
+    setSyncDoneWipId(w.id)
+    setTimeout(() => setSyncDoneWipId(null), 3000)
+    // Обновляем статусы слотов в локальном стейте
+    if (res.reserved) {
+      const updates: Record<string, string> = {}
+      for (const r of res.reserved) updates[r.slot + "_status"] = "ready"
+      for (const r of (res.need_order || [])) updates[r.slot + "_status"] = "need_order"
+      setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, ...updates } : b))
+    }
+  }
+
   // Заказной список
   const [orderListOpen, setOrderListOpen] = useState(false)
   const [orderListLoading, setOrderListLoading] = useState(false)
@@ -380,6 +401,16 @@ export function AdminWipTab({
                               style={{ cursor: "pointer" }}>
                               <Icon name="Copy" size={10} />Паста
                             </button>
+                            {w.stage === "Заказ" && w.order_id && w.id && (
+                              <button onClick={() => syncWipOrder(w)}
+                                disabled={syncingWipId === w.id}
+                                title="Выбить компоненты со склада и создать резервы"
+                                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${syncDoneWipId === w.id ? "border-green-400/30 bg-green-400/5 text-green-400" : "border-yellow-400/30 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
+                                style={{ cursor: "pointer" }}>
+                                <Icon name={syncingWipId === w.id ? "Loader" : syncDoneWipId === w.id ? "Check" : "RefreshCw"} size={10} className={syncingWipId === w.id ? "animate-spin" : ""} />
+                                {syncDoneWipId === w.id ? "Готово" : "Синх."}
+                              </button>
+                            )}
                             {w.id && <button onClick={() => deleteWip(w.id!)}
                               className="flex h-5 w-5 items-center justify-center rounded text-foreground/20 hover:bg-red-400/10 hover:text-red-400 transition-colors"
                               style={{ cursor: "pointer" }}>
