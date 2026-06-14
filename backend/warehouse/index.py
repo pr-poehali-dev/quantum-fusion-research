@@ -123,11 +123,11 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"DELETE FROM {SCHEMA}.warehouse_reserves")
             cur.execute(f"DELETE FROM {SCHEMA}.warehouse_purchase_basket")
             cur.execute(f"DELETE FROM {SCHEMA}.warehouse_stock_log")
-            cur.execute(f"DELETE FROM {SCHEMA}.warehouse_movements")
             cur.execute(f"DELETE FROM {SCHEMA}.warehouse_backorders")
             cur.execute(f"DELETE FROM {SCHEMA}.wip_builds")
             cur.execute(f"UPDATE {SCHEMA}.warehouse_supplies SET qty_reserved = 0, qty_negative = 0")
             cur.execute(f"UPDATE {SCHEMA}.orders SET user_id = NULL")
+            cur.execute(f"UPDATE {SCHEMA}.warehouse_movements SET order_id = NULL")
             cur.execute(f"DELETE FROM {SCHEMA}.orders")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "message": "Очищено"})}
