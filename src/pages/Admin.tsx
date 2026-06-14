@@ -239,9 +239,6 @@ export default function Admin() {
           />
         )}
 
-        {/* WAREHOUSE */}
-        {tab === "warehouse" && <WarehouseTab />}
-
         {/* SCHEDULE */}
         {tab === "schedule" && <ScheduleTab />}
 
@@ -253,6 +250,13 @@ export default function Admin() {
         {/* RMA */}
         {tab === "rma" && <RmaTab />}
       </div>
+
+      {/* WAREHOUSE — на всю ширину браузера с отступами 50px */}
+      {tab === "warehouse" && (
+        <div style={{ padding: "32px 50px 48px" }}>
+          <WarehouseTab />
+        </div>
+      )}
     </div>
   )
 }
