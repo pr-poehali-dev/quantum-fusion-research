@@ -60,6 +60,52 @@ export function AdminWipTab({
     }
   }
 
+  // Корзина закупки по сборкам
+  const BASKET_URL = "https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957"
+
+  const [basketOpen, setBasketOpen] = useState(false)
+  const [basketLoading, setBasketLoading] = useState(false)
+  const [basketBuilds, setBasketBuilds] = useState<{
+    wip_id: number; order_number: string; order_id: number; stage: string
+    items: { group_id: number; name: string; sku: string; required_qty: number; status: string; url_supplier: string | null; slot: string; slot_status: string }[]
+  }[]>([])
+  const [basketExpanded, setBasketExpanded] = useState<Record<string, boolean>>({})
+
+  const loadBasket = async () => {
+    setBasketLoading(true)
+    const res = await fetch(`${BASKET_URL}?action=basket_by_wip`)
+    const data = await res.json()
+    const builds = data.builds || []
+    setBasketBuilds(builds)
+    // По умолчанию раскрываем все сборки
+    const exp: Record<string, boolean> = {}
+    for (const b of builds) exp[String(b.wip_id)] = true
+    setBasketExpanded(exp)
+    setBasketLoading(false)
+  }
+
+  const updateBasketStatus = async (groupId: number, status: string, slot: string, wipId: number) => {
+    // Обновляем локальный стейт
+    setBasketBuilds(prev => prev.map(b => b.wip_id === wipId
+      ? { ...b, items: b.items.map(i => i.group_id === groupId ? { ...i, status } : i) }
+      : b
+    ))
+    // Сохраняем в БД
+    await fetch(`${BASKET_URL}?action=basket_status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group_id: groupId, status }),
+    })
+    // Синхронизируем wip_builds.{slot}_status
+    const BASKET_TO_WIP: Record<string, string> = { NEW: "need_order", ORDERED: "ordered_transit", RECEIVED: "ready" }
+    const wipStatus = BASKET_TO_WIP[status] || "need_order"
+    const statusKey = slot === "case" ? "case_status" : slot + "_status"
+    setWipBuilds(bs => bs.map(b => b.id === wipId ? { ...b, [statusKey]: wipStatus } : b))
+    api.wipBuilds.patch({ id: wipId, component: slot, status: wipStatus })
+  }
+
+  const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
+
   // Заказной список
   const [orderListOpen, setOrderListOpen] = useState(false)
   const [orderListLoading, setOrderListLoading] = useState(false)
@@ -260,10 +306,23 @@ export function AdminWipTab({
           Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({activeBuilds.length})</span>
         </h2>
         <div className="flex items-center gap-2">
+          <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+              totalNewCount > 0
+                ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
+                : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
+            }`}
+            style={{ cursor: "pointer" }}>
+            <Icon name="ShoppingCart" size={15} />
+            Корзина закупки
+            {totalNewCount > 0 && (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-400 text-[10px] font-bold text-white">{totalNewCount}</span>
+            )}
+          </button>
           <button onClick={openOrderList}
             className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-orange-400 hover:text-orange-400 transition-colors"
             style={{ cursor: "pointer" }}>
-            <Icon name="ShoppingCart" size={15} />
+            <Icon name="ListOrdered" size={15} />
             Заказной список
           </button>
           <button onClick={() => setWipEditMode(v => !v)}
@@ -279,6 +338,97 @@ export function AdminWipTab({
           </button>
         </div>
       </div>
+
+      {/* Корзина закупки по сборкам */}
+      {basketOpen && (
+        <div className="mb-5 rounded-xl border border-orange-400/20 bg-orange-400/5 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon name="ShoppingCart" size={16} className="text-orange-400" />
+              <span className="font-medium text-foreground">Корзина закупки</span>
+              {!basketLoading && <span className="rounded-full bg-orange-400/15 px-2 py-0.5 text-xs text-orange-400">{basketBuilds.reduce((s, b) => s + b.items.length, 0)} позиций</span>}
+            </div>
+            <button onClick={loadBasket} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name={basketLoading ? "Loader" : "RefreshCw"} size={14} className={basketLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
+          {basketLoading ? (
+            <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-card animate-pulse" />)}</div>
+          ) : basketBuilds.length === 0 ? (
+            <div className="py-6 text-center">
+              <Icon name="CheckCircle" size={28} className="mx-auto mb-2 text-green-400/40" />
+              <p className="text-sm text-foreground/40">Всё в наличии — закупать нечего</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {basketBuilds.map(build => {
+                const key = String(build.wip_id)
+                const isOpen = basketExpanded[key]
+                const newCnt = build.items.filter(i => i.status === "NEW").length
+                return (
+                  <div key={key} className="rounded-xl border border-border bg-card overflow-hidden">
+                    <button
+                      onClick={() => setBasketExpanded(p => ({ ...p, [key]: !p[key] }))}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
+                      style={{ cursor: "pointer" }}>
+                      <div className="flex items-center gap-2.5">
+                        <Icon name={isOpen ? "ChevronDown" : "ChevronRight"} size={14} className="text-foreground/30 shrink-0" />
+                        <span className="font-mono font-semibold text-sm text-foreground">Сборка #{build.order_number}</span>
+                        <span className="text-xs text-foreground/40">{build.stage}</span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{build.items.length} позиций</span>
+                      </div>
+                      {newCnt > 0 && (
+                        <span className="rounded-full bg-red-400/10 px-2.5 py-0.5 text-xs font-medium text-red-400">заказать {newCnt}</span>
+                      )}
+                      {newCnt === 0 && (
+                        <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">всё заказано</span>
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-border/50 px-4 pb-3 pt-2 space-y-1.5">
+                        {build.items.map(item => (
+                          <div key={item.group_id} className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
+                                <span className="font-mono text-[10px] text-foreground/40">{item.sku}</span>
+                                <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">нужно {item.required_qty} шт.</span>
+                              </div>
+                            </div>
+                            {item.url_supplier && (
+                              <a href={item.url_supplier} target="_blank" rel="noreferrer"
+                                className="shrink-0 text-foreground/30 hover:text-primary transition-colors" title="Купить у поставщика">
+                                <Icon name="ExternalLink" size={13} />
+                              </a>
+                            )}
+                            <select
+                              value={item.status}
+                              onChange={e => updateBasketStatus(item.group_id, e.target.value, item.slot, build.wip_id)}
+                              className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors ${
+                                item.status === "NEW"      ? "border-red-400/40 bg-red-400/5 text-red-400" :
+                                item.status === "ORDERED"  ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
+                                item.status === "RECEIVED" ? "border-green-400/40 bg-green-400/5 text-green-400" :
+                                "border-border text-foreground/50"
+                              }`}
+                              style={{ cursor: "pointer" }}>
+                              <option value="NEW">Заказать</option>
+                              <option value="ORDERED">Заказано</option>
+                              <option value="RECEIVED">Получено</option>
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {!basketLoading && basketBuilds.length > 0 && (
+            <p className="mt-3 text-xs text-foreground/30 text-center">Статусы сохраняются в БД и синхронизируются со статусами компонентов в сборках</p>
+          )}
+        </div>
+      )}
 
       {/* Форма создания/редактирования */}
       {wipFormOpen && wipForm && (

@@ -263,6 +263,51 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        # ── Корзина закупки, сгруппированная по сборкам ─────────────────────
+        if action == "basket_by_wip" and method == "GET":
+            cur.execute(
+                f"""
+                SELECT
+                    b.group_id, g.name, g.sku, b.required_qty, b.status, g.url_supplier,
+                    wb.id as wip_id, wb.order_number, wb.order_id, wb.stage,
+                    comp->>'slot' as slot,
+                    CASE comp->>'slot'
+                        WHEN 'cpu'         THEN wb.cpu_status
+                        WHEN 'motherboard' THEN wb.motherboard_status
+                        WHEN 'ram'         THEN wb.ram_status
+                        WHEN 'gpu'         THEN wb.gpu_status
+                        WHEN 'storage'     THEN wb.storage_status
+                        WHEN 'psu'         THEN wb.psu_status
+                        WHEN 'case'        THEN wb.case_status
+                        WHEN 'cooling'     THEN wb.cooling_status
+                        WHEN 'extra'       THEN wb.extra_status
+                        ELSE 'pending'
+                    END as slot_status
+                FROM {SCHEMA}.warehouse_purchase_basket b
+                JOIN {SCHEMA}.warehouse_groups g ON g.id = b.group_id
+                JOIN {SCHEMA}.pc_builds pcb ON true
+                JOIN jsonb_array_elements(pcb.components) comp ON (comp->>'source_id')::int = g.product_id
+                JOIN {SCHEMA}.wip_builds wb ON wb.build_id = pcb.id
+                WHERE b.required_qty > 0
+                  AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён')
+                ORDER BY wb.order_number, b.status
+                """
+            )
+            rows = cur.fetchall()
+            by_wip = {}
+            for r in rows:
+                group_id, name, sku, req_qty, status, url_supplier, wip_id, order_number, order_id, stage, slot, slot_status = r
+                key = str(wip_id)
+                if key not in by_wip:
+                    by_wip[key] = {"wip_id": wip_id, "order_number": order_number, "order_id": order_id, "stage": stage, "items": []}
+                by_wip[key]["items"].append({
+                    "group_id": group_id, "name": name, "sku": sku,
+                    "required_qty": req_qty, "status": status,
+                    "url_supplier": url_supplier, "slot": slot, "slot_status": slot_status,
+                })
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"builds": list(by_wip.values())})}
+
         # ── Диагностика остатков по группе (инвариант) ──────────────────────
         if action == "diag" and method == "GET":
             group_id = int(params.get("group_id"))
