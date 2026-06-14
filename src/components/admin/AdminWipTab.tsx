@@ -106,15 +106,7 @@ export function AdminWipTab({
 
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
 
-  // Заказной список
-  const [orderListOpen, setOrderListOpen] = useState(false)
-  const [orderListLoading, setOrderListLoading] = useState(false)
-  const [orderListGroups, setOrderListGroups] = useState<{
-    group_id: string | number; name: string; shortage: number
-    url_supplier?: string | null; url_site?: string | null; product_id?: number
-    order_status: string
-    orders: { order_id: number; customer_name: string; shortage: number }[]
-  }[]>([])
+
 
   const saveWip = async () => {
     if (!wipForm) return
@@ -157,91 +149,6 @@ export function AdminWipTab({
     }
     setWipBuilds(bs => bs.filter(b => b.id !== cancelModal.id))
     setCancelModal(null)
-  }
-
-  // Маппинг статусов: purchase_basket (NEW/ORDERED/RECEIVED) ↔ wip_builds slot_status
-  const BASKET_TO_WIP: Record<string, string> = {
-    NEW: "need_order",
-    ORDERED: "ordered_transit",
-    RECEIVED: "ready",
-  }
-  const WIP_TO_BASKET: Record<string, string> = {
-    need_order: "NEW",
-    ordered_delay: "ORDERED",
-    ordered_transit: "ORDERED",
-    ready: "RECEIVED",
-    pending: "NEW",
-  }
-
-  const openOrderList = async () => {
-    setOrderListOpen(true)
-    setOrderListLoading(true)
-    const [orderListData, basketData] = await Promise.all([
-      api.warehouse.getOrderList(),
-      fetch("https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957?action=basket").then(r => r.json()),
-    ])
-    // Строим маппинг group_id → статус из purchase_basket (источник истины)
-    const basketMap: Record<string | number, string> = {}
-    for (const b of (basketData.items || [])) {
-      basketMap[b.group_id] = BASKET_TO_WIP[b.status] || "need_order"
-    }
-    const items = (orderListData.items || []).map((g: { group_id: number; product_id: number; name: string; shortage: number; url_supplier: string | null; url_site: string | null; orders: { order_id: number; customer_name: string; shortage: number }[] }) => ({
-      ...g,
-      order_status: basketMap[g.group_id] || "need_order",
-    }))
-    // Сортировка: need_order вверх, потом по имени
-    items.sort((a: { order_status: string; name: string }, b: { order_status: string; name: string }) => {
-      if (a.order_status === "need_order" && b.order_status !== "need_order") return -1
-      if (a.order_status !== "need_order" && b.order_status === "need_order") return 1
-      return a.name.localeCompare(b.name, "ru")
-    })
-    setOrderListGroups(items)
-    setOrderListLoading(false)
-  }
-
-  const updateOrderListStatus = async (groupId: string | number, newStatus: string) => {
-    // 1. Обновляем локальный стейт
-    setOrderListGroups(prev => {
-      const updated = prev.map(item => item.group_id === groupId ? { ...item, order_status: newStatus } : item)
-      // Пересортируем
-      return [...updated].sort((a, b) => {
-        if (a.order_status === "need_order" && b.order_status !== "need_order") return -1
-        if (a.order_status !== "need_order" && b.order_status === "need_order") return 1
-        return a.name.localeCompare(b.name, "ru")
-      })
-    })
-
-    // 2. Сохраняем в purchase_basket (источник истины в БД)
-    const basketStatus = WIP_TO_BASKET[newStatus] || "NEW"
-    await fetch("https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957?action=basket_status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ group_id: groupId, status: basketStatus }),
-    })
-
-    // 3. Синхронизируем wip_builds.{slot}_status для всех активных сборок
-    // Находим product_id для данной группы и обновляем слоты в wipBuilds
-    for (const w of wipBuilds.filter(wb => !["Архив", "Забрали", "Отменён"].includes(wb.stage))) {
-      const slots = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
-      const slotApiNames = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case", "cooling", "extra"]
-      for (let i = 0; i < slots.length; i++) {
-        const slotKey = slots[i]
-        const slotApiName = slotApiNames[i]
-        const statusKey = slotKey === "case_name" ? "case_status" : slotKey + "_status"
-        const curStatus = (w as Record<string, string>)[statusKey]
-        // Проверяем соответствие по названию товара (упрощённо)
-        // Для точного маппинга нужно знать product_id слота — используем wipBuilds order_id
-        if (curStatus === "need_order" && newStatus !== "need_order" ||
-            curStatus !== "ready" && newStatus === "ready") {
-          // Проверяем через order данной сборки совпадение с group_id
-          const g = orderListGroups.find(x => x.group_id === groupId)
-          if (g && w.order_id && g.orders.some(o => o.order_id === w.order_id)) {
-            setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: newStatus } : b))
-            api.wipBuilds.patch({ id: w.id, component: slotApiName, status: newStatus })
-          }
-        }
-      }
-    }
   }
 
   const DEFAULT_COL_W = 220
@@ -344,12 +251,7 @@ export function AdminWipTab({
               <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-400 text-[10px] font-bold text-white">{totalNewCount}</span>
             )}
           </button>
-          <button onClick={openOrderList}
-            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-orange-400 hover:text-orange-400 transition-colors"
-            style={{ cursor: "pointer" }}>
-            <Icon name="ListOrdered" size={15} />
-            Заказной список
-          </button>
+
           <button onClick={() => setWipEditMode(v => !v)}
             className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
             style={{ cursor: "pointer" }}>
