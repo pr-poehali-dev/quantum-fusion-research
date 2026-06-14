@@ -868,6 +868,20 @@ def handler(event: dict, context) -> dict:
                                     f"VALUES (%s, 0, 0, %s, 0, NOW())",
                                     (grp[0], need)
                                 )
+                        # Синхронизируем корзину закупки
+                        cur.execute(
+                            f"SELECT g.id FROM {schema}.warehouse_groups g WHERE g.product_id = %s LIMIT 1",
+                            (product_id,)
+                        )
+                        grp_row = cur.fetchone()
+                        if grp_row:
+                            cur.execute(
+                                f"INSERT INTO {schema}.warehouse_purchase_basket (group_id, required_qty, status, created_at, updated_at) "
+                                f"VALUES (%s, %s, 'NEW', NOW(), NOW()) "
+                                f"ON CONFLICT (group_id) DO UPDATE SET "
+                                f"required_qty = {schema}.warehouse_purchase_basket.required_qty + %s, updated_at = NOW()",
+                                (grp_row[0], need, need)
+                            )
                         new_statuses[slot] = "need_order"
                         negative_items.append({"slot": slot, "name": name, "product_id": product_id})
 
