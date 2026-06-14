@@ -679,16 +679,7 @@ export default function WarehouseTab() {
         <h2 className="text-lg font-semibold">Склад</h2>
         <Badge variant="outline">{total} позиций</Badge>
         <div className="flex-1" />
-        <Button variant="outline" size="sm"
-          className="border-red-500/30 text-red-400/60 hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10"
-          onClick={async () => {
-            if (!confirm("Удалить ВСЕ заказы и резервы? Это действие необратимо.")) return
-            const res = await fetch("https://functions.poehali.dev/828a962b-2051-4152-bc1e-e8521b07c291?action=purge_orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-            const d = await res.json()
-            if (d.ok) { alert("Готово — всё очищено"); load() } else alert("Ошибка: " + JSON.stringify(d))
-          }}>
-          <Icon name="Trash2" size={14} className="mr-1.5" />Очистить заказы
-        </Button>
+
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
           <Icon name="Store" size={14} className="mr-1.5" />Магазины
         </Button>
