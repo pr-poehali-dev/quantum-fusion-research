@@ -673,58 +673,29 @@ def handler(event: dict, context) -> dict:
 
             reserves = reserves_new
 
-            # Отрицательные резервы (нехватка) — берём qty_negative из supplies,
-            # привязку к заказам ищем через wip_builds
-            cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid}")
-            grp_row = cur.fetchone()
+            # Отрицательные резервы — берём прямо из warehouse_reserves (там order_id всегда есть)
             negative_reserves = []
-            if grp_row and grp_row[0]:
-                product_id = grp_row[0]
-                # Суммарная нехватка из supplies (единственный источник истины)
+            cur.execute(
+                f"SELECT r.order_id, SUM(r.qty) AS qty, o.customer_name "
+                f"FROM {SCHEMA}.warehouse_reserves r "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = r.order_id "
+                f"WHERE r.group_id = {gid} AND r.type = 'NEGATIVE' AND r.status = 'ACTIVE' "
+                f"AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'done')) "
+                f"GROUP BY r.order_id, o.customer_name "
+                f"HAVING SUM(r.qty) > 0 "
+                f"ORDER BY r.order_id ASC"
+            )
+            neg_rows = cur.fetchall()
+            if neg_rows:
+                negative_reserves = [{"order_id": r[0], "customer_name": r[1], "qty": int(r[2])} for r in neg_rows]
+            else:
+                # Fallback: если в warehouse_reserves нет записей — берём qty_negative из supplies
                 cur.execute(
-                    f"SELECT COALESCE(SUM(s.qty_negative), 0) FROM {SCHEMA}.warehouse_supplies s "
-                    f"JOIN {SCHEMA}.warehouse_groups g ON g.id = s.group_id WHERE g.product_id = {product_id}"
+                    f"SELECT COALESCE(SUM(qty_negative), 0) FROM {SCHEMA}.warehouse_supplies WHERE group_id = {gid}"
                 )
-                total_negative = int((cur.fetchone() or [0])[0])
-
-                if total_negative > 0:
-                    # Находим заказы с нехваткой через wip_builds (need_order статус)
-                    cur.execute(f"SELECT name FROM {SCHEMA}.products WHERE id = {product_id}")
-                    prod_row = cur.fetchone()
-                    prod_name = prod_row[0] if prod_row else None
-
-                    if prod_name:
-                        pn = prod_name.replace("'", "''")
-                        cur.execute(f"""
-                            SELECT order_id, customer_name, shortage FROM (
-                                SELECT wb.order_id, o.customer_name,
-                                    GREATEST(0,
-                                        COALESCE((SELECT SUM((comp->>'qty')::int) FROM jsonb_array_elements(pb.components::jsonb) comp WHERE (comp->>'source_id')::int = {product_id}), 0) -
-                                        COALESCE((SELECT SUM(m.qty_delta) FROM {SCHEMA}.warehouse_movements m JOIN {SCHEMA}.warehouse_groups wg ON wg.id = m.group_id WHERE wg.product_id = {product_id} AND m.order_id = wb.order_id AND m.type IN ('reserved','unreserved')), 0)
-                                    ) AS shortage,
-                                    (CASE WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 1 ELSE 0 END +
-                                     CASE WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 1 ELSE 0 END
-                                    ) AS slot_match
-                                FROM {SCHEMA}.wip_builds wb
-                                JOIN {SCHEMA}.orders o ON o.id = wb.order_id
-                                LEFT JOIN {SCHEMA}.pc_builds pb ON pb.id = wb.build_id
-                                WHERE o.status NOT IN ('cancelled', 'done')
-                            ) sub WHERE slot_match > 0 AND shortage > 0
-                            ORDER BY order_id ASC
-                        """)
-                        neg_rows = cur.fetchall()
-
-                        if neg_rows:
-                            negative_reserves = [{"order_id": r[0], "customer_name": r[1], "qty": int(r[2])} for r in neg_rows]
-                        else:
-                            # Нет привязки к конкретным заказам — показываем общую нехватку без заказа
-                            negative_reserves = [{"order_id": None, "customer_name": None, "qty": total_negative}]
+                total_neg = int((cur.fetchone() or [0])[0])
+                if total_neg > 0:
+                    negative_reserves = [{"order_id": None, "customer_name": None, "qty": total_neg}]
 
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
                 "reserves": reserves,
