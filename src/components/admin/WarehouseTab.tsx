@@ -760,7 +760,7 @@ export default function WarehouseTab() {
                   <div className="px-3 py-2.5 truncate">{label}</div>
                   <div
                     onMouseDown={e => { e.preventDefault(); startColResize(col, e.clientX) }}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors z-10"
+                    className="absolute right-0 top-0 h-full w-1.5 bg-border/40 hover:bg-primary/60 active:bg-primary transition-colors z-10"
                     style={{ cursor: "col-resize" }}
                   />
                 </th>
