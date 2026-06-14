@@ -55,8 +55,7 @@ def resp(status, data):
     return {"statusCode": status, "headers": CORS, "body": json.dumps(data, ensure_ascii=False, default=str)}
 
 def handler(event: dict, context) -> dict:
-    """
-    Сборки в процессе (WIP): GET список/одна, POST создать, PUT обновить, PATCH обновить статус компонента или этап, DELETE удалить.
+    """Сборки в процессе (WIP): GET список/одна, POST создать, PUT обновить, PATCH статус/этап, DELETE удалить.
     
     TODO (реализовать позже):
     - При POST (создание новой сборки) → отправить уведомление в Telegram менеджеру
@@ -243,7 +242,45 @@ def handler(event: dict, context) -> dict:
             # Обновить этап
             if "stage" in body:
                 new_stage = body["stage"]
+                # Получаем текущий этап и связанные данные
+                cur.execute(
+                    f"SELECT wb.stage, wb.order_id, wb.build_id "
+                    f"FROM {SCHEMA}.wip_builds wb WHERE wb.id = %s",
+                    (wip_id,),
+                )
+                wip_row = cur.fetchone()
+                old_stage = wip_row[0] if wip_row else None
+                wip_order_id = wip_row[1] if wip_row else None
+                wip_build_id = wip_row[2] if wip_row else None
+
                 cur.execute("UPDATE wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s", (new_stage, wip_id))
+
+                # ── Резервирование при переходе на «Заказ» ──
+                if new_stage == "Заказ" and old_stage != "Заказ" and wip_order_id and wip_build_id:
+                    import warehouse_core as wc
+                    cur.execute(
+                        f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (wip_build_id,)
+                    )
+                    pb = cur.fetchone()
+                    reserve_lines = []
+                    if pb and pb[0]:
+                        comps = pb[0] if isinstance(pb[0], list) else json.loads(pb[0] or "[]")
+                        for c in comps:
+                            reserve_lines.append({
+                                "product_id": int(c["source_id"]) if c.get("source_id") else None,
+                                "qty": int(c.get("qty", 1)),
+                                "slot": c.get("slot", ""),
+                            })
+                    if reserve_lines:
+                        wc.handle_reserve_and_purchase(cur, wip_order_id, reserve_lines)
+                        print(f"WIP {wip_id}: резерв 'Заказ', order={wip_order_id}, lines={len(reserve_lines)}")
+
+                # ── Снятие резервов при отмене ──
+                if new_stage == "Отменён" and old_stage != "Отменён" and wip_order_id:
+                    import warehouse_core as wc
+                    released = wc.release_order_reserves(cur, wip_order_id)
+                    print(f"WIP {wip_id}: резервы сняты, order={wip_order_id}: {released}")
+
                 # При "Забрали" или "Отменён" — переносим pc_build в архив
                 if new_stage in ("Забрали", "Отменён"):
                     cur.execute(

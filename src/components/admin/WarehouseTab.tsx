@@ -388,7 +388,21 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-1.5">
             <Icon name={expanded ? "ChevronDown" : "ChevronRight"} size={14} className="text-foreground/30 shrink-0" />
-            <span className="font-medium text-sm">{group.name}</span>
+            <div className="min-w-0">
+              <span className="font-medium text-sm">{group.name}</span>
+              {group.qty_negative > 0 && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Icon name="AlertTriangle" size={10} className="text-red-400 shrink-0" />
+                  <span className="text-[10px] text-red-400">не хватает {group.qty_negative} шт. — в корзине закупки</span>
+                </div>
+              )}
+              {group.qty_negative === 0 && group.qty_reserved > 0 && group.qty_total - group.qty_reserved <= 0 && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Icon name="Lock" size={10} className="text-orange-400 shrink-0" />
+                  <span className="text-[10px] text-orange-400">всё под резервом</span>
+                </div>
+              )}
+            </div>
           </div>
         </td>
         <td className="px-3 py-2.5">
@@ -579,6 +593,34 @@ export default function WarehouseTab() {
   const [storesModal, setStoresModal] = useState(false)
   const [quickSupplyModal, setQuickSupplyModal] = useState(false)
   const [inventoryModal, setInventoryModal] = useState(false)
+  const [basketOpen, setBasketOpen] = useState(false)
+  const [basketItems, setBasketItems] = useState<{
+    id: number; group_id: number; name: string; sku: string; required_qty: number;
+    status: string; url_supplier: string | null; updated_at: string
+  }[]>([])
+  const [basketLoading, setBasketLoading] = useState(false)
+  const [basketCount, setBasketCount] = useState(0)
+
+  const loadBasket = async () => {
+    setBasketLoading(true)
+    const res = await fetch("https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957?action=basket")
+    const data = await res.json()
+    const items = (data.items || []).filter((i: { required_qty: number }) => i.required_qty > 0)
+    setBasketItems(items)
+    setBasketCount(items.length)
+    setBasketLoading(false)
+  }
+
+  const updateBasketStatus = async (groupId: number, status: string) => {
+    await fetch("https://functions.poehali.dev/8b2b8538-7489-4d72-9832-d8894784f957?action=basket_status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group_id: groupId, status }),
+    })
+    setBasketItems(prev => prev.map(i => i.group_id === groupId ? { ...i, status } : i))
+  }
+
+  useEffect(() => { loadBasket() }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -644,6 +686,17 @@ export default function WarehouseTab() {
         <Button variant="outline" size="sm" onClick={() => setQuickSupplyModal(true)}>
           <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
         </Button>
+        <Button
+          variant="outline" size="sm"
+          onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
+          className={basketCount > 0 ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10" : ""}
+        >
+          <Icon name="ShoppingCart" size={14} className="mr-1.5" />
+          Корзина закупки
+          {basketCount > 0 && (
+            <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-orange-400 text-[10px] font-bold text-white">{basketCount}</span>
+          )}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
           <Icon name="ClipboardList" size={14} className="mr-1.5" />Инвентаризация
         </Button>
@@ -672,6 +725,70 @@ export default function WarehouseTab() {
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
         </Button>
       </div>
+
+      {/* ── Корзина закупки ── */}
+      {basketOpen && (
+        <div className="rounded-xl border border-orange-400/20 bg-orange-400/5 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon name="ShoppingCart" size={16} className="text-orange-400" />
+              <span className="font-medium text-foreground">Корзина закупки</span>
+              <span className="rounded-full bg-orange-400/15 px-2 py-0.5 text-xs text-orange-400">{basketItems.length} позиций</span>
+            </div>
+            <button onClick={loadBasket} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name={basketLoading ? "Loader" : "RefreshCw"} size={14} className={basketLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          {basketLoading ? (
+            <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-card animate-pulse" />)}</div>
+          ) : basketItems.length === 0 ? (
+            <div className="py-6 text-center">
+              <Icon name="CheckCircle" size={28} className="mx-auto mb-2 text-green-400/40" />
+              <p className="text-sm text-foreground/40">Всё в наличии — закупать нечего</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {basketItems.map(item => (
+                <div key={item.group_id} className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
+                      <span className="font-mono text-[10px] text-foreground/40">{item.sku}</span>
+                      <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">
+                        нужно {item.required_qty} шт.
+                      </span>
+                    </div>
+                  </div>
+                  {item.url_supplier && (
+                    <a href={item.url_supplier} target="_blank" rel="noreferrer"
+                      className="shrink-0 text-foreground/30 hover:text-primary transition-colors" title="Купить у поставщика">
+                      <Icon name="ExternalLink" size={13} />
+                    </a>
+                  )}
+                  <select
+                    value={item.status}
+                    onChange={e => updateBasketStatus(item.group_id, e.target.value)}
+                    className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none cursor-pointer transition-colors ${
+                      item.status === "NEW"      ? "border-red-400/40 bg-red-400/5 text-red-400" :
+                      item.status === "ORDERED"  ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
+                      item.status === "RECEIVED" ? "border-green-400/40 bg-green-400/5 text-green-400" :
+                      "border-border text-foreground/50"
+                    }`}
+                    style={{ cursor: "pointer" }}>
+                    <option value="NEW">Заказать</option>
+                    <option value="ORDERED">Заказано</option>
+                    <option value="RECEIVED">Получено</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
+          {basketItems.length > 0 && (
+            <p className="mt-2 text-xs text-foreground/30 text-center">Статусы сохраняются в БД и видны всем менеджерам</p>
+          )}
+        </div>
+      )}
 
       {/* Фильтры */}
       <div className="flex flex-wrap gap-2">
@@ -960,8 +1077,8 @@ function CategoriesModal({ categories, onClose, onSaved }: {
 // ─── Модалка резервов по заказам ──────────────────────────────────────────────
 
 function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }) {
-  const [reserves, setReserves] = useState<{ order_id: number; qty: number; customer_name: string | null }[]>([])
-  const [negReserves, setNegReserves] = useState<{ order_id: number; qty: number; customer_name: string | null }[]>([])
+  const [reserves, setReserves] = useState<{ order_id: number; qty: number; customer_name: string | null; wip_stage: string | null }[]>([])
+  const [negReserves, setNegReserves] = useState<{ order_id: number | null; qty: number; customer_name: string | null }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -972,25 +1089,9 @@ function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }
     })
   }, [group.id])
 
-  const OrderRow = ({ r, color }: { r: { order_id: number | null; qty: number; customer_name: string | null }; color: string }) => (
-    <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
-      {r.order_id ? (
-        <a
-          href={`/admin/orders?id=${r.order_id}`}
-          onClick={e => e.stopPropagation()}
-          className="text-sm font-mono font-semibold text-primary hover:underline"
-        >
-          #{String(r.order_id).padStart(4, "0")}
-          {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
-        </a>
-      ) : (
-        <span className="text-sm text-foreground/50">Нет привязки к заказу</span>
-      )}
-      <span className={`text-sm font-semibold ${color}`}>{r.qty} шт.</span>
-    </div>
-  )
-
   const isEmpty = reserves.length === 0 && negReserves.length === 0
+  const onAgreement = reserves.filter(r => r.wip_stage === "Согласование")
+  const confirmed = reserves.filter(r => r.wip_stage !== "Согласование")
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -1010,15 +1111,52 @@ function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }
           <p className="py-6 text-center text-sm text-foreground/40">Нет активных резервов</p>
         ) : (
           <div className="space-y-4">
-            {/* Обычные резервы */}
-            {reserves.length > 0 && (
+
+            {/* Предупреждение: заказы на согласовании */}
+            {onAgreement.length > 0 && (
+              <div className="rounded-xl border border-yellow-400/20 bg-yellow-400/5 px-3 py-2.5">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Icon name="AlertCircle" size={13} className="text-yellow-400 shrink-0" />
+                  <span className="text-xs font-semibold text-yellow-400">На согласовании — возможный резерв</span>
+                </div>
+                <div className="space-y-1">
+                  {onAgreement.map(r => (
+                    <div key={r.order_id} className="flex items-center justify-between text-xs">
+                      <a href={`/admin/order/${r.order_id}`} onClick={e => e.stopPropagation()}
+                        className="font-mono font-semibold text-primary hover:underline">
+                        #{String(r.order_id).padStart(4, "0")}
+                        {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1">{r.customer_name}</span>}
+                      </a>
+                      <span className="text-yellow-400 font-semibold">{r.qty} шт.</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Подтверждённые резервы (заказ принят в работу) */}
+            {confirmed.length > 0 && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-orange-400/80 flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />
-                  В резерве — {reserves.reduce((s, r) => s + r.qty, 0)} шт.
+                  В резерве — {confirmed.reduce((s, r) => s + r.qty, 0)} шт.
                 </p>
                 <div className="space-y-1.5">
-                  {reserves.map(r => <OrderRow key={r.order_id} r={r} color="text-orange-400" />)}
+                  {confirmed.map(r => (
+                    <div key={r.order_id} className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
+                      <div>
+                        <a href={`/admin/order/${r.order_id}`} onClick={e => e.stopPropagation()}
+                          className="text-sm font-mono font-semibold text-primary hover:underline">
+                          #{String(r.order_id).padStart(4, "0")}
+                          {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
+                        </a>
+                        {r.wip_stage && (
+                          <p className="text-[10px] text-foreground/40 mt-0.5">{r.wip_stage}</p>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-orange-400">{r.qty} шт.</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1031,16 +1169,17 @@ function ReservesModal({ group, onClose }: { group: Group; onClose: () => void }
                   Нехватка — {negReserves.reduce((s, r) => s + r.qty, 0)} шт.
                 </p>
                 <div className="space-y-1.5">
-                  {negReserves.map(r => (
-                    <div key={r.order_id} className="flex items-center justify-between rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2.5">
-                      <a
-                        href={`/admin/orders?id=${r.order_id}`}
-                        onClick={e => e.stopPropagation()}
-                        className="text-sm font-mono font-semibold text-primary hover:underline"
-                      >
-                        #{String(r.order_id).padStart(4, "0")}
-                        {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
-                      </a>
+                  {negReserves.map((r, i) => (
+                    <div key={r.order_id ?? i} className="flex items-center justify-between rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2.5">
+                      {r.order_id ? (
+                        <a href={`/admin/order/${r.order_id}`} onClick={e => e.stopPropagation()}
+                          className="text-sm font-mono font-semibold text-primary hover:underline">
+                          #{String(r.order_id).padStart(4, "0")}
+                          {r.customer_name && <span className="font-sans font-normal text-foreground/60 ml-1.5">{r.customer_name}</span>}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-foreground/50">Нет привязки к заказу</span>
+                      )}
                       <span className="text-sm font-semibold text-red-400">−{r.qty} шт.</span>
                     </div>
                   ))}

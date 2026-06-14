@@ -638,20 +638,40 @@ def handler(event: dict, context) -> dict:
             if not gid:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "group_id required"})}
 
-            # Обычные резервы
+            # Обычные резервы — из новой таблицы warehouse_reserves (с wip_stage)
             cur.execute(
-                f"SELECT m.order_id, SUM(m.qty_delta) as qty, "
-                f"o.customer_name "
-                f"FROM {SCHEMA}.warehouse_movements m "
-                f"LEFT JOIN {SCHEMA}.orders o ON o.id = m.order_id "
-                f"WHERE m.group_id = {gid} AND m.type IN ('reserved', 'unreserved') AND m.order_id IS NOT NULL "
+                f"SELECT r.order_id, SUM(r.qty) AS qty, o.customer_name, "
+                f"wb.stage AS wip_stage "
+                f"FROM {SCHEMA}.warehouse_reserves r "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = r.order_id "
+                f"LEFT JOIN {SCHEMA}.wip_builds wb ON wb.order_id = r.order_id "
+                f"WHERE r.group_id = {gid} AND r.type = 'POSITIVE' AND r.status = 'ACTIVE' "
+                f"AND r.order_id IS NOT NULL "
                 f"AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'done')) "
-                f"GROUP BY m.order_id, o.customer_name "
-                f"HAVING SUM(m.qty_delta) > 0 "
-                f"ORDER BY m.order_id ASC"
+                f"GROUP BY r.order_id, o.customer_name, wb.stage "
+                f"HAVING SUM(r.qty) > 0 "
+                f"ORDER BY r.order_id ASC"
             )
             rows = cur.fetchall()
-            reserves = [{"order_id": r[0], "qty": int(r[1]), "customer_name": r[2]} for r in rows]
+            reserves_new = [{"order_id": r[0], "qty": int(r[1]), "customer_name": r[2], "wip_stage": r[3]} for r in rows]
+
+            # Fallback: старые резервы из movements (до перехода на warehouse_reserves)
+            if not reserves_new:
+                cur.execute(
+                    f"SELECT m.order_id, SUM(m.qty_delta) as qty, o.customer_name, wb.stage "
+                    f"FROM {SCHEMA}.warehouse_movements m "
+                    f"LEFT JOIN {SCHEMA}.orders o ON o.id = m.order_id "
+                    f"LEFT JOIN {SCHEMA}.wip_builds wb ON wb.order_id = m.order_id "
+                    f"WHERE m.group_id = {gid} AND m.type IN ('reserved', 'unreserved') AND m.order_id IS NOT NULL "
+                    f"AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'done')) "
+                    f"GROUP BY m.order_id, o.customer_name, wb.stage "
+                    f"HAVING SUM(m.qty_delta) > 0 "
+                    f"ORDER BY m.order_id ASC"
+                )
+                rows = cur.fetchall()
+                reserves_new = [{"order_id": r[0], "qty": int(r[1]), "customer_name": r[2], "wip_stage": r[3]} for r in rows]
+
+            reserves = reserves_new
 
             # Отрицательные резервы (нехватка) — берём qty_negative из supplies,
             # привязку к заказам ищем через wip_builds

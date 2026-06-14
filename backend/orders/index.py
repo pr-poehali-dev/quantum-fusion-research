@@ -71,41 +71,21 @@ def handler(event: dict, context) -> dict:
 
             print(f"ORDER {order_id}: type={order_type}, items={json.dumps(items)}")
 
-            # ── АВТОРЕЗЕРВ: резервируем товары на складе по product_id ──────────
-            schema = "t_p72635010_quantum_fusion_resea"
-            for item in items:
-                if item.get("item_type") == "product" and item.get("id"):
-                    pid = int(item["id"])
-                    need_qty = int(item.get("quantity", 1))
-                    # берём поставки со свободным остатком (qty > 0), сортируем по FIFO
-                    cur.execute(
-                        f"SELECT s.id, s.qty as free "
-                        f"FROM {schema}.warehouse_supplies s "
-                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty > 0 "
-                        f"ORDER BY s.id ASC",
-                        (pid,)
-                    )
-                    supplies = cur.fetchall()
-                    for supply_id, free in supplies:
-                        if need_qty <= 0:
-                            break
-                        reserve = min(need_qty, free)
-                        # qty уменьшается (товар уходит в резерв), qty_reserved растёт
-                        cur.execute(
-                            f"UPDATE {schema}.warehouse_supplies "
-                            f"SET qty = qty - %s, qty_reserved = qty_reserved + %s "
-                            f"WHERE id = %s AND qty >= %s",
-                            (reserve, reserve, supply_id, reserve)
-                        )
-                        cur.execute(
-                            f"INSERT INTO {schema}.warehouse_movements "
-                            f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id = %s), "
-                            f"%s, %s, 'reserved', %s, %s, NOW())",
-                            (supply_id, supply_id, order_id, reserve, f"Авторезерв по заказу #{order_id}")
-                        )
-                        need_qty -= reserve
+            # ── АВТОРЕЗЕРВ через ядро: POSITIVE/NEGATIVE + корзина закупки ──────
+            # parts-заказы резервируются сразу, pc_build — при переходе на этап "Заказ"
+            import warehouse_core as wc
+            if order_type == "parts":
+                reserve_lines = [
+                    {"product_id": int(it["id"]), "qty": int(it.get("quantity", 1)), "slot": "product"}
+                    for it in items
+                    if it.get("item_type") == "product" and it.get("id")
+                ]
+                if reserve_lines:
+                    reserve_results = wc.handle_reserve_and_purchase(cur, order_id, reserve_lines)
+                    user_items = [r["input"] for r in reserve_results if r.get("skipped_reason") == "user_hardware"]
+                    if user_items:
+                        print(f"ORDER {order_id}: user_hardware (пересогласовать): {user_items}")
+            # pc_build: резерв создаётся при смене этапа wip_builds на "Заказ"
 
             def is_catalog_id(v):
                 try:
