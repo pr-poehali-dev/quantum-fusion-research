@@ -479,6 +479,13 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
             <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => onArchive(group)}>
               <Icon name="Archive" size={13} className="text-foreground/40" />
             </button>
+            <button className="rounded p-1 hover:bg-red-400/10 transition-colors" title="Удалить позицию" onClick={async () => {
+              if (!confirm(`Удалить «${group.name}»? Это необратимо.`)) return
+              await api.warehouse.archiveGroup(group.id)
+              onRefresh()
+            }}>
+              <Icon name="Trash2" size={13} className="text-foreground/30 hover:text-red-400" />
+            </button>
           </div>
         </td>
       </tr>
