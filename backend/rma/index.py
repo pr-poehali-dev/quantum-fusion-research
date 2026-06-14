@@ -318,11 +318,21 @@ def handler(event: dict, context) -> dict:
                         f"INSERT INTO {SCHEMA}.orders "
                         f"(customer_name, customer_phone, customer_email, order_type, "
                         f"items, total, comment, status, created_at, updated_at) "
-                        f"VALUES (%s, %s, %s, 'parts', %s, 0, %s, 'new', NOW(), NOW()) "
+                        f"VALUES (%s, %s, %s, 'parts', %s, 0, %s, 'processing', NOW(), NOW()) "
                         f"RETURNING id",
                         (orig_name, orig_phone, orig_email, item_payload, new_comment),
                     )
                     replacement_order_id = cur.fetchone()[0]
+
+                    # ── Сразу резервируем товар в рамках той же транзакции ──
+                    if product_id:
+                        import warehouse_core as wc
+                        wc.handle_reserve_and_purchase(cur, replacement_order_id, [{
+                            "product_id": int(product_id),
+                            "qty": int(qty),
+                            "slot": slot or "product",
+                        }])
+                        print(f"RMA: резерв по заказу-замене #{replacement_order_id}, product={product_id}, qty={qty}")
 
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_rma "
