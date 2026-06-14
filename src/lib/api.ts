@@ -15,6 +15,7 @@ const URLS = {
   comments: "https://functions.poehali.dev/dac98ba7-a8e7-4a0f-9d4e-9c8541a144ab",
   notifications: "https://functions.poehali.dev/58527d2a-e061-409c-b800-a935e34690c6",
   schedule: "https://functions.poehali.dev/10912f60-5fd3-4930-9724-ad4929621f72",
+  rma: "https://functions.poehali.dev/6e92e4fb-4e76-42ee-88a7-0638374f9dcc",
 }
 
 function authHeaders(session?: string | null) {
@@ -181,5 +182,15 @@ export const api = {
       fetch(`${URLS.notifications}?action=read`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ id }) }).then(r => r.json()),
     markAllRead: (session: string) =>
       fetch(`${URLS.notifications}?action=read_all`, { method: "POST", headers: authHeaders(session) }).then(r => r.json()),
+  },
+  rma: {
+    list: (status?: string) => fetch(`${URLS.rma}?action=list${status ? `&status=${status}` : ""}`).then(r => r.json()),
+    get: (id: number) => fetch(`${URLS.rma}?action=get&id=${id}`).then(r => r.json()),
+    stats: () => fetch(`${URLS.rma}?action=stats`).then(r => r.json()),
+    orderComponents: (orderId: number) => fetch(`${URLS.rma}?action=order_components&order_id=${orderId}`).then(r => r.json()),
+    create: (data: unknown) => fetch(URLS.rma, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create", ...data as object }) }).then(r => r.json()),
+    update: (data: unknown) => fetch(URLS.rma, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    resolveReplacement: (data: unknown) => fetch(URLS.rma, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resolve_replacement", ...data as object }) }).then(r => r.json()),
+    resolveRefund: (data: unknown) => fetch(URLS.rma, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resolve_refund", ...data as object }) }).then(r => r.json()),
   },
 }

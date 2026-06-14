@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "List RMA returns array",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Stats returns object",
+      "method": "GET",
+      "path": "/?action=stats",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Unknown action returns 400",
+      "method": "GET",
+      "path": "/?action=nonexistent",
+      "expectedStatus": 400
+    }
+  ]
+}

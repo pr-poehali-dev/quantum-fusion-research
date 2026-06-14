@@ -8,6 +8,7 @@ import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import { AdminCatalogTab } from "@/components/admin/AdminCatalogTab"
 import { AdminUsersTab } from "@/components/admin/AdminUsersTab"
+import RmaTab from "@/components/admin/RmaTab"
 import {
   ADMIN_PASSWORD, VALID_TABS, AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
@@ -155,6 +156,8 @@ export default function Admin() {
     { key: "DIVIDER_5" },
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
+    { key: "DIVIDER_6" },
+    { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
   ]
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
@@ -246,6 +249,9 @@ export default function Admin() {
         {tab === "users" && (
           <AdminUsersTab adminUsers={adminUsers} loading={loading} setAdminUsers={setAdminUsers} />
         )}
+
+        {/* RMA */}
+        {tab === "rma" && <RmaTab />}
       </div>
     </div>
   )
