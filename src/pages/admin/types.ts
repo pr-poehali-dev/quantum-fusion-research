@@ -10,12 +10,29 @@ export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 export const PC_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  // по orders.status (фолбэк)
   new:              { label: "Согласование",        color: "text-primary bg-primary/10" },
   ordering:         { label: "Заказ комплектующих", color: "text-orange-400 bg-orange-400/10" },
   waiting_assembly: { label: "Ожидание сборки",     color: "text-yellow-400 bg-yellow-400/10" },
   assembly:         { label: "Сборка",              color: "text-accent bg-accent/10" },
   done:             { label: "Выдан",               color: "text-green-400 bg-green-400/10" },
   cancelled:        { label: "Отменён",             color: "text-foreground/50 bg-muted" },
+  // по wip_builds.stage (русские ключи — зеркало)
+  "Согласование":          { label: "Согласование",           color: "text-primary bg-primary/10" },
+  "Заказ":                 { label: "Заказ комплектующих",    color: "text-orange-400 bg-orange-400/10" },
+  "Ожидание железа":       { label: "Ожидание железа",        color: "text-yellow-400 bg-yellow-400/10" },
+  "Ожидание сборки":       { label: "Ожидание сборки",        color: "text-yellow-400 bg-yellow-400/10" },
+  "Сборка":                { label: "Сборка",                 color: "text-accent bg-accent/10" },
+  "Настройка":             { label: "Настройка",              color: "text-accent bg-accent/10" },
+  "Тесты":                 { label: "Тесты",                  color: "text-purple-400 bg-purple-400/10" },
+  "Досборать":             { label: "Досборать",              color: "text-red-400 bg-red-400/10" },
+  "Проверка перед выдачей":{ label: "Проверка перед выдачей", color: "text-teal-400 bg-teal-400/10" },
+  "Ожидание упаковки":     { label: "Ожидание упаковки",      color: "text-cyan-400 bg-cyan-400/10" },
+  "Готов, можно забрать":  { label: "Готов, можно забрать",   color: "text-green-400 bg-green-400/10" },
+  "Отнести в сдэк":        { label: "Отнести в сдэк",         color: "text-green-400 bg-green-400/10" },
+  "Забрали":               { label: "Выдан",                  color: "text-green-400 bg-green-400/10" },
+  "Отменён":               { label: "Отменён",                color: "text-foreground/50 bg-muted" },
+  "Архив":                 { label: "Выдан",                  color: "text-green-400 bg-green-400/10" },
 }
 
 export const ACTIVE_STATUSES = ["new", "processing", "ordering", "waiting_assembly", "assembly"]
