@@ -134,32 +134,25 @@ export function AdminWipTab({
     setWipBuilds(bs => bs.filter(b => b.id !== w.id))
   }
 
-  // Отмена заказа с паролем
+  // Отмена заказа
   const [cancelModal, setCancelModal] = useState<WipBuild | null>(null)
-  const [cancelPassword, setCancelPassword] = useState("")
   const [cancelLoading, setCancelLoading] = useState(false)
-  const [cancelError, setCancelError] = useState("")
 
-  const openCancelModal = (w: WipBuild) => {
-    setCancelModal(w)
-    setCancelPassword("")
-    setCancelError("")
-  }
+  const openCancelModal = (w: WipBuild) => setCancelModal(w)
 
   const confirmCancel = async () => {
     if (!cancelModal) return
     setCancelLoading(true)
-    setCancelError("")
     const WIP_URL = "https://functions.poehali.dev/6a3fdc40-04ab-4ef6-932b-4b24e530ee98"
     const res = await fetch(WIP_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "cancel_order", wip_id: cancelModal.id, password: cancelPassword }),
+      body: JSON.stringify({ action: "cancel_order", wip_id: cancelModal.id }),
     })
     const data = await res.json()
     setCancelLoading(false)
     if (!res.ok || data.error) {
-      setCancelError(data.error || "Ошибка при отмене")
+      alert(data.error || "Ошибка при отмене")
       return
     }
     setWipBuilds(bs => bs.filter(b => b.id !== cancelModal.id))
@@ -626,30 +619,16 @@ export function AdminWipTab({
               <p>• Заказ получит статус «Отменён»</p>
               <p>• Сборка будет удалена</p>
             </div>
-            <label className="mb-1 block text-xs text-foreground/50">Пароль подтверждения</label>
-            <input
-              type="password"
-              value={cancelPassword}
-              onChange={e => { setCancelPassword(e.target.value); setCancelError("") }}
-              onKeyDown={e => e.key === "Enter" && confirmCancel()}
-              placeholder="Введите пароль отмены"
-              autoFocus
-              className="mb-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-red-400 focus:outline-none"
-              style={{ cursor: "text" }}
-            />
-            {cancelError && (
-              <p className="mb-3 text-xs text-red-400">{cancelError}</p>
-            )}
             <div className="flex gap-2">
               <button
                 onClick={() => setCancelModal(null)}
                 className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-foreground/60 hover:text-foreground transition-colors"
                 style={{ cursor: "pointer" }}>
-                Отмена
+                Назад
               </button>
               <button
                 onClick={confirmCancel}
-                disabled={cancelLoading || !cancelPassword}
+                disabled={cancelLoading}
                 className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                 style={{ cursor: "pointer" }}>
                 {cancelLoading ? "Отменяю..." : "Подтвердить отмену"}

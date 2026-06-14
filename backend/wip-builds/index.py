@@ -347,10 +347,6 @@ def handler(event: dict, context) -> dict:
 
             if action_post == "cancel_order":
                 wip_id = body.get("wip_id")
-                password = body.get("password", "")
-                expected = os.environ.get("CANCEL_ORDER_PASSWORD", "")
-                if not expected or password != expected:
-                    return resp(403, {"error": "Неверный пароль подтверждения"})
                 if not wip_id:
                     return resp(400, {"error": "Нет wip_id"})
 
