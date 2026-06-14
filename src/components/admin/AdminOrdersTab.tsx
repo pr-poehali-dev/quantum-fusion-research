@@ -36,6 +36,21 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
 
   const [copiedOrderId, setCopiedOrderId] = useState<number | null>(null)
   const [warrantyLoadingId, setWarrantyLoadingId] = useState<number | null>(null)
+  const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [syncResultId, setSyncResultId] = useState<number | null>(null)
+
+  const syncOrder = async (orderId: number) => {
+    setSyncingId(orderId)
+    setSyncResultId(null)
+    const res = await api.orders.updateItem({ id: orderId, action: "sync_order", item_idx: 0 })
+    setSyncingId(null)
+    if (res.error) { alert(res.error); return }
+    setSyncResultId(orderId)
+    setTimeout(() => setSyncResultId(null), 3000)
+    if (res.auto_status) {
+      setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, status: res.auto_status } : ord))
+    }
+  }
 
   const filtered = orders
     .filter(o => isArchive ? ARCHIVE_STATUSES.includes(o.status) : ACTIVE_STATUSES.includes(o.status))
@@ -258,6 +273,17 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       <Icon name={warrantyLoadingId === order.id ? "Loader" : "FileText"} size={12} className={warrantyLoadingId === order.id ? "animate-spin" : ""} />
                       Гарантийный лист
                     </button>
+                    {order.order_type === "pc_build" && !isArchive && (
+                      <button
+                        onClick={() => syncOrder(order.id)}
+                        disabled={syncingId === order.id}
+                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${syncResultId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-yellow-400/40 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
+                        style={{ cursor: "pointer" }}
+                        title="Выбить компоненты со склада, создать резервы">
+                        <Icon name={syncingId === order.id ? "Loader" : syncResultId === order.id ? "Check" : "RefreshCw"} size={12} className={syncingId === order.id ? "animate-spin" : ""} />
+                        {syncResultId === order.id ? "Готово" : "Синхронизировать"}
+                      </button>
+                    )}
                     <button
                       onClick={() => navigate(`/admin/order/${order.id}`)}
                       className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
