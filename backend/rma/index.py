@@ -78,6 +78,8 @@ def fmt_rma(row):
         "group_name": row[20] if len(row) > 20 else None,
         "group_sku": row[21] if len(row) > 21 else None,
         "warranty_until": serial(row[22]) if len(row) > 22 else None,
+        "replacement_order_id": row[23] if len(row) > 23 else None,
+        "replace_from_stock": row[24] if len(row) > 24 else False,
     }
 
 
@@ -109,18 +111,36 @@ def handler(event: dict, context) -> dict:
                 f"r.created_at, r.updated_at, "
                 f"o.customer_name, o.customer_phone, "
                 f"g.name AS group_name, g.sku AS group_sku, "
-                f"s.warranty_until "
+                f"NULL AS warranty_until, "
+                f"r.replacement_order_id, r.replace_from_stock "
                 f"FROM {SCHEMA}.warehouse_rma r "
                 f"LEFT JOIN {SCHEMA}.orders o ON o.id = r.order_id "
                 f"LEFT JOIN {SCHEMA}.warehouse_groups g ON g.id = r.group_id "
-                f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = r.group_id "
-                f"  AND s.is_quarantine = TRUE AND s.id = r.replacement_supply_id "
                 f"{where} "
                 f"ORDER BY r.created_at DESC LIMIT 200"
             )
             rows = cur.fetchall()
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"rma": [fmt_rma(r) for r in rows]})}
+
+        # ── Остаток на складе по group_id (для галочки «заменить со склада») ─
+        if action == "stock_qty" and method == "GET":
+            group_id = params.get("group_id")
+            if not group_id:
+                return {"statusCode": 400, "headers": cors,
+                        "body": json.dumps({"error": "group_id required"})}
+            cur.execute(
+                f"SELECT COALESCE(SUM(qty), 0), COALESCE(SUM(qty_reserved), 0) "
+                f"FROM {SCHEMA}.warehouse_supplies "
+                f"WHERE group_id = %s AND is_quarantine = FALSE",
+                (int(group_id),),
+            )
+            row = cur.fetchone()
+            on_hand = int(row[0])
+            reserved = int(row[1])
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"on_hand": on_hand, "reserved": reserved,
+                                        "free": max(0, on_hand - reserved)})}
 
         # ── Получить компоненты заказа для выбора в форме RMA ───────────────
         if action == "order_components" and method == "GET":
@@ -269,21 +289,58 @@ def handler(event: dict, context) -> dict:
                      f"Брак в карантин: {item_name} (RMA)"),
                 )
 
+            replace_from_stock = bool(body.get("replace_from_stock", False))
+            replacement_order_id = None
+
+            # ── Замена со склада: создаём новый заказ-«замена по гарантии» ──
+            if replace_from_stock and order_id:
+                # Берём данные исходного заказа
+                cur.execute(
+                    f"SELECT customer_name, customer_phone, customer_email, comment "
+                    f"FROM {SCHEMA}.orders WHERE id = %s",
+                    (order_id,),
+                )
+                orig = cur.fetchone()
+                if orig:
+                    orig_name, orig_phone, orig_email, orig_comment = orig
+                    padded = str(order_id).zfill(5)
+                    new_comment = f"Замена по гарантии (заказ #{padded}). {orig_comment or ''}".strip()
+                    new_name = f"Заказ #{padded} — замена по гарантии"
+                    item_payload = json.dumps([{
+                        "item_type": "product",
+                        "id": product_id,
+                        "name": item_name,
+                        "quantity": qty,
+                        "price": 0,
+                    }]) if product_id else json.dumps([])
+
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.orders "
+                        f"(customer_name, customer_phone, customer_email, order_type, "
+                        f"items, total, comment, status, created_at, updated_at) "
+                        f"VALUES (%s, %s, %s, 'parts', %s, 0, %s, 'new', NOW(), NOW()) "
+                        f"RETURNING id",
+                        (orig_name, orig_phone, orig_email, item_payload, new_comment),
+                    )
+                    replacement_order_id = cur.fetchone()[0]
+
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_rma "
                 f"(order_id, group_id, product_id, slot, item_name, qty, reason, "
-                f"source_type, status, quarantine_qty, detected_at, created_at, updated_at) "
-                f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new', %s, CURRENT_DATE, NOW(), NOW()) "
+                f"source_type, status, quarantine_qty, replace_from_stock, "
+                f"replacement_order_id, detected_at, created_at, updated_at) "
+                f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, %s, CURRENT_DATE, NOW(), NOW()) "
                 f"RETURNING id",
                 (order_id, group_id, product_id, slot, item_name, qty, reason,
-                 source_type, qty),
+                 source_type, qty, replace_from_stock, replacement_order_id),
             )
             rma_id = cur.fetchone()[0]
             conn.commit()
 
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"ok": True, "rma_id": rma_id,
-                                        "quarantine_supply_id": quarantine_supply_id})}
+                                        "quarantine_supply_id": quarantine_supply_id,
+                                        "replacement_order_id": replacement_order_id})}
 
         # ── Обновить статус / заметку поставщика ────────────────────────────
         if action == "update" and method == "PATCH":
@@ -428,7 +485,8 @@ def handler(event: dict, context) -> dict:
                 f"r.qty, r.reason, r.source_type, r.status, r.supplier_note, r.resolution, "
                 f"r.detected_at, r.resolved_at, r.quarantine_qty, r.replacement_supply_id, "
                 f"r.created_at, r.updated_at, "
-                f"o.customer_name, o.customer_phone, g.name, g.sku, NULL "
+                f"o.customer_name, o.customer_phone, g.name, g.sku, NULL, "
+                f"r.replacement_order_id, r.replace_from_stock "
                 f"FROM {SCHEMA}.warehouse_rma r "
                 f"LEFT JOIN {SCHEMA}.orders o ON o.id = r.order_id "
                 f"LEFT JOIN {SCHEMA}.warehouse_groups g ON g.id = r.group_id "

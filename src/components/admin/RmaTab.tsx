@@ -24,6 +24,8 @@ interface RmaItem {
   group_name: string | null
   group_sku: string | null
   created_at: string
+  replacement_order_id: number | null
+  replace_from_stock: boolean
 }
 
 interface OrderComponent {
@@ -62,6 +64,7 @@ const EMPTY_FORM = {
   qty: 1,
   reason: "",
   source_type: "order",
+  replace_from_stock: false,
 }
 
 export default function RmaTab() {
@@ -77,6 +80,11 @@ export default function RmaTab() {
   const [orderInfo, setOrderInfo] = useState<{ customer_name: string; customer_phone: string; order_type: string } | null>(null)
   const [orderLoading, setOrderLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Остатки для галочки «заменить со склада»
+  const [stockQty, setStockQty] = useState<{ on_hand: number; reserved: number; free: number } | null>(null)
+  const [stockQtyLoading, setStockQtyLoading] = useState(false)
+  // Уведомление после создания
+  const [successNotice, setSuccessNotice] = useState<{ rma_id: number; replacement_order_id: number | null } | null>(null)
 
   // Детали / редактирование
   const [detailId, setDetailId] = useState<number | null>(null)
@@ -117,19 +125,37 @@ export default function RmaTab() {
   }
 
   const selectComponent = (comp: OrderComponent) => {
-    setForm(f => ({
-      ...f,
-      group_id: comp.group_id,
-      product_id: comp.product_id,
-      slot: comp.slot,
-      item_name: comp.name,
-    }))
+    setForm(f => ({ ...f, group_id: comp.group_id, product_id: comp.product_id, slot: comp.slot, item_name: comp.name }))
+    // Загружаем остатки если выбрана галочка
+    if (comp.group_id) loadStockQty(comp.group_id)
+  }
+
+  const loadStockQty = async (groupId: number) => {
+    setStockQtyLoading(true)
+    setStockQty(null)
+    const res = await api.rma.stockQty(groupId)
+    if (!res.error) setStockQty(res)
+    setStockQtyLoading(false)
+  }
+
+  // При смене галочки — грузим остатки
+  const toggleReplaceFromStock = (checked: boolean) => {
+    setForm(f => ({ ...f, replace_from_stock: checked }))
+    if (checked && form.group_id) loadStockQty(form.group_id)
+  }
+
+  const resetForm = () => {
+    setForm({ ...EMPTY_FORM })
+    setOrderComponents([])
+    setOrderInfo(null)
+    setStockQty(null)
+    setSuccessNotice(null)
   }
 
   const submitCreate = async () => {
     if (!form.item_name.trim() || !form.reason.trim()) return
     setSaving(true)
-    await api.rma.create({
+    const res = await api.rma.create({
       order_id: form.order_id ? Number(form.order_id) : null,
       group_id: form.group_id,
       product_id: form.product_id,
@@ -138,13 +164,17 @@ export default function RmaTab() {
       qty: form.qty,
       reason: form.reason,
       source_type: form.source_type,
+      replace_from_stock: form.replace_from_stock,
     })
     setSaving(false)
-    setShowCreate(false)
-    setForm({ ...EMPTY_FORM })
-    setOrderComponents([])
-    setOrderInfo(null)
-    load()
+    if (res.ok) {
+      setShowCreate(false)
+      resetForm()
+      if (res.replacement_order_id || res.rma_id) {
+        setSuccessNotice({ rma_id: res.rma_id, replacement_order_id: res.replacement_order_id || null })
+      }
+      load()
+    }
   }
 
   const openDetail = async (id: number) => {
@@ -160,7 +190,9 @@ export default function RmaTab() {
 
   const updateStatus = async (id: number, status: string) => {
     await api.rma.update({ id, status })
-    setItems(prev => prev.map(r => r.id === id ? { ...r, status, status_label: STATUS_OPTIONS.find(s => s.value === status)?.label || status } : r))
+    setItems(prev => prev.map(r => r.id === id
+      ? { ...r, status, status_label: STATUS_OPTIONS.find(s => s.value === status)?.label || status }
+      : r))
     if (detail?.id === id) setDetail(d => d ? { ...d, status } : d)
   }
 
@@ -173,12 +205,7 @@ export default function RmaTab() {
   const doReplacement = async () => {
     if (!detail) return
     setResolving(true)
-    await api.rma.resolveReplacement({
-      rma_id: detail.id,
-      group_id: detail.group_id,
-      qty: replacementQty,
-      cost_price: parseFloat(replacementCost) || 0,
-    })
+    await api.rma.resolveReplacement({ rma_id: detail.id, group_id: detail.group_id, qty: replacementQty, cost_price: parseFloat(replacementCost) || 0 })
     setResolving(false)
     setResolveMode("")
     load()
@@ -199,6 +226,30 @@ export default function RmaTab() {
 
   return (
     <div>
+      {/* Уведомление после создания */}
+      {successNotice && (
+        <div className="mb-5 rounded-xl border border-green-400/30 bg-green-400/5 p-4 flex items-start gap-3">
+          <Icon name="CheckCircle" size={18} className="text-green-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-green-400">RMA #{successNotice.rma_id} создан</p>
+            {successNotice.replacement_order_id && (
+              <p className="text-sm text-foreground/70 mt-0.5">
+                Создан заказ-замена{" "}
+                <a
+                  href={`/admin/order/${successNotice.replacement_order_id}`}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  #{String(successNotice.replacement_order_id).padStart(5, "0")} →  Обработать
+                </a>
+              </p>
+            )}
+          </div>
+          <button onClick={() => setSuccessNotice(null)} className="text-foreground/30 hover:text-foreground shrink-0" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Шапка */}
       <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -253,6 +304,18 @@ export default function RmaTab() {
                       {r.resolution === "replacement" ? "Замена" : r.resolution === "refund" ? "Возврат денег" : "Ремонт"}
                     </span>
                   )}
+                  {r.replace_from_stock && !r.replacement_order_id && (
+                    <span className="rounded-full bg-blue-400/10 px-2.5 py-0.5 text-xs text-blue-400">
+                      <Icon name="PackageCheck" size={10} className="inline mr-1" />Замена со склада
+                    </span>
+                  )}
+                  {r.replacement_order_id && (
+                    <a href={`/admin/order/${r.replacement_order_id}`}
+                      onClick={e => e.stopPropagation()}
+                      className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs text-primary hover:bg-primary/20 transition-colors">
+                      Заказ-замена #{String(r.replacement_order_id).padStart(5, "0")} →
+                    </a>
+                  )}
                   {r.quarantine_qty > 0 && (
                     <span className="rounded-full bg-orange-400/10 px-2.5 py-0.5 text-xs text-orange-400">
                       <Icon name="AlertTriangle" size={10} className="inline mr-1" />Карантин {r.quarantine_qty} шт.
@@ -286,7 +349,7 @@ export default function RmaTab() {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-10" style={{ cursor: "auto" }}>
           <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <button onClick={() => { setShowCreate(false); setForm({ ...EMPTY_FORM }); setOrderComponents([]); setOrderInfo(null) }}
+            <button onClick={() => { setShowCreate(false); resetForm() }}
               className="absolute right-4 top-4 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
               <Icon name="X" size={18} />
             </button>
@@ -348,7 +411,7 @@ export default function RmaTab() {
                           <span className="shrink-0 rounded bg-muted px-2 py-0.5 text-[10px] font-mono text-foreground/50">{comp.slot_label}</span>
                           <span className="flex-1 truncate font-medium">{comp.name}</span>
                           {comp.warranty_until && (
-                            <span className="shrink-0 text-xs text-foreground/40">гарантия до {new Date(comp.warranty_until).toLocaleDateString("ru-RU")}</span>
+                            <span className="shrink-0 text-xs text-foreground/40">до {new Date(comp.warranty_until).toLocaleDateString("ru-RU")}</span>
                           )}
                           {selected && <Icon name="Check" size={14} className="text-primary shrink-0" />}
                         </button>
@@ -358,7 +421,7 @@ export default function RmaTab() {
                 </div>
               )}
 
-              {/* Железка вручную (если нет заказа или не выбрано) */}
+              {/* Железка вручную */}
               <div>
                 <label className="mb-1 block text-xs text-foreground/60">Наименование железки *</label>
                 <input
@@ -370,23 +433,14 @@ export default function RmaTab() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs text-foreground/60">Количество</label>
-                  <input
-                    type="number" min={1} value={form.qty}
-                    onChange={e => setForm(f => ({ ...f, qty: Math.max(1, Number(e.target.value)) }))}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                    style={{ cursor: "text" }}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs text-foreground/60">Дата выявления</label>
-                  <input type="date" readOnly
-                    defaultValue={new Date().toISOString().split("T")[0]}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground/50 focus:outline-none"
-                  />
-                </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/60">Количество</label>
+                <input
+                  type="number" min={1} value={form.qty}
+                  onChange={e => setForm(f => ({ ...f, qty: Math.max(1, Number(e.target.value)) }))}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  style={{ cursor: "text" }}
+                />
               </div>
 
               <div>
@@ -394,10 +448,51 @@ export default function RmaTab() {
                 <textarea
                   value={form.reason}
                   onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
-                  rows={3} placeholder="Не запускается, артефакты на экране, не определяется системой..."
+                  rows={3} placeholder="Не запускается, артефакты на экране..."
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none"
                   style={{ cursor: "text" }}
                 />
+              </div>
+
+              {/* Галочка «Заменить со склада» */}
+              <div className={`rounded-xl border p-4 transition-colors ${form.replace_from_stock ? "border-blue-400/30 bg-blue-400/5" : "border-border bg-muted/20"}`}>
+                <label className="flex items-center gap-3 cursor-pointer" style={{ cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.replace_from_stock}
+                    onChange={e => toggleReplaceFromStock(e.target.checked)}
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-foreground">Заменить сразу со склада</span>
+                    <p className="text-xs text-foreground/50 mt-0.5">Создать новый заказ на замену для клиента</p>
+                  </div>
+                </label>
+
+                {form.replace_from_stock && (
+                  <div className="mt-3 pl-7">
+                    {!form.group_id ? (
+                      <p className="text-xs text-foreground/40">Сначала выберите железку выше, чтобы увидеть остатки</p>
+                    ) : stockQtyLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-foreground/40">
+                        <Icon name="Loader" size={12} className="animate-spin" />Проверяю остатки...
+                      </div>
+                    ) : stockQty ? (
+                      <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${stockQty.free > 0 ? "border-green-400/30 bg-green-400/5 text-green-400" : "border-red-400/30 bg-red-400/5 text-red-400"}`}>
+                        <Icon name={stockQty.free > 0 ? "PackageCheck" : "PackageX"} size={14} />
+                        {stockQty.free > 0
+                          ? `На складе: ${stockQty.free} шт. свободно (${stockQty.on_hand} всего, ${stockQty.reserved} в резерве)`
+                          : `На складе нет свободных единиц (всего ${stockQty.on_hand} шт., все в резерве)`}
+                      </div>
+                    ) : null}
+
+                    {form.order_id && (
+                      <p className="mt-2 text-xs text-foreground/50">
+                        Будет создан заказ: <span className="font-medium text-foreground">«Заказ #{form.order_id.padStart ? form.order_id.toString().padStart(5,"0") : form.order_id} — замена по гарантии»</span>
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -407,7 +502,7 @@ export default function RmaTab() {
                   style={{ cursor: "pointer" }}>
                   {saving ? "Создание..." : "Создать RMA"}
                 </button>
-                <button onClick={() => { setShowCreate(false); setForm({ ...EMPTY_FORM }); setOrderComponents([]); setOrderInfo(null) }}
+                <button onClick={() => { setShowCreate(false); resetForm() }}
                   className="rounded-lg border border-border px-5 py-2.5 text-sm text-foreground/60 hover:border-primary transition-colors"
                   style={{ cursor: "pointer" }}>
                   Отмена
@@ -447,16 +542,32 @@ export default function RmaTab() {
                   )}
                 </div>
 
+                {/* Ссылка на заказ-замену */}
+                {detail.replacement_order_id && (
+                  <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3">
+                    <Icon name="PackageCheck" size={16} className="text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-foreground/50">Заказ-замена создан</p>
+                      <a href={`/admin/order/${detail.replacement_order_id}`}
+                        className="text-sm font-semibold text-primary hover:underline">
+                        #{String(detail.replacement_order_id).padStart(5, "0")} — замена по гарантии →
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-4 mb-5">
                   <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground/50">Количество</span>
                       <span className="text-foreground">{detail.qty} шт.</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-foreground/50">Слот</span>
-                      <span className="text-foreground">{detail.slot || "—"}</span>
-                    </div>
+                    {detail.slot && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-foreground/50">Слот</span>
+                        <span className="text-foreground">{detail.slot}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground/50">Дата выявления</span>
                       <span className="text-foreground">{new Date(detail.detected_at).toLocaleDateString("ru-RU")}</span>
@@ -485,8 +596,7 @@ export default function RmaTab() {
                     <textarea
                       value={supplierNote}
                       onChange={e => setSupplierNote(e.target.value)}
-                      rows={2}
-                      placeholder="Связались с поставщиком, ждём ответа..."
+                      rows={2} placeholder="Связались с поставщиком, ждём ответа..."
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none"
                       style={{ cursor: "text" }}
                     />
@@ -518,7 +628,7 @@ export default function RmaTab() {
                         <button onClick={() => setResolveMode("replacement")}
                           className="flex-1 rounded-lg border border-green-400/30 bg-green-400/5 px-3 py-2 text-xs font-medium text-green-400 hover:bg-green-400/10 transition-colors"
                           style={{ cursor: "pointer" }}>
-                          <Icon name="PackageCheck" size={13} className="inline mr-1.5" />Замена пришла
+                          <Icon name="PackageCheck" size={13} className="inline mr-1.5" />Замена от поставщика
                         </button>
                         <button onClick={() => setResolveMode("refund")}
                           className="flex-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
@@ -530,7 +640,7 @@ export default function RmaTab() {
 
                     {resolveMode === "replacement" && (
                       <div className="rounded-xl border border-green-400/20 bg-green-400/5 p-4 space-y-3">
-                        <p className="text-sm font-medium text-green-400">Замена от поставщика</p>
+                        <p className="text-sm font-medium text-green-400">Замена от поставщика пришла на склад</p>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="mb-1 block text-xs text-foreground/50">Количество</label>
@@ -552,7 +662,7 @@ export default function RmaTab() {
                           <button onClick={doReplacement} disabled={resolving}
                             className="flex-1 rounded-lg bg-green-500 px-4 py-2 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-50 transition-colors"
                             style={{ cursor: "pointer" }}>
-                            {resolving ? "Обработка..." : "Принять замену на склад"}
+                            {resolving ? "Обработка..." : "Принять на склад"}
                           </button>
                           <button onClick={() => setResolveMode("")}
                             className="rounded-lg border border-border px-4 py-2 text-xs text-foreground/60 hover:border-primary transition-colors"
@@ -564,7 +674,7 @@ export default function RmaTab() {
                     {resolveMode === "refund" && (
                       <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
                         <p className="text-sm font-medium text-foreground">Возврат денег от поставщика</p>
-                        <p className="text-xs text-foreground/50">Карантинный товар будет списан со склада. Деньги получены.</p>
+                        <p className="text-xs text-foreground/50">Карантинный товар будет списан.</p>
                         <div className="flex gap-2">
                           <button onClick={doRefund} disabled={resolving}
                             className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
