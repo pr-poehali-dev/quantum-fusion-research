@@ -329,13 +329,18 @@ def handler(event: dict, context) -> dict:
             wip_id = params.get("id")
             if not wip_id:
                 return resp(400, {"error": "Нет id"})
-            # Получаем order_id чтобы снять резервы
-            cur.execute(f"SELECT order_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
+            # Получаем order_id и build_id
+            cur.execute(f"SELECT order_id, build_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             row = cur.fetchone()
             order_id = row[0] if row else None
+            build_id = row[1] if row else None
             # Снимаем резервы: NEGATIVE только NEW (заказанное у поставщика остаётся в закупке)
             if order_id:
                 core.release_order_reserves(cur, order_id, only_new_negative=True)
+                # ВАЖНО: архивируем заказ, иначе он осиротеет (висит в заказах без WIP)
+                cur.execute(f"UPDATE {SCHEMA}.orders SET status='archived', updated_at=NOW() WHERE id=%s", (order_id,))
+            if build_id:
+                cur.execute(f"UPDATE {SCHEMA}.pc_builds SET status='archive' WHERE id=%s", (build_id,))
             # Удаляем запись сборки
             cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             conn.commit()
