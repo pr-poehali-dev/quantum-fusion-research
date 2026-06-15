@@ -7,13 +7,23 @@ import {
 } from "./schedule.types"
 
 interface EventEmployee { id: number; name: string; color: string }
+type TaskStatus = "new" | "in_progress" | "done"
 interface CalEvent {
   id: number
   event_date: string
   title: string
   description: string
   employees: EventEmployee[]
-  kind: "event"
+  kind: "event" | "task"
+  status: TaskStatus
+  origin_id: number | null
+  days_idle: number
+}
+
+const TASK_STATUS: Record<TaskStatus, { label: string; cls: string }> = {
+  new:         { label: "Новая",     cls: "bg-red-500/15 text-red-400 border-red-500/40" },
+  in_progress: { label: "Приступил", cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/40" },
+  done:        { label: "Завершена", cls: "bg-green-500/15 text-green-400 border-green-500/40" },
 }
 interface Pickup {
   event_date: string
@@ -31,7 +41,7 @@ interface Handout {
   kind: "handout"
 }
 
-const EMPTY_FORM = { id: null as number | null, event_date: "", title: "", description: "", employee_ids: [] as number[] }
+const EMPTY_FORM = { id: null as number | null, event_date: "", title: "", description: "", employee_ids: [] as number[], kind: "event" as "event" | "task" }
 
 export default function CalendarTab() {
   const { sessionId } = useAuth()
@@ -47,6 +57,8 @@ export default function CalendarTab() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Фильтр по типу: все / только задачи / только события
+  const [filter, setFilter] = useState<"all" | "task" | "event">("all")
 
   const call = useCallback(async (qs: string, opts?: RequestInit) => {
     const res = await fetch(`${SCHEDULE_URL}?${withAk(qs)}`, { ...opts, headers: authH(sessionId || "") })
@@ -76,9 +88,11 @@ export default function CalendarTab() {
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7))
   const todayIso = isoDate(today)
 
-  const eventsByDay = (iso: string) => events.filter(e => e.event_date === iso)
-  const pickupsByDay = (iso: string) => pickups.filter(p => p.event_date === iso)
-  const handoutsByDay = (iso: string) => handouts.filter(h => h.event_date === iso)
+  const eventsByDay = (iso: string) => events.filter(e => e.event_date === iso && (filter === "all" || e.kind === filter))
+  // Заборы/выдачи — это «события»: скрываем их при фильтре «только задачи»
+  const showAuto = filter !== "task"
+  const pickupsByDay = (iso: string) => showAuto ? pickups.filter(p => p.event_date === iso) : []
+  const handoutsByDay = (iso: string) => showAuto ? handouts.filter(h => h.event_date === iso) : []
   const dayCount = (iso: string) => eventsByDay(iso).length + pickupsByDay(iso).length + handoutsByDay(iso).length
 
   const openCreate = (iso: string) => {
@@ -86,7 +100,7 @@ export default function CalendarTab() {
     setModalOpen(true)
   }
   const openEdit = (ev: CalEvent) => {
-    setForm({ id: ev.id, event_date: ev.event_date, title: ev.title, description: ev.description || "", employee_ids: ev.employees.map(e => e.id) })
+    setForm({ id: ev.id, event_date: ev.event_date, title: ev.title, description: ev.description || "", employee_ids: ev.employees.map(e => e.id), kind: ev.kind })
     setModalOpen(true)
   }
 
@@ -99,6 +113,7 @@ export default function CalendarTab() {
       body: JSON.stringify({
         id: form.id, event_date: form.event_date, title: form.title.trim(),
         description: form.description.trim(), employee_ids: form.employee_ids,
+        kind: form.kind, status: "new",
       }),
     })
     setSaving(false)
@@ -111,6 +126,12 @@ export default function CalendarTab() {
     if (!confirm("Удалить событие?")) return
     await call("action=event_delete", { method: "POST", body: JSON.stringify({ id }) })
     load()
+  }
+
+  // Смена статуса задачи (доступна любому сотруднику)
+  const setTaskStatus = async (id: number, status: TaskStatus) => {
+    setEvents(prev => prev.map(e => e.id === id ? { ...e, status } : e))
+    await call("action=event_set_status", { method: "POST", body: JSON.stringify({ id, status }) })
   }
 
   const toggleEmp = (id: number) => setForm(f => ({
@@ -135,6 +156,17 @@ export default function CalendarTab() {
             <Icon name="ChevronRight" size={16} />
           </button>
         </div>
+      </div>
+
+      {/* Фильтр по типу */}
+      <div className="mb-4 flex gap-2">
+        {([["all", "Все"], ["task", "Задачи"], ["event", "События"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setFilter(key)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${filter === key ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Сетка месяца */}
@@ -181,11 +213,20 @@ export default function CalendarTab() {
                           🚀 Выдача #{h.order_number}
                         </div>
                       ))}
-                      {dayEvents.slice(0, 2).map(e => (
-                        <div key={e.id} className="truncate rounded bg-blue-500/15 px-1 py-0.5 text-[10px] font-medium text-blue-400" title={e.title}>
-                          {e.title}
-                        </div>
-                      ))}
+                      {dayEvents.slice(0, 2).map(e => {
+                        const isTask = e.kind === "task"
+                        const cls = isTask
+                          ? (e.status === "done" ? "bg-green-500/15 text-green-400"
+                            : e.status === "in_progress" ? "bg-yellow-500/15 text-yellow-400"
+                            : "bg-red-500/15 text-red-400")
+                          : "bg-blue-500/15 text-blue-400"
+                        const xN = isTask && e.days_idle > 1 ? ` ×${e.days_idle}` : ""
+                        return (
+                          <div key={e.id} className={`truncate rounded px-1 py-0.5 text-[10px] font-medium ${cls}`} title={`${isTask ? "Задача: " : ""}${e.title}${xN}`}>
+                            {isTask ? "✓ " : ""}{e.title}{xN}
+                          </div>
+                        )
+                      })}
                       {dayEvents.length > 2 && (
                         <div className="text-[10px] text-foreground/40">+{dayEvents.length - 2} ещё</div>
                       )}
@@ -231,13 +272,31 @@ export default function CalendarTab() {
             </a>
           ))}
 
-          {/* События */}
-          {selDayEvents.map(e => (
+          {/* События и задачи */}
+          {selDayEvents.map(e => {
+            const isTask = e.kind === "task"
+            return (
             <div key={e.id} className="mb-2 flex items-start gap-3 rounded-lg border border-border bg-background px-3 py-2">
-              <Icon name="CalendarCheck" size={16} className="text-blue-400 shrink-0 mt-0.5" />
+              <Icon name={isTask ? "ListChecks" : "CalendarCheck"} size={16} className={`${isTask ? "text-purple-400" : "text-blue-400"} shrink-0 mt-0.5`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{e.title}</p>
-                {e.description && <p className="text-xs text-foreground/50 mt-0.5">{e.description}</p>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-foreground">{e.title}</p>
+                  {isTask && e.days_idle > 1 && (
+                    <span className="rounded-full bg-orange-400/15 px-1.5 py-0.5 text-[10px] font-bold text-orange-400" title={`В работе ${e.days_idle} дн.`}>×{e.days_idle}</span>
+                  )}
+                </div>
+                {e.description && <p className="text-xs text-foreground/50 mt-0.5 whitespace-pre-line">{e.description}</p>}
+                {isTask && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {(["new", "in_progress", "done"] as TaskStatus[]).map(s => (
+                      <button key={s} onClick={() => setTaskStatus(e.id, s)}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${e.status === s ? TASK_STATUS[s].cls : "border-border text-foreground/40 hover:text-foreground"}`}
+                        style={{ cursor: "pointer" }}>
+                        {TASK_STATUS[s].label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {e.employees.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {e.employees.map(emp => (
@@ -253,7 +312,8 @@ export default function CalendarTab() {
                 <button onClick={() => removeEvent(e.id)} className="text-foreground/40 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}><Icon name="Trash2" size={14} /></button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -262,8 +322,20 @@ export default function CalendarTab() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-16" style={{ cursor: "auto" }} onClick={() => setModalOpen(false)}>
           <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <button onClick={() => setModalOpen(false)} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="X" size={18} /></button>
-            <h3 className="mb-5 text-lg font-medium text-foreground">{form.id ? "Редактировать событие" : "Новое событие"}</h3>
+            <h3 className="mb-5 text-lg font-medium text-foreground">{form.id ? "Редактировать" : "Новая запись"}</h3>
             <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs text-foreground/50">Тип</label>
+                <div className="flex gap-2">
+                  {([["event", "Событие"], ["task", "Задача"]] as const).map(([k, label]) => (
+                    <button key={k} onClick={() => setForm(f => ({ ...f, kind: k }))}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.kind === k ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary"}`}
+                      style={{ cursor: "pointer" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/50">Дата *</label>
                 <input type="date" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))}

@@ -32,6 +32,59 @@ def require_admin(cur, session_id, admin_key=None):
         return row[0]
     return None
 
+
+def _carry_over_tasks(cur):
+    """
+    Переносит (копирует) невыполненные задачи на сегодня.
+    Для каждой цепочки задач (по origin_id) берём последнюю копию. Если она
+    раньше сегодня и статус не 'done' — создаём копию на сегодняшнюю дату
+    (если её ещё нет). Ответственные копируются. origin_id/origin_date цепочки
+    сохраняются — это даёт корректный счётчик дней простоя (xN).
+    """
+    # Последняя копия каждой цепочки задач (origin_id), не завершённая, в прошлом
+    cur.execute(
+        f"""
+        WITH chains AS (
+            SELECT COALESCE(origin_id, id) AS chain_id, MAX(event_date) AS last_date
+            FROM {SCHEMA}.calendar_events
+            WHERE kind = 'task'
+            GROUP BY COALESCE(origin_id, id)
+        )
+        SELECT ce.id, ce.title, ce.description, ce.status,
+               COALESCE(ce.origin_id, ce.id) AS origin_id,
+               COALESCE(ce.origin_date, ce.event_date) AS origin_date
+        FROM {SCHEMA}.calendar_events ce
+        JOIN chains c ON c.chain_id = COALESCE(ce.origin_id, ce.id)
+                      AND c.last_date = ce.event_date
+        WHERE ce.kind = 'task' AND ce.status <> 'done' AND ce.event_date < CURRENT_DATE
+        """
+    )
+    rows = cur.fetchall()
+    for (eid, title, descr, status, origin_id, origin_date) in rows:
+        # Нет ли уже копии этой цепочки на сегодня
+        cur.execute(
+            f"SELECT 1 FROM {SCHEMA}.calendar_events "
+            f"WHERE kind='task' AND COALESCE(origin_id, id) = {int(origin_id)} "
+            f"AND event_date = CURRENT_DATE LIMIT 1"
+        )
+        if cur.fetchone():
+            continue
+        # Создаём копию на сегодня (статус сохраняем: new/in_progress)
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.calendar_events "
+            f"(event_date, title, description, kind, status, origin_id, origin_date) "
+            f"VALUES (CURRENT_DATE, {esc(title)}, {esc(descr or '')}, 'task', {esc(status)}, "
+            f"{int(origin_id)}, {esc(origin_date.isoformat())}) RETURNING id"
+        )
+        new_id = cur.fetchone()[0]
+        # Копируем ответственных
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.calendar_event_employees (event_id, employee_id) "
+            f"SELECT {new_id}, employee_id FROM {SCHEMA}.calendar_event_employees "
+            f"WHERE event_id = {int(eid)} ON CONFLICT DO NOTHING"
+        )
+
+
 def handler(event: dict, context) -> dict:
     """
     Расписание сотрудников.
@@ -199,9 +252,17 @@ def handler(event: dict, context) -> dict:
         elif action == "events" and method == "GET":
             year = int(params.get("year", 2026))
             month = int(params.get("month", 1))
-            # Свои события месяца + ответственные
+
+            # Авто-перенос невыполненных задач (kind='task', status != 'done')
+            # из прошлых дней на сегодня. Копируем (дублируем) последнюю копию
+            # цепочки на сегодняшнюю дату, если её там ещё нет.
+            _carry_over_tasks(cur)
+            conn.commit()
+
+            # Свои события/задачи месяца + ответственные
             cur.execute(
-                f"SELECT ce.id, ce.event_date, ce.title, ce.description, "
+                f"SELECT ce.id, ce.event_date, ce.title, ce.description, ce.kind, ce.status, "
+                f"ce.origin_id, ce.origin_date, "
                 f"COALESCE(json_agg(json_build_object('id', e.id, 'name', e.name, 'color', e.color)) "
                 f"  FILTER (WHERE e.id IS NOT NULL), '[]') as employees "
                 f"FROM {SCHEMA}.calendar_events ce "
@@ -211,10 +272,20 @@ def handler(event: dict, context) -> dict:
                 f"AND EXTRACT(MONTH FROM ce.event_date) = {month} "
                 f"GROUP BY ce.id ORDER BY ce.event_date, ce.id"
             )
-            events = [{
-                "id": r[0], "event_date": r[1].isoformat() if r[1] else None,
-                "title": r[2], "description": r[3], "employees": r[4], "kind": "event",
-            } for r in cur.fetchall()]
+            events = []
+            for r in cur.fetchall():
+                kind = r[4] or "event"
+                origin_date = r[7]
+                event_date = r[1]
+                # Дни простоя задачи = дни с первого дня (origin_date) до текущей даты копии
+                days_idle = 0
+                if kind == "task" and origin_date and event_date:
+                    days_idle = (event_date - origin_date).days + 1
+                events.append({
+                    "id": r[0], "event_date": event_date.isoformat() if event_date else None,
+                    "title": r[2], "description": r[3], "kind": kind, "status": r[5] or "new",
+                    "origin_id": r[6], "days_idle": days_idle, "employees": r[8],
+                })
 
             # Авто-события «забрать из магазина»: группируем ETA по (магазин, дата).
             # Одно событие на магазин в день, с числом заказов. Магазин не выбран →
@@ -269,9 +340,17 @@ def handler(event: dict, context) -> dict:
                 return err("Нужны title и event_date")
             description = body.get("description") or ""
             employee_ids = body.get("employee_ids") or []
+            kind = body.get("kind") or "event"
+            if kind not in ("event", "task"):
+                kind = "event"
+            status = body.get("status") or "new"
+            # Для задачи origin_date = дата создания (первый день цепочки)
+            origin_date = esc(event_date) if kind == "task" else "NULL"
             cur.execute(
-                f"INSERT INTO {SCHEMA}.calendar_events (event_date, title, description) "
-                f"VALUES ({esc(event_date)}, {esc(title)}, {esc(description)}) RETURNING id"
+                f"INSERT INTO {SCHEMA}.calendar_events "
+                f"(event_date, title, description, kind, status, origin_date) "
+                f"VALUES ({esc(event_date)}, {esc(title)}, {esc(description)}, "
+                f"{esc(kind)}, {esc(status)}, {origin_date}) RETURNING id"
             )
             eid = cur.fetchone()[0]
             for emp in employee_ids:
@@ -299,6 +378,20 @@ def handler(event: dict, context) -> dict:
                     f"INSERT INTO {SCHEMA}.calendar_event_employees (event_id, employee_id) "
                     f"VALUES ({eid}, {int(emp)}) ON CONFLICT DO NOTHING"
                 )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        # Смена статуса задачи (доступна любому сотруднику, без отдельной авторизации)
+        elif action == "event_set_status" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            eid = int(body["id"])
+            status = body.get("status")
+            if status not in ("new", "in_progress", "done"):
+                return err("Неверный статус")
+            cur.execute(
+                f"UPDATE {SCHEMA}.calendar_events SET status={esc(status)}, updated_at=NOW() "
+                f"WHERE id={eid} AND kind='task'"
+            )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
