@@ -217,14 +217,15 @@ def handler(event: dict, context) -> dict:
             } for r in cur.fetchall()]
 
             # Авто-события «забрать из магазина»: группируем ETA по (магазин, дата).
-            # Одно событие на магазин в день, с числом заказов.
+            # Одно событие на магазин в день, с числом заказов. Магазин не выбран →
+            # отдельная группа «Магазин не указан» (LEFT JOIN), чтобы забор был виден.
             cur.execute(
                 f"SELECT eta.eta_date, st.id, st.name, st.code, "
                 f"COUNT(DISTINCT wb.order_id) as orders_cnt "
                 f"FROM {SCHEMA}.wip_component_eta eta "
-                f"JOIN {SCHEMA}.warehouse_stores st ON st.id = eta.store_id "
+                f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = eta.store_id "
                 f"JOIN {SCHEMA}.wip_builds wb ON wb.id = eta.wip_id "
-                f"WHERE eta.eta_date IS NOT NULL AND eta.store_id IS NOT NULL "
+                f"WHERE eta.eta_date IS NOT NULL "
                 f"AND EXTRACT(YEAR FROM eta.eta_date) = {year} "
                 f"AND EXTRACT(MONTH FROM eta.eta_date) = {month} "
                 f"AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён') "
@@ -233,12 +234,31 @@ def handler(event: dict, context) -> dict:
             )
             pickups = [{
                 "event_date": r[0].isoformat() if r[0] else None,
-                "store_id": r[1], "store_name": r[2], "store_code": r[3],
+                "store_id": r[1], "store_name": r[2] or "Магазин не указан",
+                "store_code": r[3] or "—",
                 "orders_count": int(r[4]), "kind": "pickup",
             } for r in cur.fetchall()]
 
+            # Авто-события «выдача ПК» по дате выдачи (issued_at) из wip_builds
+            cur.execute(
+                f"SELECT wb.issued_at, wb.order_number, wb.order_id, "
+                f"COALESCE(o.customer_name, '') as customer "
+                f"FROM {SCHEMA}.wip_builds wb "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = wb.order_id "
+                f"WHERE wb.issued_at IS NOT NULL "
+                f"AND EXTRACT(YEAR FROM wb.issued_at) = {year} "
+                f"AND EXTRACT(MONTH FROM wb.issued_at) = {month} "
+                f"AND wb.stage NOT IN ('Архив', 'Отменён') "
+                f"ORDER BY wb.issued_at"
+            )
+            handouts = [{
+                "event_date": r[0].isoformat() if r[0] else None,
+                "order_number": r[1], "order_id": r[2], "customer_name": r[3],
+                "kind": "handout",
+            } for r in cur.fetchall()]
+
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
-                "events": events, "pickups": pickups
+                "events": events, "pickups": pickups, "handouts": handouts
             })}
 
         elif action == "event_create" and method == "POST":

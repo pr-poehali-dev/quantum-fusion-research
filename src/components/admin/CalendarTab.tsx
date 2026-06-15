@@ -17,11 +17,18 @@ interface CalEvent {
 }
 interface Pickup {
   event_date: string
-  store_id: number
+  store_id: number | null
   store_name: string
   store_code: string
   orders_count: number
   kind: "pickup"
+}
+interface Handout {
+  event_date: string
+  order_number: string
+  order_id: number
+  customer_name: string
+  kind: "handout"
 }
 
 const EMPTY_FORM = { id: null as number | null, event_date: "", title: "", description: "", employee_ids: [] as number[] }
@@ -33,6 +40,7 @@ export default function CalendarTab() {
   const [month, setMonth] = useState(today.getMonth() + 1)
   const [events, setEvents] = useState<CalEvent[]>([])
   const [pickups, setPickups] = useState<Pickup[]>([])
+  const [handouts, setHandouts] = useState<Handout[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
@@ -53,6 +61,7 @@ export default function CalendarTab() {
     ])
     setEvents(d.events || [])
     setPickups(d.pickups || [])
+    setHandouts(d.handouts || [])
     setEmployees((e.employees || []).filter((x: Employee) => x.is_active))
     setLoading(false)
   }, [call, year, month])
@@ -69,7 +78,8 @@ export default function CalendarTab() {
 
   const eventsByDay = (iso: string) => events.filter(e => e.event_date === iso)
   const pickupsByDay = (iso: string) => pickups.filter(p => p.event_date === iso)
-  const dayCount = (iso: string) => eventsByDay(iso).length + pickupsByDay(iso).length
+  const handoutsByDay = (iso: string) => handouts.filter(h => h.event_date === iso)
+  const dayCount = (iso: string) => eventsByDay(iso).length + pickupsByDay(iso).length + handoutsByDay(iso).length
 
   const openCreate = (iso: string) => {
     setForm({ ...EMPTY_FORM, event_date: iso })
@@ -109,6 +119,7 @@ export default function CalendarTab() {
 
   const selDayEvents = selectedDay ? eventsByDay(selectedDay) : []
   const selDayPickups = selectedDay ? pickupsByDay(selectedDay) : []
+  const selDayHandouts = selectedDay ? handoutsByDay(selectedDay) : []
 
   return (
     <div>
@@ -147,6 +158,7 @@ export default function CalendarTab() {
                 const cnt = dayCount(iso)
                 const dayEvents = eventsByDay(iso)
                 const dayPickups = pickupsByDay(iso)
+                const dayHandouts = handoutsByDay(iso)
                 return (
                   <div
                     key={di}
@@ -162,6 +174,11 @@ export default function CalendarTab() {
                       {dayPickups.map((p, i) => (
                         <div key={`p${i}`} className="truncate rounded bg-orange-400/15 px-1 py-0.5 text-[10px] font-medium text-orange-400" title={`Забрать ${p.orders_count} заказ(ов) из ${p.store_name}`}>
                           📦 {p.store_code} · {p.orders_count}
+                        </div>
+                      ))}
+                      {dayHandouts.map((h, i) => (
+                        <div key={`h${i}`} className="truncate rounded bg-green-500/15 px-1 py-0.5 text-[10px] font-medium text-green-400" title={`Выдача ПК заказ #${h.order_number}`}>
+                          🚀 Выдача #{h.order_number}
                         </div>
                       ))}
                       {dayEvents.slice(0, 2).map(e => (
@@ -193,7 +210,7 @@ export default function CalendarTab() {
             </button>
           </div>
 
-          {selDayPickups.length === 0 && selDayEvents.length === 0 && (
+          {selDayPickups.length === 0 && selDayEvents.length === 0 && selDayHandouts.length === 0 && (
             <p className="py-4 text-center text-sm text-foreground/40">На этот день ничего не запланировано</p>
           )}
 
@@ -203,6 +220,15 @@ export default function CalendarTab() {
               <Icon name="PackageCheck" size={16} className="text-orange-400 shrink-0" />
               <span className="text-sm text-foreground">Забрать <b>{p.orders_count}</b> заказ(ов) из <b>{p.store_name}</b></span>
             </div>
+          ))}
+
+          {/* Выдачи ПК */}
+          {selDayHandouts.map((h, i) => (
+            <a key={`ho${i}`} href={`/admin/order/${h.order_id}`}
+              className="mb-2 flex items-center gap-3 rounded-lg border border-green-400/30 bg-green-400/5 px-3 py-2 hover:border-green-400/60 transition-colors">
+              <Icon name="Rocket" size={16} className="text-green-400 shrink-0" />
+              <span className="text-sm text-foreground">Выдача ПК — заказ <b>#{h.order_number}</b>{h.customer_name && <span className="text-foreground/60"> · {h.customer_name}</span>}</span>
+            </a>
           ))}
 
           {/* События */}
