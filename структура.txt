@@ -27,7 +27,8 @@
 - cables        → https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63
 - sync-products → https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031
 - crm-probe     → https://functions.poehali.dev/7f435c7f-a17c-406d-9f00-29c5b52f287e
-- wip-builds    → НЕ ЗАДЕПЛОЕНА (код в /backend/wip-builds/ устарел, логика перенесена в builds)
+- wip-builds    → НЕ ЗАДЕПЛОЕНА (папка /backend/wip-builds/ мёртвая; НО таблица wip_builds живая — см. раздел "WIP-сборки" ниже)
+- (frontend ждёт URL cb6e9d4e-... для WIP-операций — он НЕ существует, часть WIP-функций не работает)
 
 ## Функции и их назначение
 
@@ -54,7 +55,7 @@ warehouse_stock_log, warehouse_backorders.
 
 ### orders
 Заказы: создание с привязкой к пользователю, список, смена статусов.
-Статусы: active, archived, cancelled.
+Статусы: new (по умолчанию при создании), archived, cancelled.
 
 ### reserves
 HTTP-обёртка над ядром складских резервов (warehouse_core.py).
@@ -76,7 +77,7 @@ CRUD тегов для сборок ПК. Простая справочная т
 
 ### notifications
 Уведомления пользователей: получение непрочитанных, смена статуса.
-⚠️ Даёт 401 каждые 30 сек — есть polling во фронтенде без авторизации, нужно разобраться.
+(Известная проблема с 401 вынесена в чейнжлог как открытая задача.)
 
 ### upload
 Загрузка изображений: сжатие в WebP, оптимизация, сохранение в S3.
@@ -103,7 +104,26 @@ B2B прайс-лист для партнёров (розница + опт). Т�
 ### crm-probe
 Тестовый зонд для проверки внешнего CRM API. Служебная функция.
 
-### wip-builds (папка /backend/wip-builds/)
-⚠️ НЕ ЗАДЕПЛОЕНА — runtime определялся как nodejs22, таймаут деплоя.
-Код содержит warehouse_core.py с логикой резервов.
-Актуальная логика cancel_order перенесена в builds/index.py.
+## WIP-сборки (Work In Progress) — ВАЖНО, читай внимательно
+
+ТАБЛИЦА wip_builds — ЖИВАЯ И НУЖНАЯ. Хранит сборки в процессе:
+этапы сборки, статусы компонентов (cpu_status, gpu_status...), привязку к order_id.
+Создана в db_migrations/V0025__create_wip_builds.sql.
+Используется в backend: orders, reserves, warehouse, rma, generate-warranty, builds.
+Используется во frontend: Admin.tsx, BuildPreview.tsx, AdminWipTab.tsx.
+НЕ УДАЛЯТЬ таблицу!
+
+ПАПКА-ФУНКЦИЯ /backend/wip-builds/ — МЁРТВАЯ.
+Не задеплоена (нет URL в func2url.json), её код никогда не выполняется.
+Логика была частично перенесена:
+- cancel_order → builds/index.py (отмена заказа, снятие резервов, архив)
+- delete_wip → warehouse/index.py (удаление сборки со снятием резервов)
+
+ОТКРЫТАЯ ПРОБЛЕМА: frontend (src/lib/api.ts, ключ wipBuilds, URL cb6e9d4e-...)
+вызывает несуществующую функцию для операций:
+- создание WIP-сборки
+- обновление WIP-сборки
+- смена этапа сборки (PATCH stage)
+- смена статуса компонента (PATCH component)
+Эти операции сейчас НЕ РАБОТАЮТ (URL не задеплоен).
+Нужно решить: восстановить функцию wip-builds или перенести логику в builds/warehouse.
