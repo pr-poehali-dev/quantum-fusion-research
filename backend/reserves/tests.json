@@ -29,6 +29,12 @@
       "method": "GET",
       "path": "/?action=selftest",
       "expectedStatus": 200
+    },
+    {
+      "name": "Cleanup wipes all selftest leftovers",
+      "method": "GET",
+      "path": "/?action=cleanup_selftest",
+      "expectedStatus": 200
     }
   ]
 }

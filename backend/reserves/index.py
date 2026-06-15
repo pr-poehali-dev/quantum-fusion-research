@@ -40,6 +40,41 @@ def _basket_qty(cur, group_id):
     return int(row[0]) if row else 0
 
 
+def _cleanup_selftest(cur):
+    """
+    Физически удаляет ВСЕ следы селф-тестов из БД (метки __selftest__).
+    Безопасно: трогает только записи с тест-метками. Вызывается до и после
+    прогона теста — гарантирует, что мусор не накапливается, даже если
+    предыдущий rollback не сработал.
+    Возвращает кол-во удалённых заказов/групп/товаров.
+    """
+    # id тестовых заказов и групп
+    cur.execute(
+        f"SELECT id FROM {SCHEMA}.orders "
+        f"WHERE customer_name LIKE '\\_\\_selftest%' OR customer_name LIKE '\\_\\_SELFTEST%'"
+    )
+    order_ids = [r[0] for r in cur.fetchall()]
+    cur.execute(f"SELECT id FROM {SCHEMA}.warehouse_groups WHERE name = '__selftest_grp__'")
+    group_ids = [r[0] for r in cur.fetchall()]
+
+    def _in(ids):
+        return "(" + ",".join(str(int(i)) for i in ids) + ")" if ids else "(-1)"
+
+    oi, gi = _in(order_ids), _in(group_ids)
+
+    # Зависимые таблицы (по заказам и по группам)
+    for col, vals in (("order_id", oi), ("group_id", gi)):
+        cur.execute(f"DELETE FROM {SCHEMA}.warehouse_reserves WHERE {col} IN {vals}")
+        cur.execute(f"DELETE FROM {SCHEMA}.warehouse_movements WHERE {col} IN {vals}")
+        cur.execute(f"DELETE FROM {SCHEMA}.warehouse_stock_log WHERE {col} IN {vals}")
+    cur.execute(f"DELETE FROM {SCHEMA}.warehouse_purchase_basket WHERE group_id IN {gi}")
+    cur.execute(f"DELETE FROM {SCHEMA}.warehouse_supplies WHERE group_id IN {gi}")
+    cur.execute(f"DELETE FROM {SCHEMA}.warehouse_groups WHERE id IN {gi}")
+    cur.execute(f"DELETE FROM {SCHEMA}.orders WHERE id IN {oi}")
+    cur.execute(f"DELETE FROM {SCHEMA}.products WHERE name = '__selftest_prod__'")
+    return {"orders": len(order_ids), "groups": len(group_ids)}
+
+
 def _run_selftest(cur):
     """
     Прогон QA-сценариев на временных данных. Вызывается внутри транзакции,
@@ -528,6 +563,10 @@ def handler(event: dict, context) -> dict:
         if action == "selftest" and method == "GET":
             report = _run_selftest(cur)
             conn.rollback()  # ВАЖНО: откатываем все изменения теста
+            # Гарантированная зачистка: удаляем любой накопившийся тест-мусор
+            # (например, если прошлый прогон не откатился). Отдельная транзакция.
+            cleaned = _cleanup_selftest(cur)
+            conn.commit()
             cases = [r for r in report if "passed" in r]
             failed = [r for r in cases if not r.get("passed")]
             summary = {
@@ -536,9 +575,17 @@ def handler(event: dict, context) -> dict:
                 "failed": len(failed),
                 "all_passed": len(failed) == 0,
                 "failed_cases": [{"case": r["case"], "actual": r.get("actual")} for r in failed],
+                "cleaned": cleaned,
             }
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"ok": True, "summary": summary, "report": report})}
+
+        # ── Принудительная зачистка тест-мусора (на случай ручного вызова) ─────
+        if action == "cleanup_selftest" and method in ("POST", "GET"):
+            cleaned = _cleanup_selftest(cur)
+            conn.commit()
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"ok": True, "cleaned": cleaned})}
 
         return {"statusCode": 400, "headers": cors,
                 "body": json.dumps({"error": f"unknown action: {action}"})}
