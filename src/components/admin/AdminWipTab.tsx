@@ -340,6 +340,10 @@ export function AdminWipTab({
                 const key = String(build.wip_id)
                 const isOpen = basketExpanded[key]
                 const newCnt = build.items.filter(i => i.status === "NEW").length
+                // Крайняя (самая поздняя) дата прихода среди позиций сборки
+                const etaDates = build.items.map(i => i.eta_date).filter(Boolean) as string[]
+                const latestEta = etaDates.length ? etaDates.reduce((a, b) => (a > b ? a : b)) : null
+                const anyDelayed = build.items.some(i => i.is_delayed)
                 return (
                   <div key={key} className="rounded-xl border border-border bg-card overflow-hidden">
                     <button
@@ -351,12 +355,23 @@ export function AdminWipTab({
                         <span className="font-mono font-semibold text-sm text-foreground">Сборка #{build.order_number}</span>
                         <span className="text-xs text-foreground/40">{build.stage}</span>
                         <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{build.items.length} позиций</span>
+                        {newCnt > 0 && (
+                          <span className="rounded-full bg-red-400/10 px-2.5 py-0.5 text-xs font-medium text-red-400">заказать {newCnt}</span>
+                        )}
+                        {newCnt === 0 && (
+                          <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">всё заказано</span>
+                        )}
                       </div>
-                      {newCnt > 0 && (
-                        <span className="rounded-full bg-red-400/10 px-2.5 py-0.5 text-xs font-medium text-red-400">заказать {newCnt}</span>
-                      )}
-                      {newCnt === 0 && (
-                        <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">всё заказано</span>
+                      {latestEta && (
+                        <span
+                          className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-medium ${
+                            anyDelayed ? "border-orange-400/50 text-orange-400 bg-orange-400/5"
+                                       : "border-yellow-400/40 text-yellow-400 bg-yellow-400/5"
+                          }`}
+                          title="Крайняя дата прихода железа по сборке">
+                          <Icon name="CalendarClock" size={13} />
+                          до {new Date(latestEta).toLocaleDateString("ru-RU")}
+                        </span>
                       )}
                     </button>
                     {isOpen && (
