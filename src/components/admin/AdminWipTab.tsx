@@ -78,9 +78,13 @@ export function AdminWipTab({
     const data = await res.json()
     const builds = data.builds || []
     setBasketBuilds(builds)
-    // По умолчанию раскрываем все сборки
+    // Раскрываем только сборки, где есть незаказанные позиции (NEW).
+    // «Всё заказано» — оставляем свёрнутыми.
     const exp: Record<string, boolean> = {}
-    for (const b of builds) exp[String(b.wip_id)] = true
+    for (const b of builds) {
+      const hasNew = b.items.some((i: { status: string }) => i.status === "NEW")
+      exp[String(b.wip_id)] = hasNew
+    }
     setBasketExpanded(exp)
     setBasketLoading(false)
   }

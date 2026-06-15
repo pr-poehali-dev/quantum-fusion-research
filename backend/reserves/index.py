@@ -464,7 +464,9 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 f"""
                 SELECT
-                    b.group_id, g.name, g.sku, b.required_qty, b.status, g.url_supplier,
+                    b.group_id, g.name, g.sku,
+                    COALESCE((comp->>'qty')::int, 1) as required_qty,
+                    b.status, g.url_supplier,
                     wb.id as wip_id, wb.order_number, wb.order_id, wb.stage,
                     comp->>'slot' as slot,
                     CASE comp->>'slot'
@@ -510,8 +512,18 @@ def handler(event: dict, context) -> dict:
                     "required_qty": req_qty, "status": item_status,
                     "url_supplier": url_supplier, "slot": slot, "slot_status": slot_status,
                 })
+            # Сортировка сборок: сверху те, где есть незаказанные (NEW) позиции,
+            # затем по номеру заказа от нового к старому.
+            def _order_key(b):
+                has_new = any(i["status"] == "NEW" for i in b["items"])
+                try:
+                    num = int(b["order_number"])
+                except (TypeError, ValueError):
+                    num = b["wip_id"]
+                return (0 if has_new else 1, -num)
+            builds_sorted = sorted(by_wip.values(), key=_order_key)
             return {"statusCode": 200, "headers": cors,
-                    "body": json.dumps({"builds": list(by_wip.values())})}
+                    "body": json.dumps({"builds": builds_sorted})}
 
         # ── Диагностика остатков по группе (инвариант) ──────────────────────
         if action == "diag" and method == "GET":
