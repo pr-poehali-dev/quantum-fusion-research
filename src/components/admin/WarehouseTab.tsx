@@ -724,7 +724,7 @@ export default function WarehouseTab() {
         <Button variant="outline" size="sm" onClick={() => setCatModal(true)}>
           <Icon name="Tag" size={14} className="mr-1.5" />Категории
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setQuickSupplyModal(true)}>
+        <Button size="sm" onClick={() => setQuickSupplyModal(true)}>
           <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
         </Button>
         <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
@@ -759,7 +759,7 @@ export default function WarehouseTab() {
         >
           <Icon name="Archive" size={14} className="mr-1.5" />{showArchived ? "Скрыть архив" : "Архив"}
         </Button>
-        <Button size="sm" onClick={() => setGroupModal({})} disabled={showArchived}>
+        <Button variant="outline" size="sm" onClick={() => setGroupModal({})} disabled={showArchived}>
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
         </Button>
       </div>
