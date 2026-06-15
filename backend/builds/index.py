@@ -124,6 +124,47 @@ def handler(event: dict, context) -> dict:
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
+            action = body.get("action")
+
+            if action == "cancel_order":
+                SCHEMA = "t_p72635010_quantum_fusion_resea"
+                wip_id = body.get("wip_id")
+                if not wip_id:
+                    return resp(400, {"error": "Нет wip_id"})
+                cur.execute(f"SELECT order_id, build_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
+                row = cur.fetchone()
+                if not row:
+                    return resp(404, {"error": "Сборка не найдена"})
+                order_id, build_id = row
+                if order_id:
+                    cur.execute(
+                        f"SELECT id, group_id, supply_id, qty, type FROM {SCHEMA}.warehouse_reserves "
+                        f"WHERE order_id = %s AND status = 'ACTIVE'", (order_id,)
+                    )
+                    for rid, group_id, supply_id, r_qty, r_type in cur.fetchall():
+                        if r_type == 'POSITIVE':
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.warehouse_supplies "
+                                f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s",
+                                (r_qty, r_qty, supply_id)
+                            )
+                        else:
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.warehouse_supplies "
+                                f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
+                                (r_qty, supply_id)
+                            )
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() WHERE id = %s",
+                            (rid,)
+                        )
+                    cur.execute(f"UPDATE {SCHEMA}.orders SET status='archived', updated_at=NOW() WHERE id=%s", (order_id,))
+                if build_id:
+                    cur.execute("UPDATE pc_builds SET status='archive' WHERE id=%s", (build_id,))
+                cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,))
+                conn.commit()
+                return resp(200, {"ok": True, "order_id": order_id})
+
             cur.execute(
                 """INSERT INTO pc_builds (name, description, image_urls, components, parts_total,
                    assembly_type, assembly_fee, total_price, status, is_featured, in_stock, sort_order, created_at, parent_id)
