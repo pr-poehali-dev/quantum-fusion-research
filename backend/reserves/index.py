@@ -168,6 +168,66 @@ def _run_selftest(cur):
     report.append({"case": "FIFO by order date (2+3, recv 3)", "passed": ok,
                    "actual": {"order_a": a, "order_b": b, "recv": recv}})
 
+    # ── ОТМЕНА: NEGATIVE со статусом NEW снимается, корзина уменьшается ──
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestC__','0','pc_build','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_c = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid_c, [{"product_id": pid, "qty": 3}])
+    before = {"neg": _group_state(cur, gid)["negative"], "basket": _basket_qty(cur, gid)}
+    core.release_order_reserves(cur, oid_c, only_new_negative=True)
+    after = {"neg": _group_state(cur, gid)["negative"], "basket": _basket_qty(cur, gid)}
+    ok = (before["neg"] == 3 and before["basket"] == 3 and
+          after["neg"] == 0 and after["basket"] == 0)
+    report.append({"case": "cancel NEW negative -> basket cleared", "passed": ok,
+                   "actual": {"before": before, "after": after}})
+
+    # ── ОТМЕНА: NEGATIVE со статусом ORDERED НЕ снимается (железо заказано) ──
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestD__','0','pc_build','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_d = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid_d, [{"product_id": pid, "qty": 4}])
+    # Менеджер пометил "Заказано"
+    cur.execute(
+        f"UPDATE {SCHEMA}.warehouse_purchase_basket SET status='ORDERED' WHERE group_id=%s",
+        (gid,)
+    )
+    before = {"neg": _group_state(cur, gid)["negative"], "basket": _basket_qty(cur, gid)}
+    rel = core.release_order_reserves(cur, oid_d, only_new_negative=True)
+    after = {"neg": _group_state(cur, gid)["negative"], "basket": _basket_qty(cur, gid)}
+    # ORDERED железо остаётся: neg и корзина НЕ меняются, kept_ordered=4
+    ok = (before["neg"] == 4 and after["neg"] == 4 and
+          after["basket"] == 4 and rel["kept_ordered"] == 4 and rel["negative"] == 0)
+    report.append({"case": "cancel ORDERED negative -> kept in basket", "passed": ok,
+                   "actual": {"before": before, "after": after, "released": rel}})
+
+    # ── ОТМЕНА: ORDERED железо приходит и ложится в наличие даже после отмены ──
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestE__','0','pc_build','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_e = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid_e, [{"product_id": pid, "qty": 2}])
+    cur.execute(
+        f"UPDATE {SCHEMA}.warehouse_purchase_basket SET status='ORDERED' WHERE group_id=%s",
+        (gid,)
+    )
+    core.release_order_reserves(cur, oid_e, only_new_negative=True)  # отмена, минус сохранён
+    # Железо приехало
+    core.receive_stock(cur, gid, 2, cost_price=100)
+    st = _group_state(cur, gid)
+    # Заказ отменён, но minus был, приёмка должна закрыть minus и положить в наличие (free)
+    free = st["on_hand"] - st["reserved"]
+    ok = (st["negative"] == 0 and free >= 0)
+    report.append({"case": "ORDERED hardware arrives after cancel -> stock ok", "passed": ok,
+                   "actual": {"state": st, "free": free}})
+
     report.append({"summary": {
         "total": len([r for r in report if "passed" in r]),
         "passed": sum(1 for r in report if r.get("passed")),
@@ -464,8 +524,17 @@ def handler(event: dict, context) -> dict:
         if action == "selftest" and method == "GET":
             report = _run_selftest(cur)
             conn.rollback()  # ВАЖНО: откатываем все изменения теста
+            cases = [r for r in report if "passed" in r]
+            failed = [r for r in cases if not r.get("passed")]
+            summary = {
+                "total": len(cases),
+                "passed": sum(1 for r in cases if r.get("passed")),
+                "failed": len(failed),
+                "all_passed": len(failed) == 0,
+                "failed_cases": [{"case": r["case"], "actual": r.get("actual")} for r in failed],
+            }
             return {"statusCode": 200, "headers": cors,
-                    "body": json.dumps({"ok": True, "report": report})}
+                    "body": json.dumps({"ok": True, "summary": summary, "report": report})}
 
         return {"statusCode": 400, "headers": cors,
                 "body": json.dumps({"error": f"unknown action: {action}"})}
