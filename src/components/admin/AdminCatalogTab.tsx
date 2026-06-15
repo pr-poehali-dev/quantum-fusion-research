@@ -101,15 +101,8 @@ export function AdminCatalogTab({
     category_id: "", name: "", description: "", price: "", old_price: "",
     image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, sort_order: "0",
   })
-  const [showSyncPanel, setShowSyncPanel] = useState(false)
-  const [syncApiUrl, setSyncApiUrl] = useState("http://80.78.243.138/api/webhook/storage")
-  const [syncApiKey, setSyncApiKey] = useState("Deboshir123321")
-  const [syncLoading, setSyncLoading] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number; total: number } | null>(null)
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewData, setPreviewData] = useState<{ raw_sample: unknown[]; parsed_sample: { name: string; price: number }[]; total_items: number } | null>(null)
 
   const toggleStock = async (p: Product) => {
     const newQty = p.in_stock ? 0 : 1
@@ -177,21 +170,6 @@ export function AdminCatalogTab({
       api.products.getAll().then(d => { setProducts(d.products || []); setCategories(d.categories || []) })
     }
     reader.readAsArrayBuffer(file)
-  }
-  const handleSyncApi = async () => {
-    setSyncLoading(true); setSyncResult(null); setPreviewData(null)
-    const res = await api.syncProducts.syncFromApi(syncApiUrl, syncApiKey)
-    setSyncLoading(false)
-    if (res.error) { alert("Ошибка: " + res.error); return }
-    setSyncResult(res)
-    api.products.getAll().then(d => { setProducts(d.products || []); setCategories(d.categories || []) })
-  }
-  const handlePreviewApi = async () => {
-    setPreviewLoading(true); setPreviewData(null); setSyncResult(null)
-    const res = await api.syncProducts.previewApi(syncApiUrl, syncApiKey)
-    setPreviewLoading(false)
-    if (res.error) { alert("Ошибка: " + res.error); return }
-    setPreviewData(res)
   }
 
   // ── Builds ────────────────────────────────────────────────────────────────
@@ -432,48 +410,12 @@ export function AdminCatalogTab({
                 <Icon name={importLoading ? "Loader" : "Upload"} size={14} />Импорт
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = "" }} />
               </label>
-              <button onClick={() => setShowSyncPanel(v => !v)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${showSyncPanel ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary hover:text-foreground"}`} style={{ cursor: "pointer" }}>
-                <Icon name="RefreshCw" size={14} />Синхронизация
-              </button>
               <button onClick={() => setTab("add_product")} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={16} />Добавить
               </button>
             </div>
           </div>
         </div>
-        {showSyncPanel && (
-          <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-            <p className="text-sm font-medium text-foreground">Синхронизация с внешним API</p>
-            <div className="flex gap-2">
-              <input value={syncApiUrl} onChange={e => setSyncApiUrl(e.target.value)} placeholder="URL API" className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-              <input value={syncApiKey} onChange={e => setSyncApiKey(e.target.value)} placeholder="API Key" className="w-48 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-            </div>
-            <div className="flex gap-2">
-              <button onClick={handlePreviewApi} disabled={previewLoading} className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
-                <Icon name={previewLoading ? "Loader" : "Eye"} size={13} />Предпросмотр
-              </button>
-              <button onClick={handleSyncApi} disabled={syncLoading} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
-                <Icon name={syncLoading ? "Loader" : "RefreshCw"} size={13} />Синхронизировать
-              </button>
-            </div>
-            {previewData && (
-              <div className="rounded-lg border border-border bg-background p-3 text-xs">
-                <p className="font-medium text-foreground mb-2">Найдено: {previewData.total_items} товаров</p>
-                <div className="space-y-1">
-                  {previewData.parsed_sample.slice(0, 5).map((p, i) => (
-                    <p key={i} className="text-foreground/60">{p.name} — {p.price?.toLocaleString("ru-RU")} ₽</p>
-                  ))}
-                </div>
-              </div>
-            )}
-            {syncResult && (
-              <div className="rounded-lg border border-green-400/30 bg-green-400/5 p-3 text-xs">
-                <p className="font-medium text-green-400">Синхронизация завершена</p>
-                <p className="text-foreground/60">Добавлено: {syncResult.created} · Обновлено: {syncResult.updated} · Пропущено: {syncResult.skipped} · Всего: {syncResult.total}</p>
-              </div>
-            )}
-          </div>
-        )}
         {(showArchived ? archivedLoading : loading) ? (
           <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-card animate-pulse" />)}</div>
         ) : showArchived && archivedProducts.length === 0 ? (

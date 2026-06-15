@@ -1,14 +1,11 @@
 """
-Синхронизация товаров из внешнего API и экспорт/импорт через Excel (base64).
-POST { action: "sync", api_url, api_key } — тянет товары из внешнего API, добавляет новые
-POST { action: "preview", api_url, api_key } — показывает первые 5 записей как есть (для отладки)
+Экспорт/импорт товаров через Excel (base64).
 POST { action: "import", file_b64 } — импортирует товары из Excel (base64)
 GET  — экспортирует все товары в Excel (base64)
 """
 import json
 import os
 import base64
-import urllib.request
 import psycopg2
 
 CORS = {
@@ -37,14 +34,6 @@ def get_categories(conn):
     by_name = {r[1].lower(): r[0] for r in rows}
     by_slug = {r[2].lower(): r[0] for r in rows}
     return by_name, by_slug
-
-
-def clean_name(raw: str) -> str:
-    """Берём только первую часть названия до '/', '\', '|' или скобок с подкатегорией."""
-    for sep in [" / ", " | ", " \\ ", " - (", "  ("]:
-        if sep in raw:
-            raw = raw.split(sep)[0]
-    return raw.strip()
 
 
 def upsert_product(conn, p: dict, category_id):
@@ -85,104 +74,6 @@ def upsert_product(conn, p: dict, category_id):
         new_id = cur.fetchone()[0]
         cur.close()
         return "created", new_id
-
-
-def fetch_api_items(api_url: str, api_key: str):
-    if api_key:
-        url = f"{api_url}?api_key={api_key}" if "?" not in api_url else f"{api_url}&api_key={api_key}"
-    else:
-        url = api_url
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read().decode())
-    if isinstance(data, list):
-        return data
-    for key in ("items", "products", "data", "result", "goods"):
-        if key in data and isinstance(data[key], list):
-            return data[key]
-    return []
-
-
-def extract_product(item: dict) -> dict:
-    """Извлекаем поля товара из произвольной структуры внешнего API."""
-    # Название — берём только корневую часть
-    raw_name = (
-        item.get("name") or item.get("title") or
-        item.get("product_name") or item.get("nomenclature") or ""
-    )
-    name = clean_name(str(raw_name))
-
-    # Цена
-    raw_price = item.get("price") or item.get("cost") or item.get("retail_price") or 0
-    try:
-        price = float(str(raw_price).replace(" ", "").replace(",", "."))
-    except Exception:
-        price = 0.0
-
-    # Категория
-    cat_raw = str(
-        item.get("category") or item.get("type") or item.get("type_name") or
-        item.get("category_name") or item.get("group") or ""
-    ).lower().strip()
-
-    # Фото
-    image_url = item.get("image") or item.get("image_url") or item.get("photo") or item.get("img")
-    image_urls = item.get("images") or item.get("image_urls") or item.get("photos") or []
-    if not image_urls and image_url:
-        image_urls = [image_url]
-
-    # Наличие
-    in_stock_raw = item.get("in_stock") if "in_stock" in item else item.get("available", item.get("qty", 1))
-    if isinstance(in_stock_raw, bool):
-        in_stock = in_stock_raw
-    elif isinstance(in_stock_raw, (int, float)):
-        in_stock = in_stock_raw > 0
-    else:
-        in_stock = str(in_stock_raw).lower() not in ("false", "0", "нет", "no", "out")
-
-    # Характеристики
-    specs = item.get("specs") or item.get("characteristics") or item.get("attributes") or {}
-    if not isinstance(specs, dict):
-        specs = {}
-
-    return {
-        "name": name,
-        "price": price,
-        "old_price": item.get("old_price") or item.get("price_old"),
-        "description": item.get("description") or "",
-        "image_url": image_url,
-        "image_urls": image_urls,
-        "in_stock": in_stock,
-        "specs": specs,
-        "_cat_raw": cat_raw,
-    }
-
-
-def sync_from_api(api_url: str, api_key: str, conn):
-    items = fetch_api_items(api_url, api_key)
-    cat_by_name, cat_by_slug = get_categories(conn)
-
-    created, updated, skipped = 0, 0, 0
-    details = []
-
-    for item in items:
-        p = extract_product(item)
-        if not p["name"]:
-            skipped += 1
-            continue
-
-        cat_raw = p.pop("_cat_raw", "")
-        category_id = cat_by_name.get(cat_raw) or cat_by_slug.get(cat_raw)
-
-        action, pid = upsert_product(conn, p, category_id)
-        details.append({"id": pid, "name": p["name"], "action": action})
-        if action == "created":
-            created += 1
-        else:
-            updated += 1
-
-    conn.commit()
-    return {"created": created, "updated": updated, "skipped": skipped, "total": len(items), "details": details}
 
 
 def export_excel(conn) -> str:
@@ -273,22 +164,6 @@ def handler(event: dict, context) -> dict:
 
         body = json.loads(event.get("body") or "{}")
         action = body.get("action")
-
-        if action == "preview":
-            api_url = body.get("api_url", "").strip()
-            api_key = body.get("api_key", "").strip()
-            items = fetch_api_items(api_url, api_key)
-            sample = items[:3]
-            parsed = [extract_product(i) for i in sample]
-            return ok({"raw_sample": sample, "parsed_sample": parsed, "total_items": len(items)})
-
-        if action == "sync":
-            api_url = body.get("api_url", "").strip()
-            api_key = body.get("api_key", "").strip()
-            if not api_url:
-                return err("api_url обязателен")
-            result = sync_from_api(api_url, api_key, conn)
-            return ok(result)
 
         if action == "import":
             file_b64 = body.get("file_b64", "")

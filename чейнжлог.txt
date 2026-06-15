@@ -3,6 +3,19 @@
 
 ---
 
+## v2.6 | 2026-06-15 | Удалена синхронизация товаров с внешним API
+
+### Изменения
+- [AdminCatalogTab] Удалена кнопка «Синхронизация» и панель синхронизации
+  (URL/API Key, Предпросмотр, Синхронизировать), связанные стейты и обработчики
+  handleSyncApi/handlePreviewApi. Кнопки Excel (экспорт/импорт) сохранены.
+- [api.ts] Удалены методы syncProducts.syncFromApi и syncProducts.previewApi.
+- [sync-products] Удалены ветки action=sync и action=preview, функции
+  fetch_api_items/extract_product/clean_name/sync_from_api и импорт urllib.
+  Функция теперь только экспорт/импорт Excel.
+
+---
+
 ## v2.5 | 2026-06-15 | Корзина закупки: локальные кол-ва, авто-сворачивание, сортировка
 
 ### Изменения
