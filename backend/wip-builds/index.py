@@ -1,6 +1,7 @@
 import json
 import os
 import psycopg2
+
 import warehouse_core as core
 # v4 - cancel_order endpoint
 
@@ -365,10 +366,10 @@ def handler(event: dict, context) -> dict:
                 if order_id:
                     core.release_order_reserves(cur, order_id, only_new_negative=False)
 
-                # Заказ → статус cancelled
+                # Заказ → архив
                 if order_id:
                     cur.execute(
-                        f"UPDATE {SCHEMA}.orders SET status='cancelled', updated_at=NOW() WHERE id=%s",
+                        f"UPDATE {SCHEMA}.orders SET status='archived', updated_at=NOW() WHERE id=%s",
                         (order_id,)
                     )
 
