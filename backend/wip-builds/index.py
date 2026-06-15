@@ -3,7 +3,7 @@ import os
 import psycopg2
 
 import warehouse_core as core
-# v4 - cancel_order endpoint
+# v5 - cancel archives order
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
