@@ -44,6 +44,25 @@ export function AdminCatalogTab({
   const [productCatFilter, setProductCatFilter] = useState("all")
   const [productFillFilter, setProductFillFilter] = useState<"all" | "new" | "filled">("all")
   const [productSearch, setProductSearch] = useState("")
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedProducts, setArchivedProducts] = useState<Product[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+
+  const loadArchived = async () => {
+    setArchivedLoading(true)
+    const d = await api.products.getAll({ include_archived: "true" })
+    setArchivedProducts((d.products || []).filter((p: Product & { is_archived?: boolean }) => p.is_archived))
+    setArchivedLoading(false)
+  }
+  const toggleArchiveView = () => {
+    const next = !showArchived
+    setShowArchived(next)
+    if (next) loadArchived()
+  }
+  const restoreProduct = async (id: number) => {
+    await api.products.restore(id)
+    setArchivedProducts(ps => ps.filter(p => p.id !== id))
+  }
   const [productForm, setProductForm] = useState({
     id: null as number | null,
     category_id: "", name: "", description: "", price: "", old_price: "",
@@ -346,7 +365,7 @@ export function AdminCatalogTab({
     return (
       <div>
         <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
-          <h2 className="text-xl font-light text-foreground">Товары ({filtered.length})</h2>
+          <h2 className="text-xl font-light text-foreground">{showArchived ? `Архив товаров (${archivedProducts.length})` : `Товары (${filtered.length})`}</h2>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Icon name="Search" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40" />
@@ -369,6 +388,9 @@ export function AdminCatalogTab({
                 </button>
               ))}
             </div>
+            <button onClick={toggleArchiveView} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${showArchived ? "bg-amber-400/15 text-amber-400 border border-amber-400/40" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`} style={{ cursor: "pointer" }}>
+              <Icon name="Archive" size={14} />{showArchived ? "Скрыть архив" : "Архив"}
+            </button>
             <div className="flex items-center gap-2">
               <button onClick={handleExportExcel} disabled={exportLoading} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
                 <Icon name={exportLoading ? "Loader" : "Download"} size={14} />Excel
@@ -419,8 +441,10 @@ export function AdminCatalogTab({
             )}
           </div>
         )}
-        {loading ? (
+        {(showArchived ? archivedLoading : loading) ? (
           <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-card animate-pulse" />)}</div>
+        ) : showArchived && archivedProducts.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card py-12 text-center text-foreground/40 text-sm">Архив пуст</div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm border-collapse">
@@ -429,12 +453,12 @@ export function AdminCatalogTab({
                   <th className="px-4 py-3 text-left text-xs font-semibold text-foreground/50">Товар</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-foreground/50">Категория</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-foreground/50">Цена</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-foreground/50">Остаток</th>
+                  {!showArchived && <th className="px-4 py-3 text-center text-xs font-semibold text-foreground/50">Остаток</th>}
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p, i) => (
+                {(showArchived ? archivedProducts : filtered).map((p, i) => (
                   <tr key={p.id} className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -450,15 +474,25 @@ export function AdminCatalogTab({
                       <p className="font-bold text-foreground">{fmt(p.price)}</p>
                       {p.old_price && <p className="text-xs text-foreground/40 line-through">{fmt(p.old_price)}</p>}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={() => toggleStock(p)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${p.in_stock ? "bg-green-400/10 text-green-400 hover:bg-green-400/20" : "bg-red-400/10 text-red-400 hover:bg-red-400/20"}`} style={{ cursor: "pointer" }}>
-                        {p.in_stock ? "В наличии" : "Нет"}
-                      </button>
-                    </td>
+                    {!showArchived && (
+                      <td className="px-4 py-3 text-center">
+                        <button onClick={() => toggleStock(p)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${p.in_stock ? "bg-green-400/10 text-green-400 hover:bg-green-400/20" : "bg-red-400/10 text-red-400 hover:bg-red-400/20"}`} style={{ cursor: "pointer" }}>
+                          {p.in_stock ? "В наличии" : "Нет"}
+                        </button>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => editProduct(p)} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}><Icon name="Pencil" size={15} /></button>
-                        <button onClick={() => deleteProduct(p.id)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}><Icon name="Trash2" size={15} /></button>
+                        {showArchived ? (
+                          <button onClick={() => restoreProduct(p.id)} className="flex items-center gap-1.5 rounded-lg border border-green-400/40 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-400/10 transition-colors" style={{ cursor: "pointer" }}>
+                            <Icon name="RotateCcw" size={14} />Восстановить
+                          </button>
+                        ) : (
+                          <>
+                            <button onClick={() => editProduct(p)} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}><Icon name="Pencil" size={15} /></button>
+                            <button onClick={() => deleteProduct(p.id)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}><Icon name="Trash2" size={15} /></button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

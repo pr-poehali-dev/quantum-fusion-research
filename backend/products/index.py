@@ -224,6 +224,14 @@ def handler(event: dict, context) -> dict:
 
         elif method == "PATCH":
             body = json.loads(event.get("body") or "{}")
+            # Восстановление товара из архива
+            if body.get("action") == "restore":
+                cur.execute(
+                    "UPDATE products SET is_archived = FALSE WHERE id=%s",
+                    (int(body["id"]),)
+                )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "restored": True})}
             stock_qty = body.get("stock_qty", 0)
             cur.execute(
                 "UPDATE products SET stock_qty=%s, in_stock=%s WHERE id=%s",

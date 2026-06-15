@@ -352,12 +352,14 @@ function StoresModal({ stores, onClose, onSaved }: {
 
 // ─── Строка группы с разворотом ──────────────────────────────────────────────
 
-function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
+function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, isArchived }: {
   group: Group
   stores: Store[]
   onEdit: (g: Group) => void
   onArchive: (g: Group) => void
+  onUnarchive: (g: Group) => void
   onRefresh: () => void
+  isArchived?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [supplyModal, setSupplyModal] = useState<Supply | null | "new">(null)
@@ -470,22 +472,23 @@ function GroupRow({ group, stores, onEdit, onArchive, onRefresh }: {
         </td>
         <td className="px-3 py-2.5 sticky right-0 bg-card z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.1)]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1">
-            <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => onEdit(group)}>
-              <Icon name="Pencil" size={13} className="text-foreground/40" />
-            </button>
-            <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => setSupplyModal("new")}>
-              <Icon name="PackagePlus" size={13} className="text-foreground/40" />
-            </button>
-            <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => onArchive(group)}>
-              <Icon name="Archive" size={13} className="text-foreground/40" />
-            </button>
-            <button className="rounded p-1 hover:bg-red-400/10 transition-colors" title="Удалить позицию" onClick={async () => {
-              if (!confirm(`Удалить «${group.name}»? Это необратимо.`)) return
-              await api.warehouse.archiveGroup(group.id)
-              onRefresh()
-            }}>
-              <Icon name="Trash2" size={13} className="text-foreground/30 hover:text-red-400" />
-            </button>
+            {isArchived ? (
+              <button className="flex items-center gap-1.5 rounded-lg border border-green-400/40 px-2.5 py-1 text-xs font-medium text-green-400 hover:bg-green-400/10 transition-colors" onClick={() => onUnarchive(group)}>
+                <Icon name="RotateCcw" size={13} />Восстановить
+              </button>
+            ) : (
+              <>
+                <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => onEdit(group)}>
+                  <Icon name="Pencil" size={13} className="text-foreground/40" />
+                </button>
+                <button className="rounded p-1 hover:bg-muted transition-colors" onClick={() => setSupplyModal("new")}>
+                  <Icon name="PackagePlus" size={13} className="text-foreground/40" />
+                </button>
+                <button className="rounded p-1 hover:bg-red-400/10 transition-colors" title="Архивировать позицию" onClick={() => onArchive(group)}>
+                  <Icon name="Archive" size={13} className="text-foreground/40 hover:text-red-400" />
+                </button>
+              </>
+            )}
           </div>
         </td>
       </tr>
@@ -575,6 +578,7 @@ export default function WarehouseTab() {
   const [search, setSearch] = useState("")
   const [filterCat, setFilterCat] = useState("")
   const [page, setPage] = useState(0)
+  const [showArchived, setShowArchived] = useState(false)
   const PAGE = 50
 
   // Фильтр просмотра резервов: null → 'all' → 'only' → 'negative' → null
@@ -632,6 +636,7 @@ export default function WarehouseTab() {
       : { limit: String(PAGE), offset: String(page * PAGE) }
     if (search) params.search = search
     if (filterCat) params.category = filterCat
+    if (showArchived) params.archived = "true"
     const [gData, sData, cData] = await Promise.all([
       api.warehouse.getGroups(params),
       api.warehouse.getStores(),
@@ -641,14 +646,19 @@ export default function WarehouseTab() {
     if (!gData.error) { setGroups(gData.groups || []); setTotal(gData.total || 0) }
     if (!sData.error && Array.isArray(sData)) setStores(sData)
     if (!cData.error && Array.isArray(cData)) setCategories(cData)
-  }, [search, filterCat, page, reserveFilter])
+  }, [search, filterCat, page, reserveFilter, showArchived])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setPage(0) }, [search, filterCat])
+  useEffect(() => { setPage(0) }, [search, filterCat, showArchived])
 
   const handleArchive = async (g: Group) => {
     if (!confirm(`Архивировать «${g.name}»?`)) return
     await api.warehouse.archiveGroup(g.id)
+    load()
+  }
+
+  const handleUnarchive = async (g: Group) => {
+    await api.warehouse.unarchiveGroup(g.id)
     load()
   }
 
@@ -676,8 +686,8 @@ export default function WarehouseTab() {
     <div className="space-y-4">
       {/* Шапка */}
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold">Склад</h2>
-        <Badge variant="outline">{total} позиций</Badge>
+        <h2 className="text-lg font-semibold">{showArchived ? "Склад · Архив" : "Склад"}</h2>
+        <Badge variant="outline">{total} {showArchived ? "в архиве" : "позиций"}</Badge>
         <div className="flex-1" />
 
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
@@ -713,7 +723,15 @@ export default function WarehouseTab() {
           />
           {reserveFilter ? RESERVE_FILTER_LABELS[reserveFilter] : "Просмотр резервов"}
         </Button>
-        <Button size="sm" onClick={() => setGroupModal({})}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowArchived(v => !v)}
+          className={showArchived ? "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-400" : ""}
+        >
+          <Icon name="Archive" size={14} className="mr-1.5" />{showArchived ? "Скрыть архив" : "Архив"}
+        </Button>
+        <Button size="sm" onClick={() => setGroupModal({})} disabled={showArchived}>
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
         </Button>
       </div>
@@ -778,7 +796,9 @@ export default function WarehouseTab() {
             )}
             {!loading && displayGroups.length === 0 && (
               <tr><td colSpan={16} className="px-3 py-12 text-center text-sm text-foreground/30">
-                {reserveFilter
+                {showArchived
+                  ? "Архив пуст"
+                  : reserveFilter
                   ? reserveFilter === 'negative'
                     ? "Отрицательных резервов нет"
                     : "Товаров с резервами нет"
@@ -824,6 +844,8 @@ export default function WarehouseTab() {
                       stores={stores}
                       onEdit={gr => setGroupModal(gr)}
                       onArchive={handleArchive}
+                      onUnarchive={handleUnarchive}
+                      isArchived={showArchived}
                       onRefresh={load}
                     />
                   )
@@ -837,6 +859,8 @@ export default function WarehouseTab() {
                   stores={stores}
                   onEdit={gr => setGroupModal(gr)}
                   onArchive={handleArchive}
+                  onUnarchive={handleUnarchive}
+                  isArchived={showArchived}
                   onRefresh={load}
                 />
               ))

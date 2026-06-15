@@ -35,6 +35,7 @@ export const api = {
     update: (data: unknown) => fetch(URLS.products, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.products, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.products}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    restore: (id: number) => fetch(URLS.products, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", id }) }).then(r => r.json()),
   },
   configurator: {
     getSlots: () => fetch(`${URLS.products}?resource=slots`).then(r => r.json()),
@@ -147,6 +148,7 @@ export const api = {
     createGroup: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_create", ...data as object }) }).then(r => r.json()),
     updateGroup: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_update", ...data as object }) }).then(r => r.json()),
     archiveGroup: (id: number) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_archive", id }) }).then(r => r.json()),
+    unarchiveGroup: (id: number) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_unarchive", id }) }).then(r => r.json()),
     createSupply: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "supply_create", ...data as object }) }).then(r => r.json()),
     updateSupply: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "supply_update", ...data as object }) }).then(r => r.json()),
     getStores: () => fetch(`${URLS.warehouse}?action=stores`).then(r => r.json()),

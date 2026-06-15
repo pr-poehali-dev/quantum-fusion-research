@@ -347,6 +347,13 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        if action == "group_unarchive" and method == "PUT":
+            gid = int(body.get("id"))
+            cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET is_archived = FALSE, updated_at = NOW() WHERE id = {gid}")
+            log_movement(cur, gid, None, None, None, "group_unarchived", 0, note="Группа восстановлена из архива")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
         # ── ПОСТАВКИ ──────────────────────────────────────────────────────────
         if action == "supply_create" and method == "POST":
             group_id = body.get("group_id")
