@@ -3,7 +3,7 @@ import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
 import {
   SCHEDULE_URL, PALETTE, Employee, Schedule, EventType,
-  authH, getMonthDays, isoDate,
+  authH, withAk, getMonthDays, isoDate,
 } from "./schedule.types"
 import { ScheduleCalendar } from "./ScheduleCalendar"
 import { ScheduleStampPanel } from "./ScheduleStampPanel"
@@ -36,8 +36,8 @@ export default function ScheduleTab() {
   const [summary, setSummary] = useState<{id:number;name:string;color:string;work_days:number;day_offs:number;absent_days:number;total_hours:number}[]>([])
 
   const call = useCallback(async (qs: string, opts?: RequestInit) => {
-    if (!sessionId) return {}
-    const res = await fetch(`${SCHEDULE_URL}?${qs}`, { ...opts, headers: authH(sessionId) })
+    // Доступ по admin-ключу панели (в заголовке и в query), сессия не обязательна
+    const res = await fetch(`${SCHEDULE_URL}?${withAk(qs)}`, { ...opts, headers: authH(sessionId || "") })
     return res.json()
   }, [sessionId])
 
@@ -68,7 +68,7 @@ export default function ScheduleTab() {
 
   // Клик по ячейке — применяем штамп
   const applyStamp = async (date: string) => {
-    if (!selectedEmployee || !sessionId) return
+    if (!selectedEmployee) return
     setStampSaving(date)
     const isDayOff = stampType !== "work"
     await call("action=schedule_set", {
@@ -99,7 +99,6 @@ export default function ScheduleTab() {
   // Клик на существующую смену — удаляем
   const removeShift = async (e: React.MouseEvent, date: string, empId: number) => {
     e.stopPropagation()
-    if (!sessionId) return
     await call("action=schedule_delete", {
       method: "POST",
       body: JSON.stringify({ employee_id: empId, work_date: date })
@@ -108,7 +107,7 @@ export default function ScheduleTab() {
   }
 
   const saveEmployee = async () => {
-    if (!empModal || !sessionId) return
+    if (!empModal) return
     setEmpSaving(true)
     if (empModal.id) {
       await call("action=employee_update", { method: "POST", body: JSON.stringify(empModal) })

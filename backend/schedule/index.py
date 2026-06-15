@@ -12,7 +12,14 @@ def esc(v):
         return "NULL"
     return "'" + str(v).replace("'", "''") + "'"
 
-def require_admin(cur, session_id):
+ADMIN_PASSWORD = "begraphics2024"  # вход в админ-панель по паролю (как на фронте)
+
+
+def require_admin(cur, session_id, admin_key=None):
+    # 1) Доступ по admin-паролю панели (основной способ входа в админку)
+    if admin_key and admin_key == ADMIN_PASSWORD:
+        return -1
+    # 2) Доступ по сессии пользователя с ролью admin
     if not session_id:
         return None
     cur.execute(
@@ -40,7 +47,7 @@ def handler(event: dict, context) -> dict:
     cors = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
+        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id, X-Admin-Key",
     }
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": cors, "body": ""}
@@ -51,6 +58,14 @@ def handler(event: dict, context) -> dict:
     headers = event.get("headers") or {}
     session_id = headers.get("X-Session-Id") or headers.get("x-session-id")
 
+    # admin-пароль панели: из заголовка X-Admin-Key, query (?ak=) или тела
+    admin_key = headers.get("X-Admin-Key") or headers.get("x-admin-key") or params.get("ak")
+    if not admin_key and method == "POST":
+        try:
+            admin_key = (json.loads(event.get("body") or "{}")).get("ak")
+        except (ValueError, TypeError):
+            admin_key = None
+
     conn = get_conn()
     cur = conn.cursor()
 
@@ -58,8 +73,8 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": code, "headers": cors, "body": json.dumps({"error": msg})}
 
     try:
-        admin_id = require_admin(cur, session_id)
-        if not admin_id:
+        admin_id = require_admin(cur, session_id, admin_key)
+        if admin_id is None:
             return err("Нет доступа", 403)
 
         # ── Сотрудники ──────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
 import {
-  SCHEDULE_URL, Employee, authH, getMonthDays, isoDate, isCurrentMonth,
+  SCHEDULE_URL, Employee, authH, withAk, getMonthDays, isoDate, isCurrentMonth,
   WEEKDAYS, MONTHS,
 } from "./schedule.types"
 
@@ -41,8 +41,7 @@ export default function CalendarTab() {
   const [saving, setSaving] = useState(false)
 
   const call = useCallback(async (qs: string, opts?: RequestInit) => {
-    if (!sessionId) return {}
-    const res = await fetch(`${SCHEDULE_URL}?${qs}`, { ...opts, headers: authH(sessionId) })
+    const res = await fetch(`${SCHEDULE_URL}?${withAk(qs)}`, { ...opts, headers: authH(sessionId || "") })
     return res.json()
   }, [sessionId])
 
