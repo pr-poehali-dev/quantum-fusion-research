@@ -86,23 +86,18 @@ export function AdminWipTab({
   }
 
   const updateBasketStatus = async (groupId: number, status: string, slot: string, wipId: number) => {
-    // Обновляем локальный стейт
+    // Статус ИНДИВИДУАЛЕН для этой сборки — пишем только в её wip_builds.{slot}_status.
+    // Обновляем локальный стейт корзины только у этой сборки
     setBasketBuilds(prev => prev.map(b => b.wip_id === wipId
       ? { ...b, items: b.items.map(i => i.group_id === groupId ? { ...i, status } : i) }
       : b
     ))
-    // Сохраняем в БД
-    await fetch(`${BASKET_URL}?action=basket_status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ group_id: groupId, status }),
-    })
-    // Синхронизируем wip_builds.{slot}_status
+    // Синхронизируем wip_builds.{slot}_status КОНКРЕТНОЙ сборки
     const BASKET_TO_WIP: Record<string, string> = { NEW: "need_order", ORDERED: "ordered_transit", RECEIVED: "ready" }
     const wipStatus = BASKET_TO_WIP[status] || "need_order"
     const statusKey = slot === "case" ? "case_status" : slot + "_status"
     setWipBuilds(bs => bs.map(b => b.id === wipId ? { ...b, [statusKey]: wipStatus } : b))
-    api.wipBuilds.patch({ id: wipId, component: slot, status: wipStatus })
+    await api.wipBuilds.patch({ id: wipId, component: slot, status: wipStatus })
   }
 
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)

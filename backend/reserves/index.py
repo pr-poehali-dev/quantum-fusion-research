@@ -371,17 +371,13 @@ def handler(event: dict, context) -> dict:
                             break
                     if not slot:
                         continue
-                    # Обновляем статус слота на "ready"
+                    # Обновляем статус слота на "ready" ТОЛЬКО у этой сборки (индивидуально).
+                    # purchase_basket.status НЕ трогаем — он общий на товар и в UI больше
+                    # не используется как источник статуса позиции (см. basket_by_wip).
                     field = "case_status" if slot == "case" else slot + "_status"
                     cur.execute(
                         f"UPDATE {SCHEMA}.wip_builds SET {field}='ready', updated_at=NOW() WHERE id=%s",
                         (wb_id,)
-                    )
-                    # Обновляем статус в purchase_basket на RECEIVED
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_purchase_basket "
-                        f"SET status='RECEIVED', updated_at=NOW() WHERE group_id=%s",
-                        (group_id,)
                     )
                     # Проверяем: все ли слоты сборки теперь "ready" или "pending"
                     slot_fields = [
@@ -494,15 +490,24 @@ def handler(event: dict, context) -> dict:
                 """
             )
             rows = cur.fetchall()
+            # Статус позиции в корзине — ИНДИВИДУАЛЬНЫЙ для каждой сборки:
+            # выводим его из wip_builds.{slot}_status, а НЕ из общего purchase_basket.status
+            # (иначе одинаковые товары в разных заказах делили бы один статус).
+            WIP_TO_BASKET = {
+                "ready": "RECEIVED",
+                "ordered_transit": "ORDERED",
+                "ordered_delay": "ORDERED",
+            }
             by_wip = {}
             for r in rows:
                 group_id, name, sku, req_qty, status, url_supplier, wip_id, order_number, order_id, stage, slot, slot_status = r
+                item_status = WIP_TO_BASKET.get(slot_status, "NEW")
                 key = str(wip_id)
                 if key not in by_wip:
                     by_wip[key] = {"wip_id": wip_id, "order_number": order_number, "order_id": order_id, "stage": stage, "items": []}
                 by_wip[key]["items"].append({
                     "group_id": group_id, "name": name, "sku": sku,
-                    "required_qty": req_qty, "status": status,
+                    "required_qty": req_qty, "status": item_status,
                     "url_supplier": url_supplier, "slot": slot, "slot_status": slot_status,
                 })
             return {"statusCode": 200, "headers": cors,
