@@ -148,11 +148,9 @@ export default function Admin() {
   ]
   const bottomTabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
-    { key: "orders_archive", label: "Архив заказов", icon: "ArchiveX" },
     { key: "warehouse", label: "Склад", icon: "Warehouse" },
     { key: "DIVIDER_4" },
     { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
-    { key: "wip_archive", label: "Архив сборок", icon: "ArchiveRestore" },
     { key: "DIVIDER_5" },
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },

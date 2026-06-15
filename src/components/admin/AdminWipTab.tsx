@@ -29,7 +29,8 @@ export function AdminWipTab({
   builds, setBuilds, products, setProducts, setCategories, setConfigSlots,
   editBuild, setTab,
 }: Props) {
-  const isArchive = tab === "wip_archive"
+  const [viewArchive, setViewArchive] = useState(false)
+  const isArchive = viewArchive
 
   const [wipForm, setWipForm] = useState<WipBuild | null>(null)
   const [wipFormOpen, setWipFormOpen] = useState(false)
@@ -168,10 +169,16 @@ export function AdminWipTab({
     const archived = wipBuilds.filter(w => ["Архив", "Отменён", "Забрали"].includes(w.stage))
     return (
       <div>
-        <div className="mb-5">
+        <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-light text-foreground">
             Архив сборок <span className="ml-1 text-sm text-foreground/40">({archived.length})</span>
           </h2>
+          <button onClick={() => setViewArchive(false)}
+            className="flex items-center gap-1.5 rounded-lg bg-amber-400/15 text-amber-400 border border-amber-400/40 px-3 py-2 text-sm font-medium transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Archive" size={15} />
+            Скрыть архив
+          </button>
         </div>
         {loading ? (
           <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-lg bg-card animate-pulse" />)}</div>
@@ -238,6 +245,12 @@ export function AdminWipTab({
           Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({activeBuilds.length})</span>
         </h2>
         <div className="flex items-center gap-2">
+          <button onClick={() => setViewArchive(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Archive" size={15} />
+            Архив
+          </button>
           <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
             className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
               totalNewCount > 0

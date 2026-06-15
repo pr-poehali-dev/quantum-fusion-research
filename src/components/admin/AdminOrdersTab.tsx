@@ -17,7 +17,8 @@ interface Props {
 
 export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Props) {
   const navigate = useNavigate()
-  const isArchive = tab === "orders_archive"
+  const [viewArchive, setViewArchive] = useState(false)
+  const isArchive = viewArchive
 
   const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "pc_build" | "parts">("all")
   const [newOrderModal, setNewOrderModal] = useState(false)
@@ -110,7 +111,12 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
           {isArchive ? "Архив заказов" : "Активные заказы"} ({filtered.length})
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-
+          <button onClick={() => setViewArchive(v => !v)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isArchive ? "bg-amber-400/15 text-amber-400 border border-amber-400/40" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}>
+            <Icon name="Archive" size={15} />
+            {isArchive ? "Скрыть архив" : "Архив"}
+          </button>
           {!isArchive && (
             <button onClick={() => setNewOrderModal(true)}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
