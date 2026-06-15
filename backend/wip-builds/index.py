@@ -3,7 +3,7 @@ import os
 import psycopg2
 
 import warehouse_core as core
-# v5 - cancel archives order
+# v6 - авто-этап по статусам железок (Ожидание железа/сборки)
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -31,6 +31,61 @@ COMPONENT_STATUSES = ["pending", "ordered_delay", "ordered_transit", "ready", "n
 # ready = в наличии / отложено
 
 COMPONENT_FIELDS = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "case", "cooling", "extra"]
+
+_AUTO_STAGE_SLOTS = [
+    ("cpu", "cpu_status"), ("motherboard", "motherboard_status"),
+    ("ram", "ram_status"), ("gpu", "gpu_status"), ("storage", "storage_status"),
+    ("psu", "psu_status"), ("case_name", "case_status"),
+    ("cooling", "cooling_status"), ("extra", "extra_status"),
+]
+_ORDERED = ("ordered_transit", "ordered_delay")
+
+
+def _auto_stage_wip(cur, wip_id):
+    """
+    Авто-переход этапа сборки по статусам заполненных железок:
+      • все ready/pending                       → "Ожидание сборки" (всё приехало)
+      • все ready/ordered/pending + есть ordered → "Ожидание железа" (всё заказано)
+    Переходы только из рабочих этапов. Синхронизирует orders.status.
+    """
+    cols = ", ".join(n for n, _ in _AUTO_STAGE_SLOTS)
+    stats = ", ".join(s for _, s in _AUTO_STAGE_SLOTS)
+    cur.execute(
+        f"SELECT {cols}, {stats}, stage, order_id FROM {SCHEMA}.wip_builds WHERE id = %s",
+        (wip_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    n = len(_AUTO_STAGE_SLOTS)
+    names, statuses, cur_stage, order_id = row[:n], row[n:2 * n], row[2 * n], row[2 * n + 1]
+    if cur_stage not in ("Заказ", "Ожидание железа", "Ожидание сборки"):
+        return None
+    filled = [(nm, st) for nm, st in zip(names, statuses) if nm]
+    if not filled:
+        return None
+    all_ready = all(st in ("ready", "pending") for _, st in filled)
+    all_ordered_or_ready = all(st in ("ready", "pending") + _ORDERED for _, st in filled)
+    has_ordered = any(st in _ORDERED for _, st in filled)
+    new_stage = None
+    if all_ready:
+        new_stage = "Ожидание сборки"
+    elif all_ordered_or_ready and has_ordered:
+        new_stage = "Ожидание железа"
+    if not new_stage or new_stage == cur_stage:
+        return None
+    cur.execute(
+        f"UPDATE {SCHEMA}.wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s",
+        (new_stage, wip_id),
+    )
+    ostatus = {"Ожидание железа": "ordering", "Ожидание сборки": "waiting_assembly"}.get(new_stage)
+    if ostatus and order_id:
+        cur.execute(
+            f"UPDATE {SCHEMA}.orders SET status=%s, updated_at=NOW() WHERE id=%s",
+            (ostatus, order_id),
+        )
+    return new_stage
+
 
 def fmt_row(row):
     keys = [
@@ -238,6 +293,11 @@ def handler(event: dict, context) -> dict:
                                         f"SET qty_negative = qty_negative + %s WHERE id = %s",
                                         (comp_qty, sup[0])
                                     )
+
+                # ── Авто-переход этапа сборки по статусам железок ──
+                # всё ready/pending → «Ожидание сборки»; всё заказано (есть
+                # ordered_*) → «Ожидание железа». Только из рабочих этапов.
+                _auto_stage_wip(cur, wip_id)
 
                 conn.commit()
                 return resp(200, {"ok": True})

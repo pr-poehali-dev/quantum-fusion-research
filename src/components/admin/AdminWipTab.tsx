@@ -68,7 +68,7 @@ export function AdminWipTab({
   const [basketLoading, setBasketLoading] = useState(false)
   const [basketBuilds, setBasketBuilds] = useState<{
     wip_id: number; order_number: string; order_id: number; stage: string
-    items: { group_id: number; name: string; sku: string; required_qty: number; status: string; url_supplier: string | null; slot: string; slot_status: string }[]
+    items: { group_id: number; name: string; sku: string; required_qty: number; status: string; url_supplier: string | null; slot: string; slot_status: string; eta_date: string | null; is_delayed: boolean }[]
   }[]>([])
   const [basketExpanded, setBasketExpanded] = useState<Record<string, boolean>>({})
 
@@ -89,19 +89,32 @@ export function AdminWipTab({
     setBasketLoading(false)
   }
 
-  const updateBasketStatus = async (groupId: number, status: string, slot: string, wipId: number) => {
-    // Статус ИНДИВИДУАЛЕН для этой сборки — пишем только в её wip_builds.{slot}_status.
-    // Обновляем локальный стейт корзины только у этой сборки
+  // Дата прихода железки = «Заказано». Сервер ставит статус «Едет»/«Задержка»,
+  // обновляет дату прихода сборки и авто-этап.
+  const setComponentEta = async (slot: string, wipId: number, etaDate: string) => {
+    const today = new Date().toISOString().substring(0, 10)
+    const newStatus = etaDate ? "ORDERED" : "NEW"
     setBasketBuilds(prev => prev.map(b => b.wip_id === wipId
-      ? { ...b, items: b.items.map(i => i.group_id === groupId ? { ...i, status } : i) }
+      ? { ...b, items: b.items.map(i => i.slot === slot
+          ? { ...i, eta_date: etaDate || null, status: newStatus, is_delayed: !!etaDate && etaDate < today }
+          : i) }
       : b
     ))
-    // Синхронизируем wip_builds.{slot}_status КОНКРЕТНОЙ сборки
-    const BASKET_TO_WIP: Record<string, string> = { NEW: "need_order", ORDERED: "ordered_transit", RECEIVED: "ready" }
-    const wipStatus = BASKET_TO_WIP[status] || "need_order"
     const statusKey = slot === "case" ? "case_status" : slot + "_status"
+    const wipStatus = etaDate ? (etaDate < today ? "ordered_delay" : "ordered_transit") : "need_order"
     setWipBuilds(bs => bs.map(b => b.id === wipId ? { ...b, [statusKey]: wipStatus } : b))
-    await api.wipBuilds.patch({ id: wipId, component: slot, status: wipStatus })
+    const res = await fetch(`${BASKET_URL}?action=set_component_eta`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wip_id: wipId, slot, eta_date: etaDate || null }),
+    })
+    const data = await res.json()
+    // Авто-этап и дата прихода сборки могли измениться на сервере
+    if (data.auto_stage) {
+      setWipBuilds(bs => bs.map(b => b.id === wipId ? { ...b, stage: data.auto_stage, received_at: data.received_at ?? b.received_at } : b))
+    } else if (data.received_at !== undefined) {
+      setWipBuilds(bs => bs.map(b => b.id === wipId ? { ...b, received_at: data.received_at } : b))
+    }
   }
 
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
@@ -345,18 +358,27 @@ export function AdminWipTab({
                                 Получено
                               </span>
                             ) : (
-                              <select
-                                value={item.status}
-                                onChange={e => updateBasketStatus(item.group_id, e.target.value, item.slot, build.wip_id)}
-                                className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors ${
-                                  item.status === "NEW"     ? "border-red-400/40 bg-red-400/5 text-red-400" :
-                                  item.status === "ORDERED" ? "border-yellow-400/40 bg-yellow-400/5 text-yellow-400" :
-                                  "border-border text-foreground/50"
-                                }`}
-                                style={{ cursor: "pointer" }}>
-                                <option value="NEW">Заказать</option>
-                                <option value="ORDERED">Заказано</option>
-                              </select>
+                              <>
+                                {item.is_delayed && (
+                                  <span className="shrink-0 rounded-lg border border-orange-400/50 bg-orange-400/10 px-2 py-1 text-xs font-medium text-orange-400" title="Срок прихода прошёл, товар не поступил">
+                                    Задержка
+                                  </span>
+                                )}
+                                <div className="shrink-0 flex items-center gap-1" title="Дата прихода железа (= Заказано)">
+                                  <Icon name="CalendarClock" size={13} className="text-foreground/30" />
+                                  <input
+                                    type="date"
+                                    value={item.eta_date || ""}
+                                    onChange={e => setComponentEta(item.slot, build.wip_id, e.target.value)}
+                                    className={`rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors bg-background ${
+                                      item.is_delayed ? "border-orange-400/50 text-orange-400" :
+                                      item.eta_date ? "border-yellow-400/40 text-yellow-400" :
+                                      "border-red-400/40 text-red-400"
+                                    }`}
+                                    style={{ cursor: "pointer" }}
+                                  />
+                                </div>
+                              </>
                             )}
                           </div>
                         ))}

@@ -399,3 +399,123 @@ def recalc_order_reserves(cur, order_id, lines):
     results = handle_reserve_and_purchase(cur, order_id, lines)
     log(cur, "recalc_done", order_id=order_id)
     return results
+
+
+# ── Авто-пересчёт этапа сборки и даты прихода железа ─────────────────────────
+_WIP_SLOT_FIELDS = [
+    ("cpu", "cpu_status"), ("motherboard", "motherboard_status"),
+    ("ram", "ram_status"), ("gpu", "gpu_status"), ("storage", "storage_status"),
+    ("psu", "psu_status"), ("case_name", "case_status"),
+    ("cooling", "cooling_status"), ("extra", "extra_status"),
+]
+
+# Статусы, означающие что железка заказана и едет (не финал, но в работе)
+_ORDERED_STATUSES = ("ordered_transit", "ordered_delay")
+
+
+def recompute_wip_stage(cur, wip_id):
+    """
+    Авто-переход этапа сборки по статусам железок (только для заполненных слотов):
+      • все ready/pending           → "Ожидание сборки" (всё приехало)
+      • все ready/ordered/pending,
+        но есть хотя бы один ordered → "Ожидание железа" (всё заказано, ждём)
+    Переходы делаются только из рабочих этапов ("Заказ"/"Ожидание железа"/
+    "Ожидание сборки"), чтобы не сбивать ручные поздние стадии.
+    Также синхронизирует orders.status.
+    Возвращает новый stage или None, если не менялся.
+    """
+    cols = ", ".join(name for name, _ in _WIP_SLOT_FIELDS)
+    stats = ", ".join(st for _, st in _WIP_SLOT_FIELDS)
+    cur.execute(
+        f"SELECT {cols}, {stats}, stage, order_id "
+        f"FROM {SCHEMA}.wip_builds WHERE id = %s",
+        (wip_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    n = len(_WIP_SLOT_FIELDS)
+    names = row[:n]
+    statuses = row[n:2 * n]
+    cur_stage = row[2 * n]
+    order_id = row[2 * n + 1]
+
+    if cur_stage not in ("Заказ", "Ожидание железа", "Ожидание сборки"):
+        return None
+
+    filled = [(nm, st) for nm, st in zip(names, statuses) if nm]
+    if not filled:
+        return None
+
+    all_ready = all(st in ("ready", "pending") for _, st in filled)
+    all_ordered_or_ready = all(
+        st in ("ready", "pending") + _ORDERED_STATUSES for _, st in filled
+    )
+    has_ordered = any(st in _ORDERED_STATUSES for _, st in filled)
+
+    new_stage = None
+    if all_ready:
+        new_stage = "Ожидание сборки"
+    elif all_ordered_or_ready and has_ordered:
+        new_stage = "Ожидание железа"
+
+    if not new_stage or new_stage == cur_stage:
+        return None
+
+    cur.execute(
+        f"UPDATE {SCHEMA}.wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s",
+        (new_stage, wip_id),
+    )
+    order_status = {"Ожидание железа": "ordering", "Ожидание сборки": "waiting_assembly"}.get(new_stage)
+    if order_status and order_id:
+        cur.execute(
+            f"UPDATE {SCHEMA}.orders SET status=%s, updated_at=NOW() WHERE id=%s",
+            (order_status, order_id),
+        )
+    return new_stage
+
+
+def recompute_wip_received_at(cur, wip_id):
+    """
+    received_at сборки = самая поздняя ETA среди её железок (wip_component_eta).
+    Дублируем дату в заказ не отдельным полем (у orders нет такого поля) —
+    дата хранится в wip_builds.received_at и читается фронтом для заказа.
+    Возвращает дату (str) или None.
+    """
+    cur.execute(
+        f"SELECT MAX(eta_date) FROM {SCHEMA}.wip_component_eta "
+        f"WHERE wip_id = %s AND eta_date IS NOT NULL",
+        (wip_id,),
+    )
+    row = cur.fetchone()
+    max_eta = row[0] if row else None
+    cur.execute(
+        f"UPDATE {SCHEMA}.wip_builds SET received_at=%s, updated_at=NOW() WHERE id=%s",
+        (max_eta, wip_id),
+    )
+    return max_eta.isoformat() if max_eta else None
+
+
+def mark_overdue_delays(cur):
+    """
+    Помечает железки как "ordered_delay" (Задержка), если их ETA прошла,
+    а товар ещё не приехал (статус не ready). Вызывается при загрузке корзины.
+    Обновляет wip_builds.{slot}_status по данным wip_component_eta.
+    Возвращает кол-во помеченных позиций.
+    """
+    cur.execute(
+        f"SELECT wip_id, slot FROM {SCHEMA}.wip_component_eta "
+        f"WHERE eta_date IS NOT NULL AND eta_date < CURRENT_DATE"
+    )
+    rows = cur.fetchall()
+    marked = 0
+    for wip_id, slot in rows:
+        field = "case_status" if slot == "case" else slot + "_status"
+        cur.execute(
+            f"UPDATE {SCHEMA}.wip_builds SET {field}='ordered_delay', updated_at=NOW() "
+            f"WHERE id=%s AND {field}='ordered_transit'",
+            (wip_id,),
+        )
+        if cur.rowcount:
+            marked += 1
+    return marked

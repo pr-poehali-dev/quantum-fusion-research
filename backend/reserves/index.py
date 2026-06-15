@@ -379,52 +379,58 @@ def handler(event: dict, context) -> dict:
                         f"UPDATE {SCHEMA}.wip_builds SET {field}='ready', updated_at=NOW() WHERE id=%s",
                         (wb_id,)
                     )
-                    # Проверяем: все ли слоты сборки теперь "ready" или "pending"
-                    slot_fields = [
-                        "cpu_status", "motherboard_status", "ram_status", "gpu_status",
-                        "storage_status", "psu_status", "case_status", "cooling_status", "extra_status"
-                    ]
+                    # Товар приехал — снимаем его ETA (если была)
                     cur.execute(
-                        f"SELECT wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, "
-                        f"wb.case_name, wb.cooling, wb.extra, "
-                        f"wb.cpu_status, wb.motherboard_status, wb.ram_status, wb.gpu_status, "
-                        f"wb.storage_status, wb.psu_status, wb.case_status, wb.cooling_status, "
-                        f"wb.extra_status, wb.stage "
-                        f"FROM {SCHEMA}.wip_builds wb WHERE wb.id = %s",
-                        (wb_id,)
+                        f"DELETE FROM {SCHEMA}.wip_component_eta WHERE wip_id=%s AND slot=%s",
+                        (wb_id, slot)
                     )
-                    wrow = cur.fetchone()
-                    if wrow:
-                        comp_names = wrow[:9]   # значения компонентов (None если не заполнен)
-                        comp_statuses = wrow[9:18]  # статусы
-                        current_stage = wrow[18]
-                        # Считаем только заполненные слоты
-                        all_ready = all(
-                            st in ("ready", "pending") or name is None
-                            for name, st in zip(comp_names, comp_statuses)
-                            if name is not None
-                        )
-                        not_ready = [
-                            st for name, st in zip(comp_names, comp_statuses)
-                            if name is not None and st not in ("ready", "pending")
-                        ]
-                        if len(not_ready) == 0 and current_stage == "Ожидание железа":
-                            cur.execute(
-                                f"UPDATE {SCHEMA}.wip_builds SET stage='Ожидание сборки', updated_at=NOW() WHERE id=%s",
-                                (wb_id,)
-                            )
-                            cur.execute(
-                                f"UPDATE {SCHEMA}.orders SET status='waiting_assembly', updated_at=NOW() "
-                                f"WHERE id=(SELECT order_id FROM {SCHEMA}.wip_builds WHERE id=%s)",
-                                (wb_id,)
-                            )
-                            wip_updates.append({"wip_id": wb_id, "auto_stage": "Ожидание сборки"})
-                        else:
-                            wip_updates.append({"wip_id": wb_id, "slot": slot, "slot_status": "ready"})
+                    core.recompute_wip_received_at(cur, wb_id)
+                    # Авто-этап: всё приехало → «Ожидание сборки», всё заказано → «Ожидание железа»
+                    new_stage = core.recompute_wip_stage(cur, wb_id)
+                    if new_stage:
+                        wip_updates.append({"wip_id": wb_id, "auto_stage": new_stage})
+                    else:
+                        wip_updates.append({"wip_id": wb_id, "slot": slot, "slot_status": "ready"})
 
             conn.commit()
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"ok": True, "result": res, "wip_updates": wip_updates})}
+
+        # ── Дата прихода железки (ETA) для конкретной сборки ─────────────────
+        # Указание даты = «Заказано»: железка переводится в "ordered_transit".
+        if action == "set_component_eta" and method == "POST":
+            wip_id = int(body["wip_id"])
+            slot = body["slot"]
+            eta = body.get("eta_date") or None  # 'YYYY-MM-DD' или null (сброс)
+            # 1) Сохраняем/сбрасываем ETA позиции
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, eta_date) "
+                f"VALUES (%s, %s, %s) "
+                f"ON CONFLICT (wip_id, slot) DO UPDATE SET eta_date = EXCLUDED.eta_date, updated_at = NOW()",
+                (wip_id, slot, eta),
+            )
+            # 2) Статус железки: дата задана → "ordered_transit" (Едет/Заказано),
+            #    если дата уже в прошлом → "ordered_delay" (Задержка); сброс → "need_order"
+            field = "case_status" if slot == "case" else slot + "_status"
+            if eta:
+                cur.execute(
+                    f"UPDATE {SCHEMA}.wip_builds SET {field}="
+                    f"CASE WHEN %s::date < CURRENT_DATE THEN 'ordered_delay' ELSE 'ordered_transit' END, "
+                    f"updated_at=NOW() WHERE id=%s AND {field} <> 'ready'",
+                    (eta, wip_id),
+                )
+            else:
+                cur.execute(
+                    f"UPDATE {SCHEMA}.wip_builds SET {field}='need_order', updated_at=NOW() "
+                    f"WHERE id=%s AND {field} <> 'ready'",
+                    (wip_id,),
+                )
+            # 3) Пересчёт даты прихода сборки и авто-этапа
+            received_at = core.recompute_wip_received_at(cur, wip_id)
+            new_stage = core.recompute_wip_stage(cur, wip_id)
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(
+                {"ok": True, "received_at": received_at, "auto_stage": new_stage})}
 
         # ── Корзина закупки ─────────────────────────────────────────────────
         if action == "basket" and method == "GET":
@@ -461,6 +467,8 @@ def handler(event: dict, context) -> dict:
 
         # ── Корзина закупки, сгруппированная по сборкам ─────────────────────
         if action == "basket_by_wip" and method == "GET":
+            # Сначала помечаем просроченные ETA как «Задержка» (ordered_delay)
+            core.mark_overdue_delays(cur)
             cur.execute(
                 f"""
                 SELECT
@@ -480,12 +488,15 @@ def handler(event: dict, context) -> dict:
                         WHEN 'cooling'     THEN wb.cooling_status
                         WHEN 'extra'       THEN wb.extra_status
                         ELSE 'pending'
-                    END as slot_status
+                    END as slot_status,
+                    eta.eta_date
                 FROM {SCHEMA}.warehouse_purchase_basket b
                 JOIN {SCHEMA}.warehouse_groups g ON g.id = b.group_id
                 JOIN {SCHEMA}.pc_builds pcb ON true
                 JOIN jsonb_array_elements(pcb.components) comp ON (comp->>'source_id')::int = g.product_id
                 JOIN {SCHEMA}.wip_builds wb ON wb.build_id = pcb.id
+                LEFT JOIN {SCHEMA}.wip_component_eta eta
+                    ON eta.wip_id = wb.id AND eta.slot = comp->>'slot'
                 WHERE b.required_qty > 0
                   AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён')
                 ORDER BY wb.order_number, b.status
@@ -502,7 +513,7 @@ def handler(event: dict, context) -> dict:
             }
             by_wip = {}
             for r in rows:
-                group_id, name, sku, req_qty, status, url_supplier, wip_id, order_number, order_id, stage, slot, slot_status = r
+                group_id, name, sku, req_qty, status, url_supplier, wip_id, order_number, order_id, stage, slot, slot_status, eta_date = r
                 item_status = WIP_TO_BASKET.get(slot_status, "NEW")
                 key = str(wip_id)
                 if key not in by_wip:
@@ -511,6 +522,8 @@ def handler(event: dict, context) -> dict:
                     "group_id": group_id, "name": name, "sku": sku,
                     "required_qty": req_qty, "status": item_status,
                     "url_supplier": url_supplier, "slot": slot, "slot_status": slot_status,
+                    "eta_date": eta_date.isoformat() if eta_date else None,
+                    "is_delayed": slot_status == "ordered_delay",
                 })
             # Сортировка сборок: сверху те, где есть незаказанные (NEW) позиции,
             # затем по номеру заказа от нового к старому.
@@ -522,6 +535,7 @@ def handler(event: dict, context) -> dict:
                     num = b["wip_id"]
                 return (0 if has_new else 1, -num)
             builds_sorted = sorted(by_wip.values(), key=_order_key)
+            conn.commit()  # фиксируем авто-пометку «Задержка»
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"builds": builds_sorted})}
 
