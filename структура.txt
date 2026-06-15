@@ -27,8 +27,8 @@
 - cables        → https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63
 - sync-products → https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031
 - crm-probe     → https://functions.poehali.dev/7f435c7f-a17c-406d-9f00-29c5b52f287e
-- wip-builds    → НЕ ЗАДЕПЛОЕНА (папка /backend/wip-builds/ мёртвая; НО таблица wip_builds живая — см. раздел "WIP-сборки" ниже)
-- (frontend ждёт URL cb6e9d4e-... для WIP-операций — он НЕ существует, часть WIP-функций не работает)
+- wip-builds    → https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3
+                  (РАБОЧАЯ, но отсутствует в func2url.json; sync_backend её не деплоит — см. раздел "WIP-сборки")
 
 ## Функции и их назначение
 
@@ -43,12 +43,21 @@ CRUD товаров, слоты конфигуратора, отслеживан
 ### builds
 Сборки ПК: создание, редактирование, статусы, фото, цены, теги.
 PATCH actions: generate_client_link, claim, set_tags.
-⚠️ ВАЖНО: сюда же перенесена логика cancel_order из wip-builds.
-cancel_order — снимает резервы (POSITIVE → возврат в qty, NEGATIVE → убирает qty_negative),
-архивирует заказ (status='archived'), архивирует pc_build, удаляет wip_build.
+POST action cancel_order — отмена WIP-заказа. Использует общий
+warehouse_core.release_order_reserves(only_new_negative=True):
+- POSITIVE резервы → возврат товара в наличие (qty+, qty_reserved-)
+- NEGATIVE резервы → снимаются ТОЛЬКО если корзина в статусе NEW;
+  заказанное у поставщика (ORDERED) остаётся в закупке и придёт в наличие
+- корзина закупки уменьшается через basket_reduce
+- заказ → status='archived', pc_build → 'archive', wip_build удаляется
+Файл backend/builds/warehouse_core.py — копия ядра (release_order_reserves, basket_reduce).
 
 ### warehouse
 Склад: группы товаров, поставки, магазины, движения, инвентаризация.
+POST action delete_wip — удаление WIP-сборки. Использует общий
+warehouse_core.release_order_reserves(only_new_negative=True) — та же логика что в builds:
+снимает резервы, бережёт заказанное (ORDERED), уменьшает корзину, архивирует заказ и сборку.
+Файл backend/warehouse/warehouse_core.py — копия ядра.
 Таблицы: warehouse_groups, warehouse_supplies, warehouse_stores,
 warehouse_movements, warehouse_reserves, warehouse_purchase_basket,
 warehouse_stock_log, warehouse_backorders.
@@ -113,17 +122,25 @@ B2B прайс-лист для партнёров (розница + опт). Т�
 Используется во frontend: Admin.tsx, BuildPreview.tsx, AdminWipTab.tsx.
 НЕ УДАЛЯТЬ таблицу!
 
-ПАПКА-ФУНКЦИЯ /backend/wip-builds/ — МЁРТВАЯ.
-Не задеплоена (нет URL в func2url.json), её код никогда не выполняется.
-Логика была частично перенесена:
-- cancel_order → builds/index.py (отмена заказа, снятие резервов, архив)
-- delete_wip → warehouse/index.py (удаление сборки со снятием резервов)
+ПАПКА-ФУНКЦИЯ /backend/wip-builds/ — РАБОЧАЯ (исправление прошлой ошибки в документации).
+URL: https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3 (в src/lib/api.ts, ключ wipBuilds).
+URL ОТСУТСТВУЕТ в func2url.json (список неполный) — но функция реально работает в проде.
+Обслуживает: GET список/одну сборку, POST создать, PUT обновить,
+PATCH (смена этапа stage / статуса компонента / прочие поля), DELETE удалить.
+PATCH stage="Заказ" → резервирование через warehouse_core.handle_reserve_and_purchase.
+PATCH stage="Отменён" → снятие резервов.
 
-ОТКРЫТАЯ ПРОБЛЕМА: frontend (src/lib/api.ts, ключ wipBuilds, URL cb6e9d4e-...)
-вызывает несуществующую функцию для операций:
-- создание WIP-сборки
-- обновление WIP-сборки
-- смена этапа сборки (PATCH stage)
-- смена статуса компонента (PATCH component)
-Эти операции сейчас НЕ РАБОТАЮТ (URL не задеплоен).
-Нужно решить: восстановить функцию wip-builds или перенести логику в builds/warehouse.
+⚠️ ИНСТРУМЕНТ sync_backend НЕ деплоит эту функцию: определяет runtime как nodejs22
+и падает по таймауту. Деплой только через платформу/поддержку. При правках
+wip-builds/index.py изменения НЕ применяются автоматически — учитывать это.
+
+ЕДИНОЕ ЯДРО резервов скопировано в 3 функции (нужно держать синхронным):
+- backend/reserves/warehouse_core.py (оригинал, полный)
+- backend/wip-builds/warehouse_core.py (полная копия)
+- backend/builds/warehouse_core.py (урезанная: release_order_reserves + basket_reduce)
+- backend/warehouse/warehouse_core.py (урезанная + поддержка supply_id=NULL)
+
+ЛОГИКА ОТМЕНЫ/УДАЛЕНИЯ заказа едина во всех 3 точках (builds.cancel_order,
+warehouse.delete_wip, wip-builds DELETE/cancel_order):
+release_order_reserves(only_new_negative=True) — заказанное у поставщика (ORDERED)
+не снимается, остаётся в закупке.

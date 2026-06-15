@@ -3,6 +3,39 @@
 
 ---
 
+## v1.2 | 2026-06-15 | Унификация логики отмены заказа и фикс корзины закупки
+
+### Бизнес-логика (по требованию заказчика)
+- При отмене/удалении заказа: заказанное у поставщика железо (статус ORDERED)
+  ОСТАЁТСЯ в закупке — приедет и упадёт в наличие. Снимается только не заказанное (NEW).
+
+### Изменения
+- [builds] cancel_order переписан: вместо ручного SQL теперь использует
+  warehouse_core.release_order_reserves(only_new_negative=True).
+  ИСПРАВЛЕН БАГ: раньше корзина закупки (warehouse_purchase_basket) не уменьшалась
+  при отмене — теперь вызывается basket_reduce. Раньше снималось даже заказанное
+  железо — теперь ORDERED бережётся.
+- [builds] Создан backend/builds/warehouse_core.py (release_order_reserves + basket_reduce).
+- [warehouse] delete_wip переписан на тот же release_order_reserves(only_new_negative=True).
+  ИСПРАВЛЕН БАГ: раньше не обновлял orders.status и pc_builds.status — теперь
+  заказ → archived, сборка → archive. Корзина обрабатывается единообразно.
+- [warehouse] Создан backend/warehouse/warehouse_core.py (+ поддержка supply_id=NULL).
+- [wip-builds] DELETE и cancel_order: only_new_negative изменён False→True
+  (заказанное железо больше не снимается). ⚠️ НЕ задеплоено: sync_backend не деплоит
+  эту функцию (видит nodejs22, таймаут). Применится при ручном деплое.
+- [структура.txt] Исправлена прошлая ошибка: папка wip-builds НЕ мёртвая, а рабочая
+  (URL cb6e9d4e-...). Добавлено описание единого ядра резервов в 4 функциях.
+
+### Технические детали
+- Три реализации отмены/удаления теперь ведут себя одинаково.
+- Ядро release_order_reserves скопировано в reserves/wip-builds/builds/warehouse —
+  при изменении логики держать копии синхронными.
+
+### Открытая проблема
+- sync_backend не может задеплоить функцию wip-builds (определяет runtime nodejs22).
+
+---
+
 ## v1.1 | 2026-06-15 | Аудит и исправление структуры
 
 ### Изменения

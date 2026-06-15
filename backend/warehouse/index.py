@@ -959,76 +959,28 @@ def handler(event: dict, context) -> dict:
 
         # ── УДАЛЕНИЕ СБОРКИ WIP + СНЯТИЕ РЕЗЕРВОВ ────────────────────────────
         if action == "delete_wip" and method == "POST":
+            import warehouse_core as wc
             wip_id = int(body["wip_id"])
-            # Получаем order_id
-            cur.execute(f"SELECT order_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
+            # Получаем order_id и build_id
+            cur.execute(f"SELECT order_id, build_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             row = cur.fetchone()
             if not row:
                 return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка не найдена"})}
-            order_id = row[0]
-            released_pos = 0
-            released_neg = 0
+            order_id, build_id = row[0], row[1]
+            released = {"positive": 0, "negative": 0, "kept_ordered": 0}
             if order_id:
-                # Снимаем все POSITIVE резервы — возвращаем товар в наличие
-                cur.execute(
-                    f"SELECT id, group_id, supply_id, qty FROM {SCHEMA}.warehouse_reserves "
-                    f"WHERE order_id = %s AND type = 'POSITIVE' AND status = 'ACTIVE'",
-                    (order_id,)
-                )
-                for rid, gid, sid, qty in cur.fetchall():
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_reserves SET status='RELEASED', updated_at=NOW() WHERE id = %s",
-                        (rid,)
-                    )
-                    if sid:
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.warehouse_supplies SET qty=qty+%s, qty_reserved=GREATEST(0,qty_reserved-%s) WHERE id=%s",
-                            (qty, qty, sid)
-                        )
-                    else:
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.warehouse_supplies SET qty_reserved=GREATEST(0,qty_reserved-%s) WHERE group_id=%s",
-                            (qty, gid)
-                        )
-                    released_pos += qty
-                # Снимаем все NEGATIVE резервы — уменьшаем qty_negative
-                cur.execute(
-                    f"SELECT id, group_id, supply_id, qty FROM {SCHEMA}.warehouse_reserves "
-                    f"WHERE order_id = %s AND type = 'NEGATIVE' AND status = 'ACTIVE'",
-                    (order_id,)
-                )
-                for rid, gid, sid, qty in cur.fetchall():
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_reserves SET status='RELEASED', updated_at=NOW() WHERE id = %s",
-                        (rid,)
-                    )
-                    if sid:
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.warehouse_supplies SET qty_negative=GREATEST(0,qty_negative-%s) WHERE id=%s",
-                            (qty, sid)
-                        )
-                    else:
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.warehouse_supplies SET qty_negative=GREATEST(0,qty_negative-%s) WHERE group_id=%s",
-                            (qty, gid)
-                        )
-                    # Если нехватка закрылась — убираем из корзины закупки
-                    cur.execute(
-                        f"SELECT COALESCE(SUM(qty_negative),0) FROM {SCHEMA}.warehouse_supplies WHERE group_id=%s",
-                        (gid,)
-                    )
-                    remaining_neg = int((cur.fetchone() or [0])[0])
-                    if remaining_neg == 0:
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.warehouse_purchase_basket SET required_qty=0, status='RECEIVED', updated_at=NOW() WHERE group_id=%s",
-                            (gid,)
-                        )
-                    released_neg += qty
+                # POSITIVE → возврат в наличие; NEGATIVE → снимаем только NEW,
+                # заказанное у поставщика (ORDERED) остаётся в закупке
+                released = wc.release_order_reserves(cur, order_id, only_new_negative=True)
+                cur.execute(f"UPDATE {SCHEMA}.orders SET status='archived', updated_at=NOW() WHERE id=%s", (order_id,))
+            if build_id:
+                cur.execute(f"UPDATE {SCHEMA}.pc_builds SET status='archive' WHERE id=%s", (build_id,))
             # Удаляем запись сборки
             cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
-                "ok": True, "released_positive": released_pos, "released_negative": released_neg
+                "ok": True, "released_positive": released["positive"],
+                "released_negative": released["negative"], "kept_ordered": released["kept_ordered"]
             })}
 
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}

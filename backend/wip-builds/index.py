@@ -333,9 +333,9 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"SELECT order_id FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             row = cur.fetchone()
             order_id = row[0] if row else None
-            # Снимаем все резервы по заказу
+            # Снимаем резервы: NEGATIVE только NEW (заказанное у поставщика остаётся в закупке)
             if order_id:
-                core.release_order_reserves(cur, order_id, only_new_negative=False)
+                core.release_order_reserves(cur, order_id, only_new_negative=True)
             # Удаляем запись сборки
             cur.execute(f"DELETE FROM {SCHEMA}.wip_builds WHERE id = %s", (wip_id,))
             conn.commit()
@@ -362,9 +362,9 @@ def handler(event: dict, context) -> dict:
                 order_id, build_id = row
 
                 # POSITIVE резервы → возвращаем в наличие
-                # NEGATIVE резервы → удаляем (любой статус корзины)
+                # NEGATIVE резервы → снимаем только NEW; заказанное (ORDERED) остаётся в закупке
                 if order_id:
-                    core.release_order_reserves(cur, order_id, only_new_negative=False)
+                    core.release_order_reserves(cur, order_id, only_new_negative=True)
 
                 # Заказ → архив
                 if order_id:
