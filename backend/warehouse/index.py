@@ -404,23 +404,96 @@ def handler(event: dict, context) -> dict:
                 if prow:
                     prod_name = prow[0]
 
-            # Снимаем qty_negative если есть (старые долги) и считаем сколько реально доступно для резерва
+            # Гасим NEGATIVE-резервы FIFO по дате заказа: товар приехал → закрываем
+            # минус-резерв, переводим его в POSITIVE под заказ и уведомляем заказчика.
             negative_alerts = []
             avail = qty  # сколько из новой поставки можно зарезервировать
             cur.execute(
-                f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
-                f"WHERE s.group_id = {group_id} AND s.id != {supply_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
+                f"SELECT r.id, r.order_id, r.supply_id, r.qty, o.user_id, o.customer_name, o.status "
+                f"FROM {SCHEMA}.warehouse_reserves r "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = r.order_id "
+                f"WHERE r.group_id = {group_id} AND r.type = 'NEGATIVE' AND r.status = 'ACTIVE' "
+                f"AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'archived', 'done')) "
+                f"ORDER BY (o.created_at IS NULL), o.created_at ASC, r.id ASC "
+                f"FOR UPDATE OF r"
             )
-            for (neg_sid, neg_qty) in cur.fetchall():
+            neg_reserves = cur.fetchall()
+            fulfilled_by_order = {}  # order_id -> кол-во погашенного
+            for (rid, neg_order_id, neg_supply_id, neg_qty, neg_user_id, neg_cust, neg_ostatus) in neg_reserves:
                 if avail <= 0:
                     break
-                to_clear = min(neg_qty, avail)
+                clear = min(neg_qty, avail)
+                # Снимаем минус с партии-буфера
+                if neg_supply_id:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_supplies "
+                        f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() WHERE id = %s",
+                        (clear, neg_supply_id)
+                    )
+                # Кладём пришедший товар в резерв под заказ
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
-                    f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
-                    (to_clear, neg_sid)
+                    f"SET qty = qty - %s, qty_reserved = qty_reserved + %s, updated_at = NOW() WHERE id = %s",
+                    (clear, clear, supply_id)
                 )
-                avail -= to_clear
+                # Переводим NEGATIVE → POSITIVE (полностью или частично)
+                if clear == neg_qty:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_reserves "
+                        f"SET type = 'POSITIVE', status = 'ACTIVE', supply_id = %s, updated_at = NOW() WHERE id = %s",
+                        (supply_id, rid)
+                    )
+                else:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_reserves SET qty = qty - %s, updated_at = NOW() WHERE id = %s",
+                        (clear, rid)
+                    )
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.warehouse_reserves "
+                        f"(order_id, group_id, supply_id, slot, qty, type, status) "
+                        f"SELECT order_id, group_id, %s, slot, %s, 'POSITIVE', 'ACTIVE' "
+                        f"FROM {SCHEMA}.warehouse_reserves WHERE id = %s",
+                        (supply_id, clear, rid)
+                    )
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_movements "
+                    f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
+                    f"VALUES (%s, %s, %s, 'fulfilled', %s, %s, NOW())",
+                    (group_id, supply_id, neg_order_id, clear,
+                     f"Гашение минус-резерва заказа #{neg_order_id} приходом: {prod_name}")
+                )
+                avail -= clear
+                if neg_order_id:
+                    fulfilled_by_order[neg_order_id] = fulfilled_by_order.get(neg_order_id, 0) + clear
+                    # Уведомление заказчику, что товар приехал
+                    if neg_user_id:
+                        link = f"/orders/{neg_order_id}"
+                        txt = f"Товар «{prod_name}» поступил на склад и зарезервирован под ваш заказ №{str(neg_order_id).zfill(4)}"
+                        cur.execute(
+                            f"INSERT INTO {SCHEMA}.notifications (user_id, type, text, link) "
+                            f"VALUES (%s, 'order', %s, %s)",
+                            (neg_user_id, txt, link)
+                        )
+
+            for ord_id, cnt in fulfilled_by_order.items():
+                negative_alerts.append({"product": prod_name, "reserved": cnt, "orders": [ord_id]})
+
+            # Подчищаем «сиротские» долги в qty_negative без записей в резервах (рассинхрон)
+            if avail > 0:
+                cur.execute(
+                    f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
+                    f"WHERE s.group_id = {group_id} AND s.id != {supply_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
+                )
+                for (neg_sid, neg_qty) in cur.fetchall():
+                    if avail <= 0:
+                        break
+                    to_clear = min(neg_qty, avail)
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_supplies "
+                        f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
+                        (to_clear, neg_sid)
+                    )
+                    avail -= to_clear
 
             # Ищем активные wip_builds с need_order для этого товара и резервируем
             if grp_product_id and avail > 0:
