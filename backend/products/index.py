@@ -63,6 +63,7 @@ def handler(event: dict, context) -> dict:
             "category": {"id": row[13], "name": row[14], "slug": row[15]} if len(row) > 13 and row[13] else None,
             "warehouse_group_id": row[16] if len(row) > 16 else None,
             "avg_cost": float(row[17]) if len(row) > 17 and row[17] else 0,
+            "is_archived": bool(row[18]) if len(row) > 18 else False,
         }
 
     try:
@@ -143,7 +144,8 @@ def handler(event: dict, context) -> dict:
                             COALESCE((SELECT SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0)
                                       FROM warehouse_supplies s
                                       JOIN warehouse_groups g ON g.id = s.group_id
-                                      WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost
+                                      WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost,
+                            p.is_archived
                      FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
