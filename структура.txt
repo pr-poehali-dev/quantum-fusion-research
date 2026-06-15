@@ -64,12 +64,20 @@ warehouse_stock_log, warehouse_backorders.
 
 ### orders
 Заказы: создание с привязкой к пользователю, список, смена статусов.
-Статусы: new (по умолчанию при создании), archived, cancelled.
+Статусы: new (по умолчанию при создании), done, archived, cancelled.
+cancelled/archived считаются "мёртвыми" — приёмка игнорирует их резервы.
 
 ### reserves
 HTTP-обёртка над ядром складских резервов (warehouse_core.py).
 Управление резервированием: POSITIVE (товар в наличии) и NEGATIVE (под заказ).
 Корзина закупки, диагностика остатков.
+Эндпоинты: reserve_order, release_order, recalc_order, receive (приёмка+FIFO),
+basket, basket_status, basket_by_wip, diag, stock_log.
+GET ?action=selftest — встроенный селф-тест складской логики (12 кейсов,
+работает на временных данных с откатом, ничего не сохраняет). Ответ содержит
+summary {passed/failed/failed_cases}. Запускать после правок складской логики.
+ВАЖНО: приёмка (receive_stock) гасит минус-резервы FIFO, но ПРОПУСКАЕТ заказы
+в статусе cancelled/archived — их товар уходит в свободное наличие.
 
 ### rma
 Гарантийные случаи (рекламации): создание, смена статусов,

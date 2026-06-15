@@ -218,15 +218,19 @@ def _run_selftest(cur):
         f"UPDATE {SCHEMA}.warehouse_purchase_basket SET status='ORDERED' WHERE group_id=%s",
         (gid,)
     )
-    core.release_order_reserves(cur, oid_e, only_new_negative=True)  # отмена, минус сохранён
-    # Железо приехало
-    core.receive_stock(cur, gid, 2, cost_price=100)
+    # Реальная отмена: снимаем резервы (ORDERED минус сохраняется) + заказ в архив
+    core.release_order_reserves(cur, oid_e, only_new_negative=True)
+    cur.execute(f"UPDATE {SCHEMA}.orders SET status='archived' WHERE id=%s", (oid_e,))
+    # Железо приехало — должно лечь в СВОБОДНОЕ наличие, а не под отменённый заказ
+    recv = core.receive_stock(cur, gid, 2, cost_price=100)
     st = _group_state(cur, gid)
-    # Заказ отменён, но minus был, приёмка должна закрыть minus и положить в наличие (free)
     free = st["on_hand"] - st["reserved"]
-    ok = (st["negative"] == 0 and free >= 0)
-    report.append({"case": "ORDERED hardware arrives after cancel -> stock ok", "passed": ok,
-                   "actual": {"state": st, "free": free}})
+    # Приёмка игнорирует резерв отменённого заказа: ничего не "fulfilled",
+    # товар лёг в свободный остаток (free=2), под призрака ничего не зарезервировано
+    ok = (recv["fulfilled"] == 0 and recv["free_added"] == 2 and
+          st["reserved"] == 0 and free == 2)
+    report.append({"case": "ORDERED hardware arrives after cancel -> free stock", "passed": ok,
+                   "actual": {"state": st, "free": free, "recv": recv}})
 
     report.append({"summary": {
         "total": len([r for r in report if "passed" in r]),

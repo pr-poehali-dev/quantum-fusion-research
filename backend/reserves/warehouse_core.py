@@ -308,12 +308,14 @@ def receive_stock(cur, group_id, qty, cost_price=0, store_id=None, cell=None,
               note=f"Приход {qty} шт. на группу #{group_id}")
     log(cur, "receive_stock", group_id=group_id, delta=qty, payload={"supply_id": supply_id})
 
-    # 2. Гасим NEGATIVE-резервы FIFO по дате заказа
+    # 2. Гасим NEGATIVE-резервы FIFO по дате заказа.
+    #    Резервы отменённых/архивных заказов ИГНОРИРУЕМ — товар уйдёт в свободное наличие.
     cur.execute(
         f"SELECT r.id, r.order_id, r.supply_id, r.qty "
         f"FROM {SCHEMA}.warehouse_reserves r "
         f"JOIN {SCHEMA}.orders o ON o.id = r.order_id "
         f"WHERE r.group_id = %s AND r.type = '{NEGATIVE}' AND r.status = 'ACTIVE' "
+        f"AND o.status NOT IN ('cancelled', 'archived') "
         f"ORDER BY o.created_at ASC, r.id ASC "
         f"FOR UPDATE OF r",
         (group_id,),
