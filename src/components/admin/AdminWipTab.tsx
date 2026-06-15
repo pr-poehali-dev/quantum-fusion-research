@@ -1,11 +1,15 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
   EMPTY_WIP, WIP_STAGES, WIP_STAGE_COLORS, WIP_COMPONENTS,
   DELIVERY_OPTIONS, COMP_STATUS_LABELS, COMP_STATUS_BG,
 } from "@/pages/admin/types"
+
+interface WipStore { id: number; name: string; code: string }
 
 interface Props {
   tab: AdminTab
@@ -71,6 +75,25 @@ export function AdminWipTab({
     items: { group_id: number; name: string; sku: string; required_qty: number; status: string; url_supplier: string | null; slot: string; slot_status: string; eta_date: string | null; is_delayed: boolean }[]
   }[]>([])
   const [basketExpanded, setBasketExpanded] = useState<Record<string, boolean>>({})
+
+  // Магазины (для удобства — откуда поедет железка, без привязки к складу)
+  const [stores, setStores] = useState<WipStore[]>([])
+  // Выбор магазина по позиции (ключ "wipId:slot"), хранится локально
+  const [itemStore, setItemStore] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem("wip_basket_store") || "{}") } catch { return {} }
+  })
+  const setComponentStore = (wipId: number, slot: string, storeId: string) => {
+    setItemStore(prev => {
+      const next = { ...prev, [`${wipId}:${slot}`]: storeId }
+      localStorage.setItem("wip_basket_store", JSON.stringify(next))
+      return next
+    })
+  }
+  useEffect(() => {
+    api.warehouse.getStores().then((d: unknown) => {
+      if (Array.isArray(d)) setStores(d as WipStore[])
+    }).catch(() => {})
+  }, [])
 
   const loadBasket = async () => {
     setBasketLoading(true)
@@ -364,20 +387,52 @@ export function AdminWipTab({
                                     Задержка
                                   </span>
                                 )}
-                                <div className="shrink-0 flex items-center gap-1" title="Дата прихода железа (= Заказано)">
-                                  <Icon name="CalendarClock" size={13} className="text-foreground/30" />
-                                  <input
-                                    type="date"
-                                    value={item.eta_date || ""}
-                                    onChange={e => setComponentEta(item.slot, build.wip_id, e.target.value)}
-                                    className={`rounded-lg border px-2 py-1 text-xs font-medium focus:outline-none transition-colors bg-background ${
-                                      item.is_delayed ? "border-orange-400/50 text-orange-400" :
-                                      item.eta_date ? "border-yellow-400/40 text-yellow-400" :
-                                      "border-red-400/40 text-red-400"
-                                    }`}
+                                {/* Магазин (откуда поедет железка) — для удобства */}
+                                {stores.length > 0 && (
+                                  <select
+                                    value={itemStore[`${build.wip_id}:${item.slot}`] || ""}
+                                    onChange={e => setComponentStore(build.wip_id, item.slot, e.target.value)}
+                                    className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-foreground/70 focus:outline-none focus:border-primary transition-colors max-w-[130px]"
                                     style={{ cursor: "pointer" }}
-                                  />
-                                </div>
+                                    title="Магазин (откуда поедет)">
+                                    <option value="">Магазин</option>
+                                    {stores.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                                  </select>
+                                )}
+                                {/* Дата прихода железа = «Заказано» — кликабельный календарик */}
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      className={`shrink-0 flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-medium transition-colors ${
+                                        item.is_delayed ? "border-orange-400/50 text-orange-400 bg-orange-400/5" :
+                                        item.eta_date ? "border-yellow-400/40 text-yellow-400 bg-yellow-400/5" :
+                                        "border-red-400/40 text-red-400 bg-red-400/5"
+                                      }`}
+                                      style={{ cursor: "pointer" }}
+                                      title="Дата прихода железа (= Заказано)">
+                                      <Icon name="CalendarClock" size={13} />
+                                      {item.eta_date ? new Date(item.eta_date).toLocaleDateString("ru-RU") : "Дата прихода"}
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="end">
+                                    <Calendar
+                                      mode="single"
+                                      selected={item.eta_date ? new Date(item.eta_date) : undefined}
+                                      onSelect={(d?: Date) => setComponentEta(
+                                        item.slot, build.wip_id,
+                                        d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : ""
+                                      )}
+                                    />
+                                    {item.eta_date && (
+                                      <button
+                                        onClick={() => setComponentEta(item.slot, build.wip_id, "")}
+                                        className="w-full border-t border-border px-3 py-2 text-xs text-foreground/50 hover:text-red-400 transition-colors"
+                                        style={{ cursor: "pointer" }}>
+                                        Сбросить дату
+                                      </button>
+                                    )}
+                                  </PopoverContent>
+                                </Popover>
                               </>
                             )}
                           </div>
