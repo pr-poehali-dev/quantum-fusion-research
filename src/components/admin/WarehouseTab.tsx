@@ -352,7 +352,7 @@ function StoresModal({ stores, onClose, onSaved }: {
 
 // ─── Строка группы с разворотом ──────────────────────────────────────────────
 
-function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, isArchived }: {
+function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, isArchived, isSelected, onToggleSelect }: {
   group: Group
   stores: Store[]
   onEdit: (g: Group) => void
@@ -360,6 +360,8 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
   onUnarchive: (g: Group) => void
   onRefresh: () => void
   isArchived?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (id: number) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [supplyModal, setSupplyModal] = useState<Supply | null | "new">(null)
@@ -472,6 +474,7 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
         </td>
         <td className="px-3 py-2.5 sticky right-0 bg-card z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.1)]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1">
+            <input type="checkbox" checked={!!isSelected} onChange={() => onToggleSelect?.(group.id)} className="h-4 w-4 cursor-pointer accent-primary mr-1" />
             {isArchived ? (
               <button className="flex items-center gap-1.5 rounded-lg border border-green-400/40 px-2.5 py-1 text-xs font-medium text-green-400 hover:bg-green-400/10 transition-colors" onClick={() => onUnarchive(group)}>
                 <Icon name="RotateCcw" size={13} />Восстановить
@@ -662,6 +665,31 @@ export default function WarehouseTab() {
     load()
   }
 
+  // ── Массовый выбор ──
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkLoading, setBulkLoading] = useState(false)
+  useEffect(() => { setSelected(new Set()) }, [showArchived, page])
+  const toggleSelect = (id: number) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const bulkArchiveGroups = async () => {
+    if (!confirm(`Архивировать выбранные позиции (${selected.size})?`)) return
+    setBulkLoading(true)
+    await Promise.all([...selected].map(id => api.warehouse.archiveGroup(id)))
+    setSelected(new Set())
+    setBulkLoading(false)
+    load()
+  }
+  const bulkUnarchiveGroups = async () => {
+    setBulkLoading(true)
+    await Promise.all([...selected].map(id => api.warehouse.unarchiveGroup(id)))
+    setSelected(new Set())
+    setBulkLoading(false)
+    load()
+  }
+
   const totalPages = Math.ceil(total / PAGE)
 
   // Применяем фильтр и сортировку резервов
@@ -757,6 +785,24 @@ export default function WarehouseTab() {
         </select>
       </div>
 
+      {/* Панель массовых действий */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-2.5">
+          <span className="text-sm font-medium text-foreground">Выбрано: {selected.size}</span>
+          <div className="flex-1" />
+          {showArchived ? (
+            <button onClick={bulkUnarchiveGroups} disabled={bulkLoading} className="flex items-center gap-1.5 rounded-lg border border-green-400/40 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+              <Icon name={bulkLoading ? "Loader" : "RotateCcw"} size={14} />Восстановить выбранные
+            </button>
+          ) : (
+            <button onClick={bulkArchiveGroups} disabled={bulkLoading} className="flex items-center gap-1.5 rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+              <Icon name={bulkLoading ? "Loader" : "Archive"} size={14} />Архивировать выбранные
+            </button>
+          )}
+          <button onClick={() => setSelected(new Set())} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}><Icon name="X" size={16} /></button>
+        </div>
+      )}
+
       {/* Таблица */}
       <div className="rounded-xl border border-border overflow-x-auto">
         <table className="border-collapse" style={{ minWidth: "100%", tableLayout: "fixed" }}>
@@ -786,7 +832,17 @@ export default function WarehouseTab() {
               ))}
               <th className="relative font-medium sticky right-0 bg-muted/40 z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.15)]"
                 style={{ width: w("actions"), minWidth: w("actions") }}>
-                <div className="px-3 py-2.5">Действия</div>
+                <div className="px-3 py-2.5 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={displayGroups.length > 0 && displayGroups.every(g => selected.has(g.id))}
+                    onChange={() => setSelected(prev =>
+                      displayGroups.every(g => prev.has(g.id)) ? new Set() : new Set(displayGroups.map(g => g.id))
+                    )}
+                    className="h-4 w-4 cursor-pointer accent-primary"
+                  />
+                  Действия
+                </div>
               </th>
             </tr>
           </thead>
@@ -846,6 +902,8 @@ export default function WarehouseTab() {
                       onArchive={handleArchive}
                       onUnarchive={handleUnarchive}
                       isArchived={showArchived}
+                      isSelected={selected.has(g.id)}
+                      onToggleSelect={toggleSelect}
                       onRefresh={load}
                     />
                   )
@@ -861,6 +919,8 @@ export default function WarehouseTab() {
                   onArchive={handleArchive}
                   onUnarchive={handleUnarchive}
                   isArchived={showArchived}
+                  isSelected={selected.has(g.id)}
+                  onToggleSelect={toggleSelect}
                   onRefresh={load}
                 />
               ))

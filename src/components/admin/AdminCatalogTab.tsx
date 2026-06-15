@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react"
+import React, { useRef, useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ImageUploader } from "@/components/image-uploader"
@@ -62,6 +62,36 @@ export function AdminCatalogTab({
   const restoreProduct = async (id: number) => {
     await api.products.restore(id)
     setArchivedProducts(ps => ps.filter(p => p.id !== id))
+  }
+
+  // ── Массовый выбор ──
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkLoading, setBulkLoading] = useState(false)
+  useEffect(() => { setSelected(new Set()) }, [showArchived])
+  const toggleSelect = (id: number) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const toggleSelectAll = (ids: number[]) => setSelected(prev =>
+    ids.every(id => prev.has(id)) ? new Set() : new Set(ids)
+  )
+  const bulkArchive = async () => {
+    if (!confirm(`Архивировать выбранные товары (${selected.size})?`)) return
+    setBulkLoading(true)
+    const ids = [...selected]
+    await Promise.all(ids.map(id => api.products.delete(id)))
+    setProducts(ps => ps.filter(p => !selected.has(p.id)))
+    setSelected(new Set())
+    setBulkLoading(false)
+  }
+  const bulkRestore = async () => {
+    setBulkLoading(true)
+    const ids = [...selected]
+    await Promise.all(ids.map(id => api.products.restore(id)))
+    setArchivedProducts(ps => ps.filter(p => !selected.has(p.id)))
+    setSelected(new Set())
+    setBulkLoading(false)
   }
   const [productForm, setProductForm] = useState({
     id: null as number | null,
@@ -445,8 +475,29 @@ export function AdminCatalogTab({
           <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-card animate-pulse" />)}</div>
         ) : showArchived && archivedProducts.length === 0 ? (
           <div className="rounded-xl border border-border bg-card py-12 text-center text-foreground/40 text-sm">Архив пуст</div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border">
+        ) : (() => {
+          const rows = showArchived ? archivedProducts : filtered
+          const rowIds = rows.map(p => p.id)
+          const allSelected = rowIds.length > 0 && rowIds.every(id => selected.has(id))
+          return (
+          <>
+            {selected.size > 0 && (
+              <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-2.5">
+                <span className="text-sm font-medium text-foreground">Выбрано: {selected.size}</span>
+                <div className="flex-1" />
+                {showArchived ? (
+                  <button onClick={bulkRestore} disabled={bulkLoading} className="flex items-center gap-1.5 rounded-lg border border-green-400/40 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+                    <Icon name={bulkLoading ? "Loader" : "RotateCcw"} size={14} />Восстановить выбранные
+                  </button>
+                ) : (
+                  <button onClick={bulkArchive} disabled={bulkLoading} className="flex items-center gap-1.5 rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+                    <Icon name={bulkLoading ? "Loader" : "Archive"} size={14} />Архивировать выбранные
+                  </button>
+                )}
+                <button onClick={() => setSelected(new Set())} className="text-foreground/40 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}><Icon name="X" size={16} /></button>
+              </div>
+            )}
+            <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
@@ -455,11 +506,14 @@ export function AdminCatalogTab({
                   <th className="px-4 py-3 text-right text-xs font-semibold text-foreground/50">Цена</th>
                   {!showArchived && <th className="px-4 py-3 text-center text-xs font-semibold text-foreground/50">Остаток</th>}
                   <th className="px-4 py-3" />
+                  <th className="px-4 py-3 text-center w-12">
+                    <input type="checkbox" checked={allSelected} onChange={() => toggleSelectAll(rowIds)} className="h-4 w-4 cursor-pointer accent-primary" />
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {(showArchived ? archivedProducts : filtered).map((p, i) => (
-                  <tr key={p.id} className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
+                {rows.map((p, i) => (
+                  <tr key={p.id} className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${selected.has(p.id) ? "bg-primary/5" : i % 2 === 0 ? "" : "bg-muted/10"}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {p.image_url && <img src={p.image_url} alt={p.name} className="h-10 w-10 rounded-lg object-contain bg-muted shrink-0" />}
@@ -495,12 +549,17 @@ export function AdminCatalogTab({
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} className="h-4 w-4 cursor-pointer accent-primary" />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+          </>
+          )
+        })()}
       </div>
     )
   }
