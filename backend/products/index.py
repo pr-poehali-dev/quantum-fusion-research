@@ -155,8 +155,11 @@ def handler(event: dict, context) -> dict:
                 category_slug = params.get("category")
                 featured = params.get("featured")
                 search = params.get("search")
+                include_archived = params.get("include_archived") == "true"
                 where_clauses = []
                 args = []
+                if not include_archived:
+                    where_clauses.append("p.is_archived = FALSE")
                 if category_slug:
                     where_clauses.append("c.slug = %s")
                     args.append(category_slug)
@@ -233,9 +236,13 @@ def handler(event: dict, context) -> dict:
             product_id = (event.get("queryStringParameters") or {}).get("id")
             if not product_id:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "id required"})}
-            cur.execute("DELETE FROM products WHERE id=%s", (int(product_id),))
+            # Архивация вместо физического удаления: товар скрывается, но данные сохраняются
+            cur.execute(
+                "UPDATE products SET is_archived = TRUE, in_stock = FALSE WHERE id=%s",
+                (int(product_id),)
+            )
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "archived": True})}
 
     finally:
         cur.close()

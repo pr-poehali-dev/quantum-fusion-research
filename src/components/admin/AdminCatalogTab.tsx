@@ -65,7 +65,7 @@ export function AdminCatalogTab({
     setProducts(ps => ps.map(pp => pp.id === p.id ? { ...pp, in_stock: newQty > 0 } : pp))
   }
   const deleteProduct = async (id: number) => {
-    if (!confirm("Удалить товар? Это действие нельзя отменить.")) return
+    if (!confirm("Архивировать товар? Он скроется из каталога, но данные сохранятся.")) return
     await api.products.delete(id)
     setProducts(ps => ps.filter(p => p.id !== id))
   }
