@@ -64,6 +64,9 @@ export function AdminCatalogTab({
     setArchivedProducts(ps => ps.filter(p => p.id !== id))
   }
 
+  // ── Тогл архива сборок ──
+  const [buildsViewArchive, setBuildsViewArchive] = useState(false)
+
   // ── Массовый выбор ──
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -630,26 +633,22 @@ export function AdminCatalogTab({
     </div>
   )
 
-  // BUILDS LIST
-  if (tab === "builds") return (
-    <BuildsList builds={builds.filter(b => b.status !== "archive")} loading={loading}
-      expandedVariants={expandedVariants} setExpandedVariants={setExpandedVariants}
-      dupeLoading={dupeLoading} copiedBuildId={copiedBuildId} fmt={fmt}
-      onNew={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] }); setBuildComponents([]); setTab("add_build") }}
-      onEdit={editBuild} onDupe={duplicateBuild} onLink={generateClientLink}
-      onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id || bb.parent_id === b.id ? { ...bb, status } : bb)) }}
-      onDelete={deleteBuild} isArchive={false} />
-  )
-
-  // ARCHIVE
-  if (tab === "archive") return (
-    <BuildsList builds={builds.filter(b => b.status === "archive")} loading={loading}
-      expandedVariants={expandedVariants} setExpandedVariants={setExpandedVariants}
-      dupeLoading={dupeLoading} copiedBuildId={copiedBuildId} fmt={fmt}
-      onNew={() => {}} onEdit={editBuild} onDupe={duplicateBuild} onLink={generateClientLink}
-      onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, status } : bb)) }}
-      onDelete={deleteBuild} isArchive={true} />
-  )
+  // BUILDS LIST + ARCHIVE (тогл внутри одной вкладки)
+  if (tab === "builds" || tab === "archive") {
+    const showArchive = buildsViewArchive
+    return (
+      <BuildsList
+        builds={builds.filter(b => showArchive ? b.status === "archive" : b.status !== "archive")}
+        loading={loading}
+        expandedVariants={expandedVariants} setExpandedVariants={setExpandedVariants}
+        dupeLoading={dupeLoading} copiedBuildId={copiedBuildId} fmt={fmt}
+        onNew={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] }); setBuildComponents([]); setTab("add_build") }}
+        onEdit={editBuild} onDupe={duplicateBuild} onLink={generateClientLink}
+        onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id || bb.parent_id === b.id ? { ...bb, status } : bb)) }}
+        onDelete={deleteBuild} isArchive={showArchive}
+        onToggleArchive={() => setBuildsViewArchive(v => !v)} />
+    )
+  }
 
   // CABLES
   if (tab === "cables") {

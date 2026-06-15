@@ -81,7 +81,7 @@ export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoa
 }
 
 // ── Список сборок с группировкой по вариантам ──
-export function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, dupeLoading, copiedBuildId, fmt, onNew, onEdit, onDupe, onLink, onStatus, onDelete, isArchive }: {
+export function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, dupeLoading, copiedBuildId, fmt, onNew, onEdit, onDupe, onLink, onStatus, onDelete, isArchive, onToggleArchive }: {
   builds: PCBuild[]; loading: boolean; expandedVariants: number | null
   setExpandedVariants: (id: number | null) => void
   dupeLoading: number | null; copiedBuildId: number | null
@@ -93,6 +93,7 @@ export function BuildsList({ builds, loading, expandedVariants, setExpandedVaria
   onStatus: (b: PCBuild, status: string) => void
   onDelete: (id: number) => void
   isArchive: boolean
+  onToggleArchive?: () => void
 }) {
   const variantMap = new Map<number, PCBuild[]>()
   const roots: PCBuild[] = []
@@ -118,11 +119,20 @@ export function BuildsList({ builds, loading, expandedVariants, setExpandedVaria
         <h2 className="text-xl font-light text-foreground">
           {isArchive ? "Архив ПК" : "Наши ПК"} <span className="text-sm text-foreground/40 ml-1">({builds.length})</span>
         </h2>
-        {!isArchive && (
-          <button onClick={onNew} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Plus" size={16} />Новая сборка
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onToggleArchive && (
+            <button onClick={onToggleArchive}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isArchive ? "bg-amber-400/15 text-amber-400 border border-amber-400/40" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="Archive" size={15} />{isArchive ? "Скрыть архив" : "Архив"}
+            </button>
+          )}
+          {!isArchive && (
+            <button onClick={onNew} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="Plus" size={16} />Новая сборка
+            </button>
+          )}
+        </div>
       </div>
       {loading
         ? <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-card animate-pulse" />)}</div>

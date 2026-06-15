@@ -133,29 +133,23 @@ export default function Admin() {
   )
 
   // ── Tab config ────────────────────────────────────────────────────────────
+  // Группа 1 — Продукция и сборки
   const topTabs = [
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
-    { key: "add_build", label: "Ред/новая сборка", icon: "Wrench" },
     { key: "cables", label: "Кабели", icon: "Cable" },
-    { key: "archive", label: "Архив ПК", icon: "Archive" },
+    { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
     { key: "tags", label: "Теги", icon: "Tag" },
-    { key: "DIVIDER_1" },
-    { key: "products", label: "Товары", icon: "Package" },
-    { key: "add_product", label: "Доб./ред. товар", icon: "PlusCircle" },
-    { key: "DIVIDER_2" },
-    { key: "articles", label: "Статьи", icon: "BookOpen" },
-    { key: "add_article", label: "Ред/новая статья", icon: "FilePlus" },
   ]
+  // Группа 2 — Операции
   const bottomTabs = [
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "warehouse", label: "Склад", icon: "Warehouse" },
-    { key: "DIVIDER_4" },
-    { key: "wip_builds", label: "Сборки в процессе", icon: "Hammer" },
-    { key: "DIVIDER_5" },
+    { key: "products", label: "Товары", icon: "Package" },
+    { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
+    { key: "DIVIDER_1" },
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
-    { key: "DIVIDER_6" },
-    { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
+    { key: "articles", label: "Статьи", icon: "BookOpen" },
   ]
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
