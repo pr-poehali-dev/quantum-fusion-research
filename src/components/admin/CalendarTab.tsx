@@ -173,7 +173,7 @@ export default function CalendarTab() {
                     <div className="mt-1 space-y-0.5">
                       {dayPickups.map((p, i) => (
                         <div key={`p${i}`} className="truncate rounded bg-orange-400/15 px-1 py-0.5 text-[10px] font-medium text-orange-400" title={`Забрать ${p.orders_count} заказ(ов) из ${p.store_name}`}>
-                          📦 {p.store_code} · {p.orders_count}
+                          📦 {p.store_name} · {p.orders_count}
                         </div>
                       ))}
                       {dayHandouts.map((h, i) => (
