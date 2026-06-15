@@ -180,24 +180,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                     <p className="mt-1 text-[11px] text-foreground/30">{new Date(order.created_at).toLocaleString("ru-RU")}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {order.order_type === "pc_build" && (
-                      <button
-                        onClick={async () => {
-                          const data = await api.builds.getAll()
-                          const allBuilds = data.builds || []
-                          const padded = String(order.id).padStart(5, "0")
-                          const found = allBuilds.find((b: { name: string; description?: string }) =>
-                            b.name.includes(padded) || b.description?.includes(`#${padded}`)
-                          )
-                          if (!found) { alert("Сборка для этого заказа не найдена"); return }
-                          setTab("add_build")
-                        }}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/50 hover:border-primary hover:text-primary transition-colors"
-                        style={{ cursor: "pointer" }}>
-                        <Icon name="Monitor" size={12} />
-                        Сборка
-                      </button>
-                    )}
+
                     {order.order_type === "pc_build" && (
                       <button
                         onClick={() => copyOrderSheet(order.id)}
