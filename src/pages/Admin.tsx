@@ -146,7 +146,9 @@ export default function Admin() {
     { key: "warehouse", label: "Склад", icon: "Warehouse" },
     { key: "products", label: "Товары", icon: "Package" },
     { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
-    { key: "DIVIDER_1" },
+  ]
+  // Группа 3 — Прочее
+  const extraTabs = [
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
@@ -174,30 +176,20 @@ export default function Admin() {
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6 border-b border-border">
-          <div className="flex items-center gap-0 overflow-x-auto">
-            {topTabs.map(t => t.key.startsWith("DIVIDER") ? (
-              <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
-            ) : (
-              <button key={t.key} onClick={() => setTab(t.key as AdminTab)}
-                className={`flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
-                style={{ cursor: "pointer" }}>
-                <Icon name={(t.icon || "Package") as "Package"} size={15} />
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-0 overflow-x-auto">
-            {bottomTabs.map(t => t.key.startsWith("DIVIDER") ? (
-              <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
-            ) : (
-              <button key={t.key} onClick={() => setTab(t.key as AdminTab)}
-                className={`flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
-                style={{ cursor: "pointer" }}>
-                <Icon name={(t.icon || "Package") as "Package"} size={15} />
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {[topTabs, bottomTabs, extraTabs].map((row, ri) => (
+            <div key={ri} className="flex items-center justify-center gap-0 overflow-x-auto">
+              {row.map(t => t.key.startsWith("DIVIDER") ? (
+                <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
+              ) : (
+                <button key={t.key} onClick={() => setTab(t.key as AdminTab)}
+                  className={`flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name={(t.icon || "Package") as "Package"} size={15} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
 
         {/* ORDERS */}
