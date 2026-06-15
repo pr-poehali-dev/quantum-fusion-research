@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
 import WarehouseTab from "@/components/admin/WarehouseTab"
 import ScheduleTab from "@/components/admin/ScheduleTab"
+import CalendarTab from "@/components/admin/CalendarTab"
 import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import { AdminCatalogTab } from "@/components/admin/AdminCatalogTab"
@@ -151,6 +152,7 @@ export default function Admin() {
   const extraTabs = [
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
+    { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
   ]
 
@@ -225,6 +227,9 @@ export default function Admin() {
 
         {/* SCHEDULE */}
         {tab === "schedule" && <ScheduleTab />}
+
+        {/* CALENDAR */}
+        {tab === "calendar" && <CalendarTab />}
 
         {/* USERS */}
         {tab === "users" && (

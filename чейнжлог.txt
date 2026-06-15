@@ -3,6 +3,31 @@
 
 ---
 
+## v3.0 | 2026-06-15 | Календарь событий + заборы железок по магазинам
+
+### БД (миграция V0079)
+- wip_component_eta += store_id (магазин «откуда забирать» теперь в БД, не localStorage).
+- Таблица calendar_events (event_date, title, description).
+- Таблица calendar_event_employees (event_id, employee_id) — ответственные.
+
+### Backend
+- [reserves] set_component_eta принимает store_id; новый action set_component_store
+  (сохранить магазин позиции). basket_by_wip отдаёт store_id по позиции.
+- [schedule] CRUD событий: events (GET месяц), event_create/update/delete.
+  GET events также агрегирует «заборы железок»: группирует ETA по (магазин, дата),
+  одно событие на магазин в день с числом заказов (orders_count).
+
+### Frontend
+- Новая вкладка «Календарь» (extraTabs, рядом с Расписанием).
+- src/components/admin/CalendarTab.tsx: сетка месяца с числом событий в углу,
+  превью событий и заборов в ячейках, панель выбранного дня, модалка создания/
+  редактирования события (дата, название, описание, ответственные — сотрудники
+  из расписания). Навигация по месяцам.
+- [AdminWipTab] выбор магазина железки теперь сохраняется в БД
+  (set_component_store) и подтягивается из корзины (store_id), а не из localStorage.
+
+---
+
 ## v2.9 | 2026-06-15 | Корзина: крайняя дата прихода в шапке сборки
 
 ### Изменения [AdminWipTab]

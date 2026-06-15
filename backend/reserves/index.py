@@ -402,12 +402,15 @@ def handler(event: dict, context) -> dict:
             wip_id = int(body["wip_id"])
             slot = body["slot"]
             eta = body.get("eta_date") or None  # 'YYYY-MM-DD' или null (сброс)
-            # 1) Сохраняем/сбрасываем ETA позиции
+            store_id = body.get("store_id")
+            store_id = int(store_id) if store_id not in (None, "") else None
+            # 1) Сохраняем/сбрасываем ETA позиции (+ магазин если передан)
             cur.execute(
-                f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, eta_date) "
-                f"VALUES (%s, %s, %s) "
-                f"ON CONFLICT (wip_id, slot) DO UPDATE SET eta_date = EXCLUDED.eta_date, updated_at = NOW()",
-                (wip_id, slot, eta),
+                f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, eta_date, store_id) "
+                f"VALUES (%s, %s, %s, %s) "
+                f"ON CONFLICT (wip_id, slot) DO UPDATE SET "
+                f"eta_date = EXCLUDED.eta_date, store_id = EXCLUDED.store_id, updated_at = NOW()",
+                (wip_id, slot, eta, store_id),
             )
             # 2) Статус железки: дата задана → "ordered_transit" (Едет/Заказано),
             #    если дата уже в прошлом → "ordered_delay" (Задержка); сброс → "need_order"
@@ -431,6 +434,21 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps(
                 {"ok": True, "received_at": received_at, "auto_stage": new_stage})}
+
+        # ── Магазин «откуда забирать» железку (для календаря заборов) ────────
+        if action == "set_component_store" and method == "POST":
+            wip_id = int(body["wip_id"])
+            slot = body["slot"]
+            store_id = body.get("store_id")
+            store_id = int(store_id) if store_id not in (None, "") else None
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, store_id) "
+                f"VALUES (%s, %s, %s) "
+                f"ON CONFLICT (wip_id, slot) DO UPDATE SET store_id = EXCLUDED.store_id, updated_at = NOW()",
+                (wip_id, slot, store_id),
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         # ── Корзина закупки ─────────────────────────────────────────────────
         if action == "basket" and method == "GET":
@@ -489,7 +507,7 @@ def handler(event: dict, context) -> dict:
                         WHEN 'extra'       THEN wb.extra_status
                         ELSE 'pending'
                     END as slot_status,
-                    eta.eta_date
+                    eta.eta_date, eta.store_id
                 FROM {SCHEMA}.warehouse_purchase_basket b
                 JOIN {SCHEMA}.warehouse_groups g ON g.id = b.group_id
                 JOIN {SCHEMA}.pc_builds pcb ON true
@@ -513,7 +531,7 @@ def handler(event: dict, context) -> dict:
             }
             by_wip = {}
             for r in rows:
-                group_id, name, sku, req_qty, status, url_supplier, wip_id, order_number, order_id, stage, slot, slot_status, eta_date = r
+                group_id, name, sku, req_qty, status, url_supplier, wip_id, order_number, order_id, stage, slot, slot_status, eta_date, store_id = r
                 item_status = WIP_TO_BASKET.get(slot_status, "NEW")
                 key = str(wip_id)
                 if key not in by_wip:
@@ -524,6 +542,7 @@ def handler(event: dict, context) -> dict:
                     "url_supplier": url_supplier, "slot": slot, "slot_status": slot_status,
                     "eta_date": eta_date.isoformat() if eta_date else None,
                     "is_delayed": slot_status == "ordered_delay",
+                    "store_id": store_id,
                 })
             # Сортировка сборок: сверху те, где есть незаказанные (NEW) позиции,
             # затем по номеру заказа от нового к старому.

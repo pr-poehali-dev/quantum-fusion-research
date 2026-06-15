@@ -179,6 +179,102 @@ def handler(event: dict, context) -> dict:
                 } for r in rows]
             })}
 
+        # ── Календарь событий ───────────────────────────────────────────────────
+
+        elif action == "events" and method == "GET":
+            year = int(params.get("year", 2026))
+            month = int(params.get("month", 1))
+            # Свои события месяца + ответственные
+            cur.execute(
+                f"SELECT ce.id, ce.event_date, ce.title, ce.description, "
+                f"COALESCE(json_agg(json_build_object('id', e.id, 'name', e.name, 'color', e.color)) "
+                f"  FILTER (WHERE e.id IS NOT NULL), '[]') as employees "
+                f"FROM {SCHEMA}.calendar_events ce "
+                f"LEFT JOIN {SCHEMA}.calendar_event_employees cee ON cee.event_id = ce.id "
+                f"LEFT JOIN {SCHEMA}.employees e ON e.id = cee.employee_id "
+                f"WHERE EXTRACT(YEAR FROM ce.event_date) = {year} "
+                f"AND EXTRACT(MONTH FROM ce.event_date) = {month} "
+                f"GROUP BY ce.id ORDER BY ce.event_date, ce.id"
+            )
+            events = [{
+                "id": r[0], "event_date": r[1].isoformat() if r[1] else None,
+                "title": r[2], "description": r[3], "employees": r[4], "kind": "event",
+            } for r in cur.fetchall()]
+
+            # Авто-события «забрать из магазина»: группируем ETA по (магазин, дата).
+            # Одно событие на магазин в день, с числом заказов.
+            cur.execute(
+                f"SELECT eta.eta_date, st.id, st.name, st.code, "
+                f"COUNT(DISTINCT wb.order_id) as orders_cnt "
+                f"FROM {SCHEMA}.wip_component_eta eta "
+                f"JOIN {SCHEMA}.warehouse_stores st ON st.id = eta.store_id "
+                f"JOIN {SCHEMA}.wip_builds wb ON wb.id = eta.wip_id "
+                f"WHERE eta.eta_date IS NOT NULL AND eta.store_id IS NOT NULL "
+                f"AND EXTRACT(YEAR FROM eta.eta_date) = {year} "
+                f"AND EXTRACT(MONTH FROM eta.eta_date) = {month} "
+                f"AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён') "
+                f"GROUP BY eta.eta_date, st.id, st.name, st.code "
+                f"ORDER BY eta.eta_date"
+            )
+            pickups = [{
+                "event_date": r[0].isoformat() if r[0] else None,
+                "store_id": r[1], "store_name": r[2], "store_code": r[3],
+                "orders_count": int(r[4]), "kind": "pickup",
+            } for r in cur.fetchall()]
+
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "events": events, "pickups": pickups
+            })}
+
+        elif action == "event_create" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            title = (body.get("title") or "").strip()
+            event_date = body.get("event_date")
+            if not title or not event_date:
+                return err("Нужны title и event_date")
+            description = body.get("description") or ""
+            employee_ids = body.get("employee_ids") or []
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.calendar_events (event_date, title, description) "
+                f"VALUES ({esc(event_date)}, {esc(title)}, {esc(description)}) RETURNING id"
+            )
+            eid = cur.fetchone()[0]
+            for emp in employee_ids:
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.calendar_event_employees (event_id, employee_id) "
+                    f"VALUES ({eid}, {int(emp)}) ON CONFLICT DO NOTHING"
+                )
+            conn.commit()
+            return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": eid, "ok": True})}
+
+        elif action == "event_update" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            eid = int(body["id"])
+            title = (body.get("title") or "").strip()
+            event_date = body.get("event_date")
+            description = body.get("description") or ""
+            employee_ids = body.get("employee_ids") or []
+            cur.execute(
+                f"UPDATE {SCHEMA}.calendar_events SET title={esc(title)}, "
+                f"event_date={esc(event_date)}, description={esc(description)}, updated_at=NOW() WHERE id={eid}"
+            )
+            cur.execute(f"DELETE FROM {SCHEMA}.calendar_event_employees WHERE event_id={eid}")
+            for emp in employee_ids:
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.calendar_event_employees (event_id, employee_id) "
+                    f"VALUES ({eid}, {int(emp)}) ON CONFLICT DO NOTHING"
+                )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        elif action == "event_delete" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            eid = int(body["id"])
+            cur.execute(f"DELETE FROM {SCHEMA}.calendar_event_employees WHERE event_id={eid}")
+            cur.execute(f"DELETE FROM {SCHEMA}.calendar_events WHERE id={eid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
         return err("Неизвестный action", 404)
 
     finally:

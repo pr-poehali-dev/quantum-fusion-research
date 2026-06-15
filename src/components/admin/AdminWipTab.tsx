@@ -72,21 +72,21 @@ export function AdminWipTab({
   const [basketLoading, setBasketLoading] = useState(false)
   const [basketBuilds, setBasketBuilds] = useState<{
     wip_id: number; order_number: string; order_id: number; stage: string
-    items: { group_id: number; name: string; sku: string; required_qty: number; status: string; url_supplier: string | null; slot: string; slot_status: string; eta_date: string | null; is_delayed: boolean }[]
+    items: { group_id: number; name: string; sku: string; required_qty: number; status: string; url_supplier: string | null; slot: string; slot_status: string; eta_date: string | null; is_delayed: boolean; store_id: number | null }[]
   }[]>([])
   const [basketExpanded, setBasketExpanded] = useState<Record<string, boolean>>({})
 
-  // Магазины (для удобства — откуда поедет железка, без привязки к складу)
+  // Магазины (откуда поедет железка) — для удобства и календаря заборов
   const [stores, setStores] = useState<WipStore[]>([])
-  // Выбор магазина по позиции (ключ "wipId:slot"), хранится локально
-  const [itemStore, setItemStore] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem("wip_basket_store") || "{}") } catch { return {} }
-  })
+  // Выбор магазина по позиции (ключ "wipId:slot"). Источник — БД (приходит в корзине).
+  const [itemStore, setItemStore] = useState<Record<string, string>>({})
   const setComponentStore = (wipId: number, slot: string, storeId: string) => {
-    setItemStore(prev => {
-      const next = { ...prev, [`${wipId}:${slot}`]: storeId }
-      localStorage.setItem("wip_basket_store", JSON.stringify(next))
-      return next
+    setItemStore(prev => ({ ...prev, [`${wipId}:${slot}`]: storeId }))
+    // Сохраняем магазин в БД, чтобы календарь заборов был общим для всех
+    fetch(`${BASKET_URL}?action=set_component_store`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wip_id: wipId, slot, store_id: storeId || null }),
     })
   }
   useEffect(() => {
@@ -104,11 +104,17 @@ export function AdminWipTab({
     // Раскрываем только сборки, где есть незаказанные позиции (NEW).
     // «Всё заказано» — оставляем свёрнутыми.
     const exp: Record<string, boolean> = {}
+    const storeMap: Record<string, string> = {}
     for (const b of builds) {
       const hasNew = b.items.some((i: { status: string }) => i.status === "NEW")
       exp[String(b.wip_id)] = hasNew
+      // Подтягиваем выбранный магазин из БД
+      for (const it of b.items) {
+        if (it.store_id) storeMap[`${b.wip_id}:${it.slot}`] = String(it.store_id)
+      }
     }
     setBasketExpanded(exp)
+    setItemStore(storeMap)
     setBasketLoading(false)
   }
 
