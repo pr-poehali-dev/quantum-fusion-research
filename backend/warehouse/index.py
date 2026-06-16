@@ -895,7 +895,8 @@ def handler(event: dict, context) -> dict:
             )
             neg_rows = cur.fetchall()
             if neg_rows:
-                negative_reserves = [{"order_id": r[0], "customer_name": r[1], "qty": int(r[2])} for r in neg_rows]
+                # SQL: r[0]=order_id, r[1]=qty, r[2]=customer_name
+                negative_reserves = [{"order_id": r[0], "qty": int(r[1]), "customer_name": r[2]} for r in neg_rows]
             else:
                 # Fallback: если в warehouse_reserves нет записей — берём qty_negative из supplies
                 cur.execute(
