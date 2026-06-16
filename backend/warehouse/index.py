@@ -35,6 +35,48 @@ def gen_sku():
     return letters + digits
 
 
+# Слоты компонентов WIP-сборки: поле названия → поле статуса
+WIP_SLOTS = [
+    ("cpu", "cpu_status"), ("gpu", "gpu_status"), ("ram", "ram_status"),
+    ("storage", "storage_status"), ("psu", "psu_status"),
+    ("case_name", "case_status"), ("motherboard", "motherboard_status"),
+    ("cooling", "cooling_status"),
+]
+
+
+def _set_wip_component_ready(cur, order_id, prod_name):
+    """
+    Товар поступил и погасил минус-резерв заказа → переводим соответствующий
+    компонент в WIP-сборке заказа в статус 'ready' (получено/в наличии).
+    Компонент ищем по совпадению названия товара со слотом сборки.
+    Также чистим дату ETA по этому слоту, чтобы не висел «заказан/едет».
+    """
+    cur.execute(
+        f"SELECT id, cpu, gpu, ram, storage, psu, case_name, motherboard, cooling "
+        f"FROM {SCHEMA}.wip_builds WHERE order_id = %s",
+        (order_id,),
+    )
+    for row in cur.fetchall():
+        wip_id = row[0]
+        names = {
+            "cpu": row[1], "gpu": row[2], "ram": row[3], "storage": row[4],
+            "psu": row[5], "case_name": row[6], "motherboard": row[7], "cooling": row[8],
+        }
+        for name_field, status_field in WIP_SLOTS:
+            val = names.get(name_field)
+            if val and val.strip().lower() == (prod_name or "").strip().lower():
+                slot = "case" if name_field == "case_name" else name_field
+                cur.execute(
+                    f"UPDATE {SCHEMA}.wip_builds SET {status_field} = 'ready', updated_at = NOW() "
+                    f"WHERE id = %s AND {status_field} <> 'ready'",
+                    (wip_id,),
+                )
+                cur.execute(
+                    f"DELETE FROM {SCHEMA}.wip_component_eta WHERE wip_id = %s AND slot = %s",
+                    (wip_id, slot),
+                )
+
+
 def fmt_group(row):
     return {
         "id": row[0], "product_id": row[1], "name": row[2], "sku": row[3],
@@ -409,7 +451,7 @@ def handler(event: dict, context) -> dict:
             negative_alerts = []
             avail = qty  # сколько из новой поставки можно зарезервировать
             cur.execute(
-                f"SELECT r.id, r.order_id, r.supply_id, r.qty, o.user_id, o.customer_name, o.status "
+                f"SELECT r.id, r.order_id, r.supply_id, r.qty, o.user_id, o.customer_name, o.status, r.slot "
                 f"FROM {SCHEMA}.warehouse_reserves r "
                 f"LEFT JOIN {SCHEMA}.orders o ON o.id = r.order_id "
                 f"WHERE r.group_id = {group_id} AND r.type = 'NEGATIVE' AND r.status = 'ACTIVE' "
@@ -419,7 +461,7 @@ def handler(event: dict, context) -> dict:
             )
             neg_reserves = cur.fetchall()
             fulfilled_by_order = {}  # order_id -> кол-во погашенного
-            for (rid, neg_order_id, neg_supply_id, neg_qty, neg_user_id, neg_cust, neg_ostatus) in neg_reserves:
+            for (rid, neg_order_id, neg_supply_id, neg_qty, neg_user_id, neg_cust, neg_ostatus, neg_slot) in neg_reserves:
                 if avail <= 0:
                     break
                 clear = min(neg_qty, avail)
@@ -463,6 +505,10 @@ def handler(event: dict, context) -> dict:
                      f"Гашение минус-резерва заказа #{neg_order_id} приходом: {prod_name}")
                 )
                 avail -= clear
+                # Товар приехал и погасил долг → статус компонента в WIP = 'ready'
+                # (в наличии/получено). Находим WIP заказа и слот по названию товара.
+                if neg_order_id:
+                    _set_wip_component_ready(cur, neg_order_id, prod_name)
                 if neg_order_id:
                     fulfilled_by_order[neg_order_id] = fulfilled_by_order.get(neg_order_id, 0) + clear
                     # Уведомление заказчику, что товар приехал
@@ -474,6 +520,15 @@ def handler(event: dict, context) -> dict:
                             f"VALUES (%s, 'order', %s, %s)",
                             (neg_user_id, txt, link)
                         )
+
+            # Если что-то погасили — переводим позицию корзины закупки в 'RECEIVED'
+            # (получено). Резервы и корзина независимы, но статус «получено» нужен
+            # для контроля закупки.
+            if fulfilled_by_order:
+                cur.execute(
+                    f"UPDATE {SCHEMA}.warehouse_purchase_basket "
+                    f"SET status = 'RECEIVED', updated_at = NOW() WHERE group_id = {group_id}"
+                )
 
             for ord_id, cnt in fulfilled_by_order.items():
                 negative_alerts.append({"product": prod_name, "reserved": cnt, "orders": [ord_id]})
@@ -495,21 +550,24 @@ def handler(event: dict, context) -> dict:
                     )
                     avail -= to_clear
 
-            # Ищем активные wip_builds с need_order для этого товара и резервируем
+            # Ищем активные wip_builds где компонент ещё не получен (need_order /
+            # ordered_transit / ordered_delay — «надо заказать» или «едет/заказано»)
+            # и резервируем под них пришедший товар. 'ready' пропускаем — уже получен.
             if grp_product_id and avail > 0:
                 pn = prod_name.replace("'", "''")
+                NEED = "('need_order','ordered_transit','ordered_delay')"
                 cur.execute(f"""
                     SELECT wip_id, order_id, slot FROM (
                         SELECT wb.id as wip_id, wb.order_id,
                             CASE
-                                WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status = 'need_order' THEN 'cpu'
-                                WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status = 'need_order' THEN 'gpu'
-                                WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status = 'need_order' THEN 'ram'
-                                WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status = 'need_order' THEN 'storage'
-                                WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status = 'need_order' THEN 'psu'
-                                WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status = 'need_order' THEN 'case'
-                                WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status = 'need_order' THEN 'motherboard'
-                                WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status = 'need_order' THEN 'cooling'
+                                WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status IN {NEED} THEN 'cpu'
+                                WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status IN {NEED} THEN 'gpu'
+                                WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status IN {NEED} THEN 'ram'
+                                WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status IN {NEED} THEN 'storage'
+                                WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status IN {NEED} THEN 'psu'
+                                WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status IN {NEED} THEN 'case'
+                                WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status IN {NEED} THEN 'motherboard'
+                                WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status IN {NEED} THEN 'cooling'
                                 ELSE NULL
                             END as slot
                         FROM {SCHEMA}.wip_builds wb
@@ -532,6 +590,14 @@ def handler(event: dict, context) -> dict:
                         f"UPDATE {SCHEMA}.warehouse_supplies SET qty=qty-1, qty_reserved=qty_reserved+1 WHERE id=%s",
                         (supply_id,)
                     )
+                    # Создаём POSITIVE-резерв в таблице резервов (иначе рассинхрон:
+                    # qty_reserved растёт, а записи о резерве под заказ нет)
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.warehouse_reserves "
+                        f"(order_id, group_id, supply_id, slot, qty, type, status) "
+                        f"VALUES (%s, %s, %s, %s, 1, 'POSITIVE', 'ACTIVE')",
+                        (order_id_r, group_id, supply_id, slot_r)
+                    )
                     cur.execute(
                         f"INSERT INTO {SCHEMA}.warehouse_movements "
                         f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
@@ -542,6 +608,11 @@ def handler(event: dict, context) -> dict:
                     avail -= 1
 
                 if affected_orders:
+                    # Позиция корзины закупки → 'RECEIVED' (получено)
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.warehouse_purchase_basket "
+                        f"SET status = 'RECEIVED', updated_at = NOW() WHERE group_id = {group_id}"
+                    )
                     negative_alerts.append({
                         "product": prod_name,
                         "reserved": len(affected_orders),
