@@ -3,6 +3,46 @@
 
 ---
 
+## v3.13 | 2026-06-16 | НДС, скидка на покупку, предоплата
+
+### БД (миграция V0092)
+- app_settings (key-value): purchase_discount_percent, default_prepayment_percent.
+- warehouse_supplies: has_vat, price_with_vat.
+- pc_builds: sell_with_vat.
+- orders: prepayment_percent (def 30), prepayment_amount.
+
+### Приёмка товара (склад)
+- Обязательный выбор «Товар с НДС? Да/Нет» перед приёмкой — кнопка
+  «Принять» заблокирована, пока не выбрано.
+- Менеджер вводит цену с НДС → в заход пишется цена за вычетом % скидки.
+- backend warehouse.supply_create: has_vat обязателен, cost_price =
+  price_with_vat × (1 − discount%).
+
+### Скидка на покупку (склад)
+- Кнопка «Скидка на покупку» в шапке склада → модалка с вводом %.
+- backend warehouse: action=settings (GET), settings_set (POST).
+
+### Продажа сборки с НДС (builds)
+- Флаг «Продажа с НДС» в форме сборки. Если включён — цена продажи
+  = (железо + сборка) × 1.22, округление ВВЕРХ до 250 ₽.
+- backend builds: sell_with_vat в SELECT/INSERT/UPDATE pc_builds.
+
+### Предоплата и остаток (WIP)
+- В колонке клиента WIP: итог, предоплата (% редактируется инлайн,
+  дефолт 30% от total), остаток. На этапе «Забрали» остаток выделяется
+  как «К доплате».
+- backend wip-builds: SELECT отдаёт prepayment_percent/amount/remaining;
+  PATCH с prepayment_percent обновляет orders.
+
+### Frontend
+- WarehouseTab.tsx — НДС в приёмке + DiscountModal.
+- AdminCatalogTab.tsx — флаг НДС и расчёт цены сборки.
+- AdminWipTab.tsx — компонент PrepaymentCell.
+- api.ts — warehouse.getSettings/setSettings.
+- admin/types.ts — PCBuild.sell_with_vat, WipBuild.prepayment_*.
+
+---
+
 ## v3.12 | 2026-06-16 | Новый раздел «Финансы»
 
 ### Что добавлено

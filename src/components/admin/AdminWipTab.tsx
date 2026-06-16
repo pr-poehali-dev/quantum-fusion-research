@@ -739,7 +739,13 @@ export function AdminWipTab({
                           <div className="space-y-0.5">
                             {w.customer_name && <p className="text-xs font-medium text-foreground">{w.customer_name}</p>}
                             {(w.customer_phone || w.contact) && <p className="text-[10px] text-primary/80 font-mono">{w.customer_phone || w.contact}</p>}
-                            {w.total && <p className="text-[10px] text-foreground/50 font-semibold">{w.total.toLocaleString("ru-RU")} ₽</p>}
+                            {!!w.total && (
+                              <PrepaymentCell wip={w} onChanged={(pct, prepay, remaining) =>
+                                setWipBuilds(bs => bs.map(b => b.id === w.id
+                                  ? { ...b, prepayment_percent: pct, prepayment_amount: prepay, remaining_amount: remaining }
+                                  : b))
+                              } />
+                            )}
                           </div>
                         )}
                         {row.key === "_received_at" && <span className="text-foreground/60">{w.received_at ? new Date(w.received_at).toLocaleDateString("ru-RU") : "—"}</span>}
@@ -795,6 +801,59 @@ export function AdminWipTab({
       )}
 
 
+    </div>
+  )
+}
+
+// ─── Предоплата и остаток (ячейка клиента) ──────────────────────────────────────
+function PrepaymentCell({ wip, onChanged }: {
+  wip: WipBuild
+  onChanged: (pct: number, prepay: number, remaining: number) => void
+}) {
+  const total = wip.total || 0
+  const pct = wip.prepayment_percent ?? 30
+  const prepay = wip.prepayment_amount ?? Math.round(total * pct / 100)
+  const remaining = wip.remaining_amount ?? (total - prepay)
+  const issued = wip.stage === "Забрали"
+
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(String(pct))
+  const [saving, setSaving] = useState(false)
+
+  const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
+
+  const save = async () => {
+    const p = Math.max(0, Math.min(100, parseFloat(val.replace(",", ".")) || 0))
+    setSaving(true)
+    await api.wipBuilds.patch({ id: wip.id, prepayment_percent: p })
+    setSaving(false)
+    setEditing(false)
+    const newPrepay = Math.round(total * p / 100)
+    onChanged(p, newPrepay, total - newPrepay)
+  }
+
+  return (
+    <div className="mt-0.5 text-[10px] leading-tight">
+      <p className="text-foreground/50 font-semibold">{fmt(total)}</p>
+      <div className="flex items-center gap-1 text-foreground/40">
+        <span>Предоплата</span>
+        {editing ? (
+          <span className="flex items-center gap-0.5">
+            <input value={val} onChange={e => setVal(e.target.value)} inputMode="decimal"
+              className="w-9 rounded border border-border bg-background px-1 text-[10px] text-right" autoFocus />
+            <span>%</span>
+            <button onClick={save} disabled={saving} className="text-primary"><Icon name="Check" size={11} /></button>
+            <button onClick={() => { setEditing(false); setVal(String(pct)) }} className="text-foreground/30"><Icon name="X" size={11} /></button>
+          </span>
+        ) : (
+          <button onClick={() => setEditing(true)} className="text-primary/70 hover:text-primary" style={{ cursor: "pointer" }}>
+            {pct}% · {fmt(prepay)}
+          </button>
+        )}
+      </div>
+      <p className={issued ? "font-bold text-amber-400" : "text-foreground/40"}>
+        {issued ? "К доплате: " : "Остаток: "}{fmt(remaining)}
+      </p>
     </div>
   )
 }

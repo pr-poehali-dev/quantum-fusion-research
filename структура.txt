@@ -63,6 +63,19 @@ warehouse_core.release_order_reserves(only_new_negative=True) — та же ло
 warehouse_movements, warehouse_reserves, warehouse_purchase_basket,
 warehouse_stock_log, warehouse_backorders.
 
+### НДС / скидка / предоплата (v3.13)
+- warehouse.supply_create: обязательный has_vat (да/нет); менеджер вводит
+  price_with_vat, в заход пишется cost_price = price_with_vat×(1−скидка%).
+- warehouse action=settings (GET) / settings_set (POST) — глобальные настройки
+  в таблице app_settings (purchase_discount_percent и др.).
+- builds: pc_builds.sell_with_vat. Если TRUE — цена продажи на фронте
+  = (железо+сборка)×1.22, округление вверх до 250 ₽.
+- wip-builds: orders.prepayment_percent (def 30) / prepayment_amount.
+  SELECT отдаёт remaining_amount (остаток = total − предоплата). PATCH
+  с prepayment_percent пересчитывает orders.prepayment_amount.
+- Таблицы: app_settings, +поля в warehouse_supplies (has_vat, price_with_vat),
+  pc_builds (sell_with_vat), orders (prepayment_percent, prepayment_amount).
+
 ### finance
 Раздел «Финансы» (вкладка /admin/finance, FinanceTab.tsx).
 GET action=summary — сводка: стоимость склада (закупка/продажа),

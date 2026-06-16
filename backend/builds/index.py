@@ -32,6 +32,7 @@ def fmt_build(row, tags=None):
         "client_user_id": row[14],
         "parent_id": row[15],
         "in_stock": row[16] if len(row) > 16 else False,
+        "sell_with_vat": row[17] if len(row) > 17 else False,
         "tags": tags or [],
     }
 
@@ -84,7 +85,8 @@ def handler(event: dict, context) -> dict:
 
             base = """SELECT id, name, description, image_urls, components, parts_total,
                              assembly_type, assembly_fee, total_price, status, is_featured,
-                             sort_order, created_at, client_token, client_user_id, parent_id, in_stock
+                             sort_order, created_at, client_token, client_user_id, parent_id, in_stock,
+                             sell_with_vat
                       FROM pc_builds"""
 
             if build_id:
@@ -151,15 +153,16 @@ def handler(event: dict, context) -> dict:
 
             cur.execute(
                 """INSERT INTO pc_builds (name, description, image_urls, components, parts_total,
-                   assembly_type, assembly_fee, total_price, status, is_featured, in_stock, sort_order, created_at, parent_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s) RETURNING id""",
+                   assembly_type, assembly_fee, total_price, status, is_featured, in_stock, sort_order, created_at, parent_id, sell_with_vat)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s) RETURNING id""",
                 (body.get("name", "Новая сборка"), body.get("description"),
                  json.dumps(body.get("image_urls", [])), json.dumps(body.get("components", [])),
                  body.get("parts_total", 0), body.get("assembly_type", "manual"),
                  body.get("assembly_fee", 0), body.get("total_price", 0),
                  body.get("status", "draft"), body.get("is_featured", False),
                  body.get("in_stock", False),
-                 body.get("sort_order"), body.get("parent_id"))
+                 body.get("sort_order"), body.get("parent_id"),
+                 body.get("sell_with_vat", False))
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -170,7 +173,7 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 """UPDATE pc_builds SET name=%s, description=%s, image_urls=%s, components=%s,
                    parts_total=%s, assembly_type=%s, assembly_fee=%s, total_price=%s,
-                   status=%s, is_featured=%s, in_stock=%s, sort_order=%s, parent_id=%s
+                   status=%s, is_featured=%s, in_stock=%s, sort_order=%s, parent_id=%s, sell_with_vat=%s
                    WHERE id=%s""",
                 (body.get("name"), body.get("description"),
                  json.dumps(body.get("image_urls", [])), json.dumps(body.get("components", [])),
@@ -178,7 +181,8 @@ def handler(event: dict, context) -> dict:
                  body.get("assembly_fee", 0), body.get("total_price", 0),
                  body.get("status", "draft"), body.get("is_featured", False),
                  body.get("in_stock", False),
-                 body.get("sort_order"), body.get("parent_id"), body["id"])
+                 body.get("sort_order"), body.get("parent_id"),
+                 body.get("sell_with_vat", False), body["id"])
             )
             conn.commit()
             return resp(200, {"ok": True})

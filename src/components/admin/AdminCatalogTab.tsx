@@ -179,6 +179,7 @@ export function AdminCatalogTab({
     assembly_type: "percent" as "percent" | "manual",
     assembly_fee_manual: "",
     image_urls: [] as string[],
+    sell_with_vat: false,
   })
   const [buildComponents, setBuildComponents] = useState<Array<{
     slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; qty: number; image_urls?: string[]
@@ -197,7 +198,11 @@ export function AdminCatalogTab({
   const assemblyFee = buildForm.assembly_type === "percent"
     ? Math.round(partsTotal * 0.07)
     : (parseFloat(buildForm.assembly_fee_manual) || 0)
-  const buildTotal = partsTotal + assemblyFee
+  const baseTotal = partsTotal + assemblyFee
+  // Продажа с НДС: +22% и округление вверх до 250 ₽
+  const buildTotal = buildForm.sell_with_vat
+    ? Math.ceil(baseTotal * 1.22 / 250) * 250
+    : baseTotal
 
   const editBuild = (b: PCBuild) => {
     setBuildForm({
@@ -206,6 +211,7 @@ export function AdminCatalogTab({
       assembly_type: (b.assembly_type as "percent" | "manual") || "percent",
       assembly_fee_manual: b.assembly_fee ? String(b.assembly_fee) : "",
       image_urls: b.image_urls || [],
+      sell_with_vat: b.sell_with_vat ?? false,
     })
     setBuildComponents(b.components?.map(c => ({
       slot: c.slot, source: (c.source as "catalog" | "custom") || "catalog",
@@ -224,7 +230,8 @@ export function AdminCatalogTab({
       name: buildForm.name, description: buildForm.description, status: buildForm.status,
       is_featured: buildForm.is_featured, in_stock: buildForm.in_stock,
       assembly_type: buildForm.assembly_type, assembly_fee: asm_fee,
-      parts_total: partsTotal, total_price: partsTotal + asm_fee,
+      parts_total: partsTotal, total_price: buildTotal,
+      sell_with_vat: buildForm.sell_with_vat,
       image_urls: buildForm.image_urls,
       components: buildComponents.map(c => ({
         slot: c.slot, source: c.source, source_id: c.source_id,
@@ -244,7 +251,7 @@ export function AdminCatalogTab({
     }
     const d = await api.builds.getAll()
     setBuilds(Array.isArray(d) ? d : (d.builds || []))
-    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] })
+    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false })
     setBuildComponents([])
     setBuildTagIds([])
     setTab("builds")
@@ -803,8 +810,18 @@ export function AdminCatalogTab({
                 className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="Сумма за сборку (₽)" style={{ cursor: "text" }} />
             )}
           </div>
-          <div className="flex items-center justify-between border-t border-border pt-3">
-            <span className="text-sm font-medium text-foreground">Итого:</span>
+          <label className="flex items-center gap-2 text-sm text-foreground/70 border-t border-border pt-3 cursor-pointer" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={buildForm.sell_with_vat} onChange={e => setBuildForm(f => ({ ...f, sell_with_vat: e.target.checked }))} className="rounded" />
+            Продажа с НДС <span className="text-xs text-foreground/40">(+22%, округление вверх до 250 ₽)</span>
+          </label>
+          {buildForm.sell_with_vat && (
+            <div className="mt-2 flex items-center justify-between text-xs text-foreground/50">
+              <span>Без НДС: {fmt(baseTotal)}</span>
+              <span>+22% и округление</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-border pt-3 mt-3">
+            <span className="text-sm font-medium text-foreground">Итого{buildForm.sell_with_vat ? " (с НДС)" : ""}:</span>
             <span className="text-2xl font-bold text-foreground">{fmt(buildTotal)}</span>
           </div>
         </div>

@@ -3,7 +3,7 @@ import os
 import psycopg2
 
 import warehouse_core as core
-# v7 - авто-этап + страховка резервов (ensure_order_reserves)
+# v8 - авто-этап + страховка резервов + предоплата/остаток (prepayment)
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -100,6 +100,7 @@ def fmt_row(row):
         "order_id", "created_at", "updated_at",
         "customer_name", "customer_phone", "total", "order_status",
         "client_token", "build_id", "build_components",
+        "prepayment_percent", "prepayment_amount",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -110,6 +111,16 @@ def fmt_row(row):
             d[k] = d[k].isoformat()
     if d.get("total") is not None:
         d["total"] = float(d["total"])
+    # Предоплата: процент (дефолт 30) и сумма; остаток = итог − предоплата
+    total = d.get("total") or 0
+    pct = float(d["prepayment_percent"]) if d.get("prepayment_percent") is not None else 30.0
+    if d.get("prepayment_amount") is not None:
+        prepay = float(d["prepayment_amount"])
+    else:
+        prepay = round(total * pct / 100, 2)
+    d["prepayment_percent"] = pct
+    d["prepayment_amount"] = prepay
+    d["remaining_amount"] = round(total - prepay, 2)
     return d
 
 def resp(status, data):
@@ -141,7 +152,8 @@ def handler(event: dict, context) -> dict:
                        w.order_id, w.created_at, w.updated_at,
                        o.customer_name, o.customer_phone, o.total, o.status as order_status,
                        w.client_token, w.build_id,
-                       pb.components as build_components
+                       pb.components as build_components,
+                       o.prepayment_percent, o.prepayment_amount
                 FROM wip_builds w
                 LEFT JOIN orders o ON w.order_id = o.id
                 LEFT JOIN pc_builds pb ON pb.id = w.build_id"""
@@ -304,6 +316,19 @@ def handler(event: dict, context) -> dict:
 
                 conn.commit()
                 return resp(200, {"ok": True})
+
+            # Установить процент предоплаты (по умолчанию 30%)
+            if "prepayment_percent" in body:
+                pct = float(body.get("prepayment_percent") or 0)
+                pct = max(0, min(100, pct))
+                cur.execute(
+                    f"UPDATE {SCHEMA}.orders SET prepayment_percent=%s, "
+                    f"prepayment_amount = ROUND(total * %s / 100, 2), updated_at=NOW() "
+                    f"WHERE id = (SELECT order_id FROM {SCHEMA}.wip_builds WHERE id=%s)",
+                    (pct, pct, wip_id),
+                )
+                conn.commit()
+                return resp(200, {"ok": True, "prepayment_percent": pct})
 
             # Обновить этап
             if "stage" in body:

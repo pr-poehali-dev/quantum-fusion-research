@@ -208,6 +208,7 @@ export interface PCBuild {
   client_token: string | null
   client_user_id: number | null
   parent_id: number | null
+  sell_with_vat?: boolean
   tags?: Tag[]
 }
 
@@ -246,6 +247,9 @@ export interface WipBuild {
   customer_phone?: string
   total?: number
   order_status?: string
+  prepayment_percent?: number
+  prepayment_amount?: number
+  remaining_amount?: number
   created_at?: string
   updated_at?: string
 }
