@@ -57,19 +57,32 @@ export default function FinanceTab() {
   // new type form
   const [newTypeName, setNewTypeName] = useState("")
   const [newTypeDir, setNewTypeDir] = useState<"income" | "expense">("expense")
+  // settings
+  const [discount, setDiscount] = useState("0")
+  const [discountSaved, setDiscountSaved] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, l, t] = await Promise.all([
+    const [s, l, t, set] = await Promise.all([
       api.finance.getSummary(),
       api.finance.getLog(200, 0),
       api.finance.getTypes(),
+      api.warehouse.getSettings(),
     ])
     setSummary(s.summary || null)
     setLog(l.items || [])
     setTypes(t.types || [])
+    setDiscount(set?.purchase_discount_percent ?? "0")
     setLoading(false)
   }, [])
+
+  const saveDiscount = async () => {
+    const val = Math.max(0, Math.min(100, parseFloat(discount.replace(",", ".")) || 0))
+    await api.warehouse.setSettings({ purchase_discount_percent: val })
+    setDiscount(String(val))
+    setDiscountSaved(true)
+    setTimeout(() => setDiscountSaved(false), 2000)
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -188,6 +201,28 @@ export default function FinanceTab() {
           </div>
         </div>
       )}
+
+      {/* Скидка на покупку */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <div className="text-xs text-foreground/50 mb-1 flex items-center gap-1"><Icon name="Percent" size={14} /> Скидка на покупку</div>
+            <p className="text-xs text-foreground/40 max-w-md">При приёмке менеджер вводит цену с НДС, в заход пишется цена за вычетом этой скидки.</p>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <input
+              value={discount}
+              onChange={e => setDiscount(e.target.value)}
+              inputMode="decimal"
+              className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-sm text-right"
+            />
+            <span className="text-foreground/50">%</span>
+            <Button onClick={saveDiscount} size="sm">
+              {discountSaved ? <><Icon name="Check" size={15} className="mr-1" /> Сохранено</> : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* Лог движения средств */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">

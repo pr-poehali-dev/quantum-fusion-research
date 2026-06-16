@@ -170,6 +170,8 @@ export const api = {
     inventoryApply: (inventory_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_apply", inventory_id }) }).then(r => r.json()),
     deleteWip: (wip_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete_wip", wip_id }) }).then(r => r.json()),
     recalcReserves: () => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "recalc_reserves" }) }).then(r => r.json()),
+    getSettings: () => fetch(`${URLS.warehouse}?action=settings`).then(r => r.json()),
+    setSettings: (settings: Record<string, string | number>) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "settings_set", settings }) }).then(r => r.json()),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),
