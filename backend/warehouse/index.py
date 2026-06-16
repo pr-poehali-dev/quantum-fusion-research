@@ -77,6 +77,56 @@ def _set_wip_component_ready(cur, order_id, prod_name):
                 )
 
 
+# Все слоты WIP с учётом extra (для пересчёта этапа)
+_STAGE_SLOTS = WIP_SLOTS + [("extra", "extra_status")]
+_ORDERED = ("ordered_transit", "ordered_delay", "need_order")
+
+
+def _recompute_wip_stage(cur, order_id):
+    """
+    Пересчёт этапа сборки по статусам железок после приёмки товара:
+      • все заполненные слоты ready/pending → 'Ожидание сборки' (всё приехало)
+      • есть хотя бы один заказанный/в пути → 'Ожидание железа'
+    Переход только из рабочих этапов. Синхронизирует orders.status.
+    """
+    cur.execute(
+        f"SELECT id, stage, cpu, gpu, ram, storage, psu, case_name, motherboard, cooling, extra, "
+        f"cpu_status, gpu_status, ram_status, storage_status, psu_status, case_status, "
+        f"motherboard_status, cooling_status, extra_status "
+        f"FROM {SCHEMA}.wip_builds WHERE order_id = %s",
+        (order_id,),
+    )
+    for row in cur.fetchall():
+        wip_id, stage = row[0], row[1]
+        if stage not in ("Заказ", "Ожидание железа", "Ожидание сборки"):
+            continue
+        names = row[2:11]
+        statuses = row[11:20]
+        filled = [(nm, st) for nm, st in zip(names, statuses) if nm and str(nm).strip()]
+        if not filled:
+            continue
+        all_ready = all(st in ("ready", "pending") for _, st in filled)
+        all_ordered_or_ready = all(st in ("ready", "pending") + _ORDERED for _, st in filled)
+        has_ordered = any(st in _ORDERED for _, st in filled)
+        new_stage = None
+        if all_ready:
+            new_stage = "Ожидание сборки"
+        elif all_ordered_or_ready and has_ordered:
+            new_stage = "Ожидание железа"
+        if not new_stage or new_stage == stage:
+            continue
+        cur.execute(
+            f"UPDATE {SCHEMA}.wip_builds SET stage=%s, updated_at=NOW() WHERE id=%s",
+            (new_stage, wip_id),
+        )
+        ostatus = {"Ожидание железа": "ordering", "Ожидание сборки": "waiting_assembly"}.get(new_stage)
+        if ostatus:
+            cur.execute(
+                f"UPDATE {SCHEMA}.orders SET status=%s, updated_at=NOW() WHERE id=%s",
+                (ostatus, order_id),
+            )
+
+
 def fmt_group(row):
     return {
         "id": row[0], "product_id": row[1], "name": row[2], "sku": row[3],
@@ -449,6 +499,7 @@ def handler(event: dict, context) -> dict:
             # Гасим NEGATIVE-резервы FIFO по дате заказа: товар приехал → закрываем
             # минус-резерв, переводим его в POSITIVE под заказ и уведомляем заказчика.
             negative_alerts = []
+            affected_orders = []  # заказы, затронутые авто-резервом при поставке
             avail = qty  # сколько из новой поставки можно зарезервировать
             cur.execute(
                 f"SELECT r.id, r.order_id, r.supply_id, r.qty, o.user_id, o.customer_name, o.status, r.slot "
@@ -577,7 +628,6 @@ def handler(event: dict, context) -> dict:
                     ORDER BY wip_id ASC
                 """)
                 wip_rows = cur.fetchall()
-                affected_orders = []
                 for (wip_id_r, order_id_r, slot_r) in wip_rows:
                     if avail <= 0:
                         break
@@ -618,6 +668,13 @@ def handler(event: dict, context) -> dict:
                         "reserved": len(affected_orders),
                         "orders": affected_orders
                     })
+
+            # Пересчёт этапа сборки для всех заказов, которых коснулась приёмка:
+            # если все железки приехали → этап «Ожидание сборки» автоматически.
+            touched_orders = set(fulfilled_by_order.keys()) | set(affected_orders)
+            for oid in touched_orders:
+                if oid:
+                    _recompute_wip_stage(cur, oid)
 
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
