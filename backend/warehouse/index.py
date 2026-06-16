@@ -1191,6 +1191,77 @@ def handler(event: dict, context) -> dict:
                 "released_negative": released["negative"], "kept_ordered": released["kept_ordered"]
             })}
 
+        # ── ПЕРЕСЧЁТ РЕЗЕРВОВ: привести qty_reserved/qty_negative партий ──────
+        # в соответствие с реальными записями в warehouse_reserves (источник
+        # истины). Излишек резерва возвращается в наличие (qty), нехватка —
+        # списывается из наличия. Все расхождения пишутся в stock_log.
+        if action == "recalc_reserves" and method == "POST":
+            # Эталон по каждой партии: сумма ACTIVE POSITIVE/NEGATIVE резервов
+            cur.execute(
+                f"SELECT s.id, s.group_id, s.qty, s.qty_reserved, s.qty_negative, "
+                f"COALESCE(SUM(r.qty) FILTER (WHERE r.type='POSITIVE' AND r.status='ACTIVE'), 0) AS pos, "
+                f"COALESCE(SUM(r.qty) FILTER (WHERE r.type='NEGATIVE' AND r.status='ACTIVE'), 0) AS neg "
+                f"FROM {SCHEMA}.warehouse_supplies s "
+                f"LEFT JOIN {SCHEMA}.warehouse_reserves r ON r.supply_id = s.id "
+                f"GROUP BY s.id, s.group_id, s.qty, s.qty_reserved, s.qty_negative"
+            )
+            rows = cur.fetchall()
+            fixed = []
+            for (sid, gid, qty, qty_res, qty_neg, want_pos, want_neg) in rows:
+                qty = int(qty or 0)
+                qty_res = int(qty_res or 0)
+                qty_neg = int(qty_neg or 0)
+                want_pos = int(want_pos or 0)
+                want_neg = int(want_neg or 0)
+                diff_res = qty_res - want_pos   # >0 — застрявший резерв (вернуть в наличие)
+                diff_neg = qty_neg - want_neg   # >0 — застрявший минус (убрать)
+                if diff_res == 0 and diff_neg == 0:
+                    continue
+                # Корректируем qty_reserved → want_pos, наличие меняем на разницу
+                new_qty = qty + diff_res  # излишек резерва возвращаем в qty
+                if new_qty < 0:
+                    new_qty = 0
+                cur.execute(
+                    f"UPDATE {SCHEMA}.warehouse_supplies "
+                    f"SET qty = %s, qty_reserved = %s, qty_negative = %s, updated_at = NOW() "
+                    f"WHERE id = %s",
+                    (new_qty, want_pos, want_neg, sid)
+                )
+                # Лог расхождения
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_stock_log (group_id, order_id, event, delta, payload) "
+                    f"VALUES (%s, NULL, 'recalc_reserves', %s, %s)",
+                    (gid, diff_res, json.dumps({
+                        "supply_id": sid,
+                        "qty_reserved": {"was": qty_res, "now": want_pos},
+                        "qty_negative": {"was": qty_neg, "now": want_neg},
+                        "qty": {"was": qty, "now": new_qty},
+                    }, ensure_ascii=False))
+                )
+                fixed.append({
+                    "supply_id": sid, "group_id": gid,
+                    "reserved_was": qty_res, "reserved_now": want_pos,
+                    "negative_was": qty_neg, "negative_now": want_neg,
+                    "qty_was": qty, "qty_now": new_qty,
+                })
+            # Синхронизируем корзину закупки: required_qty = сумма активных NEGATIVE
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_purchase_basket b SET "
+                f"required_qty = COALESCE((SELECT SUM(r.qty) FROM {SCHEMA}.warehouse_reserves r "
+                f"  WHERE r.group_id = b.group_id AND r.type='NEGATIVE' AND r.status='ACTIVE'), 0), "
+                f"updated_at = NOW()"
+            )
+            # Итоговый лог запуска
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.warehouse_stock_log (group_id, order_id, event, delta, payload) "
+                f"VALUES (NULL, NULL, 'recalc_reserves_run', %s, %s)",
+                (len(fixed), json.dumps({"fixed_supplies": len(fixed)}, ensure_ascii=False))
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "ok": True, "fixed_count": len(fixed), "fixed": fixed
+            })}
+
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 
     finally:

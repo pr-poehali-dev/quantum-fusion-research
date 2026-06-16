@@ -3,6 +3,24 @@
 
 ---
 
+## v3.9 | 2026-06-16 | Кнопка «Пересчитать резервы» на складе
+
+### Backend [warehouse]
+- Новый action recalc_reserves (POST): приводит qty_reserved/qty_negative всех
+  партий в соответствие с реальными ACTIVE-резервами из warehouse_reserves
+  (источник истины). Излишек резерва возвращается в наличие qty, корзина
+  закупки синхронизируется (required_qty = сумма активных NEGATIVE).
+- Логирование: каждое расхождение пишется в warehouse_stock_log с event
+  'recalc_reserves' (payload: was/now по qty_reserved/qty_negative/qty),
+  плюс итоговая запись 'recalc_reserves_run'.
+
+### Frontend [WarehouseTab + api.ts]
+- Кнопка «Пересчитать резервы» в шапке склада (рядом с «Просмотр резервов»).
+  Подтверждение + спиннер + итог (сколько позиций исправлено).
+- api.warehouse.recalcReserves().
+
+---
+
 ## v3.8 | 2026-06-16 | Чистка застрявших отрицательных резервов
 
 ### Проблема

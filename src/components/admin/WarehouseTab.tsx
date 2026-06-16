@@ -654,6 +654,18 @@ export default function WarehouseTab() {
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(0) }, [search, filterCat, showArchived])
 
+  const [recalcing, setRecalcing] = useState(false)
+  const handleRecalcReserves = async () => {
+    if (!confirm("Пересчитать резервы? Остатки на складе будут приведены в соответствие с реальными резервами заказов. Изменения записываются в лог.")) return
+    setRecalcing(true)
+    const res = await api.warehouse.recalcReserves()
+    setRecalcing(false)
+    if (res.error) { alert(res.error); return }
+    const n = res.fixed_count || 0
+    alert(n > 0 ? `Готово. Исправлено позиций: ${n}.` : "Готово. Расхождений не найдено — резервы в порядке.")
+    load()
+  }
+
   const handleArchive = async (g: Group) => {
     if (!confirm(`Архивировать «${g.name}»?`)) return
     await api.warehouse.archiveGroup(g.id)
@@ -750,6 +762,16 @@ export default function WarehouseTab() {
             className="mr-1.5"
           />
           {reserveFilter ? RESERVE_FILTER_LABELS[reserveFilter] : "Просмотр резервов"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRecalcReserves}
+          disabled={recalcing}
+          title="Привести остатки склада в соответствие с реальными резервами заказов"
+        >
+          <Icon name={recalcing ? "Loader" : "RefreshCw"} size={14} className={`mr-1.5 ${recalcing ? "animate-spin" : ""}`} />
+          {recalcing ? "Пересчёт..." : "Пересчитать резервы"}
         </Button>
         <Button
           variant="outline"
