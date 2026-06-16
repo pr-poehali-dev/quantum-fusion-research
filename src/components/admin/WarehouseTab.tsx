@@ -1253,15 +1253,17 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
     qty: 1,
     cost_price: 0,
     purchase_date: new Date().toISOString().substring(0, 10),
+    has_vat: null as boolean | null,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [showErrors, setShowErrors] = useState(false)
 
-  // Условия валидности: выбран магазин и задана цена закупки (> 0)
+  // Условия валидности: выбран магазин, цена закупки (> 0) и выбран НДС (да/нет)
   const storeInvalid = form.store_id === "" || form.store_id == null
   const priceInvalid = !form.cost_price || form.cost_price <= 0
-  const canSave = !storeInvalid && !priceInvalid
+  const vatInvalid = form.has_vat === null
+  const canSave = !storeInvalid && !priceInvalid && !vatInvalid
   const [alerts, setAlerts] = useState<{product: string, reserved: number, orders: number[]}[]>([])
 
   useEffect(() => {
@@ -1283,7 +1285,8 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
       group_id: selectedGroup.id,
       store_id: form.store_id || null,
       qty: form.qty,
-      cost_price: form.cost_price,
+      price_with_vat: form.cost_price,
+      has_vat: form.has_vat,
       purchase_date: form.purchase_date,
     })
     setLoading(false)
@@ -1384,7 +1387,7 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
                   onChange={e => setForm(p => ({ ...p, qty: parseInt(e.target.value) || 1 }))} />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-foreground/50">Цена закупки *</label>
+                <label className="mb-1 block text-xs text-foreground/50">Цена закупки с НДС *</label>
                 <Input type="number" value={form.cost_price}
                   onChange={e => setForm(p => ({ ...p, cost_price: parseFloat(e.target.value) || 0 }))}
                   className={showErrors && priceInvalid ? "border-red-500 ring-1 ring-red-500" : ""} />
@@ -1406,6 +1409,20 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
                 <Input type="date" value={form.purchase_date}
                   onChange={e => setForm(p => ({ ...p, purchase_date: e.target.value }))} />
               </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-foreground/50">Товар с НДС? *</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setForm(p => ({ ...p, has_vat: true }))} style={{ cursor: "pointer" }}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.has_vat === true ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"}`}>
+                  Да, с НДС
+                </button>
+                <button type="button" onClick={() => setForm(p => ({ ...p, has_vat: false }))} style={{ cursor: "pointer" }}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.has_vat === false ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"}`}>
+                  Нет, без НДС
+                </button>
+              </div>
+              {showErrors && vatInvalid && <p className="mt-1 text-[11px] text-red-500">Укажите, товар с НДС или без</p>}
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
