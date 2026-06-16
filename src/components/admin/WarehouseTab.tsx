@@ -1249,13 +1249,19 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
   const [form, setForm] = useState({
-    store_id: stores[0]?.id || "",
+    store_id: "" as number | "",
     qty: 1,
     cost_price: 0,
     purchase_date: new Date().toISOString().substring(0, 10),
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showErrors, setShowErrors] = useState(false)
+
+  // Условия валидности: выбран магазин и задана цена закупки (> 0)
+  const storeInvalid = form.store_id === "" || form.store_id == null
+  const priceInvalid = !form.cost_price || form.cost_price <= 0
+  const canSave = !storeInvalid && !priceInvalid
   const [alerts, setAlerts] = useState<{product: string, reserved: number, orders: number[]}[]>([])
 
   useEffect(() => {
@@ -1270,6 +1276,7 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
 
   const save = async () => {
     if (!selectedGroup) return
+    if (!canSave) { setShowErrors(true); return }
     setLoading(true)
     setError("")
     const data = await api.warehouse.createSupply({
@@ -1377,18 +1384,22 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
                   onChange={e => setForm(p => ({ ...p, qty: parseInt(e.target.value) || 1 }))} />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-foreground/50">Цена закупки</label>
+                <label className="mb-1 block text-xs text-foreground/50">Цена закупки *</label>
                 <Input type="number" value={form.cost_price}
-                  onChange={e => setForm(p => ({ ...p, cost_price: parseFloat(e.target.value) || 0 }))} />
+                  onChange={e => setForm(p => ({ ...p, cost_price: parseFloat(e.target.value) || 0 }))}
+                  className={showErrors && priceInvalid ? "border-red-500 ring-1 ring-red-500" : ""} />
+                {showErrors && priceInvalid && <p className="mt-1 text-[11px] text-red-500">Укажите цену закупки</p>}
               </div>
               <div>
-                <label className="mb-1 block text-xs text-foreground/50">Магазин</label>
-                <select className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                <label className="mb-1 block text-xs text-foreground/50">Магазин *</label>
+                <select
+                  className={`w-full rounded-lg border bg-background px-3 py-2 text-sm ${showErrors && storeInvalid ? "border-red-500 ring-1 ring-red-500" : "border-border"}`}
                   value={form.store_id}
-                  onChange={e => setForm(p => ({ ...p, store_id: parseInt(e.target.value) }))}>
-                  <option value="">— не указан —</option>
+                  onChange={e => setForm(p => ({ ...p, store_id: e.target.value ? parseInt(e.target.value) : "" }))}>
+                  <option value="">Выберите магазин</option>
                   {stores.map(s => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
                 </select>
+                {showErrors && storeInvalid && <p className="mt-1 text-[11px] text-red-500">Выберите магазин</p>}
               </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/50">Дата</label>
@@ -1399,7 +1410,7 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
             {error && <p className="text-sm text-red-500">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={onClose}>Отмена</Button>
-              <Button onClick={save} disabled={loading}>
+              <Button onClick={save} disabled={loading || !canSave}>
                 <Icon name={loading ? "Loader" : "PackagePlus"} size={14} className={`mr-1.5 ${loading ? "animate-spin" : ""}`} />
                 {loading ? "Сохраняю..." : "Принять"}
               </Button>
