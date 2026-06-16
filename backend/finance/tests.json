@@ -1,0 +1,36 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Summary responds 200",
+      "method": "GET",
+      "path": "/?action=summary",
+      "expectedStatus": 200,
+      "expectedBody": {"summary": {}},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Log responds 200",
+      "method": "GET",
+      "path": "/?action=log",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Types responds 200",
+      "method": "GET",
+      "path": "/?action=types",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Unknown action returns 400",
+      "method": "GET",
+      "path": "/?action=nope",
+      "expectedStatus": 400
+    }
+  ]
+}

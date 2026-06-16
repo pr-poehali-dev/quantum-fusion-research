@@ -27,6 +27,7 @@
 - cables        → https://functions.poehali.dev/36ee1587-5da6-4b91-88fc-a21796265d63
 - sync-products → https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031
 - crm-probe     → https://functions.poehali.dev/7f435c7f-a17c-406d-9f00-29c5b52f287e
+- finance       → https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc
 - wip-builds    → https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3
                   (РАБОЧАЯ, но отсутствует в func2url.json; sync_backend её не деплоит — см. раздел "WIP-сборки")
 
@@ -61,6 +62,20 @@ warehouse_core.release_order_reserves(only_new_negative=True) — та же ло
 Таблицы: warehouse_groups, warehouse_supplies, warehouse_stores,
 warehouse_movements, warehouse_reserves, warehouse_purchase_basket,
 warehouse_stock_log, warehouse_backorders.
+
+### finance
+Раздел «Финансы» (вкладка /admin/finance, FinanceTab.tsx).
+GET action=summary — сводка: стоимость склада (закупка/продажа),
+маржа за текущий месяц отдельно по pc_build и parts (с avg_margin,
+revenue, count), нал в кассе. Маржа = orders.total − себестоимость
+из партий (warehouse_reserves POSITIVE FULFILLED/ACTIVE × cost_price).
+GET action=log — единый лог: финансовые транзакции + продажи (done-заказы).
+GET action=types — типы операций.
+POST action=add_tx — добавить операцию (kind: income/expense/collection).
+  collection (инкассация в офис) → affects_pnl=FALSE, уменьшает кассу,
+  не считается расходом компании.
+POST action=add_type — новый тип. DELETE del_tx / del_type.
+Таблицы: finance_types, finance_transactions.
 
 ### orders
 Заказы: создание с привязкой к пользователю, список, смена статусов.

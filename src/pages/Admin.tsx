@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import WarehouseTab from "@/components/admin/WarehouseTab"
 import ScheduleTab from "@/components/admin/ScheduleTab"
 import CalendarTab from "@/components/admin/CalendarTab"
+import FinanceTab from "@/components/admin/FinanceTab"
 import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import { AdminCatalogTab } from "@/components/admin/AdminCatalogTab"
@@ -153,6 +154,7 @@ export default function Admin() {
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
+    { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
   ]
 
@@ -230,6 +232,9 @@ export default function Admin() {
 
         {/* CALENDAR */}
         {tab === "calendar" && <CalendarTab />}
+
+        {/* FINANCE */}
+        {tab === "finance" && <FinanceTab />}
 
         {/* USERS */}
         {tab === "users" && (

@@ -16,6 +16,7 @@ const URLS = {
   notifications: "https://functions.poehali.dev/58527d2a-e061-409c-b800-a935e34690c6",
   schedule: "https://functions.poehali.dev/10912f60-5fd3-4930-9724-ad4929621f72",
   rma: "https://functions.poehali.dev/6e92e4fb-4e76-42ee-88a7-0638374f9dcc",
+  finance: "https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc",
 }
 
 function authHeaders(session?: string | null) {
@@ -169,6 +170,17 @@ export const api = {
     inventoryApply: (inventory_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "inventory_apply", inventory_id }) }).then(r => r.json()),
     deleteWip: (wip_id: number) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete_wip", wip_id }) }).then(r => r.json()),
     recalcReserves: () => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "recalc_reserves" }) }).then(r => r.json()),
+  },
+  finance: {
+    getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),
+    getLog: (limit = 200, offset = 0) => fetch(`${URLS.finance}?action=log&limit=${limit}&offset=${offset}`).then(r => r.json()),
+    getTypes: () => fetch(`${URLS.finance}?action=types`).then(r => r.json()),
+    addTx: (data: { kind: string; amount: number; type_id?: number | null; note?: string; user_id?: number | null }) =>
+      fetch(`${URLS.finance}?action=add_tx`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delTx: (id: number) => fetch(`${URLS.finance}?action=del_tx&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    addType: (data: { name: string; direction: string }) =>
+      fetch(`${URLS.finance}?action=add_type`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delType: (id: number) => fetch(`${URLS.finance}?action=del_type&id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },
   comments: {
     getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),
