@@ -787,6 +787,14 @@ def handler(event: dict, context) -> dict:
                 negative_items = []
                 new_statuses = {}
 
+                # Резервирование через ядро склада (warehouse_core): корректно
+                # создаёт записи в warehouse_reserves — и POSITIVE (наличие), и
+                # NEGATIVE (дефицит) — с привязкой к order_id. Раньше здесь была
+                # самописная логика, которая для минус-резерва писала только
+                # qty_negative БЕЗ записи в warehouse_reserves → на складе не было
+                # видно к какому заказу привязан минус.
+                import warehouse_core as wc
+
                 for slot, name, status in zip(slot_names, slot_values, slot_statuses):
                     if not name or name.strip() == "":
                         continue
@@ -810,80 +818,20 @@ def handler(event: dict, context) -> dict:
                         negative_items.append({"slot": slot, "name": name, "reason": "product_not_found"})
                         continue
 
-                    # Проверяем свободный остаток (с учётом кол-ва сборок)
-                    need = build_qty
-                    cur.execute(
-                        f"SELECT s.id, s.qty as free FROM {schema}.warehouse_supplies s "
-                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
-                        (product_id,)
-                    )
-                    supplies_list = cur.fetchall()
-                    total_reserved = 0
-                    for sup_id, sup_free in supplies_list:
-                        if need <= 0:
-                            break
-                        reserve = min(need, sup_free)
-                        cur.execute(
-                            f"UPDATE {schema}.warehouse_supplies SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
-                            (reserve, reserve, sup_id)
-                        )
-                        cur.execute(
-                            f"INSERT INTO {schema}.warehouse_movements "
-                            f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                            f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', %s, %s, NOW())",
-                            (sup_id, sup_id, order_id, reserve, f"Авторезерв слот {slot} по заказу #{order_id}")
-                        )
-                        total_reserved += reserve
-                        need -= reserve
-                    supply = (True,) if total_reserved > 0 else None
-
-                    if supply:
-                        new_statuses[slot] = "ready"
-                        reserved_items.append({"slot": slot, "name": name, "product_id": product_id, "reserved": total_reserved})
-                    if need > 0:
-                        # Не хватило — ставим отрицательный резерв на дефицит
-                        cur.execute(
-                            f"SELECT s.id FROM {schema}.warehouse_supplies s "
-                            f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                            f"WHERE g.product_id = %s ORDER BY s.id DESC LIMIT 1",
-                            (product_id,)
-                        )
-                        neg_supply = cur.fetchone()
-                        if neg_supply:
-                            cur.execute(
-                                f"UPDATE {schema}.warehouse_supplies SET qty_negative = qty_negative + %s WHERE id = %s",
-                                (need, neg_supply[0],)
-                            )
-                        else:
-                            # Нет ни одной поставки — создаём виртуальную запись с qty_negative
-                            cur.execute(
-                                f"SELECT g.id FROM {schema}.warehouse_groups g WHERE g.product_id = %s LIMIT 1",
-                                (product_id,)
-                            )
-                            grp = cur.fetchone()
-                            if grp:
-                                cur.execute(
-                                    f"INSERT INTO {schema}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price, created_at) "
-                                    f"VALUES (%s, 0, 0, %s, 0, NOW())",
-                                    (grp[0], need)
-                                )
-                        # Синхронизируем корзину закупки
-                        cur.execute(
-                            f"SELECT g.id FROM {schema}.warehouse_groups g WHERE g.product_id = %s LIMIT 1",
-                            (product_id,)
-                        )
-                        grp_row = cur.fetchone()
-                        if grp_row:
-                            cur.execute(
-                                f"INSERT INTO {schema}.warehouse_purchase_basket (group_id, required_qty, status, created_at, updated_at) "
-                                f"VALUES (%s, %s, 'NEW', NOW(), NOW()) "
-                                f"ON CONFLICT (group_id) DO UPDATE SET "
-                                f"required_qty = {schema}.warehouse_purchase_basket.required_qty + %s, updated_at = NOW()",
-                                (grp_row[0], need, need)
-                            )
+                    # Ядро: POSITIVE если есть наличие, NEGATIVE на дефицит +
+                    # пополнение корзины закупки. Всё с записью в warehouse_reserves.
+                    res = wc.reserve_line(cur, order_id, product_id=product_id,
+                                          qty=build_qty, slot=slot)
+                    pos = int(res.get("positive", 0) or 0)
+                    neg = int(res.get("negative", 0) or 0)
+                    if pos > 0:
+                        reserved_items.append({"slot": slot, "name": name,
+                                               "product_id": product_id, "reserved": pos})
+                    if neg > 0:
                         new_statuses[slot] = "need_order"
                         negative_items.append({"slot": slot, "name": name, "product_id": product_id})
+                    elif pos > 0:
+                        new_statuses[slot] = "ready"
 
                 # Обновляем статусы слотов в wip_build
                 set_parts = []
