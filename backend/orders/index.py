@@ -39,14 +39,24 @@ def handler(event: dict, context) -> dict:
     cur = conn.cursor()
 
     def fmt_order(row):
+        total = float(row[6])
+        # Предоплата (опц. поля в конце выборки одиночного заказа)
+        pct = float(row[13]) if len(row) > 13 and row[13] is not None else 30.0
+        if len(row) > 14 and row[14] is not None:
+            prepay = float(row[14])
+        else:
+            prepay = round(total * pct / 100, 2)
         return {
             "id": row[0], "customer_name": row[1], "customer_phone": row[2],
             "customer_email": row[3], "order_type": row[4], "items": row[5],
-            "total": float(row[6]), "comment": row[7], "status": row[8],
+            "total": total, "comment": row[7], "status": row[8],
             "created_at": row[9].isoformat() if row[9] else None,
             "updated_at": row[10].isoformat() if row[10] else None,
             "user_id": row[11],
             "wip_stage": row[12] if len(row) > 12 else None,
+            "prepayment_percent": pct,
+            "prepayment_amount": prepay,
+            "remaining_amount": round(total - prepay, 2),
         }
 
     try:
@@ -187,7 +197,8 @@ def handler(event: dict, context) -> dict:
             if params.get("id"):
                 cur.execute(
                     """SELECT id, customer_name, customer_phone, customer_email, order_type,
-                              items, total, comment, status, created_at, updated_at, user_id
+                              items, total, comment, status, created_at, updated_at, user_id,
+                              NULL, prepayment_percent, prepayment_amount
                        FROM orders WHERE id = %s""",
                     (int(params["id"]),)
                 )
@@ -431,6 +442,25 @@ def handler(event: dict, context) -> dict:
             items = row[0] if isinstance(row[0], list) else json.loads(row[0])
 
             item_idx = body.get("item_idx")  # индекс позиции в items
+
+            if action == "set_prepayment":
+                # Предоплата: по проценту или по сумме (второе пересчитывается)
+                total = float(row[1]) if row[1] else 0
+                if body.get("prepayment_amount") is not None:
+                    amount = max(0, min(total, float(body.get("prepayment_amount") or 0)))
+                    pct = round(amount / total * 100, 2) if total else 0
+                else:
+                    pct = max(0, min(100, float(body.get("prepayment_percent") or 0)))
+                    amount = round(total * pct / 100, 2)
+                cur.execute(
+                    "UPDATE orders SET prepayment_percent=%s, prepayment_amount=%s, updated_at=NOW() WHERE id=%s",
+                    (pct, amount, order_id),
+                )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                    "ok": True, "prepayment_percent": pct, "prepayment_amount": amount,
+                    "remaining_amount": round(total - amount, 2),
+                })}
 
             if action == "set_build_qty":
                 # Изменить кол-во ПК: обновить quantity в items и пересчитать компоненты pc_builds

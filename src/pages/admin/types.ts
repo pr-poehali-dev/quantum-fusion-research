@@ -154,6 +154,9 @@ export interface Order {
   status: string
   created_at: string
   wip_stage?: string | null
+  prepayment_percent?: number
+  prepayment_amount?: number
+  remaining_amount?: number
 }
 
 export interface Product {

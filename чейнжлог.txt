@@ -3,6 +3,29 @@
 
 ---
 
+## v3.14 | 2026-06-16 | Предоплата: клиентская страница + редактирование везде
+
+### Клиентская страница сборки (BuildPreview)
+- Под итоговой ценой показывается «Предоплата» и «К доплате» (остаток),
+  если заказ в работе (данные из wip-builds по token/order_id).
+
+### Редактирование предоплаты (% и сумма)
+- Новый общий компонент PrepaymentEditor (% или ₽, пересчёт второго).
+- WIP-таблица (AdminWipTab): старый PrepaymentCell заменён на PrepaymentEditor.
+- Обработка заказа (OrderProcessPage): блок предоплаты/остатка в «Инфо о заказе».
+
+### Backend
+- wip-builds PATCH: принимает prepayment_percent ИЛИ prepayment_amount,
+  пересчитывает второе, возвращает remaining_amount.
+- orders: GET одиночного заказа отдаёт prepayment_percent/amount/remaining
+  (def 30%); PUT action=set_prepayment (по % или сумме).
+
+### Frontend
+- api.orders.setPrepayment.
+- admin/types.ts: Order.prepayment_*.
+
+---
+
 ## v3.13 | 2026-06-16 | НДС, скидка на покупку, предоплата
 
 ### БД (миграция V0092)

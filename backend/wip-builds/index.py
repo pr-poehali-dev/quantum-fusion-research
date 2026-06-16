@@ -317,18 +317,33 @@ def handler(event: dict, context) -> dict:
                 conn.commit()
                 return resp(200, {"ok": True})
 
-            # Установить процент предоплаты (по умолчанию 30%)
-            if "prepayment_percent" in body:
-                pct = float(body.get("prepayment_percent") or 0)
-                pct = max(0, min(100, pct))
+            # Установить предоплату: по проценту или по сумме (пересчёт второго поля)
+            if "prepayment_percent" in body or "prepayment_amount" in body:
+                cur.execute(
+                    f"SELECT order_id FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,)
+                )
+                orow = cur.fetchone()
+                order_id = orow[0] if orow else None
+                if not order_id:
+                    return resp(404, {"error": "Заказ не найден"})
+                cur.execute(f"SELECT total FROM {SCHEMA}.orders WHERE id=%s", (order_id,))
+                trow = cur.fetchone()
+                total = float(trow[0]) if trow and trow[0] else 0
+                if "prepayment_amount" in body and body.get("prepayment_amount") is not None:
+                    amount = max(0, min(total, float(body.get("prepayment_amount") or 0)))
+                    pct = round(amount / total * 100, 2) if total else 0
+                else:
+                    pct = max(0, min(100, float(body.get("prepayment_percent") or 0)))
+                    amount = round(total * pct / 100, 2)
                 cur.execute(
                     f"UPDATE {SCHEMA}.orders SET prepayment_percent=%s, "
-                    f"prepayment_amount = ROUND(total * %s / 100, 2), updated_at=NOW() "
-                    f"WHERE id = (SELECT order_id FROM {SCHEMA}.wip_builds WHERE id=%s)",
-                    (pct, pct, wip_id),
+                    f"prepayment_amount=%s, updated_at=NOW() WHERE id=%s",
+                    (pct, amount, order_id),
                 )
                 conn.commit()
-                return resp(200, {"ok": True, "prepayment_percent": pct})
+                return resp(200, {"ok": True, "prepayment_percent": pct,
+                                  "prepayment_amount": amount,
+                                  "remaining_amount": round(total - amount, 2)})
 
             # Обновить этап
             if "stage" in body:

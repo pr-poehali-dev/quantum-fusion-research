@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 
 const ORDERS_URL = "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745"
 const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
@@ -76,6 +77,9 @@ interface Order {
   created_at: string
   _wip_build?: WipBuildInfo
   _build_qty?: number
+  prepayment_percent?: number
+  prepayment_amount?: number
+  remaining_amount?: number
 }
 
 function fmt(n: number) {
@@ -380,6 +384,20 @@ export default function OrderProcessPage() {
             <div className="ml-auto text-right">
               <p className="text-xs text-foreground/40 mb-1">Итого</p>
               <p className="text-xl font-bold">{fmt(total)}</p>
+            </div>
+            <div className="text-right min-w-[160px]">
+              <p className="text-xs text-foreground/40 mb-1">Предоплата и остаток</p>
+              <PrepaymentEditor
+                total={total}
+                percent={order.prepayment_percent}
+                amount={order.prepayment_amount}
+                highlight={order.status === "done"}
+                onSave={async (payload) => {
+                  const res = await api.orders.setPrepayment({ id: order.id, ...payload })
+                  setOrder(prev => prev ? { ...prev, prepayment_percent: res.prepayment_percent, prepayment_amount: res.prepayment_amount, remaining_amount: res.remaining_amount } : prev)
+                  return res
+                }}
+              />
             </div>
           </div>
         </div>

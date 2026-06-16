@@ -72,7 +72,11 @@ warehouse_stock_log, warehouse_backorders.
   = (железо+сборка)×1.22, округление вверх до 250 ₽.
 - wip-builds: orders.prepayment_percent (def 30) / prepayment_amount.
   SELECT отдаёт remaining_amount (остаток = total − предоплата). PATCH
-  с prepayment_percent пересчитывает orders.prepayment_amount.
+  принимает prepayment_percent ИЛИ prepayment_amount (пересчёт второго).
+- orders: GET одиночного заказа отдаёт prepayment_*; PUT action=set_prepayment
+  (по % или сумме). Общий UI-компонент src/components/admin/PrepaymentEditor.
+- Клиентская страница сборки (BuildPreview) показывает предоплату и остаток
+  «К доплате» (данные из wip-builds по token/order_id).
 - Таблицы: app_settings, +поля в warehouse_supplies (has_vat, price_with_vat),
   pc_builds (sell_with_vat), orders (prepayment_percent, prepayment_amount).
 

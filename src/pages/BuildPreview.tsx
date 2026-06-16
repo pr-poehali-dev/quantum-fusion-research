@@ -40,6 +40,9 @@ interface WipInfo {
   delivery_type?: string
   cpu_status?: string; motherboard_status?: string; ram_status?: string; gpu_status?: string
   storage_status?: string; psu_status?: string; case_status?: string; cooling_status?: string; extra_status?: string
+  total?: number
+  prepayment_amount?: number
+  remaining_amount?: number
 }
 
 interface Build {
@@ -144,7 +147,8 @@ export default function BuildPreview() {
     api.wipBuilds.getByOrderId(Number(id)).then(d => {
       if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
         cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
-        storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status })
+        storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status,
+        total: d.total, prepayment_amount: d.prepayment_amount, remaining_amount: d.remaining_amount })
     }).catch(() => {})
   }, [id, isTokenMode])
 
@@ -169,7 +173,8 @@ export default function BuildPreview() {
     api.wipBuilds.getByClientToken(token).then(d => {
       if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
         cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
-        storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status })
+        storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status,
+        total: d.total, prepayment_amount: d.prepayment_amount, remaining_amount: d.remaining_amount })
     }).catch(() => {})
   }, [token, isTokenMode, user])
 
@@ -463,6 +468,12 @@ export default function BuildPreview() {
                       <p className="text-xs text-muted-foreground">Железо: <span className="text-foreground/70">{fmt(calcPartsTotal)}</span></p>
                       <p className="text-xs text-muted-foreground">Сборка: <span className="text-foreground/70">{fmt(calcAssemblyFee)}</span></p>
                     </div>
+                    {wipInfo && wipInfo.prepayment_amount != null && wipInfo.remaining_amount != null && wipInfo.stage !== "Забрали" && (
+                      <div className="mb-0.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5">
+                        <p className="text-xs text-muted-foreground">Предоплата: <span className="text-foreground/80 font-medium">{fmt(wipInfo.prepayment_amount)}</span></p>
+                        <p className="text-sm font-bold text-primary">К доплате: {fmt(wipInfo.remaining_amount)}</p>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
