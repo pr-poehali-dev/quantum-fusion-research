@@ -220,6 +220,56 @@ def handle_reserve_and_purchase(cur, order_id, lines):
     return results
 
 
+def ensure_order_reserves(cur, order_id, build_id=None):
+    """
+    Идемпотентно гарантирует, что резервы под сборку заказа созданы.
+    Если у заказа уже есть активные резервы (POSITIVE/NEGATIVE) — ничего не
+    делает. Иначе берёт состав сборки из pc_builds.components и резервирует
+    каждую позицию через handle_reserve_and_purchase.
+
+    Нужна, потому что сборка может уйти в рабочую стадию («Ожидание железа» и
+    т.п.) в обход ручного перехода на «Заказ» (через автопереход этапа при
+    установке ETA / приёмке) — и тогда резервы не создавались.
+    Возвращает список результатов резервирования (или [] если резервы уже были).
+    """
+    if not order_id:
+        return []
+    # Уже есть активные резервы заказа → не дублируем
+    cur.execute(
+        f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",
+        (order_id,),
+    )
+    if cur.fetchone():
+        return []
+    # Определяем build_id, если не передан
+    if build_id is None:
+        cur.execute(
+            f"SELECT build_id FROM {SCHEMA}.wip_builds WHERE order_id = %s AND build_id IS NOT NULL LIMIT 1",
+            (order_id,),
+        )
+        r = cur.fetchone()
+        build_id = r[0] if r else None
+    if not build_id:
+        return []
+    cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (build_id,))
+    pb = cur.fetchone()
+    if not pb or not pb[0]:
+        return []
+    import json as _json
+    comps = pb[0] if isinstance(pb[0], list) else _json.loads(pb[0] or "[]")
+    lines = []
+    for c in comps:
+        lines.append({
+            "product_id": int(c["source_id"]) if c.get("source_id") else None,
+            "qty": int(c.get("qty", 1)),
+            "slot": c.get("slot", ""),
+        })
+    if not lines:
+        return []
+    return handle_reserve_and_purchase(cur, order_id, lines)
+
+
 # ── Снятие всех резервов заказа (отмена / пересчёт) ──────────────────────────
 def release_order_reserves(cur, order_id, only_new_negative=True):
     """
@@ -442,6 +492,10 @@ def recompute_wip_stage(cur, wip_id):
 
     if cur_stage not in ("Заказ", "Ожидание железа", "Ожидание сборки"):
         return None
+
+    # Страховка: если сборка в рабочей стадии, но резервы заказа ещё не созданы
+    # (ушла в работу в обход ручного «Заказ») — создаём их идемпотентно.
+    ensure_order_reserves(cur, order_id)
 
     filled = [(nm, st) for nm, st in zip(names, statuses) if nm]
     if not filled:

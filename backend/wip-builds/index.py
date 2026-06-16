@@ -3,7 +3,7 @@ import os
 import psycopg2
 
 import warehouse_core as core
-# v6 - авто-этап по статусам железок (Ожидание железа/сборки)
+# v7 - авто-этап + страховка резервов (ensure_order_reserves)
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -61,6 +61,9 @@ def _auto_stage_wip(cur, wip_id):
     names, statuses, cur_stage, order_id = row[:n], row[n:2 * n], row[2 * n], row[2 * n + 1]
     if cur_stage not in ("Заказ", "Ожидание железа", "Ожидание сборки"):
         return None
+    # Страховка: сборка в рабочей стадии, но резервы заказа ещё не созданы
+    # (ушла в работу в обход ручного «Заказ») — создаём идемпотентно.
+    core.ensure_order_reserves(cur, order_id)
     filled = [(nm, st) for nm, st in zip(names, statuses) if nm]
     if not filled:
         return None

@@ -172,6 +172,48 @@ def handle_reserve_and_purchase(cur, order_id, lines):
     return results
 
 
+def ensure_order_reserves(cur, order_id, build_id=None):
+    """
+    Идемпотентно гарантирует, что резервы под сборку заказа созданы.
+    Если активные резервы уже есть — ничего не делает. Иначе резервирует
+    весь состав сборки из pc_builds.components.
+    """
+    if not order_id:
+        return []
+    cur.execute(
+        f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",
+        (order_id,),
+    )
+    if cur.fetchone():
+        return []
+    if build_id is None:
+        cur.execute(
+            f"SELECT build_id FROM {SCHEMA}.wip_builds WHERE order_id = %s AND build_id IS NOT NULL LIMIT 1",
+            (order_id,),
+        )
+        r = cur.fetchone()
+        build_id = r[0] if r else None
+    if not build_id:
+        return []
+    cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (build_id,))
+    pb = cur.fetchone()
+    if not pb or not pb[0]:
+        return []
+    import json as _json
+    comps = pb[0] if isinstance(pb[0], list) else _json.loads(pb[0] or "[]")
+    lines = []
+    for c in comps:
+        lines.append({
+            "product_id": int(c["source_id"]) if c.get("source_id") else None,
+            "qty": int(c.get("qty", 1)),
+            "slot": c.get("slot", ""),
+        })
+    if not lines:
+        return []
+    return handle_reserve_and_purchase(cur, order_id, lines)
+
+
 def release_order_reserves(cur, order_id, only_new_negative=True):
     cur.execute(
         f"SELECT id, group_id, supply_id, qty, type FROM {SCHEMA}.warehouse_reserves "
