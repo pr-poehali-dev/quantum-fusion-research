@@ -1397,7 +1397,7 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
                   value={form.store_id}
                   onChange={e => setForm(p => ({ ...p, store_id: e.target.value ? parseInt(e.target.value) : "" }))}>
                   <option value="">Выберите магазин</option>
-                  {stores.map(s => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
+                  {[...stores].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true })).map(s => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
                 </select>
                 {showErrors && storeInvalid && <p className="mt-1 text-[11px] text-red-500">Выберите магазин</p>}
               </div>
