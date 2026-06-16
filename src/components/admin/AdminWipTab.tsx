@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
+import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
   EMPTY_WIP, WIP_STAGES, WIP_STAGE_COLORS, WIP_COMPONENTS,
@@ -47,6 +48,27 @@ export function AdminWipTab({
 
   const [syncingWipId, setSyncingWipId] = useState<number | null>(null)
   const [syncDoneWipId, setSyncDoneWipId] = useState<number | null>(null)
+
+  // Модалка подтверждения предоплаты при переходе «Согласование → Заказ»
+  const [prepayModal, setPrepayModal] = useState<WipBuild | null>(null)
+
+  // Сменить этап с проверкой: переход в «Заказ» требует подтверждения предоплаты
+  const changeStage = (w: WipBuild, newStage: string) => {
+    if (newStage === "Заказ" && w.stage === "Согласование") {
+      setPrepayModal(w)
+      return
+    }
+    setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: newStage } : b))
+    api.wipBuilds.update({ ...w, stage: newStage })
+  }
+
+  const onPrepayConfirmed = (w: WipBuild, amount: number, remaining: number) => {
+    setWipBuilds(bs => bs.map(b => b.id === w.id
+      ? { ...b, stage: "Заказ", prepayment_amount: amount, remaining_amount: remaining }
+      : b))
+    api.wipBuilds.update({ ...w, stage: "Заказ" })
+    setPrepayModal(null)
+  }
 
   const syncWipOrder = async (w: WipBuild) => {
     if (!w.order_id || !w.id) return
@@ -726,11 +748,7 @@ export function AdminWipTab({
                         )}
                         {row.key === "_stage" && (
                           <select value={w.stage}
-                            onChange={e => {
-                              const newStage = e.target.value
-                              setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: newStage } : b))
-                              api.wipBuilds.update({ ...w, stage: newStage })
-                            }}
+                            onChange={e => changeStage(w, e.target.value)}
                             className={`rounded-full border-0 px-2 py-0.5 text-[10px] font-semibold focus:outline-none cursor-pointer ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}
                             style={{ cursor: "pointer" }}>
                             {(wipStages.length ? wipStages : WIP_STAGES).map(s => <option key={s} value={s}>{s}</option>)}
@@ -813,6 +831,15 @@ export function AdminWipTab({
         </div>
       )}
 
+      {prepayModal && (
+        <PrepaymentConfirmModal
+          orderId={prepayModal.order_id as number}
+          total={prepayModal.total || 0}
+          defaultAmount={prepayModal.prepayment_amount}
+          onClose={() => setPrepayModal(null)}
+          onConfirmed={(amount, remaining) => onPrepayConfirmed(prepayModal, amount, remaining)}
+        />
+      )}
 
     </div>
   )

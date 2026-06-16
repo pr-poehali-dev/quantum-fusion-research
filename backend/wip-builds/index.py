@@ -100,7 +100,7 @@ def fmt_row(row):
         "order_id", "created_at", "updated_at",
         "customer_name", "customer_phone", "total", "order_status",
         "client_token", "build_id", "build_components",
-        "prepayment_percent", "prepayment_amount",
+        "prepayment_percent", "prepayment_amount", "prepayment_confirmed",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -118,9 +118,13 @@ def fmt_row(row):
         prepay = float(d["prepayment_amount"])
     else:
         prepay = round(total * pct / 100, 2)
+    confirmed = bool(d.get("prepayment_confirmed"))
     d["prepayment_percent"] = pct
     d["prepayment_amount"] = prepay
+    d["prepayment_confirmed"] = confirmed
     d["remaining_amount"] = round(total - prepay, 2)
+    # Для клиента важна только подтверждённая предоплата
+    d["prepayment_confirmed_amount"] = prepay if confirmed else 0
     return d
 
 def resp(status, data):
@@ -153,7 +157,7 @@ def handler(event: dict, context) -> dict:
                        o.customer_name, o.customer_phone, o.total, o.status as order_status,
                        w.client_token, w.build_id,
                        pb.components as build_components,
-                       o.prepayment_percent, o.prepayment_amount
+                       o.prepayment_percent, o.prepayment_amount, o.prepayment_confirmed
                 FROM wip_builds w
                 LEFT JOIN orders o ON w.order_id = o.id
                 LEFT JOIN pc_builds pb ON pb.id = w.build_id"""

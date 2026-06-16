@@ -147,6 +147,11 @@ def handler(event: dict, context) -> dict:
                 return err("Имя обязательно")
             cur.execute(f"INSERT INTO {SCHEMA}.employees (name, color) VALUES ({esc(name)}, {esc(color)}) RETURNING id")
             new_id = cur.fetchone()[0]
+            # Автосоздание финансового счёта сотрудника
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.employee_accounts (employee_id, balance) "
+                f"VALUES ({new_id}, 0) ON CONFLICT (employee_id) DO NOTHING"
+            )
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "name": name, "color": color, "is_active": True})}
 

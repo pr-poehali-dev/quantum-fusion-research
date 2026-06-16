@@ -76,7 +76,19 @@ warehouse_stock_log, warehouse_backorders.
 - orders: GET одиночного заказа отдаёт prepayment_*; PUT action=set_prepayment
   (по % или сумме). Общий UI-компонент src/components/admin/PrepaymentEditor.
 - Клиентская страница сборки (BuildPreview) показывает предоплату и остаток
-  «К доплате» (данные из wip-builds по token/order_id).
+  «К доплате» (данные из wip-builds по token/order_id), только для
+  ПОДТВЕРЖДЁННОЙ предоплаты (prepayment_confirmed_amount).
+
+### Счета сотрудников + подтверждение предоплаты (v3.15)
+- Таблицы: employee_accounts (баланс), employee_account_tx (история).
+  orders.prepayment_confirmed. finance_transactions +employee_id/+order_id.
+- schedule.employee_create: автосоздание счёта сотрудника.
+- finance: GET accounts (сотрудники+баланс), account_log; POST credit_account
+  (ручное +/−), confirm_prepayment (приход «Предоплата» + опц. на счёт
+  сотрудника + orders.prepayment_confirmed=TRUE).
+- Переход WIP «Согласование→Заказ» требует модалку подтверждения предоплаты
+  (PrepaymentConfirmModal): сумма + назначение (касса/сотрудник).
+- FinanceTab: карточка кассы раскрывается в список счетов сотрудников.
 - Таблицы: app_settings, +поля в warehouse_supplies (has_vat, price_with_vat),
   pc_builds (sell_with_vat), orders (prepayment_percent, prepayment_amount).
 

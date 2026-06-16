@@ -192,6 +192,44 @@ def get_types(cur):
              "is_system": r[3], "sort_order": r[4]} for r in cur.fetchall()]
 
 
+# ── СЧЕТА СОТРУДНИКОВ ─────────────────────────────────────────────────────────
+def get_accounts(cur):
+    """Список сотрудников с балансом счёта."""
+    cur.execute(
+        f"SELECT e.id, e.name, e.color, e.is_active, COALESCE(a.balance, 0) "
+        f"FROM {SCHEMA}.employees e "
+        f"LEFT JOIN {SCHEMA}.employee_accounts a ON a.employee_id = e.id "
+        f"ORDER BY e.is_active DESC, e.name"
+    )
+    return [{"id": r[0], "name": r[1], "color": r[2], "is_active": r[3],
+             "balance": num(r[4])} for r in cur.fetchall()]
+
+
+def get_account_log(cur, employee_id, limit=50):
+    cur.execute(
+        f"SELECT id, amount, note, order_id, created_at "
+        f"FROM {SCHEMA}.employee_account_tx WHERE employee_id = {int(employee_id)} "
+        f"ORDER BY created_at DESC LIMIT {int(limit)}"
+    )
+    return [{"id": r[0], "amount": num(r[1]), "note": r[2],
+             "order_id": r[3], "created_at": serial(r[4])} for r in cur.fetchall()]
+
+
+def credit_account(cur, employee_id, amount, note, order_id=None):
+    """Зачисление/списание на счёт сотрудника + запись в историю."""
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.employee_accounts (employee_id, balance) "
+        f"VALUES ({int(employee_id)}, {num(amount)}) "
+        f"ON CONFLICT (employee_id) DO UPDATE "
+        f"SET balance = {SCHEMA}.employee_accounts.balance + {num(amount)}, updated_at = NOW()"
+    )
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.employee_account_tx (employee_id, amount, note, order_id) "
+        f"VALUES ({int(employee_id)}, {num(amount)}, {esc(note)}, "
+        f"{int(order_id) if order_id else 'NULL'})"
+    )
+
+
 def handler(event: dict, context) -> dict:
     """Финансы: сводка по деньгам, лог движения средств, расходы/приходы, инкассация, типы операций."""
     method = event.get("httpMethod", "GET")
@@ -222,6 +260,11 @@ def handler(event: dict, context) -> dict:
                 return resp(200, {"items": get_log(cur, limit, offset)})
             if action == "types":
                 return resp(200, {"types": get_types(cur)})
+            if action == "accounts":
+                return resp(200, {"accounts": get_accounts(cur)})
+            if action == "account_log":
+                eid = params.get("employee_id")
+                return resp(200, {"items": get_account_log(cur, eid)})
             return resp(400, {"error": "unknown action"})
 
         # ── POST ──
@@ -264,6 +307,54 @@ def handler(event: dict, context) -> dict:
                 tid = cur.fetchone()[0]
                 conn.commit()
                 return resp(200, {"ok": True, "id": tid})
+
+            # Подтверждение предоплаты: приход в финансы + (опц.) на счёт сотрудника
+            if action == "confirm_prepayment":
+                amount = num(body.get("amount"), 0)
+                if amount <= 0:
+                    return resp(400, {"error": "amount must be > 0"})
+                order_id = body.get("order_id")
+                employee_id = body.get("employee_id")  # None => в кассу
+                # тип «Предоплата»
+                cur.execute(
+                    f"SELECT id FROM {SCHEMA}.finance_types WHERE name = 'Предоплата' LIMIT 1"
+                )
+                tr = cur.fetchone()
+                type_id = tr[0] if tr else None
+                dest = "счёт сотрудника" if employee_id else "касса"
+                note = f"Предоплата по заказу #{order_id} ({dest})" if order_id else f"Предоплата ({dest})"
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.finance_transactions "
+                    f"(kind, type_id, amount, note, affects_pnl, employee_id, order_id, occurred_at) "
+                    f"VALUES ('income', {type_id if type_id else 'NULL'}, {amount}, {esc(note)}, "
+                    f"TRUE, {int(employee_id) if employee_id else 'NULL'}, "
+                    f"{int(order_id) if order_id else 'NULL'}, NOW()) RETURNING id"
+                )
+                tx_id = cur.fetchone()[0]
+                if employee_id:
+                    credit_account(cur, employee_id, amount,
+                                   f"Предоплата по заказу #{order_id}" if order_id else "Предоплата",
+                                   order_id)
+                # отмечаем заказ как подтверждённый
+                if order_id:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.orders SET prepayment_confirmed = TRUE, "
+                        f"prepayment_amount = {amount}, "
+                        f"prepayment_percent = CASE WHEN total > 0 THEN ROUND({amount}/total*100, 2) ELSE 0 END, "
+                        f"updated_at = NOW() WHERE id = {int(order_id)}"
+                    )
+                conn.commit()
+                return resp(200, {"ok": True, "id": tx_id})
+
+            # Ручное зачисление/списание на счёт сотрудника
+            if action == "credit_account":
+                employee_id = body.get("employee_id")
+                amount = num(body.get("amount"), 0)
+                if not employee_id or amount == 0:
+                    return resp(400, {"error": "employee_id and amount required"})
+                credit_account(cur, employee_id, amount, body.get("note", "Корректировка"))
+                conn.commit()
+                return resp(200, {"ok": True})
 
             return resp(400, {"error": "unknown action"})
 

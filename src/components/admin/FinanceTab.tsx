@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 
 interface FinType { id: number; name: string; direction: string; is_system: boolean; sort_order: number }
+interface Account { id: number; name: string; color: string; is_active: boolean; balance: number }
 interface MarginBlock { count: number; total_margin: number; avg_margin: number; revenue: number }
 interface Summary {
   stock: { purchase: number; sale: number }
@@ -57,17 +58,22 @@ export default function FinanceTab() {
   // new type form
   const [newTypeName, setNewTypeName] = useState("")
   const [newTypeDir, setNewTypeDir] = useState<"income" | "expense">("expense")
+  // счета сотрудников
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [cashExpanded, setCashExpanded] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, l, t] = await Promise.all([
+    const [s, l, t, a] = await Promise.all([
       api.finance.getSummary(),
       api.finance.getLog(200, 0),
       api.finance.getTypes(),
+      api.finance.getAccounts(),
     ])
     setSummary(s.summary || null)
     setLog(l.items || [])
     setTypes(t.types || [])
+    setAccounts(a.accounts || [])
     setLoading(false)
   }, [])
 
@@ -179,13 +185,39 @@ export default function FinanceTab() {
           </button>
 
           {/* Касса */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="text-xs text-foreground/50 mb-1 flex items-center gap-1"><Icon name="Banknote" size={14} /> Нал в кассе</div>
+          <button onClick={() => setCashExpanded(v => !v)} className="text-left rounded-xl border border-border bg-card p-4 hover:border-primary/50 transition-colors">
+            <div className="text-xs text-foreground/50 mb-1 flex items-center gap-1">
+              <Icon name="Banknote" size={14} /> Нал в кассе
+              <Icon name={cashExpanded ? "ChevronUp" : "ChevronDown"} size={13} className="ml-auto" />
+            </div>
             <div className={`text-lg font-bold ${summary.cash >= 0 ? "text-green-400" : "text-red-400"}`}>{fmt(summary.cash)}</div>
             <div className="mt-1 text-xs text-foreground/50">
-              передано в офис: {fmt(summary.fin.collection)}
+              счетов сотрудников: {accounts.length}
             </div>
+          </button>
+        </div>
+      )}
+
+      {/* Раскрытие кассы: счета сотрудников */}
+      {cashExpanded && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center gap-2">
+            <Icon name="Users" size={16} /> Счета сотрудников
           </div>
+          {accounts.length === 0 ? (
+            <div className="p-6 text-center text-foreground/40 text-sm">Нет сотрудников. Создайте их в разделе «Расписание».</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {accounts.map(a => (
+                <AccountRow key={a.id} account={a} onCredited={load} />
+              ))}
+            </div>
+          )}
+          {summary && (
+            <div className="px-4 py-2 text-xs text-foreground/40 border-t border-border">
+              Передано в офис (инкассация): {fmt(summary.fin.collection)}
+            </div>
+          )}
         </div>
       )}
 
@@ -301,6 +333,84 @@ export default function FinanceTab() {
               <Button onClick={addType} disabled={!newTypeName.trim()} className="w-full" size="sm">Добавить</Button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Строка счёта сотрудника (раскрытие истории + зачисление) ────────────────
+interface AcctLogItem { id: number; amount: number; note: string; order_id: number | null; created_at: string }
+function AccountRow({ account, onCredited }: { account: Account; onCredited: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [log, setLog] = useState<AcctLogItem[]>([])
+  const [loadingLog, setLoadingLog] = useState(false)
+  const [crediting, setCrediting] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [note, setNote] = useState("")
+
+  const toggle = async () => {
+    const next = !open
+    setOpen(next)
+    if (next && log.length === 0) {
+      setLoadingLog(true)
+      const d = await api.finance.getAccountLog(account.id)
+      setLog(d.items || [])
+      setLoadingLog(false)
+    }
+  }
+
+  const credit = async (sign: 1 | -1) => {
+    const a = (parseFloat(amount.replace(",", ".")) || 0) * sign
+    if (!a) return
+    setCrediting(true)
+    await api.finance.creditAccount({ employee_id: account.id, amount: a, note: note || "Корректировка" })
+    setCrediting(false)
+    setAmount(""); setNote("")
+    const d = await api.finance.getAccountLog(account.id)
+    setLog(d.items || [])
+    onCredited()
+  }
+
+  return (
+    <div>
+      <button onClick={toggle} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 text-left" style={{ cursor: "pointer" }}>
+        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: account.color }} />
+        <span className="text-sm flex-1 truncate">{account.name}{!account.is_active && <span className="text-foreground/30 text-xs"> (неактивен)</span>}</span>
+        <span className={`font-semibold tabular-nums ${account.balance >= 0 ? "text-green-400" : "text-red-400"}`}>{fmt(account.balance)}</span>
+        <Icon name={open ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
+      </button>
+      {open && (
+        <div className="bg-muted/20 px-4 py-3 space-y-3">
+          {/* Зачисление / списание */}
+          <div className="flex flex-wrap items-center gap-2">
+            <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="Сумма"
+              className="w-24 rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-right" />
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="Комментарий"
+              className="flex-1 min-w-[120px] rounded-lg border border-border bg-background px-2 py-1.5 text-sm" />
+            <Button size="sm" variant="outline" disabled={crediting || !amount} onClick={() => credit(1)}
+              className="border-green-500/40 text-green-400 hover:bg-green-500/10">+ Зачислить</Button>
+            <Button size="sm" variant="outline" disabled={crediting || !amount} onClick={() => credit(-1)}
+              className="border-red-500/40 text-red-400 hover:bg-red-500/10">− Списать</Button>
+          </div>
+          {/* История */}
+          {loadingLog ? (
+            <div className="text-foreground/40 text-xs flex items-center gap-1"><Icon name="Loader2" size={13} className="animate-spin" /> Загрузка…</div>
+          ) : log.length === 0 ? (
+            <div className="text-foreground/30 text-xs">Операций пока нет</div>
+          ) : (
+            <div className="space-y-1">
+              {log.map(it => (
+                <div key={it.id} className="flex items-center gap-2 text-xs">
+                  <span className={`font-semibold tabular-nums ${it.amount >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {it.amount >= 0 ? "+" : "−"}{fmt(Math.abs(it.amount))}
+                  </span>
+                  <span className="text-foreground/50 truncate flex-1">{it.note}</span>
+                  <span className="text-foreground/30">{fmtDate(it.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

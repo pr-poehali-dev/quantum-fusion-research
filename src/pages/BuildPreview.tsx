@@ -42,6 +42,7 @@ interface WipInfo {
   storage_status?: string; psu_status?: string; case_status?: string; cooling_status?: string; extra_status?: string
   total?: number
   prepayment_amount?: number
+  prepayment_confirmed_amount?: number
   remaining_amount?: number
 }
 
@@ -148,7 +149,7 @@ export default function BuildPreview() {
       if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
         cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
         storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status,
-        total: d.total, prepayment_amount: d.prepayment_amount, remaining_amount: d.remaining_amount })
+        total: d.total, prepayment_amount: d.prepayment_amount, prepayment_confirmed_amount: d.prepayment_confirmed_amount, remaining_amount: d.remaining_amount })
     }).catch(() => {})
   }, [id, isTokenMode])
 
@@ -174,7 +175,7 @@ export default function BuildPreview() {
       if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
         cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
         storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status,
-        total: d.total, prepayment_amount: d.prepayment_amount, remaining_amount: d.remaining_amount })
+        total: d.total, prepayment_amount: d.prepayment_amount, prepayment_confirmed_amount: d.prepayment_confirmed_amount, remaining_amount: d.remaining_amount })
     }).catch(() => {})
   }, [token, isTokenMode, user])
 
@@ -468,10 +469,10 @@ export default function BuildPreview() {
                       <p className="text-xs text-muted-foreground">Железо: <span className="text-foreground/70">{fmt(calcPartsTotal)}</span></p>
                       <p className="text-xs text-muted-foreground">Сборка: <span className="text-foreground/70">{fmt(calcAssemblyFee)}</span></p>
                     </div>
-                    {wipInfo && wipInfo.prepayment_amount != null && wipInfo.remaining_amount != null && wipInfo.stage !== "Забрали" && (
+                    {wipInfo && (wipInfo.prepayment_confirmed_amount ?? 0) > 0 && wipInfo.remaining_amount != null && (
                       <div className="mb-0.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5">
-                        <p className="text-xs text-muted-foreground">Предоплата: <span className="text-foreground/80 font-medium">{fmt(wipInfo.prepayment_amount)}</span></p>
-                        <p className="text-sm font-bold text-primary">К доплате: {fmt(wipInfo.remaining_amount)}</p>
+                        <p className="text-xs text-muted-foreground">Предоплата внесена: <span className="text-foreground/80 font-medium">{fmt(wipInfo.prepayment_confirmed_amount!)}</span></p>
+                        <p className="text-sm font-bold text-primary">{wipInfo.stage === "Забрали" ? "Оплачено полностью" : `К доплате: ${fmt(wipInfo.remaining_amount)}`}</p>
                       </div>
                     )}
                   </div>

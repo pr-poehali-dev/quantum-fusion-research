@@ -184,6 +184,12 @@ export const api = {
     addType: (data: { name: string; direction: string }) =>
       fetch(`${URLS.finance}?action=add_type`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delType: (id: number) => fetch(`${URLS.finance}?action=del_type&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    getAccounts: () => fetch(`${URLS.finance}?action=accounts`).then(r => r.json()),
+    getAccountLog: (employeeId: number) => fetch(`${URLS.finance}?action=account_log&employee_id=${employeeId}`).then(r => r.json()),
+    creditAccount: (data: { employee_id: number; amount: number; note?: string }) =>
+      fetch(`${URLS.finance}?action=credit_account`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    confirmPrepayment: (data: { order_id: number; amount: number; employee_id?: number | null }) =>
+      fetch(`${URLS.finance}?action=confirm_prepayment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
   comments: {
     getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),
