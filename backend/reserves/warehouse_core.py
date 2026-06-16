@@ -329,6 +329,53 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
     return released
 
 
+# ── Выдача заказа клиенту: списание резервов со склада ───────────────────────
+def fulfill_order_reserves(cur, order_id):
+    """
+    Списать резервы заказа при ВЫДАЧЕ клиенту (этап «Забрали»).
+    POSITIVE -> товар уходит клиенту: qty_reserved -= r, qty НЕ растёт
+                (в отличие от отмены, где товар возвращается в наличие).
+                Резерв закрывается со статусом FULFILLED.
+    NEGATIVE -> закрываем долг как FULFILLED, qty_negative -= r
+                (товар выдан — дефицита под этот заказ больше нет).
+    Идемпотентно: повторный вызов ничего не делает (нет ACTIVE-резервов).
+    Возвращает {"positive": n, "negative": n}.
+    """
+    cur.execute(
+        f"SELECT id, group_id, supply_id, qty, type FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE' FOR UPDATE",
+        (order_id,),
+    )
+    rows = cur.fetchall()
+    fulfilled = {"positive": 0, "negative": 0}
+    for rid, group_id, supply_id, r_qty, r_type in rows:
+        if r_type == POSITIVE:
+            # Товар физически ушёл клиенту: снимаем из резерва, в наличие НЕ возвращаем
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, supply_id),
+            )
+            _movement(cur, group_id, supply_id, order_id, "issued", -r_qty,
+                      note=f"Выдача клиенту (заказ #{order_id})")
+            fulfilled["positive"] += r_qty
+        else:  # NEGATIVE
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, supply_id),
+            )
+            fulfilled["negative"] += r_qty
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'FULFILLED', updated_at = NOW() WHERE id = %s",
+            (rid,),
+        )
+    log(cur, "fulfill_order", order_id=order_id, payload=fulfilled)
+    return fulfilled
+
+
 # ── ЭТАП 2: Приход товара + FIFO-гашение минус-резервов ──────────────────────
 def receive_stock(cur, group_id, qty, cost_price=0, store_id=None, cell=None,
                   purchase_date=None, supply_id=None):

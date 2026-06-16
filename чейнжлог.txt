@@ -3,6 +3,27 @@
 
 ---
 
+## v3.11 | 2026-06-16 | Списание резервов при выдаче («Забрали»)
+
+### Проблема
+При переходе сборки в «Забрали» (выдача клиенту) резервы не списывались:
+qty_reserved оставался завышен в общем списке склада, а в детализации
+выданный заказ был скрыт (фильтр o.status NOT IN done) — расхождение чисел.
+
+### Backend [reserves + wip-builds]
+- Новая функция warehouse_core.fulfill_order_reserves(order_id): при выдаче
+  POSITIVE-резерв → qty_reserved -= qty, qty НЕ растёт (товар ушёл клиенту),
+  резерв → FULFILLED; NEGATIVE → qty_negative -= qty, FULFILLED. Идемпотентно,
+  с логом 'fulfill_order' и движением 'issued'.
+- wip-builds: при переходе на «Забрали» вызывается fulfill_order_reserves,
+  orders.status → 'done' (добавлен в STAGE_TO_ORDER_STATUS).
+
+### БД (миграции V0089, V0090)
+- Заказ 194 (выдан): списаны 8 зависших POSITIVE-резервов (FULFILLED,
+  qty_reserved уменьшен), stage → «Забрали».
+
+---
+
 ## v3.10 | 2026-06-16 | Фикс: отрицательные резервы ломали просмотр резервов
 
 ### Проблема
