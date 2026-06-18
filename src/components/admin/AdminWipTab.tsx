@@ -839,21 +839,8 @@ export function AdminWipTab({
                             <div className="space-y-1">
                               <p className="text-xs text-foreground/80 leading-snug">{val}</p>
                               <div>
-                                {wipEditMode ? (
-                                  <select value={status}
-                                    onChange={e => {
-                                      const v = e.target.value
-                                      setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, [statusKey]: v } : b))
-                                      api.wipBuilds.patch({ id: w.id, component: row.key === "case_name" ? "case" : row.key, status: v })
-                                    }}
-                                    className={`rounded-full border-0 px-1.5 py-0 text-[10px] font-semibold focus:outline-none w-fit ${sCls}`}
-                                    style={{ cursor: "pointer" }}>
-                                    {Object.entries(COMP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                                  </select>
-                                ) : (
-                                  status !== "pending" && (
-                                    <span className={`rounded-full px-1.5 py-0 text-[10px] font-semibold w-fit ${sCls}`}>{sLabel}</span>
-                                  )
+                                {status !== "pending" && (
+                                  <span className={`rounded-full px-1.5 py-0 text-[10px] font-semibold w-fit ${sCls}`}>{sLabel}</span>
                                 )}
                               </div>
                             </div>
