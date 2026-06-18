@@ -6,7 +6,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
-import { WipEditModal, WipMarginModal } from "@/components/admin/WipEditModal"
+import { WipMarginModal } from "@/components/admin/WipEditModal"
 import { SCHEDULE_URL, authH, withAk, Employee } from "@/components/admin/schedule.types"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
@@ -62,9 +62,6 @@ export function AdminWipTab({
     api.wipBuilds.update({ ...w, assembled_by: empId })
   }
 
-  const [wipForm, setWipForm] = useState<WipBuild | null>(null)
-  const [wipFormOpen, setWipFormOpen] = useState(false)
-  const [wipEditMode, setWipEditMode] = useState(false)
   const [wipPasteId, setWipPasteId] = useState<number | null>(null)
   const [wipColWidths, setWipColWidths] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem("wip_col_widths") || "{}") } catch { return {} }
@@ -209,18 +206,6 @@ export function AdminWipTab({
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
 
 
-
-  const saveWip = async () => {
-    if (!wipForm) return
-    if (wipForm.id) {
-      await api.wipBuilds.update(wipForm)
-      setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, ...wipForm } : b))
-    } else {
-      const res = await api.wipBuilds.create(wipForm)
-      if (res.id) setWipBuilds(bs => [...bs, { ...wipForm, id: res.id }])
-    }
-    setWipFormOpen(false)
-  }
 
   const deleteWip = async (w: WipBuild) => {
     if (!confirm(`Удалить сборку #${w.order_number}?\nВсе резервы по заказу будут сняты.`)) return
@@ -754,11 +739,6 @@ export function AdminWipTab({
                       <td key={w.id} className={`px-3 py-2 align-top border-r border-border/20 last:border-0 ${bg} ${w.stage === "Забрали" ? "opacity-40" : ""}`}>
                         {row.key === "_order" && (
                           <div className="flex items-center gap-1.5">
-                            <button onClick={() => { setWipForm(w); setWipFormOpen(true) }}
-                              className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-                              style={{ cursor: "pointer" }}>
-                              <Icon name="Pencil" size={10} />Ред.
-                            </button>
                             <button onClick={() => setWipPasteId(w.id!)}
                               className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                               style={{ cursor: "pointer" }}>
@@ -896,15 +876,6 @@ export function AdminWipTab({
           defaultAmount={prepayModal.prepayment_amount}
           onClose={() => setPrepayModal(null)}
           onConfirmed={(amount, remaining) => onPrepayConfirmed(prepayModal, amount, remaining)}
-        />
-      )}
-
-      {wipFormOpen && wipForm && (
-        <WipEditModal
-          wip={wipForm}
-          sessionId={sessionId || ""}
-          onClose={() => setWipFormOpen(false)}
-          onSaved={(updated) => setWipBuilds(bs => bs.map(b => b.id === updated.id ? { ...b, ...updated } : b))}
         />
       )}
 
