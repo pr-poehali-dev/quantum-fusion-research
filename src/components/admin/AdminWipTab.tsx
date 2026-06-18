@@ -62,6 +62,9 @@ export function AdminWipTab({
     api.wipBuilds.update({ ...w, assembled_by: empId })
   }
 
+  const [wipForm, setWipForm] = useState<WipBuild | null>(null)
+  const [wipFormOpen, setWipFormOpen] = useState(false)
+  const [wipEditMode, setWipEditMode] = useState(false)
   const [wipPasteId, setWipPasteId] = useState<number | null>(null)
   const [wipColWidths, setWipColWidths] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem("wip_col_widths") || "{}") } catch { return {} }
@@ -206,6 +209,18 @@ export function AdminWipTab({
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
 
 
+
+  const saveWip = async () => {
+    if (!wipForm) return
+    if (wipForm.id) {
+      await api.wipBuilds.update(wipForm)
+      setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, ...wipForm } : b))
+    } else {
+      const res = await api.wipBuilds.create(wipForm)
+      if (res.id) setWipBuilds(bs => [...bs, { ...wipForm, id: res.id }])
+    }
+    setWipFormOpen(false)
+  }
 
   const deleteWip = async (w: WipBuild) => {
     if (!confirm(`Удалить сборку #${w.order_number}?\nВсе резервы по заказу будут сняты.`)) return
