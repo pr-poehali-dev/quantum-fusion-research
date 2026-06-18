@@ -49,6 +49,24 @@ interface SlotExtra {
   image_urls: string[]
 }
 
+// Автосохранение черновика конфигурации в браузере
+const DRAFT_KEY = "configurator-draft-v1"
+interface ConfigDraft {
+  selected: Record<string, SelectedComp | null>
+  customInputs: Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>
+  slotExtras: Record<string, SlotExtra>
+  wantAssembly: boolean
+  buildName: string
+}
+function loadDraft(): Partial<ConfigDraft> {
+  // Не восстанавливаем черновик, если открыта чужая/конкретная сборка по ссылке
+  if (new URLSearchParams(window.location.search).get("build")) return {}
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "{}") } catch { return {} }
+}
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY) } catch { /* noop */ }
+}
+
 // Компонент счётчика qty
 function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => void }) {
   return (
@@ -131,16 +149,18 @@ function ExtrasSection() {
 }
 
 export default function Configurator() {
+  const draft0 = useRef(loadDraft()).current
   const [slots, setSlots] = useState<Record<string, CatalogComp[]>>({})
-  const [selected, setSelected] = useState<Record<string, SelectedComp | null>>({})
-  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>>({})
+  const [selected, setSelected] = useState<Record<string, SelectedComp | null>>(draft0.selected || {})
+  const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>>(draft0.customInputs || {})
   const [mode, setMode] = useState<"catalog" | "custom">("catalog")
+  const [slotMode, setSlotMode] = useState<Record<string, "catalog" | "custom">>({})
   const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [wantAssembly, setWantAssembly] = useState(true)
+  const [wantAssembly, setWantAssembly] = useState(draft0.wantAssembly ?? true)
 
   // Сохранение / шеринг
-  const [buildName, setBuildName] = useState("Моя сборка")
+  const [buildName, setBuildName] = useState(draft0.buildName || "Моя сборка")
   const [isPublic, setIsPublic] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState<{ token: string } | null>(null)
@@ -150,7 +170,7 @@ export default function Configurator() {
   const [buildAuthor, setBuildAuthor] = useState<{ username: string; avatar: string; tag: string } | null>(null)
   const [buildDescription, setBuildDescription] = useState("")
   const [buildImageUrls, setBuildImageUrls] = useState<string[]>([])
-  const [slotExtras, setSlotExtras] = useState<Record<string, SlotExtra>>({})
+  const [slotExtras, setSlotExtras] = useState<Record<string, SlotExtra>>(draft0.slotExtras || {})
   const [slotSearch, setSlotSearch] = useState("")
   const slotSearchRef = useRef<HTMLInputElement>(null)
 
@@ -202,6 +222,14 @@ export default function Configurator() {
     }
   }, [])
 
+  // Автосохранение черновика в браузер (кроме режима просмотра чужой сборки)
+  useEffect(() => {
+    if (isReadOnly) return
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ selected, customInputs, slotExtras, wantAssembly, buildName }))
+    } catch { /* noop */ }
+  }, [selected, customInputs, slotExtras, wantAssembly, buildName, isReadOnly])
+
   const partsTotal = Object.values(selected).reduce((sum, c) => sum + (c ? c.price * c.qty : 0), 0)
   const assemblyFee = wantAssembly ? Math.round(partsTotal * 0.07) : 0
   const total = partsTotal + assemblyFee
@@ -223,6 +251,7 @@ export default function Configurator() {
       source_id: c!.source_id,
     }))
     addItem({ id: Date.now(), name: `Сборка: ${names}`, price: total, type: "config", assembly: wantAssembly, components })
+    clearDraft()
     navigate("/cart")
   }
 
@@ -580,9 +609,24 @@ export default function Configurator() {
                     )}
 
                     {/* Picker panel */}
-                    {isOpen && (
+                    {isOpen && (() => {
+                      const effMode = slotMode[slot] ?? mode
+                      return (
                       <div className="border-t border-border p-4">
-                        {mode === "catalog" ? (
+                        {/* Локальный переключатель: каталог / своё железо для этого слота */}
+                        <div className="mb-3 flex overflow-hidden rounded-lg border border-border text-xs">
+                          <button onClick={() => setSlotMode(m => ({ ...m, [slot]: "catalog" }))}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors ${effMode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/60 hover:text-foreground"}`}
+                            style={{ cursor: "pointer" }}>
+                            <Icon name="ShoppingBag" size={13} />Каталог
+                          </button>
+                          <button onClick={() => setSlotMode(m => ({ ...m, [slot]: "custom" }))}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors ${effMode === "custom" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/60 hover:text-foreground"}`}
+                            style={{ cursor: "pointer" }}>
+                            <Icon name="PenLine" size={13} />Своё железо
+                          </button>
+                        </div>
+                        {effMode === "catalog" ? (
                           options.length === 0
                             ? <p className="py-3 text-center text-xs text-foreground/40">Нет компонентов в каталоге</p>
                             : (
@@ -657,7 +701,8 @@ export default function Configurator() {
                           </div>
                         )}
                       </div>
-                    )}
+                      )
+                    })()}
                   </div>
                 )
               })
