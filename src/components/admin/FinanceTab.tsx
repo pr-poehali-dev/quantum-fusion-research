@@ -12,6 +12,7 @@ interface Summary {
   margin_parts: MarginBlock
   cash: number
   fin: { income: number; expense: number; collection: number; sales_cash: number }
+  office?: { balance: number; income: number; expense: number; supply_expense: number; other_expense: number }
 }
 interface LogItem {
   source: "finance" | "sale"
@@ -218,6 +219,42 @@ export default function FinanceTab() {
               Передано в офис (инкассация): {fmt(summary.fin.collection)}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Баланс офиса */}
+      {summary?.office && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center gap-2">
+            <Icon name="Building2" size={16} /> Баланс офиса
+          </div>
+          <div className="p-4">
+            <div className="mb-4">
+              <div className="text-xs text-foreground/50 mb-0.5">Текущий баланс офиса</div>
+              <div className={`text-2xl font-bold ${summary.office.balance >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {fmt(summary.office.balance)}
+              </div>
+              <div className="text-xs text-foreground/40 mt-0.5">приходы (инкассация + поступления) − расходы</div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-green-400/20 bg-green-400/5 p-3">
+                <div className="text-[11px] text-foreground/50 flex items-center gap-1"><Icon name="ArrowDownLeft" size={12} className="text-green-400" /> Приходы</div>
+                <div className="text-base font-bold text-green-400">{fmt(summary.office.income)}</div>
+              </div>
+              <div className="rounded-lg border border-red-400/20 bg-red-400/5 p-3">
+                <div className="text-[11px] text-foreground/50 flex items-center gap-1"><Icon name="ArrowUpRight" size={12} className="text-red-400" /> Расходы</div>
+                <div className="text-base font-bold text-red-400">{fmt(summary.office.expense)}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="text-[11px] text-foreground/50 flex items-center gap-1"><Icon name="PackagePlus" size={12} /> Закупка товара</div>
+                <div className="text-base font-bold text-foreground/80">{fmt(summary.office.supply_expense)}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="text-[11px] text-foreground/50 flex items-center gap-1"><Icon name="Receipt" size={12} /> Прочие расходы</div>
+                <div className="text-base font-bold text-foreground/80">{fmt(summary.office.other_expense)}</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

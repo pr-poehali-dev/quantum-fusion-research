@@ -106,6 +106,19 @@ POST action=add_tx — добавить операцию (kind: income/expense/c
 POST action=add_type — новый тип. DELETE del_tx / del_type.
 Таблицы: finance_types, finance_transactions.
 
+### НДС-заход + авторасход офиса + баланс офиса (v3.18)
+- warehouse.supply_create: НДС-товар → cost_price = price_with_vat/(1+vat%/100),
+  обычный → cost_price = введённая цена. vat% из app_settings.vat_percent (20).
+- Авто-расход офиса при приходе: ОДНО событие «Расходы на товары» на
+  день+магазин (finance_transactions.auto_supply=TRUE, store_id, expense_date,
+  supply_count), сумма наращивается = Σ cost_price×qty поставок дня.
+- warehouse settings/settings_set: чтение/запись app_settings (whitelist:
+  purchase_discount_percent, default_prepayment_percent, vat_percent).
+  UI: «Настройки закупки» в WarehouseTab (НДС% + скидка).
+- finance summary.office: { balance, income (приходы+инкассация), expense,
+  supply_expense (закупка товара), other_expense }. FinanceTab — блок
+  «Баланс офиса» с отдельными суммами.
+
 ### orders
 Заказы: создание с привязкой к пользователю, список, смена статусов.
 Статусы: new (по умолчанию при создании), done, archived, cancelled.

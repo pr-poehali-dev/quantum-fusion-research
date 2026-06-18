@@ -35,6 +35,18 @@ def gen_sku():
     return letters + digits
 
 
+def get_setting_num(cur, key, default=0.0):
+    """Читает числовую настройку из app_settings."""
+    cur.execute(f"SELECT value FROM {SCHEMA}.app_settings WHERE key = {esc(key)}")
+    r = cur.fetchone()
+    if not r:
+        return float(default)
+    try:
+        return float(r[0])
+    except (ValueError, TypeError):
+        return float(default)
+
+
 # Слоты компонентов WIP-сборки: поле названия → поле статуса
 WIP_SLOTS = [
     ("cpu", "cpu_status"), ("gpu", "gpu_status"), ("ram", "ram_status"),
@@ -451,19 +463,81 @@ def handler(event: dict, context) -> dict:
             group_id = body.get("group_id")
             store_id = body.get("store_id")
             qty = int(body.get("qty", 0))
-            cost_price = float(body.get("cost_price", 0))
             cell = body.get("cell", "")
             purchase_date = body.get("purchase_date")
             warranty_until = body.get("warranty_until")
 
+            # НДС: фронт шлёт price_with_vat (введённая цена) и has_vat.
+            # Себестоимость:
+            #   с НДС  → cost_price = price_with_vat / (1 + vat%/100)
+            #   без НДС → cost_price = введённая цена как есть
+            # Поддержка legacy: если пришло только cost_price — берём его.
+            has_vat = body.get("has_vat")
+            price_with_vat = body.get("price_with_vat")
+            if price_with_vat is not None:
+                price_in = float(price_with_vat)
+            else:
+                price_in = float(body.get("cost_price", 0))
+            if has_vat is True:
+                vat = get_setting_num(cur, "vat_percent", 20.0)
+                cost_price = round(price_in / (1.0 + vat / 100.0), 2)
+            else:
+                cost_price = round(price_in, 2)
+
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_supplies "
-                f"(group_id, store_id, qty, cost_price, cell, purchase_date, warranty_until) "
+                f"(group_id, store_id, qty, cost_price, cell, purchase_date, warranty_until, has_vat, price_with_vat) "
                 f"VALUES ({group_id}, {store_id or 'NULL'}, {qty}, {cost_price}, "
                 f"{esc(cell)}, {esc(purchase_date) if purchase_date else 'NULL'}, "
-                f"{esc(warranty_until) if warranty_until else 'NULL'}) RETURNING id"
+                f"{esc(warranty_until) if warranty_until else 'NULL'}, "
+                f"{'TRUE' if has_vat is True else 'FALSE' if has_vat is False else 'NULL'}, "
+                f"{price_in if price_with_vat is not None else 'NULL'}) RETURNING id"
             )
             supply_id = cur.fetchone()[0]
+
+            # ── Авто-расход офиса при приходе товара ──────────────────────────
+            # Все приходы (НДС и обычные) обобщаются в ОДНО событие расхода
+            # на день + магазин. Если событие за этот день/магазин уже есть —
+            # наращиваем сумму, иначе создаём новое. Сумма = cost_price × qty.
+            expense_amount = round(cost_price * qty, 2)
+            if expense_amount > 0:
+                exp_date = purchase_date if purchase_date else None
+                sid_sql = str(int(store_id)) if store_id else "NULL"
+                date_expr = esc(exp_date) if exp_date else "CURRENT_DATE"
+                # тип «Расходы на товары»
+                cur.execute(f"SELECT id FROM {SCHEMA}.finance_types WHERE name = 'Расходы на товары' LIMIT 1")
+                tr = cur.fetchone()
+                type_id = tr[0] if tr else None
+                # ищем существующий авто-расход за день+магазин
+                cur.execute(
+                    f"SELECT id FROM {SCHEMA}.finance_transactions "
+                    f"WHERE auto_supply = TRUE AND expense_date = {date_expr} "
+                    f"AND store_id IS NOT DISTINCT FROM {sid_sql} LIMIT 1"
+                )
+                ex = cur.fetchone()
+                # имя магазина для заметки
+                store_name = None
+                if store_id:
+                    cur.execute(f"SELECT name FROM {SCHEMA}.warehouse_stores WHERE id = {int(store_id)}")
+                    sr = cur.fetchone()
+                    store_name = sr[0] if sr else None
+                note_base = f"Закупка товара ({store_name})" if store_name else "Закупка товара"
+                if ex:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.finance_transactions "
+                        f"SET amount = amount + {expense_amount}, supply_count = supply_count + 1, "
+                        f"note = {esc(note_base)} || ' · поставок: ' || (supply_count + 1)::text, "
+                        f"updated_at = NOW() WHERE id = {ex[0]}"
+                    )
+                else:
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.finance_transactions "
+                        f"(kind, type_id, amount, note, affects_pnl, store_id, expense_date, "
+                        f" auto_supply, supply_count, occurred_at) "
+                        f"VALUES ('expense', {type_id if type_id else 'NULL'}, {expense_amount}, "
+                        f"{esc(note_base + ' · поставок: 1')}, TRUE, {sid_sql}, {date_expr}, "
+                        f"TRUE, 1, NOW())"
+                    )
 
             avg_cost = calc_avg_cost(cur, group_id)
             cur.execute(
@@ -1278,6 +1352,33 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
                 "ok": True, "fixed_count": len(fixed), "stale_closed": stale_closed, "fixed": fixed
             })}
+
+        # ── НАСТРОЙКИ (app_settings) ─────────────────────────────────────────
+        ALLOWED_SETTINGS = ("purchase_discount_percent", "default_prepayment_percent", "vat_percent")
+        if action == "settings" and method == "GET":
+            cur.execute(
+                f"SELECT key, value FROM {SCHEMA}.app_settings WHERE key IN "
+                f"({', '.join(esc(k) for k in ALLOWED_SETTINGS)})"
+            )
+            result = {r[0]: r[1] for r in cur.fetchall()}
+            # дефолты, если ключа ещё нет
+            result.setdefault("purchase_discount_percent", "0")
+            result.setdefault("default_prepayment_percent", "30")
+            result.setdefault("vat_percent", "20")
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(result)}
+
+        if action == "settings_set" and method == "POST":
+            settings = body.get("settings") or {}
+            for key, val in settings.items():
+                if key not in ALLOWED_SETTINGS:
+                    continue
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.app_settings (key, value, updated_at) "
+                    f"VALUES ({esc(key)}, {esc(str(val))}, NOW()) "
+                    f"ON CONFLICT (key) DO UPDATE SET value = {esc(str(val))}, updated_at = NOW()"
+                )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 

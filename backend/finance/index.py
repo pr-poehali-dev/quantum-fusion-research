@@ -117,6 +117,19 @@ def get_summary(cur):
 
     cash = sales_cash + fin_income - fin_expense - fin_collection
 
+    # Авто-расходы на закупку товара (приход на склад) — выделяем отдельно
+    cur.execute(
+        f"SELECT COALESCE(SUM(amount), 0) FROM {SCHEMA}.finance_transactions "
+        f"WHERE kind='expense' AND auto_supply = TRUE"
+    )
+    supply_expense = num(cur.fetchone()[0])
+    # Прочие расходы (ручные, не закупка товара)
+    other_expense = round(fin_expense - supply_expense, 2)
+
+    # Баланс офиса: деньги поступают через инкассацию из кассы + приходы,
+    # уходят через расходы (офис, зарплата, закупка товара).
+    office_balance = round(fin_income + fin_collection - fin_expense, 2)
+
     return {
         "stock": {"purchase": round(stock_purchase, 2), "sale": round(stock_sale, 2)},
         "margin_pc": pc,
@@ -127,6 +140,13 @@ def get_summary(cur):
             "expense": round(fin_expense, 2),
             "collection": round(fin_collection, 2),
             "sales_cash": round(sales_cash, 2),
+        },
+        "office": {
+            "balance": office_balance,
+            "income": round(fin_income + fin_collection, 2),
+            "expense": round(fin_expense, 2),
+            "supply_expense": round(supply_expense, 2),
+            "other_expense": other_expense,
         },
     }
 

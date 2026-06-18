@@ -738,7 +738,7 @@ export default function WarehouseTab() {
           <Icon name="Tag" size={14} className="mr-1.5" />Категории
         </Button>
         <Button variant="outline" size="sm" onClick={() => setDiscountModal(true)}>
-          <Icon name="Percent" size={14} className="mr-1.5" />Скидка на покупку
+          <Icon name="Percent" size={14} className="mr-1.5" />Настройки закупки
         </Button>
         <Button size="sm" onClick={() => setQuickSupplyModal(true)}>
           <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
@@ -1018,21 +1018,27 @@ export default function WarehouseTab() {
 
 function DiscountModal({ onClose }: { onClose: () => void }) {
   const [discount, setDiscount] = useState("0")
+  const [vat, setVat] = useState("20")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     api.warehouse.getSettings()
-      .then(s => setDiscount(s?.purchase_discount_percent ?? "0"))
+      .then(s => {
+        setDiscount(s?.purchase_discount_percent ?? "0")
+        setVat(s?.vat_percent ?? "20")
+      })
       .finally(() => setLoading(false))
   }, [])
 
   const save = async () => {
-    const val = Math.max(0, Math.min(100, parseFloat(discount.replace(",", ".")) || 0))
+    const dval = Math.max(0, Math.min(100, parseFloat(discount.replace(",", ".")) || 0))
+    const vval = Math.max(0, Math.min(100, parseFloat(vat.replace(",", ".")) || 0))
     setSaving(true)
-    await api.warehouse.setSettings({ purchase_discount_percent: val })
-    setDiscount(String(val))
+    await api.warehouse.setSettings({ purchase_discount_percent: dval, vat_percent: vval })
+    setDiscount(String(dval))
+    setVat(String(vval))
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -1042,19 +1048,30 @@ function DiscountModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold flex items-center gap-2"><Icon name="Percent" size={18} /> Скидка на покупку</h2>
+          <h2 className="text-lg font-semibold flex items-center gap-2"><Icon name="Percent" size={18} /> Настройки закупки</h2>
           <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
         </div>
-        <p className="mb-4 text-sm text-foreground/50">
-          При приёмке менеджер вводит цену с НДС, а в заход (себестоимость) записывается цена за вычетом этой скидки.
-        </p>
         {loading ? (
           <div className="flex justify-center py-6 text-foreground/40"><Icon name="Loader" size={22} className="animate-spin" /></div>
         ) : (
           <>
-            <div className="flex items-center gap-2">
-              <Input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal" className="text-right" />
-              <span className="text-foreground/50">%</span>
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium">Ставка НДС, %</label>
+              <p className="mb-2 text-xs text-foreground/50">
+                Для товара «с НДС» себестоимость = цена ÷ (1 + НДС/100). Для товара «без НДС» — цена как есть.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input value={vat} onChange={e => setVat(e.target.value)} inputMode="decimal" className="text-right" />
+                <span className="text-foreground/50">%</span>
+              </div>
+            </div>
+            <div className="mb-2 border-t border-border pt-4">
+              <label className="mb-1 block text-sm font-medium">Скидка на покупку, %</label>
+              <p className="mb-2 text-xs text-foreground/50">Дополнительная скидка поставщика (резерв на будущее).</p>
+              <div className="flex items-center gap-2">
+                <Input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal" className="text-right" />
+                <span className="text-foreground/50">%</span>
+              </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={onClose}>Закрыть</Button>
