@@ -13,7 +13,7 @@ interface Summary {
   margin_parts: MarginBlock
   cash: number
   fin: { income: number; expense: number; collection: number; sales_cash: number }
-  office?: { balance: number; income: number; expense: number; supply_expense: number; other_expense: number }
+  office?: { balance: number; income: number; expense: number; supply_expense: number; other_expense: number; transferred: number }
 }
 interface LogItem {
   source: "finance" | "sale"
@@ -244,12 +244,19 @@ export default function FinanceTab() {
             </Button>
           </div>
           <div className="p-4">
-            <div className="mb-4">
-              <div className="text-xs text-foreground/50 mb-0.5">Текущий баланс офиса</div>
-              <div className={`text-2xl font-bold ${summary.office.balance >= 0 ? "text-green-400" : "text-red-400"}`}>
-                {fmt(summary.office.balance)}
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <div className="text-xs text-foreground/50 mb-0.5">Текущий баланс офиса</div>
+                <div className={`text-2xl font-bold ${summary.office.balance >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {fmt(summary.office.balance)}
+                </div>
+                <div className="text-xs text-foreground/40 mt-0.5">приходы (инкассация + поступления) − расходы</div>
               </div>
-              <div className="text-xs text-foreground/40 mt-0.5">приходы (инкассация + поступления) − расходы</div>
+              {/* Передано в другой офис (инкассация) */}
+              <div className="rounded-xl border border-blue-400/30 bg-blue-400/5 px-4 py-3">
+                <div className="text-[11px] text-foreground/50 flex items-center gap-1"><Icon name="Building2" size={12} className="text-blue-400" /> Передано в другой офис</div>
+                <div className="text-xl font-bold text-blue-400">{fmt(summary.office.transferred)}</div>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-lg border border-green-400/20 bg-green-400/5 p-3">

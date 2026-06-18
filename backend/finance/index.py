@@ -147,6 +147,9 @@ def get_summary(cur):
             "expense": round(fin_expense, 2),
             "supply_expense": round(supply_expense, 2),
             "other_expense": other_expense,
+            # Передано в другой офис (инкассация) — транзит, наш баланс это
+            # отражает как приход, но физически деньги ушли в другой офис.
+            "transferred": round(fin_collection, 2),
         },
     }
 
