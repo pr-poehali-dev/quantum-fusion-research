@@ -754,6 +754,11 @@ export function AdminWipTab({
                       <td key={w.id} className={`px-3 py-2 align-top border-r border-border/20 last:border-0 ${bg} ${w.stage === "Забрали" ? "opacity-40" : ""}`}>
                         {row.key === "_order" && (
                           <div className="flex items-center gap-1.5">
+                            <button onClick={() => { setWipForm(w); setWipFormOpen(true) }}
+                              className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                              style={{ cursor: "pointer" }}>
+                              <Icon name="Pencil" size={10} />Ред.
+                            </button>
                             <button onClick={() => setWipPasteId(w.id!)}
                               className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                               style={{ cursor: "pointer" }}>
