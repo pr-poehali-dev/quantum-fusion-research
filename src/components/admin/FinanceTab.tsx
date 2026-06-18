@@ -65,6 +65,8 @@ export default function FinanceTab() {
   const [cashExpanded, setCashExpanded] = useState(false)
   // Отчёт PDF за период
   const [reportOpen, setReportOpen] = useState(false)
+  // Пересчёт авто-расходов офиса
+  const [recalcing, setRecalcing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,6 +84,13 @@ export default function FinanceTab() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const recalcExpenses = async () => {
+    setRecalcing(true)
+    await api.warehouse.recalcSupplyExpense()
+    await load()
+    setRecalcing(false)
+  }
 
   const openModal = (k: ModalKind) => {
     setAmount(""); setNote(""); setTypeId("")
@@ -228,8 +237,11 @@ export default function FinanceTab() {
       {/* Баланс офиса */}
       {summary?.office && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center gap-2">
-            <Icon name="Building2" size={16} /> Баланс офиса
+          <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2"><Icon name="Building2" size={16} /> Баланс офиса</span>
+            <Button variant="outline" size="sm" onClick={recalcExpenses} disabled={recalcing} title="Пересчитать расходы на закупку из поставок">
+              <Icon name={recalcing ? "Loader" : "RefreshCw"} size={14} className={`mr-1.5 ${recalcing ? "animate-spin" : ""}`} /> Обновить расходы
+            </Button>
           </div>
           <div className="p-4">
             <div className="mb-4">
