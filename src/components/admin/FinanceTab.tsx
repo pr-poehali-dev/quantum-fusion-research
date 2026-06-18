@@ -87,7 +87,7 @@ export default function FinanceTab() {
 
   const recalcExpenses = async () => {
     setRecalcing(true)
-    await api.warehouse.recalcSupplyExpense()
+    await api.finance.syncSupplyExpense()
     await load()
     setRecalcing(false)
   }

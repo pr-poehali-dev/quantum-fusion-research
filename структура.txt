@@ -110,7 +110,12 @@ POST action=add_type — новый тип. DELETE del_tx / del_type.
 - warehouse.supply_create: НДС-товар → cost_price = price_with_vat ×
   (1 − purchase_discount_percent/100) (поставщик даёт скидку по ставке),
   обычный → cost_price = введённая цена. vat_percent — справочная ставка.
-- Авто-расход офиса при приходе: ОДНО событие «Расходы на товары» на
+- Авто-расход «Закупка товара» считает и пишет ТОЛЬКО функция finance
+  (action=sync_supply_expense): сумма за день+магазин = Σ cost_price ×
+  (qty+qty_reserved+qty_negative). warehouse после приёмки/правки дёргает
+  finance по HTTP (notify_finance_supply_expense). У склада нет колонки
+  updated_at в finance_transactions — не использовать её там.
+- (устар. v3.18) Авто-расход офиса при приходе: ОДНО событие «Расходы на товары» на
   день+магазин (finance_transactions.auto_supply=TRUE, store_id, expense_date,
   supply_count), сумма наращивается = Σ cost_price×qty поставок дня.
 - warehouse settings/settings_set: чтение/запись app_settings (whitelist:

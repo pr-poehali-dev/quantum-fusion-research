@@ -184,6 +184,7 @@ export const api = {
       return fetch(url).then(r => r.json())
     },
     getTypes: () => fetch(`${URLS.finance}?action=types`).then(r => r.json()),
+    syncSupplyExpense: () => fetch(`${URLS.finance}?action=sync_supply_expense`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_supply_expense" }) }).then(r => r.json()),
     addTx: (data: { kind: string; amount: number; type_id?: number | null; note?: string; user_id?: number | null }) =>
       fetch(`${URLS.finance}?action=add_tx`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delTx: (id: number) => fetch(`${URLS.finance}?action=del_tx&id=${id}`, { method: "DELETE" }).then(r => r.json()),

@@ -266,6 +266,97 @@ def credit_account(cur, employee_id, amount, note, order_id=None):
     )
 
 
+# ── АВТО-РАСХОД «ЗАКУПКА ТОВАРА» ─────────────────────────────────────────────
+def sync_supply_expense(cur, store_id=None, exp_date=None):
+    """Синхронизирует авто-расходы офиса «Закупка товара» с фактом поставок.
+
+    Источник истины — warehouse_supplies. Сумма расхода за день+магазин =
+    Σ cost_price × (qty + qty_reserved + qty_negative) (весь приход).
+    Эту функцию вызывает ТОЛЬКО finance (у неё есть права на finance_*),
+    поэтому запись авто-расхода надёжна.
+
+    Если store_id/exp_date заданы — пересчитывается одна группа день+магазин.
+    Если нет — пересчитываются ВСЕ группы дней+магазинов из поставок,
+    а также обнуляются авто-записи, под которые уже нет поставок.
+    Возвращает число обработанных групп.
+    """
+    # тип «Расходы на товары»
+    cur.execute(f"SELECT id FROM {SCHEMA}.finance_types WHERE name = 'Расходы на товары' LIMIT 1")
+    tr = cur.fetchone()
+    type_id = tr[0] if tr else None
+
+    # Определяем список (день, магазин) для пересчёта
+    if exp_date is not None:
+        pairs = [(exp_date, store_id)]
+    else:
+        cur.execute(
+            f"SELECT DISTINCT purchase_date, store_id FROM {SCHEMA}.warehouse_supplies "
+            f"WHERE purchase_date IS NOT NULL"
+        )
+        pairs = [(r[0], r[1]) for r in cur.fetchall()]
+        # плюс дни+магазины, где есть авто-запись (вдруг поставки удалили)
+        cur.execute(
+            f"SELECT DISTINCT expense_date, store_id FROM {SCHEMA}.finance_transactions "
+            f"WHERE auto_supply = TRUE AND expense_date IS NOT NULL"
+        )
+        for r in cur.fetchall():
+            if (r[0], r[1]) not in pairs:
+                pairs.append((r[0], r[1]))
+
+    processed = 0
+    for d, sid in pairs:
+        sid_sql = str(int(sid)) if sid else "NULL"
+        date_sql = esc(str(d))
+
+        cur.execute(
+            f"SELECT COALESCE(SUM(cost_price * (qty + qty_reserved + qty_negative)), 0), COUNT(*) "
+            f"FROM {SCHEMA}.warehouse_supplies "
+            f"WHERE purchase_date = {date_sql}::date "
+            f"AND store_id IS NOT DISTINCT FROM {sid_sql}"
+        )
+        row = cur.fetchone()
+        total = round(float(row[0] or 0), 2)
+        cnt = int(row[1] or 0)
+
+        store_name = None
+        if sid:
+            cur.execute(f"SELECT name FROM {SCHEMA}.warehouse_stores WHERE id = {int(sid)}")
+            sr = cur.fetchone()
+            store_name = sr[0] if sr else None
+        note_base = f"Закупка товара ({store_name})" if store_name else "Закупка товара"
+        note = f"{note_base} · поставок: {cnt}"
+
+        cur.execute(
+            f"SELECT id FROM {SCHEMA}.finance_transactions "
+            f"WHERE auto_supply = TRUE AND expense_date = {date_sql}::date "
+            f"AND store_id IS NOT DISTINCT FROM {sid_sql} LIMIT 1"
+        )
+        ex = cur.fetchone()
+
+        if total <= 0:
+            if ex:
+                cur.execute(
+                    f"UPDATE {SCHEMA}.finance_transactions SET amount = 0, supply_count = 0, "
+                    f"note = {esc(note)} WHERE id = {ex[0]}"
+                )
+        elif ex:
+            cur.execute(
+                f"UPDATE {SCHEMA}.finance_transactions "
+                f"SET amount = {total}, supply_count = {cnt}, note = {esc(note)} "
+                f"WHERE id = {ex[0]}"
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.finance_transactions "
+                f"(kind, type_id, amount, note, affects_pnl, store_id, expense_date, "
+                f" auto_supply, supply_count, occurred_at) "
+                f"VALUES ('expense', {type_id if type_id else 'NULL'}, {total}, "
+                f"{esc(note)}, TRUE, {sid_sql}, {date_sql}::date, TRUE, {cnt}, NOW())"
+            )
+        processed += 1
+    return processed
+
+
 def handler(event: dict, context) -> dict:
     """Финансы: сводка по деньгам, лог движения средств, расходы/приходы, инкассация, типы операций."""
     method = event.get("httpMethod", "GET")
@@ -331,6 +422,16 @@ def handler(event: dict, context) -> dict:
                 tx_id = cur.fetchone()[0]
                 conn.commit()
                 return resp(200, {"ok": True, "id": tx_id})
+
+            # Синхронизация авто-расходов «Закупка товара» из поставок.
+            # Вызывается складом после приёмки/правки и кнопкой «Обновить расходы».
+            # store_id/date — точечно (одна группа), без них — пересчёт всего.
+            if action == "sync_supply_expense":
+                sid = body.get("store_id")
+                edate = body.get("date")
+                n = sync_supply_expense(cur, sid, edate)
+                conn.commit()
+                return resp(200, {"ok": True, "processed": n})
 
             # Добавить тип операции
             if action == "add_type":

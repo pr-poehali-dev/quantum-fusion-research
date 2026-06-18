@@ -2,8 +2,33 @@ import json
 import os
 import random
 import string
+import urllib.request
 import psycopg2
 from datetime import date, datetime
+
+# URL функции finance (для авто-расходов «Закупка товара»).
+# finance имеет права на finance_* таблицы, warehouse — нет.
+FINANCE_URL = "https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc"
+
+
+def notify_finance_supply_expense(store_id=None, exp_date=None):
+    """Просит функцию finance пересчитать авто-расход «Закупка товара».
+    Без store_id/date — пересчёт всех групп. Ошибки не критичны для приёмки."""
+    payload = {"action": "sync_supply_expense"}
+    if store_id is not None:
+        payload["store_id"] = int(store_id)
+    if exp_date is not None:
+        payload["date"] = str(exp_date)
+    try:
+        req = urllib.request.Request(
+            FINANCE_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception:
+        pass  # приёмку не блокируем, расход можно пересчитать кнопкой
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 cors = {
@@ -204,77 +229,6 @@ def calc_avg_cost(cur, group_id):
     )
     row = cur.fetchone()
     return float(row[0]) if row[0] else 0
-
-
-def recalc_supply_expense(cur, store_id, exp_date):
-    """Пересчитывает авто-расход офиса «Закупка товара» за день+магазин.
-
-    Источник истины — сами поставки (warehouse_supplies). Сумма расхода =
-    Σ cost_price × приходный объём по всем поставкам этого дня и магазина.
-    Приходный объём берём как (qty + qty_reserved + qty_negative) — то, что
-    реально пришло на склад, даже если уже ушло в резерв/выдачу.
-    Вызывается при ЛЮБОМ изменении поставок (создание/правка), поэтому
-    сумма и счётчик всегда актуальны независимо от пути приёмки.
-    """
-    if not exp_date:
-        cur.execute("SELECT CURRENT_DATE")
-        exp_date = cur.fetchone()[0]
-    sid_sql = str(int(store_id)) if store_id else "NULL"
-    date_sql = esc(str(exp_date))
-
-    # Агрегат по поставкам дня+магазина
-    cur.execute(
-        f"SELECT COALESCE(SUM(cost_price * (qty + qty_reserved + qty_negative)), 0), COUNT(*) "
-        f"FROM {SCHEMA}.warehouse_supplies "
-        f"WHERE purchase_date = {date_sql}::date "
-        f"AND store_id IS NOT DISTINCT FROM {sid_sql}"
-    )
-    row = cur.fetchone()
-    total = float(row[0] or 0)
-    cnt = int(row[1] or 0)
-
-    # имя магазина
-    store_name = None
-    if store_id:
-        cur.execute(f"SELECT name FROM {SCHEMA}.warehouse_stores WHERE id = {int(store_id)}")
-        sr = cur.fetchone()
-        store_name = sr[0] if sr else None
-    note_base = f"Закупка товара ({store_name})" if store_name else "Закупка товара"
-    note = f"{note_base} · поставок: {cnt}"
-
-    # тип «Расходы на товары»
-    cur.execute(f"SELECT id FROM {SCHEMA}.finance_types WHERE name = 'Расходы на товары' LIMIT 1")
-    tr = cur.fetchone()
-    type_id = tr[0] if tr else None
-
-    # существующая авто-запись за день+магазин
-    cur.execute(
-        f"SELECT id FROM {SCHEMA}.finance_transactions "
-        f"WHERE auto_supply = TRUE AND expense_date = {date_sql}::date "
-        f"AND store_id IS NOT DISTINCT FROM {sid_sql} LIMIT 1"
-    )
-    ex = cur.fetchone()
-
-    if total <= 0:
-        # нечего учитывать — удаляем пустую авто-запись, если была
-        if ex:
-            cur.execute(f"UPDATE {SCHEMA}.finance_transactions SET amount = 0, supply_count = 0, "
-                        f"note = {esc(note)}, updated_at = NOW() WHERE id = {ex[0]}")
-        return
-    if ex:
-        cur.execute(
-            f"UPDATE {SCHEMA}.finance_transactions "
-            f"SET amount = {round(total, 2)}, supply_count = {cnt}, note = {esc(note)}, "
-            f"updated_at = NOW() WHERE id = {ex[0]}"
-        )
-    else:
-        cur.execute(
-            f"INSERT INTO {SCHEMA}.finance_transactions "
-            f"(kind, type_id, amount, note, affects_pnl, store_id, expense_date, "
-            f" auto_supply, supply_count, occurred_at) "
-            f"VALUES ('expense', {type_id if type_id else 'NULL'}, {round(total, 2)}, "
-            f"{esc(note)}, TRUE, {sid_sql}, {date_sql}::date, TRUE, {cnt}, NOW())"
-        )
 
 
 def handler(event: dict, context) -> dict:
@@ -568,11 +522,9 @@ def handler(event: dict, context) -> dict:
             supply_id = cur.fetchone()[0]
 
             # ── Авто-расход офиса при приходе товара ──────────────────────────
-            # Обобщается в ОДНО событие расхода на день + магазин. Считаем из
-            # самих поставок (источник истины), чтобы сумма была верной при
-            # любом пути приёмки (создание/правка/инлайн).
-            recalc_supply_expense(cur, store_id, purchase_date)
-
+            # Обобщается в ОДНО событие расхода на день + магазин. Запись делает
+            # функция finance (после commit, см. ниже), т.к. у неё есть права
+            # на finance_*; источник истины — сами поставки.
             avg_cost = calc_avg_cost(cur, group_id)
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_price_history (group_id, price_retail, avg_cost) "
@@ -785,6 +737,9 @@ def handler(event: dict, context) -> dict:
                     _recompute_wip_stage(cur, oid)
 
             conn.commit()
+            # После commit просим finance записать/обновить авто-расход офиса
+            # «Закупка товара» за этот день+магазин (у finance есть права).
+            notify_finance_supply_expense(store_id, purchase_date)
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
                 "id": supply_id,
                 "negative_alerts": negative_alerts
@@ -815,10 +770,6 @@ def handler(event: dict, context) -> dict:
                 grow = cur.fetchone()
                 gid, new_store, new_date = grow[0], grow[1], grow[2]
                 log_movement(cur, gid, sid, None, None, "supply_updated", 0, note="Обновлена поставка")
-                # Пересчёт авто-расхода офиса: и старая, и новая группа день+магазин
-                recalc_supply_expense(cur, old_store, old_date)
-                if (old_store, old_date) != (new_store, new_date):
-                    recalc_supply_expense(cur, new_store, new_date)
                 cur.execute(
                     f"UPDATE {SCHEMA}.products SET "
                     f"stock_qty = (SELECT COALESCE(SUM(s2.qty), 0) FROM {SCHEMA}.warehouse_supplies s2 "
@@ -828,6 +779,11 @@ def handler(event: dict, context) -> dict:
                     f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid})"
                 )
                 conn.commit()
+                # После commit просим finance пересчитать авто-расход для старой
+                # и новой группы день+магазин (источник истины — поставки).
+                notify_finance_supply_expense(old_store, old_date)
+                if (old_store, old_date) != (new_store, new_date):
+                    notify_finance_supply_expense(new_store, new_date)
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         # ── РЕЗЕРВ / СПИСАНИЕ ─────────────────────────────────────────────────
@@ -1426,20 +1382,12 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         # ── ПЕРЕСЧЁТ АВТО-РАСХОДОВ ОФИСА (закупка товара) ────────────────────
-        # Синхронизирует СУЩЕСТВУЮЩИЕ авто-расходы с фактическими поставками.
-        # Не создаёт записи за прошлые даты (берёт только дни+магазины, где
-        # авто-запись уже есть), чтобы не исказить прошлые периоды.
+        # Прокси на finance (у неё права на finance_*). finance сам считает
+        # авто-расходы «Закупка товара» из поставок — источника истины.
         if action == "recalc_supply_expense" and method == "POST":
-            cur.execute(
-                f"SELECT DISTINCT expense_date, store_id FROM {SCHEMA}.finance_transactions "
-                f"WHERE auto_supply = TRUE AND expense_date IS NOT NULL"
-            )
-            pairs = cur.fetchall()
-            for d, sid in pairs:
-                recalc_supply_expense(cur, sid, d)
-            conn.commit()
+            notify_finance_supply_expense()
             return {"statusCode": 200, "headers": cors,
-                    "body": json.dumps({"ok": True, "recalculated": len(pairs)})}
+                    "body": json.dumps({"ok": True})}
 
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 
