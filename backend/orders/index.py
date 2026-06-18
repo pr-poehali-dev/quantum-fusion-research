@@ -893,6 +893,7 @@ def handler(event: dict, context) -> dict:
 
             elif action == "add_item":
                 # Добавить новый товар со склада в заказ
+                import warehouse_core as wc
                 new_product_id = int(body["new_product_id"])
                 qty = int(body.get("quantity", 1))
                 cur.execute(
@@ -902,46 +903,16 @@ def handler(event: dict, context) -> dict:
                 pr = cur.fetchone()
                 if not pr:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Товар не найден"})}
-                # Проверить наличие (новая логика: qty = свободные)
-                cur.execute(
-                    f"SELECT COALESCE(SUM(s.qty), 0) FROM {schema}.warehouse_supplies s "
-                    f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id WHERE g.product_id = %s",
-                    (new_product_id,)
-                )
-                available = int((cur.fetchone() or [0])[0])
-                if available < qty:
-                    return {"statusCode": 400, "headers": cors, "body": json.dumps({
-                        "error": f"Недостаточно товара на складе. Свободно: {available} шт."
-                    })}
-                # Зарезервировать (FIFO): qty уменьшается, qty_reserved растёт
-                cur.execute(
-                    f"SELECT s.id, s.qty FROM {schema}.warehouse_supplies s "
-                    f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                    f"WHERE g.product_id = %s AND s.qty > 0 ORDER BY s.id ASC",
-                    (new_product_id,)
-                )
-                left = qty
-                for (sid, sfree) in cur.fetchall():
-                    if left <= 0: break
-                    reserve = min(left, sfree)
-                    cur.execute(
-                        f"UPDATE {schema}.warehouse_supplies SET qty = qty - %s, qty_reserved = qty_reserved + %s WHERE id = %s",
-                        (reserve, reserve, sid)
-                    )
-                    cur.execute(
-                        f"INSERT INTO {schema}.warehouse_movements "
-                        f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                        f"VALUES ((SELECT group_id FROM {schema}.warehouse_supplies WHERE id=%s), %s, %s, 'reserved', %s, %s, NOW())",
-                        (sid, sid, order_id, reserve, f"Добавлен товар в заказ #{order_id}")
-                    )
-                    left -= reserve
+                # Резерв через ядро: POSITIVE из наличия, NEGATIVE (минус-резерв + корзина) при дефиците
+                res = wc.reserve_line(cur, order_id, new_product_id, qty, slot="product")
+                item_status = "need_order" if res.get("negative", 0) > 0 and res.get("positive", 0) == 0 else "reserved"
                 items.append({
                     "id": new_product_id,
                     "name": pr[0],
                     "price": float(pr[1]),
                     "quantity": qty,
                     "item_type": "product",
-                    "item_status": "reserved",
+                    "item_status": item_status,
                 })
                 total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1) for it in items)
                 cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
