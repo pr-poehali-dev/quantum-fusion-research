@@ -230,24 +230,9 @@ export default function FinanceTab() {
           <div className="p-8 text-center text-foreground/40 text-sm">Пока нет операций</div>
         ) : (
           <div className="divide-y divide-border">
-            {log.map(item => {
-              const meta = KIND_META[item.kind]
-              return (
-                <div key={`${item.source}-${item.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30">
-                  <div className={`shrink-0 ${meta.cls}`}><Icon name={meta.icon} size={18} /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm truncate">{item.type_name || meta.label}</div>
-                    <div className="text-xs text-foreground/40 truncate">{item.note} · {fmtDate(item.occurred_at)}{item.user ? ` · ${item.user}` : ""}</div>
-                  </div>
-                  <div className={`shrink-0 font-semibold tabular-nums ${meta.cls}`}>{meta.sign}{fmt(item.amount)}</div>
-                  {item.source === "finance" && (
-                    <button onClick={() => delTx(item.id)} className="shrink-0 text-foreground/30 hover:text-red-400">
-                      <Icon name="X" size={15} />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
+            {log.map(item => (
+              <LogRow key={`${item.source}-${item.id}`} item={item} onDelete={delTx} />
+            ))}
           </div>
         )}
       </div>
@@ -334,6 +319,38 @@ export default function FinanceTab() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Строка лога движения средств (раскрытие длинного комментария) ───────────
+function LogRow({ item, onDelete }: { item: LogItem; onDelete: (id: number) => void }) {
+  const [expanded, setExpanded] = useState(false)
+  const meta = KIND_META[item.kind]
+  const note = item.note || ""
+  const isLong = note.length > 80
+  return (
+    <div className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/30">
+      <div className={`shrink-0 mt-0.5 ${meta.cls}`}><Icon name={meta.icon} size={18} /></div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm truncate">{item.type_name || meta.label}</div>
+        <div className={`text-xs text-foreground/40 ${expanded ? "whitespace-pre-wrap break-words" : "truncate"}`}>
+          {note}{note ? " · " : ""}{fmtDate(item.occurred_at)}{item.user ? ` · ${item.user}` : ""}
+        </div>
+        {isLong && (
+          <button onClick={() => setExpanded(v => !v)}
+            className="mt-0.5 flex items-center gap-0.5 text-[11px] text-primary hover:underline" style={{ cursor: "pointer" }}>
+            {expanded ? "Свернуть" : "Показать полностью"}
+            <Icon name={expanded ? "ChevronUp" : "ChevronDown"} size={12} />
+          </button>
+        )}
+      </div>
+      <div className={`shrink-0 mt-0.5 font-semibold tabular-nums ${meta.cls}`}>{meta.sign}{fmt(item.amount)}</div>
+      {item.source === "finance" && (
+        <button onClick={() => onDelete(item.id)} className="shrink-0 mt-0.5 text-foreground/30 hover:text-red-400">
+          <Icon name="X" size={15} />
+        </button>
       )}
     </div>
   )
