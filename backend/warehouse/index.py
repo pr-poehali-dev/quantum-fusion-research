@@ -1197,7 +1197,23 @@ def handler(event: dict, context) -> dict:
         # истины). Излишек резерва возвращается в наличие (qty), нехватка —
         # списывается из наличия. Все расхождения пишутся в stock_log.
         if action == "recalc_reserves" and method == "POST":
+            # Шаг 0: закрываем «зависшие» резервы на завершённых/отменённых заказах.
+            # Завершённый заказ (done) — товар выдан → резерв FULFILLED.
+            # Отменённый (cancelled) — резерв RELEASED.
+            # Иначе они продолжают держать qty_reserved и завышают резерв в превью,
+            # хотя в детализации (она фильтрует done/cancelled) их не видно.
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_reserves r "
+                f"SET status = CASE WHEN o.status = 'cancelled' THEN 'RELEASED' ELSE 'FULFILLED' END, "
+                f"    updated_at = NOW() "
+                f"FROM {SCHEMA}.orders o "
+                f"WHERE r.order_id = o.id AND r.status = 'ACTIVE' "
+                f"AND o.status IN ('done', 'cancelled')"
+            )
+            stale_closed = cur.rowcount
+
             # Эталон по каждой партии: сумма ACTIVE POSITIVE/NEGATIVE резервов
+            # (только живые заказы — done/cancelled уже исключены выше через статус резерва)
             cur.execute(
                 f"SELECT s.id, s.group_id, s.qty, s.qty_reserved, s.qty_negative, "
                 f"COALESCE(SUM(r.qty) FILTER (WHERE r.type='POSITIVE' AND r.status='ACTIVE'), 0) AS pos, "
@@ -1256,11 +1272,11 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_stock_log (group_id, order_id, event, delta, payload) "
                 f"VALUES (NULL, NULL, 'recalc_reserves_run', %s, %s)",
-                (len(fixed), json.dumps({"fixed_supplies": len(fixed)}, ensure_ascii=False))
+                (len(fixed), json.dumps({"fixed_supplies": len(fixed), "stale_closed": stale_closed}, ensure_ascii=False))
             )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
-                "ok": True, "fixed_count": len(fixed), "fixed": fixed
+                "ok": True, "fixed_count": len(fixed), "stale_closed": stale_closed, "fixed": fixed
             })}
 
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}

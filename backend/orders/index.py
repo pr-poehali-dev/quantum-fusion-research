@@ -1178,6 +1178,29 @@ def handler(event: dict, context) -> dict:
                                 (qty_neg, neg_row[0])
                             )
 
+            # При завершении (done) — товар выдан клиенту: закрываем POSITIVE-резервы
+            # (FULFILLED) и снимаем qty_reserved с партий, чтобы они не «зависали»
+            # и не завышали резерв в превью склада.
+            if new_status == "done":
+                cur.execute(
+                    f"SELECT id, supply_id, qty FROM {schema}.warehouse_reserves "
+                    f"WHERE order_id = %s AND type = 'POSITIVE' AND status = 'ACTIVE'",
+                    (order_id,)
+                )
+                for rid, sid, rqty in cur.fetchall():
+                    if sid:
+                        cur.execute(
+                            f"UPDATE {schema}.warehouse_supplies "
+                            f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                            f"WHERE id = %s",
+                            (int(rqty), sid)
+                        )
+                    cur.execute(
+                        f"UPDATE {schema}.warehouse_reserves "
+                        f"SET status = 'FULFILLED', updated_at = NOW() WHERE id = %s",
+                        (rid,)
+                    )
+
             cur.execute("UPDATE orders SET status=%s, updated_at=NOW() WHERE id=%s", (new_status, order_id))
             # Синхронизируем стадию wip_build со статусом заказа ПК
             STATUS_TO_STAGE = {
