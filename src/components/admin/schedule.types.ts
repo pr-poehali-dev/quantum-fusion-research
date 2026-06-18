@@ -17,7 +17,7 @@ export const EVENT_TYPES: { key: EventType; label: string; color: string; dot: s
   { key: "dayoff", label: "Выходной",      color: "bg-green-600/20 border-green-500/40 text-green-400", dot: "#22c55e" },
 ]
 
-export interface Employee { id: number; name: string; color: string; is_active: boolean }
+export interface Employee { id: number; name: string; color: string; is_active: boolean; assembler_percent?: number }
 export interface Schedule {
   id: number; employee_id: number; work_date: string
   time_start: string | null; time_end: string | null

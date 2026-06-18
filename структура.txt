@@ -92,6 +92,17 @@ warehouse_stock_log, warehouse_backorders.
 - Таблицы: app_settings, +поля в warehouse_supplies (has_vat, price_with_vat),
   pc_builds (sell_with_vat), orders (prepayment_percent, prepayment_amount).
 
+### Маржа сборки + сборщик ПК (v3.24)
+- employees.assembler_percent (% за сборку, в карточке сотрудника),
+  wip_builds.assembled_by (сборщик), orders.assembler_paid (защита от задвоения).
+- wip-builds action=margin (id|order_id): разбивка маржи по компонентам
+  (pc_builds.price − себестоимость из warehouse_reserves) + total_margin.
+- Кнопка 🤑 в WIP → WipMarginModal. Модалка «Ред.» WIP (WipEditModal) с
+  выбором сборщика (employees из schedule). Строка «Сборщик» в таблице.
+- orders PATCH→done: для pc_build обязателен assembled_by (иначе 400),
+  начисляет % сотрудника × total на employee_accounts + employee_account_tx.
+- changeStage: переход в «Забрали» переводит заказ в done (и начисляет).
+
 ### finance
 Раздел «Финансы» (вкладка /admin/finance, FinanceTab.tsx).
 GET action=summary — сводка: стоимость склада (закупка/продажа),

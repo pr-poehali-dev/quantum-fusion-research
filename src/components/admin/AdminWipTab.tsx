@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
+import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
+import { WipEditModal, WipMarginModal } from "@/components/admin/WipEditModal"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
   EMPTY_WIP, WIP_STAGES, WIP_STAGE_COLORS, WIP_COMPONENTS,
@@ -35,8 +37,12 @@ export function AdminWipTab({
   builds, setBuilds, products, setProducts, setCategories, setConfigSlots,
   editBuild, setTab,
 }: Props) {
+  const { sessionId } = useAuth()
   const [viewArchive, setViewArchive] = useState(false)
   const isArchive = viewArchive
+
+  // Модалка маржи (кнопка-смайлик)
+  const [marginWip, setMarginWip] = useState<WipBuild | null>(null)
 
   const [wipForm, setWipForm] = useState<WipBuild | null>(null)
   const [wipFormOpen, setWipFormOpen] = useState(false)
@@ -52,11 +58,24 @@ export function AdminWipTab({
   // Модалка подтверждения предоплаты при переходе «Согласование → Заказ»
   const [prepayModal, setPrepayModal] = useState<WipBuild | null>(null)
 
-  // Сменить этап с проверкой: переход в «Заказ» требует подтверждения предоплаты
-  const changeStage = (w: WipBuild, newStage: string) => {
+  // Сменить этап с проверкой: переход в «Заказ» требует подтверждения предоплаты,
+  // переход в «Забрали» требует выбранного сборщика и переводит заказ в done
+  // (тогда сборщику начислится % от суммы ПК).
+  const changeStage = async (w: WipBuild, newStage: string) => {
     if (newStage === "Заказ" && w.stage === "Согласование") {
       setPrepayModal(w)
       return
+    }
+    if (newStage === "Забрали" && w.stage !== "Забрали") {
+      if (!w.assembled_by) {
+        alert("Нельзя выдать ПК без сборщика. Откройте «Ред.» и выберите сборщика.")
+        return
+      }
+      // Переводим заказ в done — backend начислит % сборщику
+      if (w.order_id) {
+        const res = await api.orders.updateStatus({ id: w.order_id, status: "done" })
+        if (res?.error) { alert(res.error); return }
+      }
     }
     setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: newStage } : b))
     api.wipBuilds.update({ ...w, stage: newStage })
@@ -297,6 +316,7 @@ export function AdminWipTab({
     { key: "_received_at", label: "Железо придёт" },
     { key: "_issued_at", label: "Дата выдачи" },
     { key: "_delivery", label: "Получение" },
+    { key: "_assembler", label: "Сборщик" },
     ...usedComps.map(c => ({ key: c.key, label: c.label })),
     { key: "_actions", label: "" },
   ]
@@ -726,6 +746,14 @@ export function AdminWipTab({
                               style={{ cursor: "pointer" }}>
                               <Icon name="Copy" size={10} />Паста
                             </button>
+                            {w.id && (
+                              <button onClick={() => setMarginWip(w)}
+                                title="Маржа сборки"
+                                className="flex items-center gap-1 rounded-lg border border-green-400/30 bg-green-400/5 px-2 py-1 text-[12px] hover:bg-green-400/10 transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                🤑
+                              </button>
+                            )}
                             {w.stage === "Заказ" && w.order_id && w.id && (
                               <button onClick={() => syncWipOrder(w)}
                                 disabled={syncingWipId === w.id}
@@ -782,6 +810,11 @@ export function AdminWipTab({
                         {row.key === "_received_at" && <span className="text-foreground/60">{w.received_at ? new Date(w.received_at).toLocaleDateString("ru-RU") : "—"}</span>}
                         {row.key === "_issued_at" && <span className="text-foreground/60">{w.issued_at ? new Date(w.issued_at).toLocaleDateString("ru-RU") : "—"}</span>}
                         {row.key === "_delivery" && <span className="text-foreground/60 text-[10px]">{w.delivery_type || "—"}</span>}
+                        {row.key === "_assembler" && (
+                          w.assembler_name
+                            ? <span className="inline-flex items-center gap-1 text-[10px] text-foreground/70"><Icon name="Wrench" size={10} className="text-primary" />{w.assembler_name}</span>
+                            : <button onClick={() => { setWipForm(w); setWipFormOpen(true) }} className="text-[10px] text-yellow-400/80 hover:underline" style={{ cursor: "pointer" }}>не выбран</button>
+                        )}
                         {row.key === "_actions" && (
                           <div className="flex gap-1">
                             {w.client_token && (
@@ -838,6 +871,23 @@ export function AdminWipTab({
           defaultAmount={prepayModal.prepayment_amount}
           onClose={() => setPrepayModal(null)}
           onConfirmed={(amount, remaining) => onPrepayConfirmed(prepayModal, amount, remaining)}
+        />
+      )}
+
+      {wipFormOpen && wipForm && (
+        <WipEditModal
+          wip={wipForm}
+          sessionId={sessionId || ""}
+          onClose={() => setWipFormOpen(false)}
+          onSaved={(updated) => setWipBuilds(bs => bs.map(b => b.id === updated.id ? { ...b, ...updated } : b))}
+        />
+      )}
+
+      {marginWip && marginWip.id && (
+        <WipMarginModal
+          wipId={marginWip.id}
+          orderNumber={marginWip.order_number}
+          onClose={() => setMarginWip(null)}
         />
       )}
 

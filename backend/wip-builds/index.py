@@ -101,6 +101,7 @@ def fmt_row(row):
         "customer_name", "customer_phone", "total", "order_status",
         "client_token", "build_id", "build_components",
         "prepayment_percent", "prepayment_amount", "prepayment_confirmed",
+        "assembled_by", "assembler_name",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -157,16 +158,83 @@ def handler(event: dict, context) -> dict:
                        o.customer_name, o.customer_phone, o.total, o.status as order_status,
                        w.client_token, w.build_id,
                        pb.components as build_components,
-                       o.prepayment_percent, o.prepayment_amount, o.prepayment_confirmed
+                       o.prepayment_percent, o.prepayment_amount, o.prepayment_confirmed,
+                       w.assembled_by, emp.name as assembler_name
                 FROM wip_builds w
                 LEFT JOIN orders o ON w.order_id = o.id
-                LEFT JOIN pc_builds pb ON pb.id = w.build_id"""
+                LEFT JOIN pc_builds pb ON pb.id = w.build_id
+                LEFT JOIN employees emp ON emp.id = w.assembled_by"""
 
     try:
         if method == "GET":
             wip_id = params.get("id")
             order_id = params.get("order_id")
             client_token = params.get("client_token")
+            action = params.get("action")
+
+            # Калькуляция маржи по компонентам сборки
+            if action == "margin" and (wip_id or order_id):
+                if wip_id:
+                    cur.execute(
+                        f"SELECT order_id, build_id, total FROM {SCHEMA}.wip_builds w "
+                        f"LEFT JOIN orders o ON o.id = w.order_id WHERE w.id = %s", (wip_id,)
+                    )
+                else:
+                    cur.execute(
+                        f"SELECT w.order_id, w.build_id, o.total FROM {SCHEMA}.wip_builds w "
+                        f"LEFT JOIN orders o ON o.id = w.order_id WHERE w.order_id = %s", (order_id,)
+                    )
+                wr = cur.fetchone()
+                if not wr:
+                    return resp(404, {"error": "Не найдено"})
+                oid, bid, total = wr[0], wr[1], float(wr[2] or 0)
+
+                # Себестоимость по слотам из резервов заказа
+                cost_by_slot = {}
+                if oid:
+                    cur.execute(
+                        f"SELECT r.slot, SUM(r.qty * COALESCE(r.cost_price_locked, sup.cost_price, 0)) "
+                        f"FROM {SCHEMA}.warehouse_reserves r "
+                        f"LEFT JOIN {SCHEMA}.warehouse_supplies sup ON sup.id = r.supply_id "
+                        f"WHERE r.order_id = %s AND r.type='POSITIVE' "
+                        f"AND r.status IN ('FULFILLED','ACTIVE') GROUP BY r.slot", (oid,)
+                    )
+                    for s, c in cur.fetchall():
+                        cost_by_slot[s] = float(c or 0)
+
+                # Компоненты из pc_builds (цена продажи)
+                comps_out = []
+                sum_sale = 0.0
+                sum_cost = 0.0
+                if bid:
+                    cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (bid,))
+                    pbr = cur.fetchone()
+                    comps = []
+                    if pbr and pbr[0]:
+                        comps = pbr[0] if isinstance(pbr[0], list) else json.loads(pbr[0])
+                    for c in comps:
+                        slot = c.get("slot")
+                        qty = int(c.get("qty", 1) or 1)
+                        sale = float(c.get("price", 0) or 0) * qty
+                        cost = cost_by_slot.get(slot, 0.0)
+                        comps_out.append({
+                            "slot": slot, "name": c.get("name", ""), "qty": qty,
+                            "sale": round(sale, 2), "cost": round(cost, 2),
+                            "margin": round(sale - cost, 2),
+                        })
+                        sum_sale += sale
+                        sum_cost += cost
+                # Если итог заказа больше суммы компонентов — разница это работа/сборка
+                assembly_fee = round(total - sum_sale, 2) if total > sum_sale else 0.0
+                return resp(200, {
+                    "components": comps_out,
+                    "total": round(total, 2),
+                    "sum_sale": round(sum_sale, 2),
+                    "sum_cost": round(sum_cost, 2),
+                    "assembly_fee": assembly_fee,
+                    "total_margin": round(total - sum_cost, 2),
+                })
+
             if wip_id:
                 cur.execute(SELECT + " WHERE w.id = %s", (wip_id,))
                 row = cur.fetchone()
@@ -225,7 +293,7 @@ def handler(event: dict, context) -> dict:
                    received_at=%s, issued_at=%s, comment=%s,
                    cpu=%s, motherboard=%s, ram=%s, gpu=%s, storage=%s,
                    psu=%s, case_name=%s, cooling=%s, extra=%s,
-                   order_id=%s, updated_at=NOW()
+                   order_id=%s, assembled_by=%s, updated_at=NOW()
                    WHERE id=%s""",
                 (
                     body.get("order_number"), body.get("stage"), body.get("contact"),
@@ -235,7 +303,7 @@ def handler(event: dict, context) -> dict:
                     body.get("cpu"), body.get("motherboard"), body.get("ram"), body.get("gpu"),
                     body.get("storage"), body.get("psu"), body.get("case_name"),
                     body.get("cooling"), body.get("extra"),
-                    body.get("order_id"), body["id"],
+                    body.get("order_id"), body.get("assembled_by") or None, body["id"],
                 )
             )
             conn.commit()

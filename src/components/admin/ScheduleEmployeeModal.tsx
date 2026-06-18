@@ -37,6 +37,16 @@ export function ScheduleEmployeeModal({ empModal, empSaving, onClose, onChange, 
               ))}
             </div>
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-foreground/50">% за сборку ПК</label>
+            <div className="flex items-center gap-2">
+              <input type="number" min={0} max={100} step="0.1" value={empModal.assembler_percent ?? 0}
+                onChange={e => onChange({ assembler_percent: parseFloat(e.target.value) || 0 })}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none text-right" />
+              <span className="text-foreground/50">%</span>
+            </div>
+            <p className="mt-1 text-[11px] text-foreground/40">Начисляется от полной суммы ПК при выдаче заказа.</p>
+          </div>
           {empModal.id && (
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={empModal.is_active !== false}

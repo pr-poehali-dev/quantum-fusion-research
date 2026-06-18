@@ -133,10 +133,10 @@ def handler(event: dict, context) -> dict:
         # ── Сотрудники ──────────────────────────────────────────────────────────
 
         if action == "employees" and method == "GET":
-            cur.execute(f"SELECT id, name, color, is_active FROM {SCHEMA}.employees ORDER BY name")
+            cur.execute(f"SELECT id, name, color, is_active, COALESCE(assembler_percent, 0) FROM {SCHEMA}.employees ORDER BY name")
             rows = cur.fetchall()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
-                "employees": [{"id": r[0], "name": r[1], "color": r[2], "is_active": r[3]} for r in rows]
+                "employees": [{"id": r[0], "name": r[1], "color": r[2], "is_active": r[3], "assembler_percent": float(r[4])} for r in rows]
             })}
 
         elif action == "employee_create" and method == "POST":
@@ -161,7 +161,8 @@ def handler(event: dict, context) -> dict:
             name = (body.get("name") or "").strip()
             color = body.get("color") or "#3b82f6"
             is_active = "TRUE" if body.get("is_active", True) else "FALSE"
-            cur.execute(f"UPDATE {SCHEMA}.employees SET name={esc(name)}, color={esc(color)}, is_active={is_active} WHERE id={eid}")
+            asm_pct = float(body.get("assembler_percent", 0) or 0)
+            cur.execute(f"UPDATE {SCHEMA}.employees SET name={esc(name)}, color={esc(color)}, is_active={is_active}, assembler_percent={asm_pct} WHERE id={eid}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

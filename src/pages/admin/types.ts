@@ -253,6 +253,8 @@ export interface WipBuild {
   prepayment_percent?: number
   prepayment_amount?: number
   remaining_amount?: number
+  assembled_by?: number | null
+  assembler_name?: string | null
   created_at?: string
   updated_at?: string
 }

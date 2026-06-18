@@ -1178,10 +1178,48 @@ def handler(event: dict, context) -> dict:
                                 (qty_neg, neg_row[0])
                             )
 
-            # При завершении (done) — товар выдан клиенту: закрываем POSITIVE-резервы
-            # (FULFILLED) и снимаем qty_reserved с партий, чтобы они не «зависали»
-            # и не завышали резерв в превью склада.
+            # При завершении (done) — товар выдан клиенту.
             if new_status == "done":
+                # Начисление сборщику ПК: % сотрудника × полная цена заказа.
+                # Для pc_build-заказов сборщик ОБЯЗАТЕЛЕН (иначе блокируем выдачу).
+                cur.execute("SELECT order_type, total, status, assembler_paid FROM orders WHERE id=%s", (order_id,))
+                ord_row = cur.fetchone()
+                o_type = ord_row[0] if ord_row else None
+                o_total = float(ord_row[1] or 0) if ord_row else 0
+                o_status = ord_row[2] if ord_row else None
+                already_paid = bool(ord_row[3]) if ord_row else False
+                if o_type == "pc_build":
+                    cur.execute(
+                        f"SELECT wb.assembled_by, e.assembler_percent, e.name "
+                        f"FROM {schema}.wip_builds wb "
+                        f"LEFT JOIN {schema}.employees e ON e.id = wb.assembled_by "
+                        f"WHERE wb.order_id = %s LIMIT 1", (order_id,)
+                    )
+                    asm = cur.fetchone()
+                    assembled_by = asm[0] if asm else None
+                    asm_pct = float(asm[1] or 0) if asm else 0
+                    asm_name = asm[2] if asm else None
+                    if not assembled_by:
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps(
+                            {"error": "Не выбран сборщик ПК. Укажите сборщика в карточке сборки (кнопка «Ред.»)."})}
+                    # Начисляем только один раз и только при первом переходе в done
+                    if not already_paid and o_status != "done" and asm_pct > 0 and o_total > 0:
+                        bonus = round(o_total * asm_pct / 100, 2)
+                        if bonus > 0:
+                            cur.execute(
+                                f"INSERT INTO {schema}.employee_accounts (employee_id, balance) "
+                                f"VALUES (%s, %s) ON CONFLICT (employee_id) DO UPDATE "
+                                f"SET balance = {schema}.employee_accounts.balance + %s, updated_at = NOW()",
+                                (assembled_by, bonus, bonus)
+                            )
+                            cur.execute(
+                                f"INSERT INTO {schema}.employee_account_tx (employee_id, amount, note, order_id) "
+                                f"VALUES (%s, %s, %s, %s)",
+                                (assembled_by, bonus, f"Сборка ПК заказ #{order_id} ({asm_pct}% от {int(o_total)} ₽)", order_id)
+                            )
+                            cur.execute("UPDATE orders SET assembler_paid = TRUE WHERE id=%s", (order_id,))
+
+                # Закрываем POSITIVE-резервы (FULFILLED) и снимаем qty_reserved с партий
                 cur.execute(
                     f"SELECT id, supply_id, qty FROM {schema}.warehouse_reserves "
                     f"WHERE order_id = %s AND type = 'POSITIVE' AND status = 'ACTIVE'",
