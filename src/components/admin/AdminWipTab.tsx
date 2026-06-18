@@ -7,6 +7,7 @@ import { Calendar } from "@/components/ui/calendar"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
 import { WipEditModal, WipMarginModal } from "@/components/admin/WipEditModal"
+import { SCHEDULE_URL, authH, withAk, Employee } from "@/components/admin/schedule.types"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
   EMPTY_WIP, WIP_STAGES, WIP_STAGE_COLORS, WIP_COMPONENTS,
@@ -43,6 +44,23 @@ export function AdminWipTab({
 
   // Модалка маржи (кнопка-смайлик)
   const [marginWip, setMarginWip] = useState<WipBuild | null>(null)
+
+  // Сотрудники для выбора сборщика прямо в таблице
+  const [employees, setEmployees] = useState<Employee[]>([])
+  useEffect(() => {
+    fetch(`${SCHEDULE_URL}?${withAk("action=employees")}`, { headers: authH(sessionId || "") })
+      .then(r => r.json())
+      .then(d => setEmployees(d.employees || []))
+      .catch(() => {})
+  }, [sessionId])
+
+  const setAssembler = (w: WipBuild, empId: number | null) => {
+    const emp = employees.find(e => e.id === empId)
+    setWipBuilds(bs => bs.map(b => b.id === w.id
+      ? { ...b, assembled_by: empId, assembler_name: emp ? emp.name : null }
+      : b))
+    api.wipBuilds.update({ ...w, assembled_by: empId })
+  }
 
   const [wipForm, setWipForm] = useState<WipBuild | null>(null)
   const [wipFormOpen, setWipFormOpen] = useState(false)
@@ -811,9 +829,16 @@ export function AdminWipTab({
                         {row.key === "_issued_at" && <span className="text-foreground/60">{w.issued_at ? new Date(w.issued_at).toLocaleDateString("ru-RU") : "—"}</span>}
                         {row.key === "_delivery" && <span className="text-foreground/60 text-[10px]">{w.delivery_type || "—"}</span>}
                         {row.key === "_assembler" && (
-                          w.assembler_name
-                            ? <span className="inline-flex items-center gap-1 text-[10px] text-foreground/70"><Icon name="Wrench" size={10} className="text-primary" />{w.assembler_name}</span>
-                            : <button onClick={() => { setWipForm(w); setWipFormOpen(true) }} className="text-[10px] text-yellow-400/80 hover:underline" style={{ cursor: "pointer" }}>не выбран</button>
+                          <select
+                            value={w.assembled_by ?? ""}
+                            onChange={e => setAssembler(w, e.target.value ? Number(e.target.value) : null)}
+                            className={`rounded-lg border bg-background px-2 py-1 text-[10px] focus:outline-none focus:border-primary ${w.assembled_by ? "border-border text-foreground/80" : "border-yellow-400/40 text-yellow-400/80"}`}
+                            style={{ cursor: "pointer" }}>
+                            <option value="">не выбран</option>
+                            {employees.filter(e => e.is_active || e.id === w.assembled_by).map(e => (
+                              <option key={e.id} value={e.id}>{e.name}{e.assembler_percent ? ` (${e.assembler_percent}%)` : ""}</option>
+                            ))}
+                          </select>
                         )}
                         {row.key === "_actions" && (
                           <div className="flex gap-1">
