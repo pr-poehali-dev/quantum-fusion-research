@@ -583,19 +583,6 @@ export function AdminWipTab({
                 <textarea value={wipForm.comment} onChange={e => setWipForm(f => f && ({ ...f, comment: e.target.value }))} rows={2}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
               </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold text-foreground/50">Комплектующие</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {WIP_COMPONENTS.map(c => (
-                    <div key={c.key}>
-                      <label className="mb-1 block text-xs text-foreground/40">{c.label}</label>
-                      <input value={(wipForm as Record<string, string>)[c.key] || ""}
-                        onChange={e => setWipForm(f => f && ({ ...f, [c.key]: e.target.value }))}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-                    </div>
-                  ))}
-                </div>
-              </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={saveWip}
                   className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
