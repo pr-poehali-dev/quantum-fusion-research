@@ -1056,20 +1056,20 @@ function DiscountModal({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium">Ставка НДС, %</label>
+              <label className="mb-1 block text-sm font-medium">Скидка на покупку, %</label>
               <p className="mb-2 text-xs text-foreground/50">
-                Для товара «с НДС» себестоимость = цена ÷ (1 + НДС/100). Для товара «без НДС» — цена как есть.
+                Для товара «с НДС» себестоимость = цена × (1 − скидка/100). Например 25000 × 0,82 = 20500. Для товара «без НДС» — цена как есть.
               </p>
               <div className="flex items-center gap-2">
-                <Input value={vat} onChange={e => setVat(e.target.value)} inputMode="decimal" className="text-right" />
+                <Input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal" className="text-right" />
                 <span className="text-foreground/50">%</span>
               </div>
             </div>
             <div className="mb-2 border-t border-border pt-4">
-              <label className="mb-1 block text-sm font-medium">Скидка на покупку, %</label>
-              <p className="mb-2 text-xs text-foreground/50">Дополнительная скидка поставщика (резерв на будущее).</p>
+              <label className="mb-1 block text-sm font-medium">Ставка НДС, %</label>
+              <p className="mb-2 text-xs text-foreground/50">Справочная ставка НДС (для продаж и отчётов).</p>
               <div className="flex items-center gap-2">
-                <Input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal" className="text-right" />
+                <Input value={vat} onChange={e => setVat(e.target.value)} inputMode="decimal" className="text-right" />
                 <span className="text-foreground/50">%</span>
               </div>
             </div>

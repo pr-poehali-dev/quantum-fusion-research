@@ -107,8 +107,9 @@ POST action=add_type — новый тип. DELETE del_tx / del_type.
 Таблицы: finance_types, finance_transactions.
 
 ### НДС-заход + авторасход офиса + баланс офиса (v3.18)
-- warehouse.supply_create: НДС-товар → cost_price = price_with_vat/(1+vat%/100),
-  обычный → cost_price = введённая цена. vat% из app_settings.vat_percent (20).
+- warehouse.supply_create: НДС-товар → cost_price = price_with_vat ×
+  (1 − purchase_discount_percent/100) (поставщик даёт скидку по ставке),
+  обычный → cost_price = введённая цена. vat_percent — справочная ставка.
 - Авто-расход офиса при приходе: ОДНО событие «Расходы на товары» на
   день+магазин (finance_transactions.auto_supply=TRUE, store_id, expense_date,
   supply_count), сумма наращивается = Σ cost_price×qty поставок дня.

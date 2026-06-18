@@ -469,7 +469,8 @@ def handler(event: dict, context) -> dict:
 
             # НДС: фронт шлёт price_with_vat (введённая цена) и has_vat.
             # Себестоимость:
-            #   с НДС  → cost_price = price_with_vat / (1 + vat%/100)
+            #   с НДС  → cost_price = цена × (1 − скидка%/100)
+            #            (поставщик даёт скидку по текущей ставке)
             #   без НДС → cost_price = введённая цена как есть
             # Поддержка legacy: если пришло только cost_price — берём его.
             has_vat = body.get("has_vat")
@@ -479,8 +480,8 @@ def handler(event: dict, context) -> dict:
             else:
                 price_in = float(body.get("cost_price", 0))
             if has_vat is True:
-                vat = get_setting_num(cur, "vat_percent", 20.0)
-                cost_price = round(price_in / (1.0 + vat / 100.0), 2)
+                discount = get_setting_num(cur, "purchase_discount_percent", 0.0)
+                cost_price = round(price_in * (1.0 - discount / 100.0), 2)
             else:
                 cost_price = round(price_in, 2)
 
