@@ -28,6 +28,17 @@ interface RmaItem {
   replace_from_stock: boolean
 }
 
+interface WhGroup {
+  id: number
+  product_id: number | null
+  name: string
+  sku: string
+  category: string | null
+  price_retail: number
+  qty_total: number
+  qty_reserved: number
+}
+
 interface OrderComponent {
   slot: string
   slot_label: string
@@ -83,6 +94,11 @@ export default function RmaTab() {
   // Остатки для галочки «заменить со склада»
   const [stockQty, setStockQty] = useState<{ on_hand: number; reserved: number; free: number } | null>(null)
   const [stockQtyLoading, setStockQtyLoading] = useState(false)
+  // Поиск по складу для поля «Наименование железки»
+  const [searchQ, setSearchQ] = useState("")
+  const [searchResults, setSearchResults] = useState<WhGroup[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   // Уведомление после создания
   const [successNotice, setSuccessNotice] = useState<{ rma_id: number; replacement_order_id: number | null } | null>(null)
 
@@ -126,6 +142,8 @@ export default function RmaTab() {
 
   const selectComponent = (comp: OrderComponent) => {
     setForm(f => ({ ...f, group_id: comp.group_id, product_id: comp.product_id, slot: comp.slot, item_name: comp.name }))
+    setSearchQ(comp.name)
+    setSearchOpen(false)
     // Загружаем остатки если выбрана галочка
     if (comp.group_id) loadStockQty(comp.group_id)
   }
@@ -136,6 +154,26 @@ export default function RmaTab() {
     const res = await api.rma.stockQty(groupId)
     if (!res.error) setStockQty(res)
     setStockQtyLoading(false)
+  }
+
+  // Поиск по складу (как в приёмке поставки)
+  useEffect(() => {
+    if (!searchOpen) return
+    if (!searchQ || searchQ.length < 2) { setSearchResults([]); return }
+    let cancelled = false
+    setSearchLoading(true)
+    api.warehouse.getGroups({ search: searchQ, limit: "10", offset: "0" })
+      .then(d => { if (!cancelled) { setSearchResults(d.groups || []); setSearchLoading(false) } })
+      .catch(() => { if (!cancelled) setSearchLoading(false) })
+    return () => { cancelled = true }
+  }, [searchQ, searchOpen])
+
+  const selectStockGroup = (g: WhGroup) => {
+    setForm(f => ({ ...f, group_id: g.id, product_id: g.product_id, slot: "", item_name: g.name }))
+    setSearchQ(g.name)
+    setSearchOpen(false)
+    setSearchResults([])
+    loadStockQty(g.id)
   }
 
   // При смене галочки — грузим остатки
@@ -150,6 +188,9 @@ export default function RmaTab() {
     setOrderInfo(null)
     setStockQty(null)
     setSuccessNotice(null)
+    setSearchQ("")
+    setSearchResults([])
+    setSearchOpen(false)
   }
 
   const submitCreate = async () => {
@@ -421,16 +462,58 @@ export default function RmaTab() {
                 </div>
               )}
 
-              {/* Железка вручную */}
-              <div>
+              {/* Поиск по складу / ввод вручную */}
+              <div className="relative">
                 <label className="mb-1 block text-xs text-foreground/60">Наименование железки *</label>
-                <input
-                  value={form.item_name}
-                  onChange={e => setForm(f => ({ ...f, item_name: e.target.value }))}
-                  placeholder="AMD Ryzen 7 9800X3D"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                  style={{ cursor: "text" }}
-                />
+                <div className="relative">
+                  <Icon name="Search" size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
+                  <input
+                    value={searchQ}
+                    onChange={e => {
+                      setSearchQ(e.target.value)
+                      setSearchOpen(true)
+                      setForm(f => ({ ...f, item_name: e.target.value, group_id: null, product_id: null }))
+                      setStockQty(null)
+                    }}
+                    onFocus={() => setSearchOpen(true)}
+                    placeholder="Поиск по складу: название, артикул..."
+                    className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    style={{ cursor: "text" }}
+                  />
+                  {form.group_id && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] text-green-400">
+                      <Icon name="PackageCheck" size={12} /> со склада
+                    </span>
+                  )}
+                </div>
+
+                {searchOpen && searchQ.length >= 2 && (
+                  <div className="absolute z-20 mt-1 w-full rounded-xl border border-border bg-card shadow-lg overflow-hidden">
+                    {searchLoading ? (
+                      <div className="flex items-center gap-2 px-4 py-3 text-foreground/40 text-sm">
+                        <Icon name="Loader" size={14} className="animate-spin" /> Ищу...
+                      </div>
+                    ) : searchResults.length > 0 ? (
+                      <div className="max-h-60 overflow-y-auto divide-y divide-border/50">
+                        {searchResults.map(g => (
+                          <button key={g.id} type="button" onClick={() => selectStockGroup(g)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors"
+                            style={{ cursor: "pointer" }}>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{g.name}</p>
+                              <p className="text-xs text-foreground/40 font-mono truncate">{g.sku}{g.category ? ` · ${g.category}` : ""}</p>
+                            </div>
+                            <span className="shrink-0 text-xs text-foreground/50">в наличии: {g.qty_total - g.qty_reserved}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-3 text-center text-sm text-foreground/40">
+                        Ничего не найдено — будет добавлено вручную
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
