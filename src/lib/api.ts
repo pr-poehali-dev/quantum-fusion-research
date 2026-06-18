@@ -176,7 +176,12 @@ export const api = {
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),
-    getLog: (limit = 200, offset = 0) => fetch(`${URLS.finance}?action=log&limit=${limit}&offset=${offset}`).then(r => r.json()),
+    getLog: (limit = 200, offset = 0, dateFrom?: string, dateTo?: string) => {
+      let url = `${URLS.finance}?action=log&limit=${limit}&offset=${offset}`
+      if (dateFrom) url += `&date_from=${dateFrom}`
+      if (dateTo) url += `&date_to=${dateTo}`
+      return fetch(url).then(r => r.json())
+    },
     getTypes: () => fetch(`${URLS.finance}?action=types`).then(r => r.json()),
     addTx: (data: { kind: string; amount: number; type_id?: number | null; note?: string; user_id?: number | null }) =>
       fetch(`${URLS.finance}?action=add_tx`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),

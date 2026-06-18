@@ -152,9 +152,21 @@ def get_summary(cur):
 
 
 # ── ЛОГ ДВИЖЕНИЯ СРЕДСТВ ─────────────────────────────────────────────────────
-def get_log(cur, limit=200, offset=0):
-    """Единый лог: финансовые транзакции + продажи (выданные заказы)."""
+def get_log(cur, limit=200, offset=0, date_from=None, date_to=None):
+    """Единый лог: финансовые транзакции + продажи (выданные заказы).
+    date_from/date_to (YYYY-MM-DD) — фильтр по периоду (включительно)."""
     items = []
+
+    # Условия по периоду
+    tx_cond = ""
+    sale_cond = ""
+    if date_from:
+        tx_cond += f" AND t.occurred_at >= {esc(date_from)}::date"
+        sale_cond += f" AND o.updated_at >= {esc(date_from)}::date"
+    if date_to:
+        # включительно по конец дня
+        tx_cond += f" AND t.occurred_at < ({esc(date_to)}::date + INTERVAL '1 day')"
+        sale_cond += f" AND o.updated_at < ({esc(date_to)}::date + INTERVAL '1 day')"
 
     # Финансовые транзакции
     cur.execute(
@@ -163,6 +175,7 @@ def get_log(cur, limit=200, offset=0):
         f"FROM {SCHEMA}.finance_transactions t "
         f"LEFT JOIN {SCHEMA}.finance_types ft ON ft.id = t.type_id "
         f"LEFT JOIN {SCHEMA}.users u ON u.id = t.user_id "
+        f"WHERE TRUE{tx_cond} "
         f"ORDER BY t.occurred_at DESC LIMIT {int(limit)} OFFSET {int(offset)}"
     )
     for r in cur.fetchall():
@@ -181,7 +194,7 @@ def get_log(cur, limit=200, offset=0):
     # Продажи (выданные заказы) — как приход
     cur.execute(
         f"SELECT o.id, o.order_type, o.total, o.customer_name, o.updated_at "
-        f"FROM {SCHEMA}.orders o WHERE o.status='done' "
+        f"FROM {SCHEMA}.orders o WHERE o.status='done'{sale_cond} "
         f"ORDER BY o.updated_at DESC LIMIT {int(limit)}"
     )
     for r in cur.fetchall():
@@ -277,7 +290,9 @@ def handler(event: dict, context) -> dict:
             if action == "log":
                 limit = int(params.get("limit", 200))
                 offset = int(params.get("offset", 0))
-                return resp(200, {"items": get_log(cur, limit, offset)})
+                date_from = params.get("date_from")
+                date_to = params.get("date_to")
+                return resp(200, {"items": get_log(cur, limit, offset, date_from, date_to)})
             if action == "types":
                 return resp(200, {"types": get_types(cur)})
             if action == "accounts":

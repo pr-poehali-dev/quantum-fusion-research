@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
+import { generateFinanceReport } from "@/lib/financeReport"
 
 interface FinType { id: number; name: string; direction: string; is_system: boolean; sort_order: number }
 interface Account { id: number; name: string; color: string; is_active: boolean; balance: number }
@@ -62,6 +63,8 @@ export default function FinanceTab() {
   // счета сотрудников
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cashExpanded, setCashExpanded] = useState(false)
+  // Отчёт PDF за период
+  const [reportOpen, setReportOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -260,8 +263,11 @@ export default function FinanceTab() {
 
       {/* Лог движения средств */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center gap-2">
-          <Icon name="ArrowLeftRight" size={16} /> Движение средств
+        <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2"><Icon name="ArrowLeftRight" size={16} /> Движение средств</span>
+          <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
+            <Icon name="FileText" size={14} className="mr-1.5" /> Отчёт PDF
+          </Button>
         </div>
         {log.length === 0 ? (
           <div className="p-8 text-center text-foreground/40 text-sm">Пока нет операций</div>
@@ -357,6 +363,76 @@ export default function FinanceTab() {
           </div>
         </div>
       )}
+
+      {/* Модалка отчёта PDF за период */}
+      {reportOpen && <ReportModal onClose={() => setReportOpen(false)} />}
+    </div>
+  )
+}
+
+// ─── Модалка: отчёт по движению средств за период (PDF) ──────────────────────
+function ReportModal({ onClose }: { onClose: () => void }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const monthAgo = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const [from, setFrom] = useState(monthAgo)
+  const [to, setTo] = useState(today)
+  const [loading, setLoading] = useState(false)
+
+  const setPreset = (days: number) => {
+    setTo(today)
+    setFrom(new Date(Date.now() - (days - 1) * 24 * 3600 * 1000).toISOString().slice(0, 10))
+  }
+  const setThisMonth = () => {
+    const d = new Date()
+    setFrom(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10))
+    setTo(today)
+  }
+
+  const generate = async () => {
+    if (from > to) { alert("Дата начала позже даты конца"); return }
+    setLoading(true)
+    const res = await api.finance.getLog(5000, 0, from, to)
+    setLoading(false)
+    generateFinanceReport(res.items || [], from, to)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold flex items-center gap-2"><Icon name="FileText" size={18} /> Отчёт за период</h3>
+          <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setPreset(7)} className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted" style={{ cursor: "pointer" }}>7 дней</button>
+          <button onClick={() => setPreset(30)} className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted" style={{ cursor: "pointer" }}>30 дней</button>
+          <button onClick={setThisMonth} className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-muted" style={{ cursor: "pointer" }}>Этот месяц</button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-foreground/50">С</label>
+            <input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-foreground/50">По</label>
+            <input type="date" value={to} min={from} max={today} onChange={e => setTo(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <p className="text-xs text-foreground/40">Откроется окно печати — выберите «Сохранить как PDF».</p>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Отмена</Button>
+          <Button onClick={generate} disabled={loading}>
+            {loading ? <><Icon name="Loader" size={14} className="mr-1.5 animate-spin" /> Готовлю...</> : <><Icon name="Download" size={14} className="mr-1.5" /> Сформировать</>}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
