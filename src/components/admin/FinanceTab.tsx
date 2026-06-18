@@ -31,8 +31,10 @@ interface LogItem {
 const fmt = (n: number) => new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₽"
 const fmtDate = (s: string) => {
   if (!s) return ""
-  const d = new Date(s)
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+  // Backend отдаёт время в UTC без таймзоны — помечаем как UTC и показываем по Москве
+  const iso = /[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + "Z"
+  const d = new Date(iso)
+  return d.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" })
 }
 
 const KIND_META: Record<string, { label: string; cls: string; sign: string; icon: string }> = {
