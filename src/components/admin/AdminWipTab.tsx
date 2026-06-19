@@ -29,7 +29,7 @@ interface Props {
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>
   setConfigSlots: React.Dispatch<React.SetStateAction<Record<string, ConfigComponent[]>>>
-  editBuild: () => void
+  editBuild: (buildId?: number) => void
   setTab: (t: AdminTab) => void
 }
 
@@ -294,8 +294,7 @@ export function AdminWipTab({
     }
     if (buildData?.id) setBuilds(bs => bs.some(x => x.id === buildData.id) ? bs : [...bs, buildData])
     setWipFormOpen(false)
-    editBuild()
-    setTab("add_build")
+    editBuild(res.id)
   }
 
   const deleteWip = async (w: WipBuild) => {
@@ -645,8 +644,7 @@ export function AdminWipTab({
                         setBuilds(bs => bs.some(x => x.id === buildData.id) ? bs : [...bs, buildData])
                       }
                     }
-                    editBuild()
-                    setTab("add_build")
+                    editBuild(buildId)
                   }}
                     className="flex items-center gap-2 rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                     <Icon name="Wrench" size={14} />Редактировать сборку

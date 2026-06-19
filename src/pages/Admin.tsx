@@ -47,6 +47,8 @@ export default function Admin() {
   const [tags, setTags] = useState<Tag[]>([])
   const [wipBuilds, setWipBuilds] = useState<WipBuild[]>([])
   const [wipStages, setWipStages] = useState<string[]>([])
+  // id сборки, которую надо открыть в редакторе каталога после перехода на add_build
+  const [autoEditBuildId, setAutoEditBuildId] = useState<number | null>(null)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
 
   // ── Data loading ──────────────────────────────────────────────────────────
@@ -211,7 +213,7 @@ export default function Admin() {
             builds={builds} setBuilds={setBuilds}
             products={products} setProducts={setProducts}
             setCategories={setCategories} setConfigSlots={setConfigSlots}
-            editBuild={() => setTab("add_build")}
+            editBuild={(id?: number) => { if (id) setAutoEditBuildId(id); setTab("add_build") }}
             setTab={setTab}
           />
         )}
@@ -226,6 +228,7 @@ export default function Admin() {
             configSlots={configSlots} setConfigSlots={setConfigSlots}
             tags={tags} setTags={setTags}
             articles={articles} setArticles={setArticles}
+            autoEditBuildId={autoEditBuildId} clearAutoEditBuildId={() => setAutoEditBuildId(null)}
           />
         )}
 

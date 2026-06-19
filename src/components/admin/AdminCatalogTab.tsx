@@ -29,6 +29,9 @@ interface Props {
   // Articles
   articles: Article[]
   setArticles: React.Dispatch<React.SetStateAction<Article[]>>
+  // авто-открытие сборки на редактирование (из WIP)
+  autoEditBuildId?: number | null
+  clearAutoEditBuildId?: () => void
 }
 
 export function AdminCatalogTab({
@@ -37,6 +40,7 @@ export function AdminCatalogTab({
   builds, setBuilds, configSlots, setConfigSlots,
   tags, setTags,
   articles, setArticles,
+  autoEditBuildId, clearAutoEditBuildId,
 }: Props) {
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -221,6 +225,17 @@ export function AdminCatalogTab({
     setBuildTagIds(b.tags?.map(t => t.id) || [])
     setTab("add_build")
   }
+
+  // Авто-открытие сборки на редактирование (по запросу из WIP)
+  useEffect(() => {
+    if (!autoEditBuildId) return
+    const b = builds.find(x => x.id === autoEditBuildId)
+    if (b) {
+      editBuild(b)
+      clearAutoEditBuildId?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEditBuildId, builds])
 
   const submitBuild = async (e: React.FormEvent) => {
     e.preventDefault()
