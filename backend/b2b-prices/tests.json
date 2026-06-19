@@ -1,11 +1,16 @@
 {
   "tests": [
     {
-      "name": "Unauthorized access",
+      "name": "Public list available",
       "method": "GET",
       "path": "/",
-      "expectedStatus": 401,
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
+    },
+    {
+      "name": "Check password endpoint",
+      "method": "GET",
+      "path": "/?action=check_password",
+      "expectedStatus": 200
     }
   ]
 }
