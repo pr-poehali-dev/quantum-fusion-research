@@ -249,6 +249,55 @@ export function AdminWipTab({
     setWipFormOpen(true)
   }
 
+  // Создать карточку сборки в каталоге «Наши ПК» из WIP и открыть её на редактирование
+  const createCatalogBuild = async () => {
+    if (!wipForm) return
+    const slotMap: { key: keyof WipBuild; slot: string }[] = [
+      { key: "cpu", slot: "cpu" }, { key: "motherboard", slot: "motherboard" },
+      { key: "ram", slot: "ram" }, { key: "gpu", slot: "gpu" },
+      { key: "storage", slot: "storage" }, { key: "psu", slot: "psu" },
+      { key: "case_name", slot: "case" }, { key: "cooling", slot: "cooling" },
+      { key: "extra", slot: "extra" },
+    ]
+    const components = slotMap
+      .filter(m => (wipForm[m.key] as string)?.trim())
+      .map(m => ({ slot: m.slot, source: "custom", name: String(wipForm[m.key]), price: 0, qty: 1 }))
+
+    const res = await api.builds.create({
+      name: `Сборка ${wipForm.order_number || ""}`.trim(),
+      components,
+      status: "draft",
+      total_price: wipForm.total || 0,
+    })
+    if (!res?.id) { alert("Не удалось создать сборку"); return }
+
+    // привязываем созданную сборку к WIP
+    await api.wipBuilds.update({ ...wipForm, build_id: res.id })
+    setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, build_id: res.id } : b))
+
+    // подгружаем данные сборки и товары, открываем редактор каталога
+    const [buildData, prodData] = await Promise.all([
+      api.builds.getById(res.id),
+      products.length ? Promise.resolve(null) : api.products.getAll(),
+    ])
+    if (prodData) {
+      const prods = prodData.products || []
+      setProducts(prods)
+      setCategories(prodData.categories || [])
+      const slots: Record<string, ConfigComponent[]> = {}
+      for (const p of prods) {
+        const slot = p.category?.slug || "other"
+        if (!slots[slot]) slots[slot] = []
+        slots[slot].push({ id: p.id, slot, name: p.name, brand: p.category?.name, price: p.price })
+      }
+      setConfigSlots(slots)
+    }
+    if (buildData?.id) setBuilds(bs => bs.some(x => x.id === buildData.id) ? bs : [...bs, buildData])
+    setWipFormOpen(false)
+    editBuild()
+    setTab("add_build")
+  }
+
   const deleteWip = async (w: WipBuild) => {
     if (!confirm(`Удалить сборку #${w.order_number}?\nВсе резервы по заказу будут сняты.`)) return
     await api.warehouse.deleteWip(w.id!)
@@ -601,6 +650,12 @@ export function AdminWipTab({
                   }}
                     className="flex items-center gap-2 rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                     <Icon name="Wrench" size={14} />Редактировать сборку
+                  </button>
+                )}
+                {wipForm.id && !wipForm.build_id && (
+                  <button onClick={createCatalogBuild}
+                    className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-5 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="PackagePlus" size={14} />Создать сборку в каталоге
                   </button>
                 )}
                 <button onClick={() => setWipFormOpen(false)}

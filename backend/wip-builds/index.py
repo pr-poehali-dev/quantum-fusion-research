@@ -304,7 +304,8 @@ def handler(event: dict, context) -> dict:
                    received_at=%s, issued_at=%s, comment=%s,
                    cpu=%s, motherboard=%s, ram=%s, gpu=%s, storage=%s,
                    psu=%s, case_name=%s, cooling=%s, extra=%s,
-                   order_id=%s, assembled_by=%s, updated_at=NOW()
+                   order_id=%s, assembled_by=%s,
+                   build_id=COALESCE(%s, build_id), updated_at=NOW()
                    WHERE id=%s""",
                 (
                     body.get("order_number"), body.get("stage"), body.get("contact"),
@@ -314,7 +315,8 @@ def handler(event: dict, context) -> dict:
                     body.get("cpu"), body.get("motherboard"), body.get("ram"), body.get("gpu"),
                     body.get("storage"), body.get("psu"), body.get("case_name"),
                     body.get("cooling"), body.get("extra"),
-                    body.get("order_id"), body.get("assembled_by") or None, body["id"],
+                    body.get("order_id"), body.get("assembled_by") or None,
+                    body.get("build_id"), body["id"],
                 )
             )
             conn.commit()
