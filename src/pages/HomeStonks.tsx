@@ -42,35 +42,22 @@ export default function HomeStonks() {
   const { count } = useCart()
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
-  const articlesRef = useRef<HTMLDivElement>(null)
+  const [artIdx, setArtIdx] = useState(0)
+  const artPaused = useRef(false)
 
-  const scrollArticles = (dir: 1 | -1) => {
-    const el = articlesRef.current
-    if (!el) return
-    const card = el.querySelector("button")
-    const step = card ? (card as HTMLElement).offsetWidth + 12 : 200
-    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4
-    const atStart = el.scrollLeft <= 4
-    if (dir === 1 && atEnd) el.scrollTo({ left: 0, behavior: "smooth" })
-    else if (dir === -1 && atStart) el.scrollTo({ left: el.scrollWidth, behavior: "smooth" })
-    else el.scrollBy({ left: step * dir, behavior: "smooth" })
+  const goArticle = (dir: 1 | -1) => {
+    setArtIdx(i => (i + dir + articles.length) % articles.length)
   }
+
+  useEffect(() => { setArtIdx(0) }, [articles.length])
 
   useEffect(() => {
     if (articles.length < 2) return
-    let paused = false
-    const el = articlesRef.current
-    const onEnter = () => { paused = true }
-    const onLeave = () => { paused = false }
-    el?.addEventListener("mouseenter", onEnter)
-    el?.addEventListener("mouseleave", onLeave)
-    const id = setInterval(() => { if (!paused) scrollArticles(1) }, 3500)
-    return () => {
-      clearInterval(id)
-      el?.removeEventListener("mouseenter", onEnter)
-      el?.removeEventListener("mouseleave", onLeave)
-    }
-  }, [articles])
+    const id = setInterval(() => {
+      if (!artPaused.current) setArtIdx(i => (i + 1) % articles.length)
+    }, 4000)
+    return () => clearInterval(id)
+  }, [articles.length])
 
   useEffect(() => {
     api.auth.getCommunityBuilds()
@@ -243,37 +230,47 @@ export default function HomeStonks() {
               {articles.length === 0 ? (
                 <p className="py-4 text-center text-sm text-foreground/40">Пока нет статей</p>
               ) : (
-                <div className="group/car relative">
-                  <div ref={articlesRef}
-                    className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {articles.map(a => (
-                      <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
-                        className="group block w-44 shrink-0 snap-start text-left">
-                        <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border bg-muted">
-                          {a.image_url ? (
-                            <img src={a.image_url} alt={a.title}
-                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                          ) : (
-                            <div className="flex h-full items-center justify-center">
-                              <Icon name="FileText" size={32} className="text-foreground/15" />
-                            </div>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs text-foreground/40">{fmtDate(a.created_at)}</p>
-                        <p className="line-clamp-2 text-sm font-medium group-hover:text-primary transition-colors">{a.title}</p>
-                      </button>
-                    ))}
+                <div className="group/car relative"
+                  onMouseEnter={() => { artPaused.current = true }}
+                  onMouseLeave={() => { artPaused.current = false }}>
+                  <div className="overflow-hidden">
+                    <div className="flex transition-transform duration-700 ease-in-out"
+                      style={{ transform: `translateX(-${artIdx * 100}%)` }}>
+                      {articles.map(a => (
+                        <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
+                          className="group block w-full shrink-0 text-left">
+                          <div className="relative h-40 w-full overflow-hidden rounded-xl border border-border bg-muted">
+                            {a.image_url ? (
+                              <img src={a.image_url} alt={a.title}
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <Icon name="FileText" size={36} className="text-foreground/15" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-2 text-xs text-foreground/40">{fmtDate(a.created_at)}</p>
+                          <p className="line-clamp-2 text-sm font-medium group-hover:text-primary transition-colors">{a.title}</p>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {articles.length > 1 && (
                     <>
-                      <button onClick={() => scrollArticles(-1)} style={{ cursor: "pointer" }} aria-label="Назад"
-                        className="absolute left-1 top-14 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
+                      <button onClick={() => goArticle(-1)} style={{ cursor: "pointer" }} aria-label="Назад"
+                        className="absolute left-1 top-20 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
                         <Icon name="ChevronLeft" size={18} />
                       </button>
-                      <button onClick={() => scrollArticles(1)} style={{ cursor: "pointer" }} aria-label="Вперёд"
-                        className="absolute right-1 top-14 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
+                      <button onClick={() => goArticle(1)} style={{ cursor: "pointer" }} aria-label="Вперёд"
+                        className="absolute right-1 top-20 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
                         <Icon name="ChevronRight" size={18} />
                       </button>
+                      <div className="mt-3 flex justify-center gap-1.5">
+                        {articles.map((_, i) => (
+                          <button key={i} onClick={() => setArtIdx(i)} style={{ cursor: "pointer" }} aria-label={`Статья ${i + 1}`}
+                            className={`h-1.5 rounded-full transition-all ${i === artIdx ? "w-4 bg-primary" : "w-1.5 bg-foreground/20"}`} />
+                        ))}
+                      </div>
                     </>
                   )}
                 </div>
