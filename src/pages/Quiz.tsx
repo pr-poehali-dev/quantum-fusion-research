@@ -27,7 +27,7 @@ const BUDGET_STEP = 5000
 
 const CONTACT_METHODS = [
   { value: "telegram", label: "Telegram", icon: "Send" },
-  { value: "whatsapp", label: "WhatsApp", icon: "MessageCircle" },
+  { value: "max", label: "Max", icon: "MessageCircle" },
   { value: "call", label: "Звонок", icon: "Phone" },
 ]
 

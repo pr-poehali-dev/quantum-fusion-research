@@ -49,7 +49,7 @@ const TASK_GROUP_OPTS = [
   { value: "work", label: "Работа" },
 ]
 
-const CONTACT_LABELS: Record<string, string> = { telegram: "Telegram", whatsapp: "WhatsApp", call: "Звонок" }
+const CONTACT_LABELS: Record<string, string> = { telegram: "Telegram", max: "Max", whatsapp: "WhatsApp", call: "Звонок" }
 const fmtRub = (n: number | null) => (n ? n.toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
   if (!s) return ""
