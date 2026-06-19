@@ -1,0 +1,52 @@
+# ПАТТЕРНЫ АНИМАЦИЙ ПРОЕКТА
+
+## 1. КАРУСЕЛЬ С КРОССФЕЙДОМ (opacity fade) — РАБОТАЕТ НАДЁЖНО ✅
+Где используется: /build-preview (фото компов), главная HomeStonks (карусель статей).
+Почему хорошо: не зависит от translateX/Tailwind-классов, всегда плавно, нет рывков.
+
+ПРИНЦИП:
+- Все слайды лежат в стопке через `absolute inset-0` (наложены друг на друга).
+- Активный слайд: opacity = 1, остальные: opacity = 0.
+- Плавность даёт `transition-opacity duration-700` (CSS-переход прозрачности).
+- НЕ использовать сдвиг ленты translateX с динамическими Tailwind duration-[..] —
+  он часто срабатывает мгновенно (класс не успевает примениться).
+
+СТЕЙТ:
+  const [idx, setIdx] = useState(0)
+  const paused = useRef(false)
+  // автосмена + пауза при наведении мышью
+  useEffect(() => {
+    if (items.length < 2) return
+    const id = setInterval(() => {
+      if (!paused.current) setIdx(i => (i + 1) % items.length)
+    }, 5000)
+    return () => clearInterval(id)
+  }, [items.length])
+
+РАЗМЕТКА (суть):
+  <div className="group/car relative"
+    onMouseEnter={() => { paused.current = true }}
+    onMouseLeave={() => { paused.current = false }}>
+    <div className="relative h-56 w-full overflow-hidden rounded-xl">
+      {items.map((it, i) => (
+        <div key={i} style={{ opacity: i === idx ? 1 : 0 }}
+          className="absolute inset-0 transition-opacity duration-700">
+          ...контент слайда (img object-cover, подпись на градиенте)...
+        </div>
+      ))}
+    </div>
+    {/* стрелки появляются по наведению: opacity-0 group-hover/car:opacity-100 */}
+    {/* точки-индикаторы: активная w-4 bg-primary, остальные w-1.5 bg-foreground/20 */}
+  </div>
+
+ФИШКИ:
+- Подпись поверх фото: блок снизу с градиентом
+  `bg-gradient-to-t from-black/80 via-black/40 to-transparent`, текст белый.
+- Стрелки: круглые, `bg-background/80 backdrop-blur`, видны только по hover контейнера.
+- Точки-индикаторы снизу, активная шире (w-4).
+- tabIndex={i === idx ? 0 : -1} на скрытых слайдах — чтобы не фокусились табом.
+
+## 2. КОМБО-АНИМАЦИЯ (opacity + translateX сдвиг) — для ручного листания
+Где: BuildPreview, промежуточная карусель заказа.
+ПРИНЦИП: при смене на 350мс одновременно opacity→0 и transform translateX(±40px),
+затем меняем idx и возвращаем в норму. Даёт эффект "уехал/приехал".
