@@ -186,9 +186,9 @@ export default function HomeStonks() {
               <p className="text-foreground/60">
                 Игры, работа, монтаж или сервер — соберём оптимальную конфигурацию по вашему бюджету.
               </p>
-              <button onClick={() => navigate("/configurator")} style={{ cursor: "pointer" }}
+              <button onClick={() => navigate("/quiz")} style={{ cursor: "pointer" }}
                 className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-                Открыть конфигуратор <Icon name="ArrowRight" size={16} />
+                Подобрать ПК <Icon name="ArrowRight" size={16} />
               </button>
             </div>
           </div>

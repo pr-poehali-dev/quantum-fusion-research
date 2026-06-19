@@ -28,6 +28,7 @@
 - sync-products → https://functions.poehali.dev/ff85a867-9bf3-416f-aaff-91d6a852f031
 - crm-probe     → https://functions.poehali.dev/7f435c7f-a17c-406d-9f00-29c5b52f287e
 - finance       → https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc
+- quiz          → https://functions.poehali.dev/8660d01d-f97e-4034-8704-30fd94dc3041
 - wip-builds    → https://functions.poehali.dev/cb6e9d4e-3de4-4aea-9f82-221c4a7cd6e3
                   (РАБОЧАЯ, но отсутствует в func2url.json; sync_backend её не деплоит — см. раздел "WIP-сборки")
 
@@ -123,6 +124,20 @@ warehouse_stock_log, warehouse_backorders.
 - orders PATCH→done: для pc_build обязателен assembled_by (иначе 400),
   начисляет % сотрудника × total на employee_accounts + employee_account_tx.
 - changeStage: переход в «Забрали» переводит заказ в done (и начисляет).
+
+### quiz
+Анкета подбора ПК (страница /quiz → src/pages/Quiz.tsx) + админ-вкладка
+«Входящие заявки» (/admin/quiz_requests → QuizRequestsTab.tsx).
+Таблицы: quiz_questions (вопросы анкеты, настраиваются из админки;
+field_type: multi/single/budget/contacts/text, options JSONB),
+quiz_requests (заявки клиентов: name, phone, contact_method, budget_min/max,
+answers JSONB {question_id: [варианты]}, extra_wishes, status new/in_progress/done/rejected).
+Эндпоинты (?resource=):
+  GET questions [&all=true] / POST/PUT/DELETE questions — CRUD вопросов;
+  POST submit — приём анкеты от клиента;
+  GET requests / PATCH (id,status) / DELETE — заявки в админке.
+GET requests авто-чистит selftest-мусор (name='__selftest__', title LIKE '__selftest%').
+Кнопка «Подобрать ПК» на главной (HomeStonks) ведёт на /quiz.
 
 ### finance
 Раздел «Финансы» (вкладка /admin/finance, FinanceTab.tsx).

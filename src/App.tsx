@@ -28,6 +28,7 @@ const UserBuild = lazy(() => import("./pages/UserBuild"));
 const B2B = lazy(() => import("./pages/B2B"));
 const Articles = lazy(() => import("./pages/Articles"));
 const HomeStonks = lazy(() => import("./pages/HomeStonks"));
+const Quiz = lazy(() => import("./pages/Quiz"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,7 @@ const App = () => (
               <Route path="/build-preview/:id" element={<BuildPreview />} />
               <Route path="/order-sheet/:id" element={<OrderSheet />} />
               <Route path="/admin/order/:id" element={<OrderProcessPage />} />
+              <Route path="/quiz" element={<Quiz />} />
               <Route path="/articles" element={<Articles />} />
               <Route path="/articles/:id" element={<ArticlePage />} />
               <Route path="/product/:id" element={<ProductPage />} />

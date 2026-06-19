@@ -1,0 +1,37 @@
+{
+  "tests": [
+    {
+      "name": "Get active questions",
+      "method": "GET",
+      "path": "/?resource=questions",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get all questions (admin)",
+      "method": "GET",
+      "path": "/?resource=questions&all=true",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Submit quiz request",
+      "method": "POST",
+      "path": "/?resource=submit",
+      "body": {
+        "name": "__selftest__",
+        "phone": "+70000000000",
+        "contact_method": "telegram",
+        "budget_min": 50000,
+        "budget_max": 100000,
+        "answers": { "1": ["Игры"] },
+        "extra_wishes": "__selftest__"
+      },
+      "expectedStatus": 201
+    },
+    {
+      "name": "Get requests (admin)",
+      "method": "GET",
+      "path": "/?resource=requests",
+      "expectedStatus": 200
+    }
+  ]
+}

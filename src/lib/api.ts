@@ -17,6 +17,7 @@ const URLS = {
   schedule: "https://functions.poehali.dev/10912f60-5fd3-4930-9724-ad4929621f72",
   rma: "https://functions.poehali.dev/6e92e4fb-4e76-42ee-88a7-0638374f9dcc",
   finance: "https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc",
+  quiz: "https://functions.poehali.dev/8660d01d-f97e-4034-8704-30fd94dc3041",
 }
 
 function authHeaders(session?: string | null) {
@@ -86,6 +87,16 @@ export const api = {
     create: (data: unknown) => fetch(URLS.articles, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.articles, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.articles}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+  },
+  quiz: {
+    getQuestions: (all?: boolean) => fetch(`${URLS.quiz}?resource=questions${all ? "&all=true" : ""}`).then(r => r.json()),
+    submit: (data: unknown) => fetch(`${URLS.quiz}?resource=submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    createQuestion: (data: unknown) => fetch(`${URLS.quiz}?resource=questions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    updateQuestion: (data: unknown) => fetch(`${URLS.quiz}?resource=questions`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    deleteQuestion: (id: number) => fetch(`${URLS.quiz}?resource=questions&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    getRequests: () => fetch(`${URLS.quiz}?resource=requests`).then(r => r.json()),
+    setRequestStatus: (id: number, status: string) => fetch(`${URLS.quiz}?resource=requests`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) }).then(r => r.json()),
+    deleteRequest: (id: number) => fetch(`${URLS.quiz}?resource=requests&id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },
   tags: {
     getAll: () => fetch(URLS.tags).then(r => r.json()),

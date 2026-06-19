@@ -11,6 +11,7 @@ import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import { AdminCatalogTab } from "@/components/admin/AdminCatalogTab"
 import { AdminUsersTab } from "@/components/admin/AdminUsersTab"
 import RmaTab from "@/components/admin/RmaTab"
+import QuizRequestsTab from "@/components/admin/QuizRequestsTab"
 import {
   ADMIN_PASSWORD, VALID_TABS, AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
@@ -156,6 +157,7 @@ export default function Admin() {
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
+    { key: "quiz_requests", label: "Входящие заявки", icon: "Inbox" },
   ]
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
@@ -243,6 +245,9 @@ export default function Admin() {
 
         {/* RMA */}
         {tab === "rma" && <RmaTab />}
+
+        {/* QUIZ REQUESTS */}
+        {tab === "quiz_requests" && <QuizRequestsTab />}
       </div>
 
       {/* WAREHOUSE — на всю ширину браузера с отступами 50px */}
