@@ -113,19 +113,27 @@ export default function HomeStonks() {
           <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/articles" />
         </div>
 
-        {/* CTA-полоса */}
-        <div className="mt-4 flex flex-col items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row">
-          <p className="text-center text-base font-semibold sm:text-left">
-            Затрудняетесь с выбором комплектующих для сборки ПК? Мы поможем вам!
-          </p>
-          <button onClick={() => navigate("/configurator")} style={{ cursor: "pointer" }}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-            <Icon name="MessageCircleQuestion" size={16} /> Задать вопрос
-          </button>
-        </div>
+        {/* Основной грид: контент слева + сайдбар справа */}
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Левая колонка — CTA */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="flex flex-col items-start gap-4 rounded-2xl border border-border bg-gradient-to-br from-primary/15 via-card to-accent/10 p-6 sm:p-8">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <Icon name="Cpu" size={24} />
+              </span>
+              <h2 className="text-2xl font-bold leading-tight sm:text-3xl">
+                Подобрать конфигурацию ПК под ваши задачи можно тут
+              </h2>
+              <p className="text-foreground/60">
+                Игры, работа, монтаж или сервер — соберём оптимальную конфигурацию по вашему бюджету.
+              </p>
+              <button onClick={() => navigate("/configurator")} style={{ cursor: "pointer" }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                Открыть конфигуратор <Icon name="ArrowRight" size={16} />
+              </button>
+            </div>
+          </div>
 
-        {/* Основной грид: контент + сайдбар */}
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Сайдбар */}
           <div className="space-y-6">
             {/* Сборки пользователей */}
