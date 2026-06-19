@@ -13,8 +13,8 @@ def esc(v):
     return "'" + str(v).replace("'", "''") + "'"
 
 def check_b2b_password(pwd: str) -> bool:
-    real = os.environ.get("B2B_PASSWORD", "")
-    return bool(real) and pwd == real
+    real = os.environ.get("B2B_PASSWORD", "").strip()
+    return bool(real) and pwd.strip() == real
 
 def handler(event: dict, context) -> dict:
     """
@@ -35,7 +35,9 @@ def handler(event: dict, context) -> dict:
 
     headers = event.get("headers") or {}
     params = event.get("queryStringParameters") or {}
-    b2b_password = headers.get("X-B2B-Password") or headers.get("x-b2b-password") or ""
+    # Регистронезависимое чтение заголовка пароля (прокси может менять регистр)
+    lower_headers = {str(k).lower(): v for k, v in headers.items()}
+    b2b_password = (lower_headers.get("x-b2b-password") or params.get("pwd") or "").strip()
     has_prices = check_b2b_password(b2b_password)
 
     # Эндпоинт проверки пароля (для логина на фронте)
