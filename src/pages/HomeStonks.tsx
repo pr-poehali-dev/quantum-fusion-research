@@ -22,9 +22,9 @@ interface Article {
   category?: string
 }
 
-const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/db29c71c-3ce5-4f5e-9362-220636dadddb.jpg"
-const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/19cce97b-1292-48ca-8691-778f0decabc4.jpg"
-const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/7e911ff2-c21c-4966-84a2-69252aa07bda.jpg"
+const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
+const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/369e76c4-c4a6-46da-ab1d-843219204c9a.jpg"
+const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/214a73ee-c5ac-44a4-abab-603223e4e175.jpg"
 
 const fmtPrice = (n?: number) => (n ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
