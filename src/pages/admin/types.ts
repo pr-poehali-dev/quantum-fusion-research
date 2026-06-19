@@ -211,6 +211,7 @@ export interface PCBuild {
   is_featured: boolean
   in_stock: boolean
   client_token: string | null
+  short_code?: string | null
   client_user_id: number | null
   parent_id: number | null
   sell_with_vat?: boolean

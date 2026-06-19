@@ -64,6 +64,7 @@ export const api = {
       return fetch(URLS.builds + qs).then(r => r.json())
     },
     getByClientToken: (token: string) => fetch(`${URLS.builds}?client_token=${token}`).then(r => r.json()),
+    getByShortCode: (code: string) => fetch(`${URLS.builds}?short_code=${encodeURIComponent(code)}`).then(r => r.json()),
     getVariants: (parentId: number) => fetch(`${URLS.builds}?parent_id=${parentId}`).then(r => r.json()),
     getByUserId: (userId: number) => fetch(`${URLS.builds}?user_id=${userId}`).then(r => r.json()),
     getById: (id: number) => fetch(`${URLS.builds}?id=${id}`).then(r => r.json()),

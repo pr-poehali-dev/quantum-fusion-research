@@ -33,8 +33,21 @@ def fmt_build(row, tags=None):
         "parent_id": row[15],
         "in_stock": row[16] if len(row) > 16 else False,
         "sell_with_vat": row[17] if len(row) > 17 else False,
+        "short_code": row[18] if len(row) > 18 else None,
         "tags": tags or [],
     }
+
+
+def gen_short_code(cur):
+    """Уникальный короткий код из 6 символов (без похожих 0/O, 1/l/I)."""
+    import random
+    alphabet = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789"
+    for _ in range(20):
+        code = "".join(random.choice(alphabet) for _ in range(6))
+        cur.execute("SELECT 1 FROM pc_builds WHERE short_code = %s", (code,))
+        if not cur.fetchone():
+            return code
+    return secrets.token_urlsafe(6)
 
 def get_tags_for_builds(cur, build_ids):
     if not build_ids:
@@ -79,6 +92,7 @@ def handler(event: dict, context) -> dict:
         if method == "GET":
             build_id = params.get("id")
             client_token = params.get("client_token")
+            short_code = params.get("short_code") or params.get("code")
             parent_id = params.get("parent_id")
             user_id = params.get("user_id")
             status = params.get("status")
@@ -86,7 +100,7 @@ def handler(event: dict, context) -> dict:
             base = """SELECT id, name, description, image_urls, components, parts_total,
                              assembly_type, assembly_fee, total_price, status, is_featured,
                              sort_order, created_at, client_token, client_user_id, parent_id, in_stock,
-                             sell_with_vat
+                             sell_with_vat, short_code
                       FROM pc_builds"""
 
             if build_id:
@@ -99,6 +113,14 @@ def handler(event: dict, context) -> dict:
 
             if client_token:
                 cur.execute(base + " WHERE client_token = %s", (client_token,))
+                row = cur.fetchone()
+                if not row:
+                    return resp(404, {"error": "Не найдено"})
+                tags_map = get_tags_for_builds(cur, [row[0]])
+                return resp(200, fmt_build(row, tags_map.get(row[0], [])))
+
+            if short_code:
+                cur.execute(base + " WHERE short_code = %s", (short_code,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
@@ -192,10 +214,17 @@ def handler(event: dict, context) -> dict:
             action = body.get("action")
 
             if action == "generate_client_link":
-                token = secrets.token_urlsafe(32)
-                cur.execute("UPDATE pc_builds SET client_token=%s WHERE id=%s", (token, body["id"]))
+                # переиспользуем существующие токен/код, если уже есть
+                cur.execute("SELECT client_token, short_code FROM pc_builds WHERE id=%s", (body["id"],))
+                ex = cur.fetchone()
+                token = (ex[0] if ex else None) or secrets.token_urlsafe(32)
+                code = (ex[1] if ex else None) or gen_short_code(cur)
+                cur.execute(
+                    "UPDATE pc_builds SET client_token=%s, short_code=%s WHERE id=%s",
+                    (token, code, body["id"])
+                )
                 conn.commit()
-                return resp(200, {"ok": True, "client_token": token})
+                return resp(200, {"ok": True, "client_token": token, "short_code": code})
 
             if action == "claim":
                 user_id = get_user_by_session(cur, session_id)

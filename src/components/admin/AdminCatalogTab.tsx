@@ -277,10 +277,14 @@ export function AdminCatalogTab({
   }
 
   const generateClientLink = async (b: PCBuild) => {
-    const token = b.client_token || (await api.builds.generateClientLink(b.id)).client_token
-    if (!token) return
-    setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, client_token: token } : bb))
-    const url = `${window.location.origin}/build?token=${token}`
+    // всегда дёргаем бэкенд: он переиспользует токен и догенерит короткий код,
+    // если его ещё нет (для старых сборок)
+    const res = await api.builds.generateClientLink(b.id)
+    const code = res.short_code
+    const token = res.client_token || b.client_token
+    if (!code && !token) return
+    setBuilds(bs => bs.map(bb => bb.id === b.id ? { ...bb, client_token: token, short_code: code } : bb))
+    const url = code ? `${window.location.origin}/b/${code}` : `${window.location.origin}/build?token=${token}`
     navigator.clipboard.writeText(url)
     setCopiedBuildId(b.id)
     setTimeout(() => setCopiedBuildId(null), 2500)

@@ -110,14 +110,25 @@ async function enrichComponents(comps: Component[]): Promise<Component[]> {
 }
 
 export default function BuildPreview() {
-  const { id } = useParams<{ id: string }>()
+  const { id, code } = useParams<{ id: string; code: string }>()
   const [searchParams] = useSearchParams()
-  const token = searchParams.get("token")
+  const queryToken = searchParams.get("token")
   const navigate = useNavigate()
   const { isAuthed, sessionId, user } = useAuth()
   const { addItem } = useCart()
 
-  const isTokenMode = !!token
+  // короткий код /b/:code резолвится в client_token
+  const [codeToken, setCodeToken] = useState<string | null>(null)
+  useEffect(() => {
+    if (!code) { setCodeToken(null); return }
+    api.builds.getByShortCode(code).then(d => {
+      if (d?.client_token) { setCodeToken(d.client_token) }
+      else { setError("Сборка не найдена"); setLoading(false) }
+    }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
+  }, [code])
+
+  const token = queryToken || codeToken
+  const isTokenMode = !!token || !!code
 
   const [variants, setVariants] = useState<Build[]>([])
   const [activeVariant, setActiveVariant] = useState(0)
@@ -278,7 +289,10 @@ export default function BuildPreview() {
   }, [components.length])
 
   const claimBuild = async () => {
-    if (!isAuthed() || !sessionId) { navigate(`/auth?redirect=/build?token=${token}`); return }
+    if (!isAuthed() || !sessionId) {
+      const redirect = code ? `/b/${code}` : `/build?token=${token}`
+      navigate(`/auth?redirect=${encodeURIComponent(redirect)}`); return
+    }
     setClaiming(true)
     await api.builds.claimBuild(token!, sessionId)
     setClaimed(true)
