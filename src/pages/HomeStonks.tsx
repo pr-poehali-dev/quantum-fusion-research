@@ -125,46 +125,7 @@ export default function HomeStonks() {
         </div>
 
         {/* Основной грид: контент + сайдбар */}
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Видео-карточки */}
-            <div className="rounded-2xl border border-border bg-card p-4">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  { t: "Сборка ПК 50K", c: "from-primary/30 to-primary/5" },
-                  { t: "Топ NVMe SSD", c: "from-accent/30 to-accent/5" },
-                  { t: "Отвал контроллера", c: "from-primary/30 to-primary/5" },
-                  { t: "Мифы про ПК", c: "from-accent/30 to-accent/5" },
-                ].map((v, i) => (
-                  <button key={i} onClick={() => navigate("/articles")} style={{ cursor: "pointer" }}
-                    className={`group relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-gradient-to-br ${v.c}`}>
-                    <span className="absolute left-2 right-2 top-2 text-sm font-bold leading-tight text-white drop-shadow">{v.t}</span>
-                    <span className="absolute inset-0 flex items-center justify-center">
-                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-transform group-hover:scale-110">
-                        <Icon name="Play" size={20} />
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Большой блок «Стримы» */}
-            <button onClick={() => navigate("/articles")} style={{ cursor: "pointer" }}
-              className="group relative flex h-72 w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/20 via-card to-accent/10 text-center">
-              <div className="relative z-10 px-6">
-                <span className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white text-red-600 transition-transform group-hover:scale-105">
-                  <Icon name="Play" size={36} />
-                </span>
-                <h2 className="text-3xl font-bold text-foreground">Стримы</h2>
-                <p className="mt-1 text-foreground/60">Задайте вопросы в прямом эфире нашим ведущим</p>
-                <span className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-background/60 px-5 py-2.5 text-sm font-medium">
-                  Открыть канал
-                </span>
-              </div>
-            </button>
-          </div>
-
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Сайдбар */}
           <div className="space-y-6">
             {/* Сборки пользователей */}
