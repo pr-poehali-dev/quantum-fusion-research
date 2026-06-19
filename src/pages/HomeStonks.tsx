@@ -44,6 +44,15 @@ export default function HomeStonks() {
   const [articles, setArticles] = useState<Article[]>([])
   const [artIdx, setArtIdx] = useState(0)
   const artPaused = useRef(false)
+  const [quizInProgress, setQuizInProgress] = useState(false)
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("begraphics_quiz_progress") || "{}")
+      const has = (saved.answers && Object.keys(saved.answers).length) || saved.phone || saved.name || (saved.step ?? 0) > 0
+      setQuizInProgress(!!has)
+    } catch { /* ignore */ }
+  }, [])
 
   const goArticle = (dir: 1 | -1) => setArtIdx(i => (i + dir + articles.length) % articles.length)
 
@@ -186,10 +195,19 @@ export default function HomeStonks() {
               <p className="text-foreground/60">
                 Игры, работа, монтаж или сервер — соберём оптимальную конфигурацию по вашему бюджету.
               </p>
-              <button onClick={() => navigate("/quiz")} style={{ cursor: "pointer" }}
-                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-                Подобрать ПК <Icon name="ArrowRight" size={16} />
-              </button>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <button onClick={() => navigate("/quiz")} style={{ cursor: "pointer" }}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                  {quizInProgress ? "Продолжить подбор" : "Подобрать ПК"} <Icon name="ArrowRight" size={16} />
+                </button>
+                {quizInProgress && (
+                  <button onClick={() => navigate("/quiz")} style={{ cursor: "pointer" }}
+                    className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+                    <Icon name="History" size={15} />
+                    Вы начали заполнять анкету — можно продолжить
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
