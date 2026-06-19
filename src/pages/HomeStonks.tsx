@@ -44,7 +44,6 @@ export default function HomeStonks() {
   const [articles, setArticles] = useState<Article[]>([])
   const [artIdx, setArtIdx] = useState(0)
   const artPaused = useRef(false)
-  const artTrackRef = useRef<HTMLDivElement>(null)
 
   const goArticle = (dir: 1 | -1) => setArtIdx(i => (i + dir + articles.length) % articles.length)
 
@@ -54,16 +53,9 @@ export default function HomeStonks() {
     if (articles.length < 2) return
     const id = setInterval(() => {
       if (!artPaused.current) setArtIdx(i => (i + 1) % articles.length)
-    }, 4000)
+    }, 5000)
     return () => clearInterval(id)
   }, [articles.length])
-
-  useEffect(() => {
-    const el = artTrackRef.current
-    if (!el) return
-    el.style.transition = "transform 700ms cubic-bezier(0.22,1,0.36,1)"
-    el.style.transform = `translateX(-${artIdx * 100}%)`
-  }, [artIdx])
 
   const activeDot = artIdx
 
@@ -241,40 +233,39 @@ export default function HomeStonks() {
                 <div className="group/car relative"
                   onMouseEnter={() => { artPaused.current = true }}
                   onMouseLeave={() => { artPaused.current = false }}>
-                  <div className="overflow-hidden">
-                    <div ref={artTrackRef} className="flex">
-                      {articles.map((a, i) => (
-                        <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
-                          className="group block w-full shrink-0 text-left">
-                          <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
-                            {a.image_url ? (
-                              <img src={a.image_url} alt={a.title}
-                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                            ) : (
-                              <div className="flex h-full items-center justify-center">
-                                <Icon name="FileText" size={36} className="text-foreground/15" />
-                              </div>
-                            )}
+                  <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
+                    {articles.map((a, i) => (
+                      <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer", opacity: i === artIdx ? 1 : 0 }}
+                        className="group absolute inset-0 block w-full text-left transition-opacity duration-700"
+                        tabIndex={i === artIdx ? 0 : -1}>
+                        {a.image_url ? (
+                          <img src={a.image_url} alt={a.title}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center">
+                            <Icon name="FileText" size={36} className="text-foreground/15" />
                           </div>
-                          <p className="mt-2 text-xs text-foreground/40">{fmtDate(a.created_at)}</p>
-                          <p className="line-clamp-2 text-sm font-medium group-hover:text-primary transition-colors">{a.title}</p>
-                        </button>
-                      ))}
-                    </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8">
+                          <p className="text-xs text-white/60">{fmtDate(a.created_at)}</p>
+                          <p className="line-clamp-2 text-sm font-medium text-white">{a.title}</p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                   {articles.length > 1 && (
                     <>
                       <button onClick={() => goArticle(-1)} style={{ cursor: "pointer" }} aria-label="Назад"
-                        className="absolute left-1 top-28 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
+                        className="absolute left-1 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/80 text-foreground shadow-md opacity-0 backdrop-blur transition-opacity group-hover/car:opacity-100 hover:bg-background">
                         <Icon name="ChevronLeft" size={18} />
                       </button>
                       <button onClick={() => goArticle(1)} style={{ cursor: "pointer" }} aria-label="Вперёд"
-                        className="absolute right-1 top-28 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
+                        className="absolute right-1 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/80 text-foreground shadow-md opacity-0 backdrop-blur transition-opacity group-hover/car:opacity-100 hover:bg-background">
                         <Icon name="ChevronRight" size={18} />
                       </button>
                       <div className="mt-3 flex justify-center gap-1.5">
                         {articles.map((_, i) => (
-                          <button key={i} onClick={() => { setArtAnim(true); setArtIdx(i) }} style={{ cursor: "pointer" }} aria-label={`Статья ${i + 1}`}
+                          <button key={i} onClick={() => setArtIdx(i)} style={{ cursor: "pointer" }} aria-label={`Статья ${i + 1}`}
                             className={`h-1.5 rounded-full transition-all ${i === activeDot ? "w-4 bg-primary" : "w-1.5 bg-foreground/20"}`} />
                         ))}
                       </div>
