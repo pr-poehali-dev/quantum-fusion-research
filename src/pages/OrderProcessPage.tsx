@@ -253,7 +253,7 @@ export default function OrderProcessPage() {
             Назад к заказам
           </button>
           <div className="flex-1" />
-          <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
+          <span className="font-mono text-xs text-foreground/40">{order.display_number || "#" + order.id}</span>
           <span className={`rounded-full px-3 py-1 text-xs font-medium ${(STATUS_LABELS[order.status] || STATUS_LABELS.new).color}`}>
             {(STATUS_LABELS[order.status] || STATUS_LABELS.new).label}
           </span>

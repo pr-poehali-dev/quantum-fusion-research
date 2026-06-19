@@ -3,6 +3,23 @@
 
 ---
 
+## v3.36 | 2026-06-20 | Раздельная нумерация заказов: PC (сборки) и HW (железо)
+
+### Формат номеров
+- Сборки: PC00001, заказы железа: HW00001 (5 знаков). Счётчики независимы.
+
+### БД / backend
+- orders.display_number (V0106). orders POST генерирует display_number:
+  pc_build → PC, иначе → HW (MAX по префиксу +1, zfill 5). GET (список/один/my)
+  отдают display_number; фолбэк для старых заказов — HW{id}.
+- wip-builds POST: автономер сборки теперь PC00001 (нумерация среди PC%).
+
+### Frontend
+- Order.display_number. Номер заказа показывается из display_number
+  (AdminOrdersTab, OrderProcessPage, Profile) с фолбэком на #id.
+
+---
+
 ## v3.35 | 2026-06-20 | Автономер заказа для WIP-сборок
 
 ### wip-builds (backend)

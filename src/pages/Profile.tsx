@@ -518,7 +518,7 @@ export default function Profile() {
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="font-mono text-xs text-foreground/40">#{order.id}</span>
+                              <span className="font-mono text-xs text-foreground/40">{order.display_number || "#" + order.id}</span>
                               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span>
                               {order.wip_stage && (
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${WIP_STAGE_COLORS[order.wip_stage] || "bg-muted text-foreground/50"}`}>

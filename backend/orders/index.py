@@ -38,7 +38,7 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
 
-    def fmt_order(row):
+    def fmt_order(row, disp=None):
         total = float(row[6])
         # Предоплата (опц. поля в конце выборки одиночного заказа)
         pct = float(row[13]) if len(row) > 13 and row[13] is not None else 30.0
@@ -47,7 +47,8 @@ def handler(event: dict, context) -> dict:
         else:
             prepay = round(total * pct / 100, 2)
         return {
-            "id": row[0], "customer_name": row[1], "customer_phone": row[2],
+            "id": row[0], "display_number": disp or ("HW" + str(row[0]).zfill(5)),
+            "customer_name": row[1], "customer_phone": row[2],
             "customer_email": row[3], "order_type": row[4], "items": row[5],
             "total": total, "comment": row[7], "status": row[8],
             "created_at": row[9].isoformat() if row[9] else None,
@@ -76,6 +77,17 @@ def handler(event: dict, context) -> dict:
                  body.get("comment"), user_id)
             )
             order_id = cur.fetchone()[0]
+
+            # Отдельная нумерация по типу заказа: PC — сборки, HW — заказы железа
+            prefix = "PC" if body.get("order_type") == "pc_build" else "HW"
+            cur.execute(
+                "SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(display_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
+                "FROM orders WHERE display_number LIKE %s",
+                (prefix + "%",)
+            )
+            disp_num = (cur.fetchone()[0] or 0) + 1
+            display_number = prefix + str(disp_num).zfill(5)
+            cur.execute("UPDATE orders SET display_number=%s WHERE id=%s", (display_number, order_id))
 
             order_type = body.get("order_type", "cart")
             items = body.get("items") or []
@@ -202,14 +214,15 @@ def handler(event: dict, context) -> dict:
                     """SELECT id, customer_name, customer_phone, customer_email, order_type,
                               items, total, comment, status, created_at, updated_at, user_id,
                               NULL, prepayment_percent, prepayment_amount,
-                              prepayment_confirmed, remaining_paid, remaining_paid_amount
+                              prepayment_confirmed, remaining_paid, remaining_paid_amount,
+                              display_number
                        FROM orders WHERE id = %s""",
                     (int(params["id"]),)
                 )
                 row = cur.fetchone()
                 if not row:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
-                order = fmt_order(row)
+                order = fmt_order(row, row[18])
                 schema = "t_p72635010_quantum_fusion_resea"
 
                 if order.get("order_type") == "pc_build":
@@ -409,11 +422,12 @@ def handler(event: dict, context) -> dict:
                     return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
                 cur.execute(
                     """SELECT id, customer_name, customer_phone, customer_email, order_type,
-                              items, total, comment, status, created_at, updated_at, user_id
+                              items, total, comment, status, created_at, updated_at, user_id,
+                              display_number
                        FROM orders WHERE user_id = %s ORDER BY created_at DESC""",
                     (user_id,)
                 )
-                orders = [fmt_order(r) for r in cur.fetchall()]
+                orders = [fmt_order(r, r[12]) for r in cur.fetchall()]
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"orders": orders})}
 
             # Все заказы (для админа)
@@ -424,13 +438,14 @@ def handler(event: dict, context) -> dict:
                 f"""SELECT o.id, o.customer_name, o.customer_phone, o.customer_email, o.order_type,
                            o.items, o.total, o.comment, o.status, o.created_at, o.updated_at, o.user_id,
                            wb.stage as wip_stage, o.prepayment_percent, o.prepayment_amount,
-                           o.prepayment_confirmed, o.remaining_paid, o.remaining_paid_amount
+                           o.prepayment_confirmed, o.remaining_paid, o.remaining_paid_amount,
+                           o.display_number
                     FROM orders o
                     LEFT JOIN wip_builds wb ON wb.order_id = o.id
                     {where} ORDER BY o.created_at DESC LIMIT 200""",
                 args
             )
-            orders = [fmt_order(r) for r in cur.fetchall()]
+            orders = [fmt_order(r, r[18]) for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"orders": orders})}
 
         elif method == "PUT":

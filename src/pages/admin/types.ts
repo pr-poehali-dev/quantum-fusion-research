@@ -144,6 +144,7 @@ export interface AdminUser {
 
 export interface Order {
   id: number
+  display_number?: string
   customer_name: string
   customer_phone: string
   customer_email: string

@@ -157,7 +157,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                 <div className="flex flex-wrap items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="font-mono text-xs text-foreground/40">#{String(order.id).padStart(5, "0")}</span>
+                      <span className="font-mono text-xs text-foreground/40">{order.display_number || "#" + String(order.id).padStart(5, "0")}</span>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo?.color || ""}`}>{statusInfo?.label || order.status}</span>
                       {order.order_type === "pc_build" && (
                         <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">ПК-сборка</span>

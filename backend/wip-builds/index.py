@@ -262,16 +262,16 @@ def handler(event: dict, context) -> dict:
             # TODO: notify_telegram(wip_id, body.get("order_number"), body.get("contact"))
             # Отправить уведомление в Telegram при создании новой сборки
 
-            # Автогенерация номера заказа, если не задан вручную:
-            # берём максимальный числовой order_number и +1, формат 5 знаков (00001)
+            # Автогенерация номера заказа сборки, если не задан вручную:
+            # отдельная нумерация PC: берём MAX среди PC-номеров и +1, формат PC00001
             order_number = (body.get("order_number") or "").strip()
             if not order_number:
                 cur.execute(
                     "SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(order_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
-                    "FROM wip_builds"
+                    "FROM wip_builds WHERE order_number LIKE 'PC%'"
                 )
                 next_num = (cur.fetchone()[0] or 0) + 1
-                order_number = str(next_num).zfill(5)
+                order_number = "PC" + str(next_num).zfill(5)
 
             cur.execute(
                 """INSERT INTO wip_builds (order_number, stage, contact, delivery_type, delivery_address,
