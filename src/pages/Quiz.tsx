@@ -57,19 +57,20 @@ function BudgetSlider({ min, max, onChange }: { min: number; max: number; onChan
 function TasksField({ options, value, onChange }: {
   options: TaskOption[]; value: string[]; onChange: (v: string[]) => void
 }) {
-  const [openGroup, setOpenGroup] = useState<"games" | "work" | null>(null)
+  const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({})
   const toggle = (label: string) =>
     onChange(value.includes(label) ? value.filter(v => v !== label) : [...value, label])
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 items-start gap-3">
       {TASK_GROUPS.map(g => {
         const items = options.filter(o => o.group === g.key)
         const selectedCount = items.filter(o => value.includes(o.label)).length
-        const open = openGroup === g.key
+        // блок открыт, если выбран хотя бы один подтип ИЛИ открыт вручную
+        const open = selectedCount > 0 || manualOpen[g.key]
         return (
           <div key={g.key} className="flex flex-col">
-            <button type="button" onClick={() => setOpenGroup(open ? null : g.key)} style={{ cursor: "pointer" }}
+            <button type="button" onClick={() => setManualOpen(m => ({ ...m, [g.key]: !open }))} style={{ cursor: "pointer" }}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-5 transition-colors ${open || selectedCount ? "border-primary bg-primary/10" : "border-border hover:border-primary"}`}>
               <Icon name={g.icon} size={32} className={open || selectedCount ? "text-primary" : "text-foreground/60"} />
               <span className="text-lg font-bold">{g.label}</span>
