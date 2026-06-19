@@ -157,6 +157,8 @@ export interface Order {
   prepayment_percent?: number
   prepayment_amount?: number
   remaining_amount?: number
+  prepayment_confirmed?: boolean
+  remaining_paid?: boolean
 }
 
 export interface Product {

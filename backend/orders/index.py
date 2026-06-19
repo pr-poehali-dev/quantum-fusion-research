@@ -423,7 +423,8 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 f"""SELECT o.id, o.customer_name, o.customer_phone, o.customer_email, o.order_type,
                            o.items, o.total, o.comment, o.status, o.created_at, o.updated_at, o.user_id,
-                           wb.stage as wip_stage
+                           wb.stage as wip_stage, o.prepayment_percent, o.prepayment_amount,
+                           o.prepayment_confirmed, o.remaining_paid, o.remaining_paid_amount
                     FROM orders o
                     LEFT JOIN wip_builds wb ON wb.order_id = o.id
                     {where} ORDER BY o.created_at DESC LIMIT 200""",

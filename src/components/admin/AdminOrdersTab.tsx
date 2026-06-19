@@ -162,6 +162,13 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       {order.order_type === "pc_build" && (
                         <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">ПК-сборка</span>
                       )}
+                      {order.status !== "cancelled" && (
+                        order.prepayment_confirmed ? (
+                          <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата внесена</span>
+                        ) : (
+                          <span className="rounded-full bg-yellow-400/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">Предоплата не внесена</span>
+                        )
+                      )}
                     </div>
                     <p className="font-semibold text-foreground">{order.customer_name}</p>
                     <p className="text-sm text-foreground/60">{order.customer_phone}</p>
