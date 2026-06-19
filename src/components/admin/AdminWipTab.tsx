@@ -794,12 +794,22 @@ export function AdminWipTab({
                           </div>
                         )}
                         {row.key === "_stage" && (
-                          <select value={w.stage}
-                            onChange={e => changeStage(w, e.target.value)}
-                            className={`rounded-full border-0 px-2 py-0.5 text-[10px] font-semibold focus:outline-none cursor-pointer ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}
-                            style={{ cursor: "pointer" }}>
-                            {(wipStages.length ? wipStages : WIP_STAGES).map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                          <div className="flex flex-col items-start gap-1">
+                            <select value={w.stage}
+                              onChange={e => changeStage(w, e.target.value)}
+                              className={`rounded-full border-0 px-2 py-0.5 text-[10px] font-semibold focus:outline-none cursor-pointer ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}
+                              style={{ cursor: "pointer" }}>
+                              {(wipStages.length ? wipStages : WIP_STAGES).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            {w.stage === "Забрали" && (
+                              <button onClick={() => changeStage(w, "Архив")}
+                                title="Переместить в архив"
+                                className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:bg-primary/5 hover:text-primary transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="Archive" size={10} />В архив
+                              </button>
+                            )}
+                          </div>
                         )}
                         {row.key === "_client" && (
                           <div className="space-y-0.5">
