@@ -239,7 +239,7 @@ export default function OrderProcessPage() {
     </div>
   )
 
-  const total = order.items.reduce((s, it) => s + (it.final_price ?? it.price) * it.quantity, 0)
+  const total = order.items.reduce((s, it) => it.item_status === "returned" ? s : s + (it.final_price ?? it.price) * it.quantity, 0)
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -537,7 +537,7 @@ export default function OrderProcessPage() {
 
             return (
               <div key={idx} className={`rounded-xl border bg-card p-5 transition-colors ${
-                itemStatus === "returned" ? "border-red-400/20" :
+                itemStatus === "returned" ? "border-border opacity-50 grayscale" :
                 itemStatus === "issued" ? "border-green-400/20" :
                 item.wip_status === "ready" ? "border-green-400/20" :
                 item.wip_status === "need_order" ? "border-red-400/20" :
@@ -676,16 +676,29 @@ export default function OrderProcessPage() {
                     </button>
                   ))}
 
-                  {/* Снять с резерва */}
+                  {/* Снять с резерва (вернуть на склад) */}
                   {item.item_type === "product" && itemStatus !== "returned" && itemStatus !== "issued" && (
                     <button
-                      onClick={() => callPut("unreserve", idx)}
+                      onClick={async () => { await callPut("unreserve", idx); load() }}
                       disabled={saving === `unreserve-${idx}`}
                       style={{ cursor: "pointer" }}
                       className="flex items-center gap-1.5 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50">
                       <Icon name={saving === `unreserve-${idx}` ? "Loader" : "Undo2"} size={12}
                         className={saving === `unreserve-${idx}` ? "animate-spin" : ""} />
                       Вернуть на склад
+                    </button>
+                  )}
+
+                  {/* Вернуть товар обратно в заказ (для возвращённых) */}
+                  {item.item_type === "product" && itemStatus === "returned" && (
+                    <button
+                      onClick={async () => { await callPut("restore_item", idx); load() }}
+                      disabled={saving === `restore_item-${idx}`}
+                      style={{ cursor: "pointer" }}
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground/60 hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50">
+                      <Icon name={saving === `restore_item-${idx}` ? "Loader" : "Undo2"} size={12}
+                        className={saving === `restore_item-${idx}` ? "animate-spin" : ""} />
+                      Вернуть товар в заказ
                     </button>
                   )}
 

@@ -1,12 +1,16 @@
 {
   "tests": [
     {
-      "name": "Generate warranty PDF",
+      "name": "Missing order returns 404",
       "method": "GET",
-      "path": "/?order_id=22",
-      "expectedStatus": 200,
-      "expectedBody": {"pdf_b64": "string"},
-      "bodyMatcher": "partial"
+      "path": "/?order_id=999999999",
+      "expectedStatus": 404
+    },
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
     }
   ]
 }

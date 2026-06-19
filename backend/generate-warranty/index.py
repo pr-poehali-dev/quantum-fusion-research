@@ -262,6 +262,7 @@ def handler(event: dict, context) -> dict:
         # Серийники из items[0].slot_serials (новый формат) или по slot (старый)
         slot_serials = {}
         slot_item_price = {}
+        slot_status_map = {}  # slot -> item_status (для отсева returned)
         for it in items:
             # Новый формат: slot_serials = {slot: [sn1, sn2]}
             stored = it.get("slot_serials") or {}
@@ -270,6 +271,8 @@ def handler(event: dict, context) -> dict:
         for it in items:
             slot = it.get("slot")
             if slot:
+                if it.get("item_status"):
+                    slot_status_map[slot] = it["item_status"]
                 sn = it.get("serial_numbers") or []
                 if not sn and it.get("serial_number"):
                     sn = [it["serial_number"]]
@@ -283,6 +286,10 @@ def handler(event: dict, context) -> dict:
             for i, slot in enumerate(slot_names):
                 name = wip[i]
                 if not name or not name.strip():
+                    continue
+                # Возвращённый на склад компонент в гарантийку не попадает
+                slot_alias = "case" if slot == "case_name" else slot
+                if slot_status_map.get(slot) == "returned" or slot_status_map.get(slot_alias) == "returned":
                     continue
                 # Гарантия из склада
                 warranty = 12
@@ -344,6 +351,9 @@ def handler(event: dict, context) -> dict:
     else:
         # Обычные заказы комплектующих
         for item in items:
+            # Возвращённые на склад позиции в гарантийку не попадают
+            if item.get("item_status") == "returned":
+                continue
             pid = item.get("id")
             warranty = 12
             if pid and item.get("item_type") == "product":

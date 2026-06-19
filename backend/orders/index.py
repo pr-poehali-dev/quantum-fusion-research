@@ -585,7 +585,9 @@ def handler(event: dict, context) -> dict:
                             (json.dumps(items), order_id))
 
             elif action == "unreserve":
-                # Снять резерв по позиции и вернуть на склад
+                # Возврат товара на склад: снимаем резерв, возвращаем в наличие,
+                # помечаем позицию как returned (товар как бы вычеркнут из заказа)
+                # и ВЫЧИТАЕМ его из суммы заказа.
                 pid = items[item_idx].get("id")
                 qty = int(items[item_idx].get("quantity", 1))
                 if pid:
@@ -599,11 +601,20 @@ def handler(event: dict, context) -> dict:
                     left = qty
                     for (sid,) in supplies:
                         if left <= 0: break
+                        # сколько можем снять с этой поставки
+                        cur.execute(
+                            f"SELECT qty_reserved FROM {schema}.warehouse_supplies WHERE id = %s",
+                            (sid,)
+                        )
+                        sr = cur.fetchone()
+                        take = min(left, int(sr[0])) if sr else 0
+                        if take <= 0:
+                            continue
                         cur.execute(
                             f"UPDATE {schema}.warehouse_supplies "
                             f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s "
                             f"RETURNING group_id",
-                            (left, left, sid)
+                            (take, take, sid)
                         )
                         r = cur.fetchone()
                         if r:
@@ -611,12 +622,35 @@ def handler(event: dict, context) -> dict:
                                 f"INSERT INTO {schema}.warehouse_movements "
                                 f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
                                 f"VALUES (%s, %s, %s, 'unreserved', %s, %s, NOW())",
-                                (r[0], sid, order_id, -left, f"Снят резерв по заказу #{order_id}")
+                                (r[0], sid, order_id, -take, f"Возврат на склад по заказу #{order_id}")
                             )
-                        left -= left
+                        left -= take
                 items[item_idx]["item_status"] = "returned"
-                cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
-                            (json.dumps(items), order_id))
+                # Пересчёт суммы заказа без возвращённых позиций
+                total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
+                            for it in items if it.get("item_status") != "returned")
+                cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), total, order_id))
+
+            elif action == "restore_item":
+                # Вернуть товар в заказ из статуса returned: повторно резервируем
+                # (через ядро: POSITIVE из наличия + NEGATIVE при дефиците) и
+                # возвращаем позицию в сумму заказа.
+                import warehouse_core as wc
+                pid = items[item_idx].get("id")
+                qty = int(items[item_idx].get("quantity", 1))
+                if pid:
+                    res = wc.reserve_line(cur, order_id, int(pid), qty, slot="product")
+                    items[item_idx]["item_status"] = (
+                        "need_order" if res.get("negative", 0) > 0 and res.get("positive", 0) == 0
+                        else "reserved"
+                    )
+                else:
+                    items[item_idx]["item_status"] = "reserved"
+                total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
+                            for it in items if it.get("item_status") != "returned")
+                cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(items), total, order_id))
 
             elif action == "replace_item":
                 # Заменить товар в позиции на другой из склада
