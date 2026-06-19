@@ -26,7 +26,7 @@ interface Article {
 
 const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
 const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/369e76c4-c4a6-46da-ab1d-843219204c9a.jpg"
-const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/fcbd0058-ce21-4b8e-a20f-9005af71a0c7.jpg"
+const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/2ab89d43-00e0-49c0-a50e-ad0edc08beac.jpg"
 
 const fmtPrice = (n?: number) => (n ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
