@@ -22,9 +22,9 @@ interface Article {
   category?: string
 }
 
-const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/75277750-81a9-4f82-b445-716b62761bdc.jpg"
+const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/db29c71c-3ce5-4f5e-9362-220636dadddb.jpg"
 const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/19cce97b-1292-48ca-8691-778f0decabc4.jpg"
-const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/ea6ff91c-e9c2-4cc8-9cb1-00918fff1b5d.jpg"
+const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/7e911ff2-c21c-4966-84a2-69252aa07bda.jpg"
 
 const fmtPrice = (n?: number) => (n ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
@@ -150,7 +150,7 @@ export default function HomeStonks() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* Три баннера */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Banner img={BANNER_PODBOR} title="Подбор комплектующих" to="/configurator" />
+          <Banner img={BANNER_PODBOR} title="Покупка комплектующих" to="/shop" />
           <Banner img={BANNER_SBORKA} title="Заказать сборку ПК" to="/builds" />
           <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/articles" />
         </div>
