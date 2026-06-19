@@ -236,6 +236,19 @@ export function AdminWipTab({
     setWipFormOpen(false)
   }
 
+  // Скопировать сборку: открываем форму новой сборки с теми же комплектующими
+  const copyWip = (w: WipBuild) => {
+    setWipForm({
+      ...EMPTY_WIP,
+      cpu: w.cpu, motherboard: w.motherboard, ram: w.ram, gpu: w.gpu,
+      storage: w.storage, psu: w.psu, case_name: w.case_name, cooling: w.cooling, extra: w.extra,
+      delivery_type: w.delivery_type, comment: w.comment,
+      customer_name: w.customer_name, customer_phone: w.customer_phone, contact: w.contact,
+      total: w.total,
+    })
+    setWipFormOpen(true)
+  }
+
   const deleteWip = async (w: WipBuild) => {
     if (!confirm(`Удалить сборку #${w.order_number}?\nВсе резервы по заказу будут сняты.`)) return
     await api.warehouse.deleteWip(w.id!)
@@ -280,66 +293,10 @@ export function AdminWipTab({
     document.addEventListener("mouseup", onUp)
   }
 
-  if (isArchive) {
-    const archived = wipBuilds.filter(w => ["Архив", "Отменён", "Забрали"].includes(w.stage))
-    return (
-      <div>
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-light text-foreground">
-            Архив сборок <span className="ml-1 text-sm text-foreground/40">({archived.length})</span>
-          </h2>
-          <button onClick={() => setViewArchive(false)}
-            className="flex items-center gap-1.5 rounded-lg bg-amber-400/15 text-amber-400 border border-amber-400/40 px-3 py-2 text-sm font-medium transition-colors"
-            style={{ cursor: "pointer" }}>
-            <Icon name="Archive" size={15} />
-            Скрыть архив
-          </button>
-        </div>
-        {loading ? (
-          <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-lg bg-card animate-pulse" />)}</div>
-        ) : archived.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border py-16 text-center">
-            <Icon name="ArchiveRestore" size={36} className="mx-auto mb-3 text-foreground/20" />
-            <p className="text-sm text-foreground/40">Архив пуст</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {archived.map(w => (
-              <div key={w.id} className="flex items-center gap-4 rounded-xl border border-border/50 bg-card px-5 py-4 opacity-70">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="font-mono font-bold text-foreground text-sm">Заказ {w.order_number}</span>
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}>{w.stage}</span>
-                    {w.issued_at && <span className="text-xs text-foreground/40">выдан: {new Date(w.issued_at).toLocaleDateString("ru-RU")}</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-3 text-xs text-foreground/50">
-                    {w.customer_name && <span className="font-medium text-foreground/70">{w.customer_name}</span>}
-                    {(w.customer_phone || w.contact) && <span className="font-mono text-primary/60">{w.customer_phone || w.contact}</span>}
-                    {w.total && <span className="font-semibold text-foreground/60">{w.total.toLocaleString("ru-RU")} ₽</span>}
-                    {w.delivery_type && <span>{w.delivery_type}</span>}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {WIP_COMPONENTS.filter(c => (w as Record<string, string>)[c.key]).map(c => {
-                      const val = (w as Record<string, string>)[c.key]
-                      const statusKey = c.key === "case_name" ? "case_status" : c.key + "_status"
-                      const status = (w as Record<string, string>)[statusKey] || "pending"
-                      const { cls } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
-                      return (
-                        <span key={c.key} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${cls}`}>{val}</span>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // wip_builds (active)
-  const activeBuilds = wipBuilds.filter(w => !["Архив", "Отменён"].includes(w.stage))
+  // Список сборок для отображения: активные или архивные (тем же табличным видом)
+  const activeBuilds = isArchive
+    ? wipBuilds.filter(w => ["Архив", "Отменён", "Забрали"].includes(w.stage))
+    : wipBuilds.filter(w => !["Архив", "Отменён"].includes(w.stage))
   const usedComps = WIP_COMPONENTS.filter(c => activeBuilds.some(w => !!(w as Record<string, string>)[c.key]))
   const rows: { key: string; label: string }[] = [
     { key: "_order", label: "Заказ" },
@@ -358,40 +315,51 @@ export function AdminWipTab({
       {/* Шапка */}
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-xl font-light text-foreground">
-          Сборки в процессе <span className="ml-1 text-sm text-foreground/40">({activeBuilds.length})</span>
+          {isArchive ? "Архив сборок" : "Сборки в процессе"} <span className="ml-1 text-sm text-foreground/40">({activeBuilds.length})</span>
         </h2>
         <div className="flex items-center gap-2">
-          <button onClick={() => setViewArchive(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}>
-            <Icon name="Archive" size={15} />
-            Архив
-          </button>
-          <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
-            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-              totalNewCount > 0
-                ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
-                : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
-            }`}
-            style={{ cursor: "pointer" }}>
-            <Icon name="ShoppingCart" size={15} />
-            Корзина закупки
-            {totalNewCount > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-400 text-[10px] font-bold text-white">{totalNewCount}</span>
-            )}
-          </button>
+          {isArchive ? (
+            <button onClick={() => setViewArchive(false)}
+              className="flex items-center gap-1.5 rounded-lg bg-amber-400/15 text-amber-400 border border-amber-400/40 px-3 py-2 text-sm font-medium transition-colors"
+              style={{ cursor: "pointer" }}>
+              <Icon name="ArrowLeft" size={15} />
+              К активным
+            </button>
+          ) : (
+            <>
+              <button onClick={() => setViewArchive(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Archive" size={15} />
+                Архив
+              </button>
+              <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                  totalNewCount > 0
+                    ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
+                    : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
+                }`}
+                style={{ cursor: "pointer" }}>
+                <Icon name="ShoppingCart" size={15} />
+                Корзина закупки
+                {totalNewCount > 0 && (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-400 text-[10px] font-bold text-white">{totalNewCount}</span>
+                )}
+              </button>
 
-          <button onClick={() => setWipEditMode(v => !v)}
-            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}>
-            <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
-            {wipEditMode ? "Просмотр" : "Ред. железо"}
-          </button>
-          <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            style={{ cursor: "pointer" }}>
-            <Icon name="Plus" size={15} />Новая сборка
-          </button>
+              <button onClick={() => setWipEditMode(v => !v)}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}>
+                <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
+                {wipEditMode ? "Просмотр" : "Ред. железо"}
+              </button>
+              <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={15} />Новая сборка
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -717,8 +685,8 @@ export function AdminWipTab({
         <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-card animate-pulse" />)}</div>
       ) : activeBuilds.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-16 text-center">
-          <Icon name="Hammer" size={36} className="mx-auto mb-3 text-foreground/20" />
-          <p className="text-sm text-foreground/40">Сборок в процессе нет</p>
+          <Icon name={isArchive ? "ArchiveRestore" : "Hammer"} size={36} className="mx-auto mb-3 text-foreground/20" />
+          <p className="text-sm text-foreground/40">{isArchive ? "Архив пуст" : "Сборок в процессе нет"}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
@@ -764,6 +732,12 @@ export function AdminWipTab({
                               className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                               style={{ cursor: "pointer" }}>
                               <Icon name="Copy" size={10} />Паста
+                            </button>
+                            <button onClick={() => copyWip(w)}
+                              title="Скопировать сборку в новую"
+                              className="flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1 text-[10px] text-primary hover:bg-primary/10 transition-colors"
+                              style={{ cursor: "pointer" }}>
+                              <Icon name="CopyPlus" size={10} />Копир.
                             </button>
                             {w.id && (
                               <button onClick={() => setMarginWip(w)}
