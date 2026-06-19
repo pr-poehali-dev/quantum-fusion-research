@@ -813,6 +813,9 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
           </p>
           <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.6rem, 4vw, 3.2rem)" }}>
             {comp.name}
+            {comp.qty && comp.qty > 1 ? (
+              <span className="ml-3 inline-block rounded-lg bg-primary/15 px-2.5 py-1 text-base sm:text-xl font-bold text-primary align-middle">×{comp.qty}</span>
+            ) : null}
           </h2>
           <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
           {comp.description && (
