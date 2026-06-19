@@ -20,6 +20,8 @@ interface Article {
   title: string
   created_at: string
   category?: string
+  slug?: string
+  image_url?: string | null
 }
 
 const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
@@ -202,25 +204,36 @@ export default function HomeStonks() {
 
             {/* Последние статьи */}
             <div className="rounded-2xl border border-border bg-card p-4">
-              <h3 className="mb-3 text-base font-bold">Последние статьи</h3>
-              <div className="space-y-3">
-                {articles.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-foreground/40">Пока нет статей</p>
-                ) : articles.map(a => (
-                  <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
-                    className="block w-full text-left">
-                    <p className="text-xs text-foreground/40">{fmtDate(a.created_at)}</p>
-                    <p className="flex items-start gap-1.5 text-sm font-medium text-primary hover:underline">
-                      <Icon name="ChevronRight" size={14} className="mt-0.5 shrink-0" />
-                      <span className="line-clamp-2">{a.title}</span>
-                    </p>
-                  </button>
-                ))}
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-bold">Последние статьи</h3>
+                <button onClick={() => navigate("/articles")} style={{ cursor: "pointer" }}
+                  className="text-sm font-medium text-foreground/60 hover:text-primary transition-colors">
+                  Все статьи
+                </button>
               </div>
-              <button onClick={() => navigate("/articles")} style={{ cursor: "pointer" }}
-                className="mt-3 w-full rounded-lg border border-border py-2 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground transition-colors">
-                Все статьи
-              </button>
+              {articles.length === 0 ? (
+                <p className="py-4 text-center text-sm text-foreground/40">Пока нет статей</p>
+              ) : (
+                <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
+                  {articles.map(a => (
+                    <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
+                      className="group block w-44 shrink-0 snap-start text-left">
+                      <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border bg-muted">
+                        {a.image_url ? (
+                          <img src={a.image_url} alt={a.title}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center">
+                            <Icon name="FileText" size={32} className="text-foreground/15" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-foreground/40">{fmtDate(a.created_at)}</p>
+                      <p className="line-clamp-2 text-sm font-medium group-hover:text-primary transition-colors">{a.title}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
