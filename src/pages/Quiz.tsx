@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
@@ -22,52 +22,6 @@ const CONTACT_METHODS = [
 ]
 
 const fmtRub = (n: number) => n.toLocaleString("ru-RU") + " ₽"
-
-function MultiDropdown({ options, value, onChange, single }: {
-  options: string[]; value: string[]; onChange: (v: string[]) => void; single?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
-  }, [])
-
-  const toggle = (opt: string) => {
-    if (single) { onChange([opt]); setOpen(false); return }
-    onChange(value.includes(opt) ? value.filter(v => v !== opt) : [...value, opt])
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen(o => !o)} style={{ cursor: "pointer" }}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-background px-4 py-3 text-left text-sm transition-colors hover:border-primary">
-        <span className={value.length ? "text-foreground" : "text-foreground/40"}>
-          {value.length ? value.join(", ") : "Выберите вариант"}
-        </span>
-        <Icon name="ChevronDown" size={18} className={`shrink-0 text-foreground/50 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="absolute z-20 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-xl">
-          {options.map(opt => {
-            const active = value.includes(opt)
-            return (
-              <button key={opt} type="button" onClick={() => toggle(opt)} style={{ cursor: "pointer" }}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${active ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded ${single ? "rounded-full" : ""} border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
-                  {active && <Icon name="Check" size={12} />}
-                </span>
-                {opt}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function BudgetSlider({ min, max, onChange }: { min: number; max: number; onChange: (mn: number, mx: number) => void }) {
   const pct = (v: number) => ((v - BUDGET_MIN) / (BUDGET_MAX - BUDGET_MIN)) * 100
@@ -104,12 +58,32 @@ export default function Quiz() {
   const [extra, setExtra] = useState("")
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
+  const [step, setStep] = useState(0)
 
   useEffect(() => {
     api.quiz.getQuestions().then(d => setQuestions(d.questions || [])).catch(() => {})
   }, [])
 
   const setAns = (qid: number, v: string[]) => setAnswers(a => ({ ...a, [qid]: v }))
+
+  // шаги: каждый вопрос + финальный шаг «доп. пожелания»
+  const totalSteps = questions.length + 1
+  const isExtraStep = step === questions.length
+  const current = questions[step]
+  const progress = totalSteps > 0 ? Math.round(((step + 1) / totalSteps) * 100) : 0
+
+  const canNext = () => {
+    if (isExtraStep || !current) return true
+    if (current.field_type === "contacts") return phone.trim().length > 0
+    if (current.field_type === "budget" || current.field_type === "text") return true
+    return (answers[current.id] || []).length > 0
+  }
+
+  const goNext = () => {
+    if (isExtraStep) { submit(); return }
+    setStep(s => Math.min(s + 1, totalSteps - 1))
+  }
+  const goBack = () => setStep(s => Math.max(s - 1, 0))
 
   const submit = async () => {
     if (!phone.trim()) { alert("Укажите телефон для связи"); return }
@@ -148,37 +122,47 @@ export default function Quiz() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-4">
           <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
             <Icon name="ArrowLeft" size={18} />
             <span className="text-sm font-medium">На главную</span>
           </button>
           <span className="text-sm text-foreground/50">Анкета подбора ПК</span>
         </div>
+        {/* Прогресс-бар */}
+        <div className="h-1 w-full bg-muted">
+          <div className="h-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-6 py-8">
-        <h1 className="text-3xl font-extrabold">Подберём идеальный компьютер</h1>
-        <p className="mt-2 text-foreground/60">Ответьте на пару вопросов — менеджер соберёт конфигурацию под ваши задачи и бюджет.</p>
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-10">
+        {questions.length === 0 ? (
+          <p className="py-20 text-center text-sm text-foreground/40">Загрузка...</p>
+        ) : (
+          <>
+            <p className="mb-2 text-sm font-medium text-primary">Шаг {step + 1} из {totalSteps}</p>
 
-        <div className="mt-8 space-y-5">
-          {questions.map((q, i) => (
-            <div key={q.id} className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-3 flex items-start gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">{i + 1}</span>
-                <h3 className="pt-0.5 text-base font-semibold">{q.title}</h3>
-              </div>
-              <div className="pl-10">
-                {q.field_type === "budget" ? (
+            <div key={step} className="flex-1 animate-fade-in">
+              <h2 className="text-2xl font-extrabold sm:text-3xl">
+                {isExtraStep ? "Дополнительные пожелания" : current.title}
+              </h2>
+
+              <div className="mt-7">
+                {isExtraStep ? (
+                  <textarea value={extra} onChange={e => setExtra(e.target.value)} rows={5} autoFocus
+                    placeholder="Что ещё важно учесть? (необязательно)"
+                    className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:border-primary" />
+                ) : current.field_type === "budget" ? (
                   <BudgetSlider min={budget.min} max={budget.max} onChange={(mn, mx) => setBudget({ min: mn, max: mx })} />
-                ) : q.field_type === "contacts" ? (
+                ) : current.field_type === "contacts" ? (
                   <div className="space-y-3">
                     <input value={name} onChange={e => setName(e.target.value)} placeholder="Ваше имя"
-                      className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
+                      className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:border-primary" />
                     <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Телефон *" inputMode="tel"
-                      className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
+                      className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:border-primary" />
+                    <p className="pt-1 text-xs font-medium text-foreground/50">Как удобнее связаться?</p>
                     <div className="flex flex-wrap gap-2">
                       {CONTACT_METHODS.map(m => (
                         <button key={m.value} type="button" onClick={() => setContact(m.value)} style={{ cursor: "pointer" }}
@@ -188,37 +172,58 @@ export default function Quiz() {
                       ))}
                     </div>
                   </div>
-                ) : q.field_type === "text" ? (
-                  <textarea value={answers[q.id]?.[0] || ""} onChange={e => setAns(q.id, [e.target.value])} rows={3}
+                ) : current.field_type === "text" ? (
+                  <textarea value={answers[current.id]?.[0] || ""} onChange={e => setAns(current.id, [e.target.value])} rows={4}
                     placeholder="Опишите пожелания"
-                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
+                    className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:border-primary" />
                 ) : (
-                  <MultiDropdown options={q.options} value={answers[q.id] || []}
-                    onChange={v => setAns(q.id, v)} single={q.field_type === "single"} />
+                  <div className="flex flex-col gap-2.5">
+                    {current.options.map(opt => {
+                      const vals = answers[current.id] || []
+                      const active = vals.includes(opt)
+                      const single = current.field_type === "single"
+                      const toggle = () => {
+                        if (single) setAns(current.id, [opt])
+                        else setAns(current.id, active ? vals.filter(v => v !== opt) : [...vals, opt])
+                      }
+                      return (
+                        <button key={opt} type="button" onClick={toggle} style={{ cursor: "pointer" }}
+                          className={`flex items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm font-medium transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary"}`}>
+                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center border ${single ? "rounded-full" : "rounded-md"} ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                            {active && <Icon name="Check" size={13} />}
+                          </span>
+                          {opt}
+                        </button>
+                      )
+                    })}
+                    {current.field_type !== "single" && (
+                      <p className="pt-1 text-xs text-foreground/40">Можно выбрать несколько вариантов</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
-          ))}
 
-          {/* Дополнительные пожелания */}
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <div className="mb-3 flex items-start gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Icon name="MessageSquarePlus" size={15} /></span>
-              <h3 className="pt-0.5 text-base font-semibold">Дополнительные пожелания</h3>
+            {/* Навигация */}
+            <div className="mt-10 flex items-center gap-3">
+              {step > 0 && (
+                <button onClick={goBack} style={{ cursor: "pointer" }}
+                  className="flex items-center gap-2 rounded-xl border border-border px-5 py-3.5 text-sm font-medium transition-colors hover:bg-muted">
+                  <Icon name="ArrowLeft" size={16} />Назад
+                </button>
+              )}
+              <button onClick={goNext} disabled={!canNext() || sending} style={{ cursor: canNext() && !sending ? "pointer" : "default" }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
+                {isExtraStep ? (
+                  sending ? <><Icon name="Loader2" size={18} className="animate-spin" />Отправляем...</>
+                          : <><Icon name="Send" size={18} />Отправить заявку</>
+                ) : (
+                  <>Далее <Icon name="ArrowRight" size={18} /></>
+                )}
+              </button>
             </div>
-            <div className="pl-10">
-              <textarea value={extra} onChange={e => setExtra(e.target.value)} rows={3}
-                placeholder="Что ещё важно учесть? (необязательно)"
-                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
-            </div>
-          </div>
-        </div>
-
-        <button onClick={submit} disabled={sending} style={{ cursor: sending ? "default" : "pointer" }}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60">
-          {sending ? <Icon name="Loader2" size={18} className="animate-spin" /> : <Icon name="Send" size={18} />}
-          {sending ? "Отправляем..." : "Отправить заявку"}
-        </button>
+          </>
+        )}
       </div>
     </div>
   )
