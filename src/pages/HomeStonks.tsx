@@ -67,7 +67,11 @@ export default function HomeStonks() {
   }
 
   useEffect(() => {
-    if (!artAnim) { const t = requestAnimationFrame(() => setArtAnim(true)); return () => cancelAnimationFrame(t) }
+    if (!artAnim) {
+      let raf2 = 0
+      const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setArtAnim(true)) })
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2) }
+    }
   }, [artAnim])
 
   const activeDot = ((artIdx % articles.length) + articles.length) % articles.length
@@ -248,8 +252,11 @@ export default function HomeStonks() {
                   onMouseLeave={() => { artPaused.current = false }}>
                   <div className="overflow-hidden">
                     <div onTransitionEnd={onArtTransitionEnd}
-                      className={`flex ease-[cubic-bezier(0.22,1,0.36,1)] ${artAnim ? "transition-transform duration-[800ms]" : ""}`}
-                      style={{ transform: `translateX(-${artIdx * 100}%)` }}>
+                      className="flex"
+                      style={{
+                        transform: `translateX(-${artIdx * 100}%)`,
+                        transition: artAnim ? "transform 700ms cubic-bezier(0.22,1,0.36,1)" : "none",
+                      }}>
                       {[...articles, articles[0]].map((a, i) => (
                         <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
                           className="group block w-full shrink-0 text-left">
