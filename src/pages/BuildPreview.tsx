@@ -508,7 +508,7 @@ export default function BuildPreview() {
                             <p className="text-xs text-muted-foreground leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
                             <p className="text-sm text-foreground leading-snug break-words">
                               {c.name}
-                              {qty ? <span className="text-muted-foreground font-semibold"> ×{qty}</span> : null}
+                              {qty ? <span className="ml-1.5 inline-block rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-bold text-primary align-middle">×{qty}</span> : null}
                             </p>
                             {statusInfo && (
                               <span className={`inline-block mt-0.5 rounded-full px-2 py-px text-[10px] font-medium ${statusInfo.cls}`}>
