@@ -27,6 +27,8 @@ const UserProfile = lazy(() => import("./pages/UserProfile"));
 const UserBuild = lazy(() => import("./pages/UserBuild"));
 const B2B = lazy(() => import("./pages/B2B"));
 const Articles = lazy(() => import("./pages/Articles"));
+const QuickAccess1 = lazy(() => import("./pages/QuickAccess1"));
+const QuickAccess2 = lazy(() => import("./pages/QuickAccess2"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,7 +54,10 @@ const App = () => (
             </div>
           }>
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={<QuickAccess1 />} />
+              <Route path="/welcome" element={<Index />} />
+              <Route path="/1" element={<QuickAccess1 />} />
+              <Route path="/2" element={<QuickAccess2 />} />
               <Route path="/shop" element={<Shop />} />
               <Route path="/configurator" element={<Configurator />} />
               <Route path="/cart" element={<Cart />} />
