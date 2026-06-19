@@ -249,30 +249,14 @@ export function AdminWipTab({
     setWipFormOpen(true)
   }
 
-  // Создать карточку сборки в каталоге «Наши ПК» из WIP и открыть её на редактирование
+  // Создать карточку сборки в каталоге «Наши ПК» из WIP и открыть её на редактирование.
+  // Бэкенд (action=from_wip) сам ищет товары по названию и привязывает source_id,
+  // чтобы работали склад/резервы. Ненайденные остаются custom для ручного выбора.
   const createCatalogBuild = async () => {
-    if (!wipForm) return
-    const slotMap: { key: keyof WipBuild; slot: string }[] = [
-      { key: "cpu", slot: "cpu" }, { key: "motherboard", slot: "motherboard" },
-      { key: "ram", slot: "ram" }, { key: "gpu", slot: "gpu" },
-      { key: "storage", slot: "storage" }, { key: "psu", slot: "psu" },
-      { key: "case_name", slot: "case" }, { key: "cooling", slot: "cooling" },
-      { key: "extra", slot: "extra" },
-    ]
-    const components = slotMap
-      .filter(m => (wipForm[m.key] as string)?.trim())
-      .map(m => ({ slot: m.slot, source: "custom", name: String(wipForm[m.key]), price: 0, qty: 1 }))
+    if (!wipForm?.id) return
+    const res = await api.builds.fromWip(wipForm.id)
+    if (!res?.id) { alert(res?.error || "Не удалось создать сборку"); return }
 
-    const res = await api.builds.create({
-      name: `Сборка ${wipForm.order_number || ""}`.trim(),
-      components,
-      status: "draft",
-      total_price: wipForm.total || 0,
-    })
-    if (!res?.id) { alert("Не удалось создать сборку"); return }
-
-    // привязываем созданную сборку к WIP
-    await api.wipBuilds.update({ ...wipForm, build_id: res.id })
     setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, build_id: res.id } : b))
 
     // подгружаем данные сборки и товары, открываем редактор каталога
@@ -294,6 +278,9 @@ export function AdminWipTab({
     }
     if (buildData?.id) setBuilds(bs => bs.some(x => x.id === buildData.id) ? bs : [...bs, buildData])
     setWipFormOpen(false)
+    if (res.unmatched > 0) {
+      alert(`Сборка создана. Найдено на складе: ${res.matched}, не найдено: ${res.unmatched}. Подберите недостающие комплектующие вручную.`)
+    }
     editBuild(res.id)
   }
 

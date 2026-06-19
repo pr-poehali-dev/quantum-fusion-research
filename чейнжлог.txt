@@ -3,6 +3,21 @@
 
 ---
 
+## v3.39 | 2026-06-20 | «Создать сборку в каталоге»: привязка железа к складу по id
+
+### builds (backend)
+- POST action=from_wip: создаёт pc_build из WIP с АВТОПОИСКОМ товаров по
+  названию (точное совпадение, иначе по вхождению). Найденные компоненты
+  получают source=catalog + source_id (product_id) + цену — работает склад/
+  резервы. Ненайденные остаются source=custom для ручного выбора.
+  Привязывает wip_builds.build_id. Возвращает matched/unmatched.
+
+### Frontend
+- api.builds.fromWip. AdminWipTab.createCatalogBuild теперь вызывает from_wip
+  (вместо ручного custom-списка) и сообщает сколько найдено/не найдено.
+
+---
+
 ## v3.38 | 2026-06-20 | Фикс: автозаполнение формы каталога при открытии из WIP
 
 ### Admin / AdminCatalogTab / AdminWipTab

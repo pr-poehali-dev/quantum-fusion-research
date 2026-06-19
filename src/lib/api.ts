@@ -72,6 +72,7 @@ export const api = {
     update: (data: unknown) => fetch(URLS.builds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     generateClientLink: (id: number) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate_client_link", id }) }).then(r => r.json()),
+    fromWip: (wipId: number) => fetch(URLS.builds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "from_wip", wip_id: wipId }) }).then(r => r.json()),
     claimBuild: (clientToken: string, session: string) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json", "X-Session-Id": session }, body: JSON.stringify({ action: "claim", client_token: clientToken }) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.builds}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
   },

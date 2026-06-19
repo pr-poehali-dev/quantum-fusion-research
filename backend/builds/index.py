@@ -150,6 +150,80 @@ def handler(event: dict, context) -> dict:
             body = json.loads(event.get("body") or "{}")
             action = body.get("action")
 
+            if action == "from_wip":
+                # Создать pc_build из WIP-сборки: автопоиск товаров по названию,
+                # привязка через source_id (для работы склада/резервов).
+                SCHEMA = "t_p72635010_quantum_fusion_resea"
+                wip_id = body.get("wip_id")
+                if not wip_id:
+                    return resp(400, {"error": "Нет wip_id"})
+                cur.execute(
+                    f"SELECT order_number, cpu, motherboard, ram, gpu, storage, psu, "
+                    f"case_name, cooling, extra, build_id FROM {SCHEMA}.wip_builds WHERE id = %s",
+                    (wip_id,)
+                )
+                w = cur.fetchone()
+                if not w:
+                    return resp(404, {"error": "Сборка не найдена"})
+                if w[10]:
+                    return resp(400, {"error": "У сборки уже есть карточка в каталоге", "build_id": w[10]})
+
+                # слот -> (значение, категория slug для уточнения поиска)
+                slot_fields = [
+                    ("cpu", w[1], "cpu"), ("motherboard", w[2], "motherboard"),
+                    ("ram", w[3], "ram"), ("gpu", w[4], "gpu"),
+                    ("storage", w[5], "storage"), ("psu", w[6], "psu"),
+                    ("case", w[7], "case"), ("cooling", w[8], "cooling"),
+                    ("extra", w[9], None),
+                ]
+                components = []
+                matched, unmatched = 0, 0
+                for slot, name, cat_slug in slot_fields:
+                    if not name or not str(name).strip():
+                        continue
+                    name = str(name).strip()
+                    # автопоиск товара по имени (точное совпадение без учёта регистра, иначе по вхождению)
+                    cur.execute(
+                        f"SELECT id, price FROM {SCHEMA}.products "
+                        f"WHERE is_archived = FALSE AND LOWER(name) = LOWER(%s) LIMIT 1",
+                        (name,)
+                    )
+                    pr = cur.fetchone()
+                    if not pr:
+                        cur.execute(
+                            f"SELECT id, price FROM {SCHEMA}.products "
+                            f"WHERE is_archived = FALSE AND LOWER(name) LIKE LOWER(%s) ORDER BY length(name) LIMIT 1",
+                            ("%" + name + "%",)
+                        )
+                        pr = cur.fetchone()
+                    if pr:
+                        components.append({
+                            "slot": slot, "name": name, "price": float(pr[1] or 0),
+                            "source": "catalog", "source_id": pr[0], "qty": 1,
+                        })
+                        matched += 1
+                    else:
+                        components.append({
+                            "slot": slot, "name": name, "price": 0,
+                            "source": "custom", "qty": 1,
+                        })
+                        unmatched += 1
+
+                parts_total = sum(c["price"] for c in components)
+                cur.execute(
+                    """INSERT INTO pc_builds (name, description, image_urls, components, parts_total,
+                       assembly_type, assembly_fee, total_price, status, is_featured, in_stock,
+                       created_at, sell_with_vat)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s) RETURNING id""",
+                    (f"Сборка {w[0] or ''}".strip(), None, json.dumps([]),
+                     json.dumps(components), parts_total, "percent", 0, parts_total,
+                     "draft", False, False, False)
+                )
+                build_id = cur.fetchone()[0]
+                cur.execute(f"UPDATE {SCHEMA}.wip_builds SET build_id = %s WHERE id = %s", (build_id, wip_id))
+                conn.commit()
+                return resp(201, {"id": build_id, "ok": True, "matched": matched, "unmatched": unmatched})
+
             if action == "cancel_order":
                 import warehouse_core as wc
                 SCHEMA = "t_p72635010_quantum_fusion_resea"
