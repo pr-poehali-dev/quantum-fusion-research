@@ -43,38 +43,29 @@ export default function HomeStonks() {
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [artIdx, setArtIdx] = useState(0)
-  const [artAnim, setArtAnim] = useState(true)
   const artPaused = useRef(false)
+  const artTrackRef = useRef<HTMLDivElement>(null)
 
-  const goArticle = (dir: 1 | -1) => {
-    setArtAnim(true)
-    setArtIdx(i => i + dir)
-  }
+  const goArticle = (dir: 1 | -1) => setArtIdx(i => (i + dir + articles.length) % articles.length)
 
-  useEffect(() => { setArtIdx(0); setArtAnim(true) }, [articles.length])
+  useEffect(() => { setArtIdx(0) }, [articles.length])
 
   useEffect(() => {
     if (articles.length < 2) return
     const id = setInterval(() => {
-      if (!artPaused.current) { setArtAnim(true); setArtIdx(i => i + 1) }
+      if (!artPaused.current) setArtIdx(i => (i + 1) % articles.length)
     }, 4000)
     return () => clearInterval(id)
   }, [articles.length])
 
-  const onArtTransitionEnd = () => {
-    if (artIdx >= articles.length) { setArtAnim(false); setArtIdx(0) }
-    else if (artIdx < 0) { setArtAnim(false); setArtIdx(articles.length - 1) }
-  }
-
   useEffect(() => {
-    if (!artAnim) {
-      let raf2 = 0
-      const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setArtAnim(true)) })
-      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2) }
-    }
-  }, [artAnim])
+    const el = artTrackRef.current
+    if (!el) return
+    el.style.transition = "transform 700ms cubic-bezier(0.22,1,0.36,1)"
+    el.style.transform = `translateX(-${artIdx * 100}%)`
+  }, [artIdx])
 
-  const activeDot = ((artIdx % articles.length) + articles.length) % articles.length
+  const activeDot = artIdx
 
   useEffect(() => {
     api.auth.getCommunityBuilds()
@@ -251,13 +242,8 @@ export default function HomeStonks() {
                   onMouseEnter={() => { artPaused.current = true }}
                   onMouseLeave={() => { artPaused.current = false }}>
                   <div className="overflow-hidden">
-                    <div onTransitionEnd={onArtTransitionEnd}
-                      className="flex"
-                      style={{
-                        transform: `translateX(-${artIdx * 100}%)`,
-                        transition: artAnim ? "transform 700ms cubic-bezier(0.22,1,0.36,1)" : "none",
-                      }}>
-                      {[...articles, articles[0]].map((a, i) => (
+                    <div ref={artTrackRef} className="flex">
+                      {articles.map((a, i) => (
                         <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
                           className="group block w-full shrink-0 text-left">
                           <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
