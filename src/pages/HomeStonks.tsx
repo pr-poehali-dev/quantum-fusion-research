@@ -110,7 +110,7 @@ export default function HomeStonks() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Banner img={BANNER_PODBOR} title="Подбор комплектующих" to="/configurator" />
           <Banner img={BANNER_SBORKA} title="Заказать сборку ПК" to="/builds" />
-          <Banner img={BANNER_RAZGON} title="Разгон и настройка" to="/articles" />
+          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/articles" />
         </div>
 
         {/* CTA-полоса */}
