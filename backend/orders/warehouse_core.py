@@ -221,3 +221,65 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
 
     log(cur, "release_order", order_id=order_id, payload=released)
     return released
+
+
+def release_line(cur, order_id, product_id, only_new_negative=True):
+    """Снять ВСЕ активные резервы по одной позиции (товару) заказа.
+
+    Используется при возврате товара на склад из заказа. Закрывает записи
+    warehouse_reserves (status=RELEASED), возвращает POSITIVE в наличие,
+    снимает NEGATIVE (если корзина ещё NEW) и уменьшает корзину закупки.
+    Идемпотентна: повторный вызов ничего не снимет (активных резервов уже нет).
+    """
+    group_id = resolve_group_id(cur, product_id)
+    if group_id is None:
+        return {"positive": 0, "negative": 0, "kept_ordered": 0}
+
+    cur.execute(
+        f"SELECT id, supply_id, qty, type FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND group_id = %s AND status = 'ACTIVE' FOR UPDATE",
+        (order_id, group_id),
+    )
+    rows = cur.fetchall()
+    released = {"positive": 0, "negative": 0, "kept_ordered": 0}
+
+    for rid, supply_id, r_qty, r_type in rows:
+        if r_type == POSITIVE:
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, r_qty, supply_id),
+            )
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() WHERE id = %s",
+                (rid,),
+            )
+            _movement(cur, group_id, supply_id, order_id, "unreserved", -r_qty,
+                      note=f"Возврат на склад по заказу #{order_id}")
+            released["positive"] += r_qty
+        else:
+            cur.execute(
+                f"SELECT status FROM {SCHEMA}.warehouse_purchase_basket WHERE group_id = %s",
+                (group_id,),
+            )
+            brow = cur.fetchone()
+            basket_status = brow[0] if brow else "NEW"
+            if only_new_negative and basket_status != "NEW":
+                released["kept_ordered"] += r_qty
+                continue
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, supply_id),
+            )
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() WHERE id = %s",
+                (rid,),
+            )
+            basket_reduce(cur, group_id, r_qty)
+            released["negative"] += r_qty
+
+    log(cur, "release_line", group_id=group_id, order_id=order_id, payload=released)
+    return released

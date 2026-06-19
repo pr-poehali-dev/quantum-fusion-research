@@ -586,46 +586,17 @@ def handler(event: dict, context) -> dict:
                             (json.dumps(items), order_id))
 
             elif action == "unreserve":
-                # Возврат товара на склад: снимаем резерв, возвращаем в наличие,
-                # помечаем позицию как returned (товар как бы вычеркнут из заказа)
-                # и ВЫЧИТАЕМ его из суммы заказа.
+                # Возврат товара на склад: снимаем ВСЕ резервы позиции через ядро
+                # (закрываем warehouse_reserves → status RELEASED, возвращаем qty),
+                # помечаем позицию returned и вычитаем из суммы заказа.
+                # Идемпотентно: если позиция уже returned — не делаем ничего.
+                import warehouse_core as wc
+                if items[item_idx].get("item_status") == "returned":
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, "items": items})}
                 pid = items[item_idx].get("id")
-                qty = int(items[item_idx].get("quantity", 1))
                 if pid:
-                    cur.execute(
-                        f"SELECT s.id FROM {schema}.warehouse_supplies s "
-                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
-                        (int(pid),)
-                    )
-                    supplies = cur.fetchall()
-                    left = qty
-                    for (sid,) in supplies:
-                        if left <= 0: break
-                        # сколько можем снять с этой поставки
-                        cur.execute(
-                            f"SELECT qty_reserved FROM {schema}.warehouse_supplies WHERE id = %s",
-                            (sid,)
-                        )
-                        sr = cur.fetchone()
-                        take = min(left, int(sr[0])) if sr else 0
-                        if take <= 0:
-                            continue
-                        cur.execute(
-                            f"UPDATE {schema}.warehouse_supplies "
-                            f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s "
-                            f"RETURNING group_id",
-                            (take, take, sid)
-                        )
-                        r = cur.fetchone()
-                        if r:
-                            cur.execute(
-                                f"INSERT INTO {schema}.warehouse_movements "
-                                f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                                f"VALUES (%s, %s, %s, 'unreserved', %s, %s, NOW())",
-                                (r[0], sid, order_id, -take, f"Возврат на склад по заказу #{order_id}")
-                            )
-                        left -= take
+                    wc.release_line(cur, order_id, int(pid))
                 items[item_idx]["item_status"] = "returned"
                 # Пересчёт суммы заказа без возвращённых позиций
                 total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
@@ -637,7 +608,12 @@ def handler(event: dict, context) -> dict:
                 # Вернуть товар в заказ из статуса returned: повторно резервируем
                 # (через ядро: POSITIVE из наличия + NEGATIVE при дефиците) и
                 # возвращаем позицию в сумму заказа.
+                # Идемпотентно: восстанавливаем ТОЛЬКО позиции в статусе returned,
+                # чтобы повторные клики не плодили дублирующие резервы.
                 import warehouse_core as wc
+                if items[item_idx].get("item_status") != "returned":
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, "items": items})}
                 pid = items[item_idx].get("id")
                 qty = int(items[item_idx].get("quantity", 1))
                 if pid:
