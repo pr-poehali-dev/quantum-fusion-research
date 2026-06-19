@@ -43,21 +43,34 @@ export default function HomeStonks() {
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [artIdx, setArtIdx] = useState(0)
+  const [artAnim, setArtAnim] = useState(true)
   const artPaused = useRef(false)
 
   const goArticle = (dir: 1 | -1) => {
-    setArtIdx(i => (i + dir + articles.length) % articles.length)
+    setArtAnim(true)
+    setArtIdx(i => i + dir)
   }
 
-  useEffect(() => { setArtIdx(0) }, [articles.length])
+  useEffect(() => { setArtIdx(0); setArtAnim(true) }, [articles.length])
 
   useEffect(() => {
     if (articles.length < 2) return
     const id = setInterval(() => {
-      if (!artPaused.current) setArtIdx(i => (i + 1) % articles.length)
+      if (!artPaused.current) { setArtAnim(true); setArtIdx(i => i + 1) }
     }, 4000)
     return () => clearInterval(id)
   }, [articles.length])
+
+  const onArtTransitionEnd = () => {
+    if (artIdx >= articles.length) { setArtAnim(false); setArtIdx(0) }
+    else if (artIdx < 0) { setArtAnim(false); setArtIdx(articles.length - 1) }
+  }
+
+  useEffect(() => {
+    if (!artAnim) { const t = requestAnimationFrame(() => setArtAnim(true)); return () => cancelAnimationFrame(t) }
+  }, [artAnim])
+
+  const activeDot = ((artIdx % articles.length) + articles.length) % articles.length
 
   useEffect(() => {
     api.auth.getCommunityBuilds()
@@ -234,10 +247,11 @@ export default function HomeStonks() {
                   onMouseEnter={() => { artPaused.current = true }}
                   onMouseLeave={() => { artPaused.current = false }}>
                   <div className="overflow-hidden">
-                    <div className="flex transition-transform duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    <div onTransitionEnd={onArtTransitionEnd}
+                      className={`flex ease-[cubic-bezier(0.22,1,0.36,1)] ${artAnim ? "transition-transform duration-[800ms]" : ""}`}
                       style={{ transform: `translateX(-${artIdx * 100}%)` }}>
-                      {articles.map((a, i) => (
-                        <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
+                      {[...articles, articles[0]].map((a, i) => (
+                        <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
                           className="group block w-full shrink-0 text-left">
                           <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
                             {a.image_url ? (
@@ -267,8 +281,8 @@ export default function HomeStonks() {
                       </button>
                       <div className="mt-3 flex justify-center gap-1.5">
                         {articles.map((_, i) => (
-                          <button key={i} onClick={() => setArtIdx(i)} style={{ cursor: "pointer" }} aria-label={`Статья ${i + 1}`}
-                            className={`h-1.5 rounded-full transition-all ${i === artIdx ? "w-4 bg-primary" : "w-1.5 bg-foreground/20"}`} />
+                          <button key={i} onClick={() => { setArtAnim(true); setArtIdx(i) }} style={{ cursor: "pointer" }} aria-label={`Статья ${i + 1}`}
+                            className={`h-1.5 rounded-full transition-all ${i === activeDot ? "w-4 bg-primary" : "w-1.5 bg-foreground/20"}`} />
                         ))}
                       </div>
                     </>
