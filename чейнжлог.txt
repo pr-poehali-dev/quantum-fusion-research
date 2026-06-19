@@ -3,6 +3,32 @@
 
 ---
 
+## v3.27 | 2026-06-19 | Внесение предоплаты и оплата остатка + счета зачисления
+
+### Счета зачисления (касса / Авито / терминал)
+- Новые таблицы cash_accounts + cash_account_tx (V0099). Предзаполнены:
+  Наличные (касса), Авито, Терминал — у каждого свой баланс и история.
+- finance: GET cash_accounts, cash_account_log; зачисление через credit_cash.
+
+### Предоплата и оплата остатка (orders / finance / wip-builds)
+- finance.confirm_prepayment и новый confirm_remaining: принимают
+  cash_account_id ИЛИ employee_id (счёт зачисления). Операции пишутся как
+  «Предоплата за заказ #N» / «Оплата заказа #N» с привязкой order_id.
+- orders: GET одиночного заказа отдаёт prepayment_confirmed/remaining_paid.
+  Выдача (PATCH done, writeoff_order) блокируется без оплаты остатка.
+- wip-builds: переход «Забрали» блокируется без оплаты остатка.
+- БД: orders.remaining_paid + remaining_paid_amount, finance_transactions.cash_account_id.
+
+### Frontend
+- PrepaymentConfirmModal переписан: выбор счёта (касса/Авито/терминал/сотрудник)
+  + режим «предоплата» / «оплата остатка».
+- OrderProcessPage: кнопка «Внести предоплату», статус «Предоплата ХХ ₽»,
+  окно оплаты остатка перед выдачей заказа.
+- AdminWipTab: при выдаче без оплаты остатка открывается окно оплаты.
+- FinanceTab: в кассе — блок «Счета зачисления»; в логе гиперссылка на заказ.
+
+---
+
 ## v3.26 | 2026-06-19 | B2B: публичный доступ + пароль на цены + партномер
 
 ### b2b-prices (backend)

@@ -92,6 +92,27 @@ warehouse_stock_log, warehouse_backorders.
 - Таблицы: app_settings, +поля в warehouse_supplies (has_vat, price_with_vat),
   pc_builds (sell_with_vat), orders (prepayment_percent, prepayment_amount).
 
+### Счета зачисления + предоплата/оплата остатка (v3.27)
+- Таблицы: cash_accounts (касса/Авито/терминал — баланс, code, color),
+  cash_account_tx (история). finance_transactions +cash_account_id.
+  orders.remaining_paid / remaining_paid_amount.
+- finance: GET cash_accounts, cash_account_log. POST confirm_prepayment И
+  confirm_remaining (action) принимают cash_account_id ИЛИ employee_id —
+  деньги идут на денежный счёт (касса/Авито/терминал) или счёт сотрудника.
+  Описание операций: «Предоплата за заказ #N» / «Оплата заказа #N» (+order_id).
+  get_log отдаёт order_id (для гиперссылки на /admin/order/N).
+- orders: GET одиночного заказа отдаёт prepayment_confirmed, remaining_paid,
+  remaining_paid_amount. Выдача (PATCH done / writeoff_order) блокируется,
+  если remaining_paid=FALSE → {error:"remaining_unpaid"}.
+- wip-builds: переход «Забрали» блокируется без оплаты остатка
+  (error remaining_unpaid). «Согласование→Заказ» по-прежнему требует предоплату.
+- Frontend: PrepaymentConfirmModal — выбор счёта (касса/Авито/терминал/сотрудник)
+  + mode "prepayment"/"remaining". OrderProcessPage: кнопка «Внести предоплату»
+  (пока prepayment_confirmed=false), окно оплаты остатка перед выдачей.
+  AdminWipTab: при «Забрали» без оплаты остатка открывает окно оплаты.
+  FinanceTab: карточка кассы раскрывается в «Счета зачисления» + счета сотрудников;
+  в логе движений ссылка на заказ.
+
 ### Маржа сборки + сборщик ПК (v3.24)
 - employees.assembler_percent (% за сборку, в карточке сотрудника),
   wip_builds.assembled_by (сборщик), orders.assembler_paid (защита от задвоения).

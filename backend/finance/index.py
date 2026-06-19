@@ -174,7 +174,7 @@ def get_log(cur, limit=200, offset=0, date_from=None, date_to=None):
     # Финансовые транзакции
     cur.execute(
         f"SELECT t.id, t.kind, t.amount, t.note, t.occurred_at, t.affects_pnl, "
-        f"ft.name AS type_name, u.username "
+        f"ft.name AS type_name, u.username, t.order_id "
         f"FROM {SCHEMA}.finance_transactions t "
         f"LEFT JOIN {SCHEMA}.finance_types ft ON ft.id = t.type_id "
         f"LEFT JOIN {SCHEMA}.users u ON u.id = t.user_id "
@@ -192,6 +192,7 @@ def get_log(cur, limit=200, offset=0, date_from=None, date_to=None):
             "affects_pnl": r[5],
             "type_name": r[6],
             "user": r[7],
+            "order_id": r[8],
         })
 
     # Продажи (выданные заказы) — как приход
@@ -211,6 +212,7 @@ def get_log(cur, limit=200, offset=0, date_from=None, date_to=None):
             "affects_pnl": True,
             "type_name": "Продажа ПК" if r[1] == "pc_build" else "Продажа товаров",
             "order_type": r[1],
+            "order_id": r[0],
             "user": None,
         })
 
@@ -264,6 +266,40 @@ def credit_account(cur, employee_id, amount, note, order_id=None):
         f"VALUES ({int(employee_id)}, {num(amount)}, {esc(note)}, "
         f"{int(order_id) if order_id else 'NULL'})"
     )
+
+
+# ── ДЕНЕЖНЫЕ СЧЕТА (касса / Авито / терминал) ────────────────────────────────
+def get_cash_accounts(cur):
+    """Список денежных счетов (физические кошельки) с балансом."""
+    cur.execute(
+        f"SELECT id, code, name, color, balance, is_active "
+        f"FROM {SCHEMA}.cash_accounts ORDER BY sort_order, name"
+    )
+    return [{"id": r[0], "code": r[1], "name": r[2], "color": r[3],
+             "balance": num(r[4]), "is_active": r[5]} for r in cur.fetchall()]
+
+
+def credit_cash(cur, cash_account_id, amount, note, order_id=None):
+    """Зачисление/списание на денежный счёт + запись в историю."""
+    cur.execute(
+        f"UPDATE {SCHEMA}.cash_accounts SET balance = balance + {num(amount)}, "
+        f"updated_at = NOW() WHERE id = {int(cash_account_id)}"
+    )
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.cash_account_tx (cash_account_id, amount, note, order_id) "
+        f"VALUES ({int(cash_account_id)}, {num(amount)}, {esc(note)}, "
+        f"{int(order_id) if order_id else 'NULL'})"
+    )
+
+
+def get_cash_account_log(cur, cash_account_id, limit=50):
+    cur.execute(
+        f"SELECT id, amount, note, order_id, created_at "
+        f"FROM {SCHEMA}.cash_account_tx WHERE cash_account_id = {int(cash_account_id)} "
+        f"ORDER BY created_at DESC LIMIT {int(limit)}"
+    )
+    return [{"id": r[0], "amount": num(r[1]), "note": r[2],
+             "order_id": r[3], "created_at": serial(r[4])} for r in cur.fetchall()]
 
 
 # ── АВТО-РАСХОД «ЗАКУПКА ТОВАРА» ─────────────────────────────────────────────
@@ -394,6 +430,11 @@ def handler(event: dict, context) -> dict:
             if action == "account_log":
                 eid = params.get("employee_id")
                 return resp(200, {"items": get_account_log(cur, eid)})
+            if action == "cash_accounts":
+                return resp(200, {"accounts": get_cash_accounts(cur)})
+            if action == "cash_account_log":
+                cid = params.get("cash_account_id")
+                return resp(200, {"items": get_cash_account_log(cur, cid)})
             return resp(400, {"error": "unknown action"})
 
         # ── POST ──
@@ -447,41 +488,76 @@ def handler(event: dict, context) -> dict:
                 conn.commit()
                 return resp(200, {"ok": True, "id": tid})
 
-            # Подтверждение предоплаты: приход в финансы + (опц.) на счёт сотрудника
-            if action == "confirm_prepayment":
+            # Подтверждение предоплаты / оплата остатка: приход в финансы +
+            # зачисление на выбранный счёт (денежный cash_account ИЛИ сотрудник).
+            # mode: 'prepayment' (по умолчанию) | 'remaining'
+            if action in ("confirm_prepayment", "confirm_remaining"):
                 amount = num(body.get("amount"), 0)
                 if amount <= 0:
                     return resp(400, {"error": "amount must be > 0"})
+                mode = "remaining" if action == "confirm_remaining" else "prepayment"
                 order_id = body.get("order_id")
-                employee_id = body.get("employee_id")  # None => в кассу
-                # тип «Предоплата»
+                employee_id = body.get("employee_id")        # начислить сотруднику
+                cash_account_id = body.get("cash_account_id")  # денежный счёт (касса/Авито/терминал)
+
+                # Имя счёта для описания
+                dest_name = "касса"
+                if employee_id:
+                    cur.execute(f"SELECT name FROM {SCHEMA}.employees WHERE id = {int(employee_id)}")
+                    er = cur.fetchone()
+                    dest_name = (er[0] if er else "сотрудник")
+                elif cash_account_id:
+                    cur.execute(f"SELECT name FROM {SCHEMA}.cash_accounts WHERE id = {int(cash_account_id)}")
+                    cr = cur.fetchone()
+                    dest_name = (cr[0] if cr else "счёт")
+
+                # тип операции
+                type_name = "Оплата заказа" if mode == "remaining" else "Предоплата"
                 cur.execute(
-                    f"SELECT id FROM {SCHEMA}.finance_types WHERE name = 'Предоплата' LIMIT 1"
+                    f"SELECT id FROM {SCHEMA}.finance_types WHERE name = {esc(type_name)} LIMIT 1"
                 )
                 tr = cur.fetchone()
-                type_id = tr[0] if tr else None
-                dest = "счёт сотрудника" if employee_id else "касса"
-                note = f"Предоплата по заказу #{order_id} ({dest})" if order_id else f"Предоплата ({dest})"
+                if tr:
+                    type_id = tr[0]
+                else:
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.finance_types (name, direction, is_system, sort_order) "
+                        f"VALUES ({esc(type_name)}, 'income', TRUE, 5) RETURNING id"
+                    )
+                    type_id = cur.fetchone()[0]
+
+                label = "Оплата заказа" if mode == "remaining" else "Предоплата за заказ"
+                note = f"{label} #{order_id} ({dest_name})" if order_id else f"{label} ({dest_name})"
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.finance_transactions "
-                    f"(kind, type_id, amount, note, affects_pnl, employee_id, order_id, occurred_at) "
+                    f"(kind, type_id, amount, note, affects_pnl, employee_id, cash_account_id, order_id, occurred_at) "
                     f"VALUES ('income', {type_id if type_id else 'NULL'}, {amount}, {esc(note)}, "
                     f"TRUE, {int(employee_id) if employee_id else 'NULL'}, "
+                    f"{int(cash_account_id) if cash_account_id else 'NULL'}, "
                     f"{int(order_id) if order_id else 'NULL'}, NOW()) RETURNING id"
                 )
                 tx_id = cur.fetchone()[0]
+                acct_note = note
                 if employee_id:
-                    credit_account(cur, employee_id, amount,
-                                   f"Предоплата по заказу #{order_id}" if order_id else "Предоплата",
-                                   order_id)
-                # отмечаем заказ как подтверждённый
+                    credit_account(cur, employee_id, amount, acct_note, order_id)
+                elif cash_account_id:
+                    credit_cash(cur, cash_account_id, amount, acct_note, order_id)
+
+                # отмечаем заказ
                 if order_id:
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.orders SET prepayment_confirmed = TRUE, "
-                        f"prepayment_amount = {amount}, "
-                        f"prepayment_percent = CASE WHEN total > 0 THEN ROUND({amount}/total*100, 2) ELSE 0 END, "
-                        f"updated_at = NOW() WHERE id = {int(order_id)}"
-                    )
+                    if mode == "remaining":
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.orders SET remaining_paid = TRUE, "
+                            f"remaining_paid_amount = COALESCE(remaining_paid_amount,0) + {amount}, "
+                            f"updated_at = NOW() WHERE id = {int(order_id)}"
+                        )
+                    else:
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.orders SET prepayment_confirmed = TRUE, "
+                            f"prepayment_amount = {amount}, "
+                            f"prepayment_percent = CASE WHEN total > 0 THEN ROUND({amount}/total*100, 2) ELSE 0 END, "
+                            f"updated_at = NOW() WHERE id = {int(order_id)}"
+                        )
                 conn.commit()
                 return resp(200, {"ok": True, "id": tx_id})
 

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
+import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
 
 const ORDERS_URL = "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745"
 const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
@@ -80,6 +81,9 @@ interface Order {
   prepayment_percent?: number
   prepayment_amount?: number
   remaining_amount?: number
+  prepayment_confirmed?: boolean
+  remaining_paid?: boolean
+  remaining_paid_amount?: number
 }
 
 function fmt(n: number) {
@@ -96,6 +100,10 @@ export default function OrderProcessPage() {
   // Модалка выдачи заказа
   const [showWriteoff, setShowWriteoff] = useState(false)
   const [writeoffLoading, setWriteoffLoading] = useState(false)
+
+  // Модалки оплаты: внесение предоплаты и оплата остатка
+  const [showPrepay, setShowPrepay] = useState(false)
+  const [showRemaining, setShowRemaining] = useState(false)
 
   // Гарантийное письмо
   const [warrantyLoading, setWarrantyLoading] = useState(false)
@@ -185,6 +193,11 @@ export default function OrderProcessPage() {
     setWriteoffLoading(true)
     const res = await api.orders.updateItem({ id: Number(id), action: "writeoff_order", item_idx: 0 })
     setWriteoffLoading(false)
+    if (res.error === "remaining_unpaid") {
+      setShowWriteoff(false)
+      setShowRemaining(true)
+      return
+    }
     setShowWriteoff(false)
     if (res.ok) {
       await load()
@@ -274,9 +287,25 @@ export default function OrderProcessPage() {
             <Icon name={warrantyLoading ? "Loader" : "FileText"} size={15} className={warrantyLoading ? "animate-spin" : ""} />
             Гарантийка
           </button>
+          {order.status !== "done" && order.status !== "cancelled" && !order.prepayment_confirmed && (
+            <button
+              onClick={() => setShowPrepay(true)}
+              style={{ cursor: "pointer" }}
+              className="flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
+            >
+              <Icon name="BadgeRussianRuble" size={15} />
+              Внести предоплату
+            </button>
+          )}
+          {order.status !== "done" && order.status !== "cancelled" && order.prepayment_confirmed && !order.remaining_paid && (
+            <span className="flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-xs font-medium text-green-400">
+              <Icon name="CheckCircle2" size={14} />
+              Предоплата {fmt(order.prepayment_amount ?? 0)}
+            </span>
+          )}
           {order.status !== "done" && order.status !== "cancelled" && (
             <button
-              onClick={() => setShowWriteoff(true)}
+              onClick={() => { if (order.remaining_paid) setShowWriteoff(true); else setShowRemaining(true) }}
               style={{ cursor: "pointer" }}
               className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white hover:bg-green-600 transition-colors"
             >
@@ -795,6 +824,29 @@ export default function OrderProcessPage() {
         </div>
       )}
 
+      {/* Модалка внесения предоплаты */}
+      {showPrepay && order && (
+        <PrepaymentConfirmModal
+          orderId={order.id}
+          total={total}
+          mode="prepayment"
+          defaultAmount={order.prepayment_amount}
+          onClose={() => setShowPrepay(false)}
+          onConfirmed={() => { setShowPrepay(false); load() }}
+        />
+      )}
+
+      {/* Модалка оплаты остатка (перед выдачей) */}
+      {showRemaining && order && (
+        <PrepaymentConfirmModal
+          orderId={order.id}
+          total={total}
+          mode="remaining"
+          defaultAmount={Math.max(0, total - (order.prepayment_amount ?? 0))}
+          onClose={() => setShowRemaining(false)}
+          onConfirmed={() => { setShowRemaining(false); load().then(() => setShowWriteoff(true)) }}
+        />
+      )}
 
     </div>
   )

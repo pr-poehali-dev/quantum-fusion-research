@@ -75,6 +75,8 @@ export function AdminWipTab({
 
   // Модалка подтверждения предоплаты при переходе «Согласование → Заказ»
   const [prepayModal, setPrepayModal] = useState<WipBuild | null>(null)
+  // Модалка оплаты остатка перед выдачей («Забрали»)
+  const [remainingModal, setRemainingModal] = useState<WipBuild | null>(null)
 
   // Сменить этап с проверкой: переход в «Заказ» требует подтверждения предоплаты,
   // переход в «Забрали» требует выбранного сборщика и переводит заказ в done
@@ -92,6 +94,7 @@ export function AdminWipTab({
       // Переводим заказ в done — backend начислит % сборщику
       if (w.order_id) {
         const res = await api.orders.updateStatus({ id: w.order_id, status: "done" })
+        if (res?.error === "remaining_unpaid") { setRemainingModal(w); return }
         if (res?.error) { alert(res.error); return }
       }
     }
@@ -105,6 +108,17 @@ export function AdminWipTab({
       : b))
     api.wipBuilds.update({ ...w, stage: "Заказ" })
     setPrepayModal(null)
+  }
+
+  // После оплаты остатка — повторяем выдачу («Забрали»)
+  const onRemainingConfirmed = async (w: WipBuild) => {
+    setRemainingModal(null)
+    if (w.order_id) {
+      const res = await api.orders.updateStatus({ id: w.order_id, status: "done" })
+      if (res?.error) { alert(res.error); return }
+    }
+    setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, stage: "Забрали" } : b))
+    api.wipBuilds.update({ ...w, stage: "Забрали" })
   }
 
   const syncWipOrder = async (w: WipBuild) => {
@@ -870,6 +884,17 @@ export function AdminWipTab({
           defaultAmount={prepayModal.prepayment_amount}
           onClose={() => setPrepayModal(null)}
           onConfirmed={(amount, remaining) => onPrepayConfirmed(prepayModal, amount, remaining)}
+        />
+      )}
+
+      {remainingModal && (
+        <PrepaymentConfirmModal
+          orderId={remainingModal.order_id as number}
+          total={remainingModal.total || 0}
+          mode="remaining"
+          defaultAmount={Math.max(0, (remainingModal.total || 0) - (remainingModal.prepayment_amount || 0))}
+          onClose={() => setRemainingModal(null)}
+          onConfirmed={() => onRemainingConfirmed(remainingModal)}
         />
       )}
 

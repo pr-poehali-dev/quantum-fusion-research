@@ -57,6 +57,9 @@ def handler(event: dict, context) -> dict:
             "prepayment_percent": pct,
             "prepayment_amount": prepay,
             "remaining_amount": round(total - prepay, 2),
+            "prepayment_confirmed": bool(row[15]) if len(row) > 15 and row[15] is not None else False,
+            "remaining_paid": bool(row[16]) if len(row) > 16 and row[16] is not None else False,
+            "remaining_paid_amount": float(row[17]) if len(row) > 17 and row[17] is not None else 0,
         }
 
     try:
@@ -198,7 +201,8 @@ def handler(event: dict, context) -> dict:
                 cur.execute(
                     """SELECT id, customer_name, customer_phone, customer_email, order_type,
                               items, total, comment, status, created_at, updated_at, user_id,
-                              NULL, prepayment_percent, prepayment_amount
+                              NULL, prepayment_percent, prepayment_amount,
+                              prepayment_confirmed, remaining_paid, remaining_paid_amount
                        FROM orders WHERE id = %s""",
                     (int(params["id"]),)
                 )
@@ -997,6 +1001,13 @@ def handler(event: dict, context) -> dict:
                             (json.dumps(items), total, order_id))
 
             elif action == "writeoff_order":
+                # Перед выдачей остаток по заказу должен быть оплачен.
+                cur.execute(f"SELECT remaining_paid, status FROM {schema}.orders WHERE id=%s", (order_id,))
+                wo_pay = cur.fetchone()
+                if wo_pay and wo_pay[1] != "done" and not bool(wo_pay[0]):
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps(
+                        {"error": "remaining_unpaid",
+                         "message": "Перед выдачей нужно принять оплату остатка по заказу."})}
                 # Списать все зарезервированные товары заказа и перевести статус в done
                 wrote_off = []
                 for it in items:
@@ -1151,6 +1162,13 @@ def handler(event: dict, context) -> dict:
 
             # При завершении (done) — товар выдан клиенту.
             if new_status == "done":
+                # Перед выдачей остаток по заказу должен быть оплачен.
+                cur.execute("SELECT remaining_paid, status FROM orders WHERE id=%s", (order_id,))
+                pay_row = cur.fetchone()
+                if pay_row and pay_row[1] != "done" and not bool(pay_row[0]):
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps(
+                        {"error": "remaining_unpaid",
+                         "message": "Перед выдачей нужно принять оплату остатка по заказу."})}
                 # Начисление сборщику ПК: % сотрудника × полная цена заказа.
                 # Для pc_build-заказов сборщик ОБЯЗАТЕЛЕН (иначе блокируем выдачу).
                 cur.execute("SELECT order_type, total, status, assembler_paid FROM orders WHERE id=%s", (order_id,))

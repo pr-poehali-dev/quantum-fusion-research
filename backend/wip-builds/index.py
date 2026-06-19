@@ -345,7 +345,7 @@ def handler(event: dict, context) -> dict:
                     pb = cur.fetchone()
                     comp_qty = 1
                     if pb and pb[0]:
-                        comps = pb[0] if isinstance(pb[0], list) else __import__('json').loads(pb[0])
+                        comps = pb[0] if isinstance(pb[0], list) else json.loads(pb[0])
                         slot_key = "case" if component == "case" else component
                         for c in comps:
                             if c.get("slot") == slot_key:
@@ -458,6 +458,18 @@ def handler(event: dict, context) -> dict:
                     import warehouse_core as wc
                     released = wc.release_order_reserves(cur, wip_order_id)
                     print(f"WIP {wip_id}: резервы сняты, order={wip_order_id}: {released}")
+
+                # ── Перед выдачей («Забрали») остаток должен быть оплачен ──
+                if new_stage == "Забрали" and old_stage != "Забрали" and wip_order_id:
+                    cur.execute(
+                        f"SELECT remaining_paid, status FROM {SCHEMA}.orders WHERE id=%s",
+                        (wip_order_id,)
+                    )
+                    rp = cur.fetchone()
+                    if rp and rp[1] != "done" and not bool(rp[0]):
+                        conn.rollback()
+                        return resp(400, {"error": "remaining_unpaid",
+                                          "message": "Перед выдачей нужно принять оплату остатка по заказу."})
 
                 # ── Списание резервов при выдаче клиенту («Забрали») ──
                 # Товар физически уходит клиенту: qty_reserved уменьшается,

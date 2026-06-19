@@ -6,6 +6,7 @@ import { generateFinanceReport } from "@/lib/financeReport"
 
 interface FinType { id: number; name: string; direction: string; is_system: boolean; sort_order: number }
 interface Account { id: number; name: string; color: string; is_active: boolean; balance: number }
+interface CashAccount { id: number; code: string; name: string; color: string; is_active: boolean; balance: number }
 interface MarginBlock { count: number; total_margin: number; avg_margin: number; revenue: number }
 interface Summary {
   stock: { purchase: number; sale: number }
@@ -25,6 +26,7 @@ interface LogItem {
   affects_pnl: boolean
   type_name: string | null
   order_type?: string
+  order_id?: number | null
   user: string | null
 }
 
@@ -64,6 +66,7 @@ export default function FinanceTab() {
   const [newTypeDir, setNewTypeDir] = useState<"income" | "expense">("expense")
   // счета сотрудников
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
   const [cashExpanded, setCashExpanded] = useState(false)
   // Отчёт PDF за период
   const [reportOpen, setReportOpen] = useState(false)
@@ -72,16 +75,18 @@ export default function FinanceTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, l, t, a] = await Promise.all([
+    const [s, l, t, a, c] = await Promise.all([
       api.finance.getSummary(),
       api.finance.getLog(200, 0),
       api.finance.getTypes(),
       api.finance.getAccounts(),
+      api.finance.getCashAccounts(),
     ])
     setSummary(s.summary || null)
     setLog(l.items || [])
     setTypes(t.types || [])
     setAccounts(a.accounts || [])
+    setCashAccounts(c.accounts || [])
     setLoading(false)
   }, [])
 
@@ -210,6 +215,24 @@ export default function FinanceTab() {
               счетов сотрудников: {accounts.length}
             </div>
           </button>
+        </div>
+      )}
+
+      {/* Раскрытие кассы: денежные счета (касса/Авито/терминал) */}
+      {cashExpanded && cashAccounts.length > 0 && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border text-sm font-semibold flex items-center gap-2">
+            <Icon name="Wallet" size={16} /> Счета зачисления
+          </div>
+          <div className="divide-y divide-border">
+            {cashAccounts.map(c => (
+              <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+                <span className="text-sm flex-1 truncate">{c.name}{!c.is_active && <span className="text-foreground/30 text-xs"> (неактивен)</span>}</span>
+                <span className={`font-semibold tabular-nums ${c.balance >= 0 ? "text-green-400" : "text-red-400"}`}>{fmt(c.balance)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -468,7 +491,18 @@ function LogRow({ item, onDelete }: { item: LogItem; onDelete: (id: number) => v
     <div className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/30">
       <div className={`shrink-0 mt-0.5 ${meta.cls}`}><Icon name={meta.icon} size={18} /></div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm truncate">{item.type_name || meta.label}</div>
+        <div className="text-sm truncate">
+          {item.type_name || meta.label}
+          {item.order_id ? (
+            <>
+              {" "}
+              <a href={`/admin/order/${item.order_id}`}
+                className="text-primary hover:underline font-medium">
+                заказ #{item.order_id}
+              </a>
+            </>
+          ) : null}
+        </div>
         <div className={`text-xs text-foreground/40 ${expanded ? "whitespace-pre-wrap break-words" : "truncate"}`}>
           {note}{note ? " · " : ""}{fmtDate(item.occurred_at)}{item.user ? ` · ${item.user}` : ""}
         </div>

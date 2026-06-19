@@ -196,8 +196,12 @@ export const api = {
     getAccountLog: (employeeId: number) => fetch(`${URLS.finance}?action=account_log&employee_id=${employeeId}`).then(r => r.json()),
     creditAccount: (data: { employee_id: number; amount: number; note?: string }) =>
       fetch(`${URLS.finance}?action=credit_account`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
-    confirmPrepayment: (data: { order_id: number; amount: number; employee_id?: number | null }) =>
+    getCashAccounts: () => fetch(`${URLS.finance}?action=cash_accounts`).then(r => r.json()),
+    getCashAccountLog: (cashAccountId: number) => fetch(`${URLS.finance}?action=cash_account_log&cash_account_id=${cashAccountId}`).then(r => r.json()),
+    confirmPrepayment: (data: { order_id: number; amount: number; employee_id?: number | null; cash_account_id?: number | null }) =>
       fetch(`${URLS.finance}?action=confirm_prepayment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    confirmRemaining: (data: { order_id: number; amount: number; employee_id?: number | null; cash_account_id?: number | null }) =>
+      fetch(`${URLS.finance}?action=confirm_remaining`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
   comments: {
     getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),
