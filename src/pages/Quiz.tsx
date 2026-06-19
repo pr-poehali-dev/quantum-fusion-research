@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
@@ -11,7 +11,10 @@ interface Question {
   title: string
   field_type: string // multi | single | budget | contacts | text | tasks
   options: Array<string | TaskOption>
+  description?: string
 }
+
+const QUIZ_STORAGE_KEY = "begraphics_quiz_progress"
 
 const TASK_GROUPS = [
   { key: "games" as const, label: "Игры", icon: "Gamepad2" },
@@ -116,10 +119,49 @@ export default function Quiz() {
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
   const [step, setStep] = useState(0)
+  const [resumeAvailable, setResumeAvailable] = useState(false)
+  const [restored, setRestored] = useState(false)
+  const loadedRef = useRef(false)
 
   useEffect(() => {
-    api.quiz.getQuestions().then(d => setQuestions(d.questions || [])).catch(() => {})
+    api.quiz.getQuestions().then(d => { setQuestions(d.questions || []); loadedRef.current = true }).catch(() => {})
+    // есть ли незаконченный прогресс?
+    try {
+      const raw = localStorage.getItem(QUIZ_STORAGE_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        const hasData = (saved.answers && Object.keys(saved.answers).length) || saved.phone || saved.name || (saved.step ?? 0) > 0
+        if (hasData) setResumeAvailable(true)
+      }
+    } catch { /* ignore */ }
   }, [])
+
+  // автосохранение прогресса
+  useEffect(() => {
+    if (!loadedRef.current || done) return
+    const data = { step, answers, budget, name, phone, contact, extra, ts: Date.now() }
+    try { localStorage.setItem(QUIZ_STORAGE_KEY, JSON.stringify(data)) } catch { /* ignore */ }
+  }, [step, answers, budget, name, phone, contact, extra, done])
+
+  const resumeQuiz = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(QUIZ_STORAGE_KEY) || "{}")
+      if (saved.answers) setAnswers(saved.answers)
+      if (saved.budget) setBudget(saved.budget)
+      if (saved.name) setName(saved.name)
+      if (saved.phone) setPhone(saved.phone)
+      if (saved.contact) setContact(saved.contact)
+      if (saved.extra) setExtra(saved.extra)
+      if (typeof saved.step === "number") setStep(saved.step)
+    } catch { /* ignore */ }
+    setResumeAvailable(false)
+    setRestored(true)
+  }
+
+  const startOver = () => {
+    try { localStorage.removeItem(QUIZ_STORAGE_KEY) } catch { /* ignore */ }
+    setResumeAvailable(false)
+  }
 
   const setAns = (qid: number, v: string[]) => setAnswers(a => ({ ...a, [qid]: v }))
 
@@ -156,7 +198,10 @@ export default function Quiz() {
     }
     const res = await api.quiz.submit(payload).catch(() => null)
     setSending(false)
-    if (res?.ok) setDone(true)
+    if (res?.ok) {
+      try { localStorage.removeItem(QUIZ_STORAGE_KEY) } catch { /* ignore */ }
+      setDone(true)
+    }
     else alert("Не удалось отправить заявку, попробуйте ещё раз")
   }
 
@@ -199,6 +244,23 @@ export default function Quiz() {
           <p className="py-20 text-center text-sm text-foreground/40">Загрузка...</p>
         ) : (
           <>
+            {resumeAvailable && (
+              <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 animate-fade-in">
+                <Icon name="History" size={20} className="text-primary" />
+                <p className="flex-1 text-sm">У вас есть незаконченная анкета. Продолжить с того же места?</p>
+                <button onClick={resumeQuiz} style={{ cursor: "pointer" }}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                  Продолжить
+                </button>
+                <button onClick={startOver} style={{ cursor: "pointer" }}
+                  className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted transition-colors">
+                  Начать заново
+                </button>
+              </div>
+            )}
+            {restored && (
+              <p className="mb-3 text-xs text-foreground/40">Прогресс восстановлен</p>
+            )}
             <p className="mb-2 text-sm font-medium text-primary">Шаг {step + 1} из {totalSteps}</p>
 
             <div key={step} className="flex-1 animate-fade-in">
@@ -267,8 +329,17 @@ export default function Quiz() {
               </div>
             </div>
 
+            {/* Пояснение к вопросу (из админки) */}
+            {!isExtraStep && current?.description && current.description.replace(/<[^>]*>/g, "").trim() && (
+              <div className="mt-6 flex gap-3 rounded-xl border border-border bg-card p-4">
+                <Icon name="Info" size={18} className="mt-0.5 shrink-0 text-primary" />
+                <div className="quiz-hint prose prose-sm max-w-none text-sm text-foreground/80 prose-headings:text-foreground prose-a:text-primary prose-strong:text-foreground"
+                  dangerouslySetInnerHTML={{ __html: current.description }} />
+              </div>
+            )}
+
             {/* Навигация */}
-            <div className="mt-10 flex items-center gap-3">
+            <div className="mt-6 flex items-center gap-3">
               {step > 0 && (
                 <button onClick={goBack} style={{ cursor: "pointer" }}
                   className="flex items-center gap-2 rounded-xl border border-border px-5 py-3.5 text-sm font-medium transition-colors hover:bg-muted">

@@ -46,6 +46,7 @@ def handler(event: dict, context) -> dict:
         return {
             "id": r[0], "sort_order": r[1], "title": r[2],
             "field_type": r[3], "options": r[4] or [], "is_active": r[5],
+            "description": r[6] if len(r) > 6 else "",
         }
 
     def request_row(r):
@@ -62,7 +63,7 @@ def handler(event: dict, context) -> dict:
             only_active = params.get("all") != "true"
             where = "WHERE is_active = TRUE" if only_active else ""
             cur.execute(
-                f"SELECT id, sort_order, title, field_type, options, is_active "
+                f"SELECT id, sort_order, title, field_type, options, is_active, description "
                 f"FROM quiz_questions {where} ORDER BY sort_order, id"
             )
             rows = [question_row(r) for r in cur.fetchall()]
@@ -70,11 +71,11 @@ def handler(event: dict, context) -> dict:
 
         if method == "POST":
             cur.execute(
-                "INSERT INTO quiz_questions (sort_order, title, field_type, options, is_active) "
-                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                "INSERT INTO quiz_questions (sort_order, title, field_type, options, is_active, description) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
                 (body.get("sort_order", 0), body.get("title", ""),
                  body.get("field_type", "multi"), Json(body.get("options", [])),
-                 body.get("is_active", True)),
+                 body.get("is_active", True), body.get("description", "")),
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -83,10 +84,10 @@ def handler(event: dict, context) -> dict:
         if method == "PUT":
             cur.execute(
                 "UPDATE quiz_questions SET sort_order=%s, title=%s, field_type=%s, "
-                "options=%s, is_active=%s WHERE id=%s",
+                "options=%s, is_active=%s, description=%s WHERE id=%s",
                 (body.get("sort_order", 0), body.get("title", ""),
                  body.get("field_type", "multi"), Json(body.get("options", [])),
-                 body.get("is_active", True), body["id"]),
+                 body.get("is_active", True), body.get("description", ""), body["id"]),
             )
             conn.commit()
             return ok({"ok": True})

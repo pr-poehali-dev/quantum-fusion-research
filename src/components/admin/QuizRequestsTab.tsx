@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import RichTextEditor from "@/components/ui/rich-text-editor"
 
 type TaskOption = { label: string; group: "games" | "work" }
 
@@ -11,6 +12,7 @@ interface Question {
   field_type: string
   options: Array<string | TaskOption>
   is_active: boolean
+  description?: string
 }
 
 interface QuizRequest {
@@ -193,7 +195,7 @@ export default function QuizRequestsTab() {
       {/* ─────────── ВОПРОСЫ ─────────── */}
       {!loading && view === "questions" && (
         <div>
-          <button onClick={() => setEditQ({ id: 0, sort_order: questions.length + 1, title: "", field_type: "multi", options: [], is_active: true })}
+          <button onClick={() => setEditQ({ id: 0, sort_order: questions.length + 1, title: "", field_type: "multi", options: [], is_active: true, description: "" })}
             style={{ cursor: "pointer" }}
             className="mb-4 flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
             <Icon name="Plus" size={16} />Добавить вопрос
@@ -301,6 +303,11 @@ export default function QuizRequestsTab() {
                   </div>
                 </div>
               )}
+              <div>
+                <label className="mb-1 block text-xs text-foreground/60">Пояснение (показывается над кнопкой «Далее»)</label>
+                <RichTextEditor value={editQ.description || ""} onChange={v => setEditQ({ ...editQ, description: v })}
+                  placeholder="Подсказка для клиента по этому вопросу..." folder="quiz" />
+              </div>
               <label className="flex items-center gap-2 text-sm" style={{ cursor: "pointer" }}>
                 <input type="checkbox" checked={editQ.is_active} onChange={e => setEditQ({ ...editQ, is_active: e.target.checked })} style={{ cursor: "pointer" }} />
                 Показывать в анкете
