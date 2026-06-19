@@ -2,12 +2,14 @@ import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 
+type TaskOption = { label: string; group: "games" | "work" }
+
 interface Question {
   id: number
   sort_order: number
   title: string
   field_type: string
-  options: string[]
+  options: Array<string | TaskOption>
   is_active: boolean
 }
 
@@ -34,9 +36,15 @@ const STATUS_OPTS = [
 const FIELD_TYPES = [
   { value: "multi", label: "Множественный выбор" },
   { value: "single", label: "Один вариант" },
+  { value: "tasks", label: "Задачи (Игры/Работа)" },
   { value: "budget", label: "Бюджет (слайдер)" },
   { value: "contacts", label: "Контакты" },
   { value: "text", label: "Свободный текст" },
+]
+
+const TASK_GROUP_OPTS = [
+  { value: "games", label: "Игры" },
+  { value: "work", label: "Работа" },
 ]
 
 const CONTACT_LABELS: Record<string, string> = { telegram: "Telegram", whatsapp: "WhatsApp", call: "Звонок" }
@@ -246,7 +254,7 @@ export default function QuizRequestsTab() {
                   <div className="space-y-2">
                     {editQ.options.map((opt, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <input value={opt} onChange={e => {
+                        <input value={typeof opt === "string" ? opt : opt.label} onChange={e => {
                           const next = [...editQ.options]; next[i] = e.target.value; setEditQ({ ...editQ, options: next })
                         }} className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
                         <button onClick={() => setEditQ({ ...editQ, options: editQ.options.filter((_, j) => j !== i) })} style={{ cursor: "pointer" }}
@@ -258,6 +266,37 @@ export default function QuizRequestsTab() {
                     <button onClick={() => setEditQ({ ...editQ, options: [...editQ.options, ""] })} style={{ cursor: "pointer" }}
                       className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-foreground/60 hover:border-primary hover:text-foreground transition-colors">
                       <Icon name="Plus" size={14} />Добавить вариант
+                    </button>
+                  </div>
+                </div>
+              )}
+              {editQ.field_type === "tasks" && (
+                <div>
+                  <label className="mb-1 block text-xs text-foreground/60">Подтипы задач и их раздел</label>
+                  <div className="space-y-2">
+                    {editQ.options.map((opt, i) => {
+                      const o: TaskOption = typeof opt === "string" ? { label: opt, group: "work" } : opt
+                      const upd = (patch: Partial<TaskOption>) => {
+                        const next = [...editQ.options]; next[i] = { ...o, ...patch }; setEditQ({ ...editQ, options: next })
+                      }
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <input value={o.label} onChange={e => upd({ label: e.target.value })} placeholder="Название подтипа"
+                            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                          <select value={o.group} onChange={e => upd({ group: e.target.value as "games" | "work" })} style={{ cursor: "pointer" }}
+                            className="rounded-lg border border-border bg-background px-2 py-2 text-sm">
+                            {TASK_GROUP_OPTS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+                          </select>
+                          <button onClick={() => setEditQ({ ...editQ, options: editQ.options.filter((_, j) => j !== i) })} style={{ cursor: "pointer" }}
+                            className="rounded-lg p-2 text-foreground/40 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                            <Icon name="X" size={15} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <button onClick={() => setEditQ({ ...editQ, options: [...editQ.options, { label: "", group: "games" }] })} style={{ cursor: "pointer" }}
+                      className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-foreground/60 hover:border-primary hover:text-foreground transition-colors">
+                      <Icon name="Plus" size={14} />Добавить подтип
                     </button>
                   </div>
                 </div>

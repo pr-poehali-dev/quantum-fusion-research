@@ -3,13 +3,20 @@ import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
 
+type TaskOption = { label: string; group: "games" | "work" }
+
 interface Question {
   id: number
   sort_order: number
   title: string
-  field_type: string // multi | single | budget | contacts | text
-  options: string[]
+  field_type: string // multi | single | budget | contacts | text | tasks
+  options: Array<string | TaskOption>
 }
+
+const TASK_GROUPS = [
+  { key: "games" as const, label: "Игры", icon: "Gamepad2" },
+  { key: "work" as const, label: "Работа", icon: "Briefcase" },
+]
 
 const BUDGET_MIN = 30000
 const BUDGET_MAX = 500000
@@ -43,6 +50,55 @@ function BudgetSlider({ min, max, onChange }: { min: number; max: number; onChan
           onChange={e => onChange(min, Math.max(Number(e.target.value), min + BUDGET_STEP))}
           className="pointer-events-none absolute top-0 h-6 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow" />
       </div>
+    </div>
+  )
+}
+
+function TasksField({ options, value, onChange }: {
+  options: TaskOption[]; value: string[]; onChange: (v: string[]) => void
+}) {
+  const [openGroup, setOpenGroup] = useState<"games" | "work" | null>(null)
+  const toggle = (label: string) =>
+    onChange(value.includes(label) ? value.filter(v => v !== label) : [...value, label])
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {TASK_GROUPS.map(g => {
+        const items = options.filter(o => o.group === g.key)
+        const selectedCount = items.filter(o => value.includes(o.label)).length
+        const open = openGroup === g.key
+        return (
+          <div key={g.key} className="flex flex-col">
+            <button type="button" onClick={() => setOpenGroup(open ? null : g.key)} style={{ cursor: "pointer" }}
+              className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-5 transition-colors ${open || selectedCount ? "border-primary bg-primary/10" : "border-border hover:border-primary"}`}>
+              <Icon name={g.icon} size={32} className={open || selectedCount ? "text-primary" : "text-foreground/60"} />
+              <span className="text-lg font-bold">{g.label}</span>
+              {selectedCount > 0 && (
+                <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                  Выбрано: {selectedCount}
+                </span>
+              )}
+              <Icon name="ChevronDown" size={16} className={`text-foreground/40 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+            {open && (
+              <div className="mt-2 flex flex-col gap-2 animate-fade-in">
+                {items.map(o => {
+                  const active = value.includes(o.label)
+                  return (
+                    <button key={o.label} type="button" onClick={() => toggle(o.label)} style={{ cursor: "pointer" }}
+                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary"}`}>
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-md border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                        {active && <Icon name="Check" size={11} />}
+                      </span>
+                      {o.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -176,9 +232,15 @@ export default function Quiz() {
                   <textarea value={answers[current.id]?.[0] || ""} onChange={e => setAns(current.id, [e.target.value])} rows={4}
                     placeholder="Опишите пожелания"
                     className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:border-primary" />
+                ) : current.field_type === "tasks" ? (
+                  <TasksField
+                    options={(current.options as Array<string | TaskOption>).map(o => typeof o === "string" ? { label: o, group: "work" as const } : o)}
+                    value={answers[current.id] || []}
+                    onChange={v => setAns(current.id, v)} />
                 ) : (
                   <div className="flex flex-col gap-2.5">
-                    {current.options.map(opt => {
+                    {current.options.map(rawOpt => {
+                      const opt = typeof rawOpt === "string" ? rawOpt : rawOpt.label
                       const vals = answers[current.id] || []
                       const active = vals.includes(opt)
                       const single = current.field_type === "single"
