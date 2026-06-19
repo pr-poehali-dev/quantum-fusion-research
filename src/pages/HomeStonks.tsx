@@ -239,7 +239,7 @@ export default function HomeStonks() {
                       {articles.map(a => (
                         <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
                           className="group block w-full shrink-0 text-left">
-                          <div className="relative h-40 w-full overflow-hidden rounded-xl border border-border bg-muted">
+                          <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
                             {a.image_url ? (
                               <img src={a.image_url} alt={a.title}
                                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -258,11 +258,11 @@ export default function HomeStonks() {
                   {articles.length > 1 && (
                     <>
                       <button onClick={() => goArticle(-1)} style={{ cursor: "pointer" }} aria-label="Назад"
-                        className="absolute left-1 top-20 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
+                        className="absolute left-1 top-28 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
                         <Icon name="ChevronLeft" size={18} />
                       </button>
                       <button onClick={() => goArticle(1)} style={{ cursor: "pointer" }} aria-label="Вперёд"
-                        className="absolute right-1 top-20 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
+                        className="absolute right-1 top-28 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-md opacity-0 transition-opacity group-hover/car:opacity-100 hover:bg-background">
                         <Icon name="ChevronRight" size={18} />
                       </button>
                       <div className="mt-3 flex justify-center gap-1.5">
