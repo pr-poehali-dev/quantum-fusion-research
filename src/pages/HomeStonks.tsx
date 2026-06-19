@@ -2,6 +2,10 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
+import { useCart } from "@/store/cart"
+import { useAuth } from "@/store/auth"
+import { ThemeSwitcher } from "@/components/theme-switcher"
+import NotificationBell from "@/components/NotificationBell"
 
 interface CommunityBuild {
   id: number
@@ -29,15 +33,11 @@ const fmtDate = (s: string) => {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
-const NAV = [
-  { label: "Каталог", to: "/shop" },
-  { label: "Статьи", to: "/articles" },
-  { label: "Таблицы", to: "/builds" },
-  { label: "Компьютеры", to: "/builds" },
-]
 
 export default function HomeStonks() {
   const navigate = useNavigate()
+  const { isAuthed } = useAuth()
+  const { count } = useCart()
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
 
@@ -69,41 +69,83 @@ export default function HomeStonks() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Шапка */}
-      <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 shrink-0" style={{ cursor: "pointer" }}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Icon name="Cpu" size={20} /></div>
-            <div className="leading-none">
-              <span className="block text-lg font-extrabold tracking-tight">PCSTONKS</span>
-              <span className="block text-[9px] uppercase tracking-widest text-foreground/40">сборка · настройка · обслуживание</span>
-            </div>
+      {/* Шапка (как в Shop) */}
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
+            <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
-
-          <div className="ml-2 hidden items-center gap-2 md:flex">
-            <button onClick={() => navigate("/configurator")} style={{ cursor: "pointer" }}
-              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">Конфигуратор</button>
-            <button onClick={() => navigate("/builds")} style={{ cursor: "pointer" }}
-              className="rounded-lg bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent/90 transition-colors">Готовые ПК</button>
-          </div>
-
-          <nav className="ml-auto hidden items-center gap-5 lg:flex">
-            {NAV.map(n => (
-              <button key={n.label} onClick={() => navigate(n.to)} style={{ cursor: "pointer" }}
-                className="text-sm font-medium text-foreground/70 hover:text-foreground transition-colors">{n.label}</button>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-2 lg:ml-2">
-            <button onClick={() => navigate("/cart")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="ShoppingCart" size={17} />
-            </button>
-            <button onClick={() => navigate("/profile")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="User" size={17} />
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            <NotificationBell />
+            {isAuthed() ? (
+              <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="User" size={15} />
+              </button>
+            ) : (
+              <button onClick={() => navigate("/auth")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="LogIn" size={15} />
+              </button>
+            )}
+            <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="ShoppingCart" size={16} />
+              <span>Корзина</span>
+              {count() > 0 && <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>}
             </button>
           </div>
         </div>
       </header>
+
+      {/* Навигационные табы (как в Shop) */}
+      <div className="border-b border-border">
+        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch">
+          <button
+            onClick={() => navigate("/shop")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Package" size={15} />
+            Каталог товаров
+          </button>
+          <button
+            onClick={() => navigate("/builds")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Monitor" size={15} />
+            Наши ПК
+          </button>
+
+          {/* Разделитель */}
+          <div className="mx-3 my-3 w-px bg-border shrink-0" />
+
+          <button
+            onClick={() => navigate("/configurator")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Cpu" size={15} />
+            Конфигуратор
+          </button>
+          <button
+            onClick={() => navigate("/community-builds")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Users" size={15} />
+            Сборки сообщества
+          </button>
+          <button
+            onClick={() => navigate("/articles")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="BookOpen" size={15} />
+            Статьи
+          </button>
+        </div>
+      </div>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* Три баннера */}
