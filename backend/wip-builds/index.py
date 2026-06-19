@@ -262,6 +262,17 @@ def handler(event: dict, context) -> dict:
             # TODO: notify_telegram(wip_id, body.get("order_number"), body.get("contact"))
             # Отправить уведомление в Telegram при создании новой сборки
 
+            # Автогенерация номера заказа, если не задан вручную:
+            # берём максимальный числовой order_number и +1, формат 5 знаков (00001)
+            order_number = (body.get("order_number") or "").strip()
+            if not order_number:
+                cur.execute(
+                    "SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(order_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
+                    "FROM wip_builds"
+                )
+                next_num = (cur.fetchone()[0] or 0) + 1
+                order_number = str(next_num).zfill(5)
+
             cur.execute(
                 """INSERT INTO wip_builds (order_number, stage, contact, delivery_type, delivery_address,
                    received_at, issued_at, comment,
@@ -270,7 +281,7 @@ def handler(event: dict, context) -> dict:
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                    RETURNING id""",
                 (
-                    body.get("order_number", ""),
+                    order_number,
                     body.get("stage", "Согласование"),
                     body.get("contact"), body.get("delivery_type"), body.get("delivery_address"),
                     body.get("received_at") or None, body.get("issued_at") or None,
@@ -283,7 +294,7 @@ def handler(event: dict, context) -> dict:
             )
             new_id = cur.fetchone()[0]
             conn.commit()
-            return resp(201, {"id": new_id, "ok": True})
+            return resp(201, {"id": new_id, "order_number": order_number, "ok": True})
 
         elif method == "PUT":
             body = json.loads(event.get("body") or "{}")

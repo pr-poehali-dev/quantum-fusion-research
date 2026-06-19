@@ -231,7 +231,7 @@ export function AdminWipTab({
       setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, ...wipForm } : b))
     } else {
       const res = await api.wipBuilds.create(wipForm)
-      if (res.id) setWipBuilds(bs => [...bs, { ...wipForm, id: res.id }])
+      if (res.id) setWipBuilds(bs => [...bs, { ...wipForm, id: res.id, order_number: res.order_number || wipForm.order_number }])
     }
     setWipFormOpen(false)
   }
@@ -525,9 +525,10 @@ export function AdminWipTab({
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs text-foreground/50">Номер заказа *</label>
+                  <label className="mb-1 block text-xs text-foreground/50">Номер заказа</label>
                   <input value={wipForm.order_number} onChange={e => setWipForm(f => f && ({ ...f, order_number: e.target.value }))}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="например 337" style={{ cursor: "text" }} />
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    placeholder={wipForm.id ? "" : "присвоится автоматически"} style={{ cursor: "text" }} />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-foreground/50">Этап</label>
