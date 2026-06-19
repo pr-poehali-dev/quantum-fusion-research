@@ -238,7 +238,7 @@ export default function HomeStonks() {
                       style={{ transform: `translateX(-${artIdx * 100}%)` }}>
                       {articles.map((a, i) => (
                         <button key={a.id} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer" }}
-                          className={`group block w-full shrink-0 text-left transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${i === artIdx ? "scale-100 opacity-100" : "scale-90 opacity-40 blur-[1px]"}`}>
+                          className="group block w-full shrink-0 text-left">
                           <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
                             {a.image_url ? (
                               <img src={a.image_url} alt={a.title}
