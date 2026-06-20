@@ -321,7 +321,7 @@ export default function HomeStonks() {
                   <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
                     {articles.map((a, i) => (
                       <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer", opacity: i === artIdx ? 1 : 0 }}
-                        className="group absolute inset-0 block w-full text-left transition-opacity duration-700"
+                        className={`group absolute inset-0 block w-full text-left transition-opacity duration-700 ${i === artIdx ? "" : "pointer-events-none"}`}
                         tabIndex={i === artIdx ? 0 : -1}>
                         {a.image_url ? (
                           <img src={a.image_url} alt={a.title}
