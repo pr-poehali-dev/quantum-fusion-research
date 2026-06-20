@@ -126,6 +126,69 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": code, "headers": cors, "body": json.dumps({"error": msg})}
 
     try:
+        # ── Утренний автопинг (11:00) — вызывается планировщиком ──────────────────
+        # Доступ по admin-паролю панели (ak) ИЛИ по сессии админа.
+        if action == "morning_ping":
+            if require_admin(cur, session_id, admin_key) is None:
+                return err("Нет доступа", 403)
+            from tg_notify import notify_managers
+
+            def fmt_resp(emp_rows):
+                """emp_rows: список (name, tag). Возвращает '@tag1, @tag2' либо имена."""
+                parts = []
+                for nm, tg in emp_rows:
+                    parts.append(f"@{tg}" if tg else (nm or ""))
+                return ", ".join([p for p in parts if p])
+
+            sent = []
+
+            # 1) ЗАБОР ЗАКАЗОВ на сегодня (wip_component_eta по магазинам)
+            cur.execute(
+                f"SELECT COALESCE(st.name, 'Магазин не указан') AS store, "
+                f"COUNT(DISTINCT wb.order_id) AS cnt "
+                f"FROM {SCHEMA}.wip_component_eta eta "
+                f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = eta.store_id "
+                f"JOIN {SCHEMA}.wip_builds wb ON wb.id = eta.wip_id "
+                f"WHERE eta.eta_date = CURRENT_DATE "
+                f"AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён') "
+                f"GROUP BY st.name ORDER BY store"
+            )
+            pickups = cur.fetchall()
+            if pickups:
+                lines = ["📦 <b>Забрать заказы сегодня</b>", ""]
+                for store, cnt in pickups:
+                    lines.append(f"• {store} — {int(cnt)} заказ(ов)")
+                notify_managers("\n".join(lines))
+                sent.append("pickups")
+
+            # 2) ЗАДАЧИ НА СЕГОДНЯ (calendar_events kind='task', не done) + ответственные
+            cur.execute(
+                f"SELECT ce.id, ce.title, ce.description, "
+                f"COALESCE(json_agg(json_build_object('name', e.name, 'tag', e.telegram_tag)) "
+                f"  FILTER (WHERE e.id IS NOT NULL), '[]') AS emps "
+                f"FROM {SCHEMA}.calendar_events ce "
+                f"LEFT JOIN {SCHEMA}.calendar_event_employees cee ON cee.event_id = ce.id "
+                f"LEFT JOIN {SCHEMA}.employees e ON e.id = cee.employee_id "
+                f"WHERE ce.kind='task' AND ce.status <> 'done' AND ce.event_date = CURRENT_DATE "
+                f"GROUP BY ce.id ORDER BY ce.id"
+            )
+            tasks = cur.fetchall()
+            if tasks:
+                blocks = ["📋 <b>Задачи на сегодня</b>"]
+                for _id, title, descr, emps_json in tasks:
+                    emps = json.loads(emps_json) if isinstance(emps_json, str) else (emps_json or [])
+                    resp = fmt_resp([(e.get("name"), e.get("tag")) for e in emps])
+                    block = f"\n━━━━━━━━━━\n• <b>{title}</b>"
+                    if descr:
+                        block += f"\n{descr}"
+                    if resp:
+                        block += f"\nОтветственные: {resp}"
+                    blocks.append(block)
+                notify_managers("\n".join(blocks))
+                sent.append("tasks")
+
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": sent})}
+
         admin_id = require_admin(cur, session_id, admin_key)
         if admin_id is None:
             return err("Нет доступа", 403)
@@ -133,19 +196,20 @@ def handler(event: dict, context) -> dict:
         # ── Сотрудники ──────────────────────────────────────────────────────────
 
         if action == "employees" and method == "GET":
-            cur.execute(f"SELECT id, name, color, is_active, COALESCE(assembler_percent, 0) FROM {SCHEMA}.employees ORDER BY name")
+            cur.execute(f"SELECT id, name, color, is_active, COALESCE(assembler_percent, 0), COALESCE(telegram_tag, '') FROM {SCHEMA}.employees ORDER BY name")
             rows = cur.fetchall()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
-                "employees": [{"id": r[0], "name": r[1], "color": r[2], "is_active": r[3], "assembler_percent": float(r[4])} for r in rows]
+                "employees": [{"id": r[0], "name": r[1], "color": r[2], "is_active": r[3], "assembler_percent": float(r[4]), "telegram_tag": r[5]} for r in rows]
             })}
 
         elif action == "employee_create" and method == "POST":
             body = json.loads(event.get("body") or "{}")
             name = (body.get("name") or "").strip()
             color = body.get("color") or "#3b82f6"
+            tg_tag = (body.get("telegram_tag") or "").strip().lstrip("@")
             if not name:
                 return err("Имя обязательно")
-            cur.execute(f"INSERT INTO {SCHEMA}.employees (name, color) VALUES ({esc(name)}, {esc(color)}) RETURNING id")
+            cur.execute(f"INSERT INTO {SCHEMA}.employees (name, color, telegram_tag) VALUES ({esc(name)}, {esc(color)}, {esc(tg_tag) if tg_tag else 'NULL'}) RETURNING id")
             new_id = cur.fetchone()[0]
             # Автосоздание финансового счёта сотрудника
             cur.execute(
@@ -162,7 +226,9 @@ def handler(event: dict, context) -> dict:
             color = body.get("color") or "#3b82f6"
             is_active = "TRUE" if body.get("is_active", True) else "FALSE"
             asm_pct = float(body.get("assembler_percent", 0) or 0)
-            cur.execute(f"UPDATE {SCHEMA}.employees SET name={esc(name)}, color={esc(color)}, is_active={is_active}, assembler_percent={asm_pct} WHERE id={eid}")
+            tg_tag = (body.get("telegram_tag") or "").strip().lstrip("@")
+            tg_sql = esc(tg_tag) if tg_tag else "NULL"
+            cur.execute(f"UPDATE {SCHEMA}.employees SET name={esc(name)}, color={esc(color)}, is_active={is_active}, assembler_percent={asm_pct}, telegram_tag={tg_sql} WHERE id={eid}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

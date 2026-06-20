@@ -3,6 +3,23 @@
 
 ---
 
+## v3.60 | 2026-06-20 | Утренний автопинг задач (11:00) + Telegram-тег сотрудника
+
+### DB
+- V0112: employees.telegram_tag (VARCHAR 64).
+
+### Backend (schedule)
+- employees GET/create/update: чтение и сохранение telegram_tag (без @).
+- Новый action=morning_ping (ak=ADMIN_PASSWORD или сессия админа): два сообщения —
+  «📦 Забрать заказы сегодня» (магазины + кол-во) и «📋 Задачи на сегодня»
+  (calendar_events kind=task, не done; разделены «━━━»; @теги ответственных).
+- Вызывать в 11:00 внешним cron: GET schedule?action=morning_ping&ak=begraphics2024.
+
+### Frontend
+- ScheduleEmployeeModal: поле «Telegram-тег». Employee.telegram_tag в типах.
+
+---
+
 ## v3.59 | 2026-06-20 | TG-уведомление о заказе-сборке ПК
 
 ### Backend

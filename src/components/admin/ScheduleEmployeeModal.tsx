@@ -47,6 +47,17 @@ export function ScheduleEmployeeModal({ empModal, empSaving, onClose, onChange, 
             </div>
             <p className="mt-1 text-[11px] text-foreground/40">Начисляется от полной суммы ПК при выдаче заказа.</p>
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-foreground/50">Telegram-тег</label>
+            <div className="flex items-center gap-2">
+              <span className="text-foreground/40">@</span>
+              <input type="text" value={(empModal.telegram_tag || "").replace(/^@/, "")}
+                onChange={e => onChange({ telegram_tag: e.target.value.replace(/^@/, "") })}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                placeholder="username" />
+            </div>
+            <p className="mt-1 text-[11px] text-foreground/40">Для упоминания в утреннем пинге задач (без @).</p>
+          </div>
           {empModal.id && (
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={empModal.is_active !== false}

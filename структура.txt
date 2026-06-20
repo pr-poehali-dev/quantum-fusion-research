@@ -153,6 +153,18 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
   - wip-builds ensure_order (сборка перешла в реальный заказ) → «🖥 Новый заказ-сборка PCxxxxx»
     (сборка, клиент, телефон, сумма). Заказы-сборки создаются в wip-builds, НЕ в orders.
 
+### Утренний автопинг задач (v3.60)
+- employees.telegram_tag (VARCHAR 64, без @) — тег сотрудника для упоминания.
+  Редактируется в ScheduleEmployeeModal (поле «Telegram-тег»).
+- schedule action=morning_ping (GET/POST, доступ по ak=ADMIN_PASSWORD или сессии админа):
+  шлёт ДВА отдельных сообщения по задачам на СЕГОДНЯ:
+    1) «📦 Забрать заказы сегодня» — список магазинов с числом заказов (wip_component_eta);
+    2) «📋 Задачи на сегодня» — задачи calendar_events (kind=task, не done),
+       визуально разделены «━━━», с упоминанием @тегов ответственных.
+  Если данных нет — сообщение по типу не отправляется.
+- ⚠️ Платформа без cron: вызывать в 11:00 внешним планировщиком (cron-job.org / curl):
+  GET schedule?action=morning_ping&ak=begraphics2024
+
 ### Контакты (страница /contacts → src/pages/Contacts.tsx)
 Два офиса: Новокосино (сборка/продажа ПК) и Беляево (ремонт/обслуживание).
 В каждом: адрес+Яндекс.Карты, телефон, Telegram, часы. Footer ведёт сюда
