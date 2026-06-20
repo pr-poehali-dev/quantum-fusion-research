@@ -433,6 +433,11 @@ export default function Shop() {
                   onNavigate={() => navigate(`/product/${p.id}`)}
                 />
               )
+              // Б/У комплектующие из allProducts (в наличии)
+              const usedProducts = allProducts
+                .filter(p => p.is_used && p.in_stock)
+                .sort((a, b) => (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0))
+
               // По категориям из allProducts — топ-3 по марже на категорию
               const catProducts = categories.map(cat => {
                 const inCat = allProducts
@@ -454,6 +459,31 @@ export default function Shop() {
                         {featured.map(renderCard)}
                       </div>
                     </>
+                  )}
+                  {/* Б/У комплектующие — на главной без фильтра */}
+                  {usedProducts.length > 0 && activeCategory === "all" && !search && !usedOnly && (
+                    <div className={featured.length > 0 ? "mt-10" : ""}>
+                      <div className="mb-4 flex items-center gap-2">
+                        <span className="rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">Б/У</span>
+                        <p className="text-xs font-mono uppercase tracking-widest text-foreground/40">Комплектующие бывшие в употреблении</p>
+                      </div>
+                      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                        {usedProducts.slice(0, 3).map(renderCard)}
+                        <button
+                          onClick={() => setUsedOnly(true)}
+                          style={{ cursor: "pointer" }}
+                          className="group flex flex-col items-center justify-center rounded-xl border border-dashed border-amber-500/40 bg-card hover:border-amber-500/70 hover:bg-amber-500/5 transition-all duration-300 min-h-[200px] gap-3 p-6"
+                        >
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/40 group-hover:border-amber-500/70 transition-colors">
+                            <Icon name="ArrowRight" size={20} className="text-amber-500/70 group-hover:text-amber-500 transition-colors" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-foreground/60 group-hover:text-foreground transition-colors">Посмотреть все Б/У</p>
+                            <p className="mt-0.5 text-xs text-foreground/30">{usedProducts.length} шт.</p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
                   )}
                   {/* Блоки по категориям — только на главной без фильтра */}
                   {catProducts.length > 0 && activeCategory === "all" && !search && (
