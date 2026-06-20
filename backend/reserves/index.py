@@ -517,7 +517,7 @@ def handler(event: dict, context) -> dict:
                 LEFT JOIN {SCHEMA}.wip_component_eta eta
                     ON eta.wip_id = wb.id AND eta.slot = comp->>'slot'
                 WHERE b.required_qty > 0
-                  AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён')
+                  AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён', 'Согласование')
                 ORDER BY wb.order_number, b.status
                 """
             )
