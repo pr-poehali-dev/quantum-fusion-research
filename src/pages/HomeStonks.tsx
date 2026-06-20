@@ -178,7 +178,7 @@ export default function HomeStonks() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Banner img={BANNER_PODBOR} title="Покупка комплектующих" to="/shop" />
           <Banner img={BANNER_SBORKA} title="Заказать сборку ПК" to="/builds" />
-          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/articles" />
+          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/service" />
         </div>
 
         {/* Основной грид: контент слева + сайдбар справа */}
