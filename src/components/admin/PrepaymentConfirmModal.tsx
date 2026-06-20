@@ -23,6 +23,9 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
   const isRemaining = mode === "remaining"
   const init = defaultAmount ?? (isRemaining ? total : Math.round(total * 0.3))
   const [amount, setAmount] = useState(String(init))
+  // процент предоплаты (для режима prepayment). По умолчанию 30%.
+  const initPct = total > 0 ? Math.round((init / total) * 100) : 30
+  const [percent, setPercent] = useState(String(initPct))
   // dest: id денежного счёта (cash) ИЛИ "emp" для сотрудника
   const [dest, setDest] = useState<string>("")
   const [employeeId, setEmployeeId] = useState<number | "">("")
@@ -43,6 +46,19 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
   const remaining = Math.max(0, total - amt)
   const isEmp = dest === "emp"
   const canSave = amt > 0 && amt <= total && (isEmp ? employeeId !== "" : dest !== "")
+
+  // Ввод процента → пересчёт суммы
+  const onPercentChange = (v: string) => {
+    setPercent(v)
+    const p = parseFloat(v.replace(",", ".")) || 0
+    setAmount(String(Math.round(total * p / 100)))
+  }
+  // Ввод суммы → пересчёт процента
+  const onAmountChange = (v: string) => {
+    setAmount(v)
+    const a = parseFloat(v.replace(",", ".")) || 0
+    setPercent(total > 0 ? String(Math.round(a / total * 100)) : "0")
+  }
 
   const confirm = async () => {
     if (!canSave) return
@@ -78,9 +94,32 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
           {hint} Итог заказа: <span className="font-semibold text-foreground">{fmt(total)}</span>.
         </p>
 
-        <label className="mb-1 block text-xs text-foreground/50">{isRemaining ? "Сумма оплаты, ₽" : "Сумма предоплаты, ₽"}</label>
-        <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" autoFocus
-          className="mb-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+        {isRemaining ? (
+          <>
+            <label className="mb-1 block text-xs text-foreground/50">Сумма оплаты, ₽</label>
+            <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" autoFocus
+              className="mb-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          </>
+        ) : (
+          <>
+            <label className="mb-1 block text-xs text-foreground/50">Предоплата</label>
+            <div className="mb-1 flex items-stretch gap-2">
+              {/* Процент: иконка + поле ввода */}
+              <div className="flex items-center rounded-lg border border-border bg-background px-2 focus-within:border-primary">
+                <Icon name="Percent" size={14} className="text-foreground/40" />
+                <input value={percent} onChange={e => onPercentChange(e.target.value)} inputMode="decimal"
+                  className="w-12 bg-transparent px-1 py-2 text-center text-sm focus:outline-none" />
+              </div>
+              <span className="flex items-center text-foreground/30">=</span>
+              {/* Сумма */}
+              <div className="flex flex-1 items-center rounded-lg border border-border bg-background px-3 focus-within:border-primary">
+                <input value={amount} onChange={e => onAmountChange(e.target.value)} inputMode="decimal" autoFocus
+                  className="w-full bg-transparent py-2 text-sm focus:outline-none" />
+                <span className="text-sm text-foreground/40">₽</span>
+              </div>
+            </div>
+          </>
+        )}
         <p className="mb-4 text-xs text-foreground/40">{isRemaining ? "Остаток после оплаты" : "Остаток к доплате"}: {fmt(remaining)}</p>
 
         <label className="mb-1 block text-xs text-foreground/50">Счёт зачисления</label>
