@@ -114,6 +114,7 @@ export const api = {
     getByClientToken: (token: string) => fetch(`${URLS.wipBuilds}?client_token=${encodeURIComponent(token)}`).then(r => r.json()),
     getMargin: (wipId: number) => fetch(`${URLS.wipBuilds}?action=margin&id=${wipId}`).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.wipBuilds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    ensureOrder: (wipId: number) => fetch(URLS.wipBuilds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ensure_order", wip_id: wipId }) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.wipBuilds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.wipBuilds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.wipBuilds}?id=${id}`, { method: "DELETE" }).then(r => r.json()),

@@ -259,6 +259,70 @@ def handler(event: dict, context) -> dict:
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
 
+            if body.get("action") == "ensure_order":
+                # Гарантировать наличие заказа (orders) у вручную созданной WIP-сборки,
+                # чтобы работали предоплата/остаток/сумма. Если order_id уже есть — вернуть его.
+                wip_id = body.get("wip_id")
+                if not wip_id:
+                    return resp(400, {"error": "Нет wip_id"})
+                cur.execute(
+                    f"SELECT order_id, build_id, contact, order_number FROM {SCHEMA}.wip_builds WHERE id = %s",
+                    (wip_id,)
+                )
+                w = cur.fetchone()
+                if not w:
+                    return resp(404, {"error": "Сборка не найдена"})
+                order_id, build_id, contact, order_number = w
+                if order_id:
+                    return resp(200, {"order_id": order_id, "ok": True, "existed": True})
+                if not build_id:
+                    return resp(400, {"error": "У сборки нет карточки в каталоге. Сначала нажмите «Создать сборку в каталоге»."})
+
+                cur.execute(
+                    f"SELECT name, total_price, assembly_type, assembly_fee, components "
+                    f"FROM {SCHEMA}.pc_builds WHERE id = %s",
+                    (build_id,)
+                )
+                pb = cur.fetchone()
+                if not pb:
+                    return resp(404, {"error": "Карточка сборки не найдена"})
+                build_name, total_price, asm_type, asm_fee, components = pb
+                total_price = float(total_price or 0)
+
+                # контакты из строки contact: "Имя, +7..." → имя/телефон
+                contact = (contact or "").strip()
+                cust_name = contact or f"Сборка {order_number or ''}".strip() or "Клиент"
+                cust_phone = ""
+                if contact and "," in contact:
+                    parts = [p.strip() for p in contact.split(",")]
+                    cust_name = parts[0] or cust_name
+                    cust_phone = parts[1] if len(parts) > 1 else ""
+                if not cust_phone:
+                    cust_phone = "-"
+
+                items = [{
+                    "id": build_id, "name": build_name or "Сборка ПК",
+                    "price": total_price, "quantity": 1, "item_type": "config",
+                }]
+                cur.execute(
+                    f"""INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type,
+                        items, total, status, created_at, updated_at)
+                        VALUES (%s, %s, 'pc_build', %s, %s, 'new', NOW(), NOW()) RETURNING id""",
+                    (cust_name[:255], cust_phone[:50], json.dumps(items), total_price)
+                )
+                new_order_id = cur.fetchone()[0]
+                cur.execute(
+                    f"UPDATE {SCHEMA}.wip_builds SET order_id = %s, updated_at = NOW() WHERE id = %s",
+                    (new_order_id, wip_id)
+                )
+                # создаём резервы под сборку (по source_id из pc_builds.components)
+                try:
+                    core.ensure_order_reserves(cur, new_order_id, build_id)
+                except Exception:
+                    pass
+                conn.commit()
+                return resp(201, {"order_id": new_order_id, "total": total_price, "ok": True})
+
             # TODO: notify_telegram(wip_id, body.get("order_number"), body.get("contact"))
             # Отправить уведомление в Telegram при создании новой сборки
 

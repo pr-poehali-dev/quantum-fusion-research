@@ -83,7 +83,18 @@ export function AdminWipTab({
   // (тогда сборщику начислится % от суммы ПК).
   const changeStage = async (w: WipBuild, newStage: string) => {
     if (newStage === "Заказ" && w.stage === "Согласование") {
-      setPrepayModal(w)
+      // Для вручную созданной сборки заказа ещё нет — создаём его,
+      // чтобы появилась сумма для предоплаты и работали резервы.
+      let target = w
+      if (!w.order_id || !w.total) {
+        const res = await api.wipBuilds.ensureOrder(w.id!)
+        if (res?.error) { alert(res.error); return }
+        if (res?.order_id) {
+          target = { ...w, order_id: res.order_id, total: res.total ?? w.total }
+          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, order_id: res.order_id, total: res.total ?? b.total } : b))
+        }
+      }
+      setPrepayModal(target)
       return
     }
     if (newStage === "Забрали" && w.stage !== "Забрали") {
