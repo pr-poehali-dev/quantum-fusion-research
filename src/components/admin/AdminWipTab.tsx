@@ -103,10 +103,21 @@ export function AdminWipTab({
         alert("Нельзя выдать ПК без сборщика. Откройте «Ред.» и выберите сборщика.")
         return
       }
+      // Для свободной продажи заказ мог не создаваться (предоплату пропускали) —
+      // создаём его сейчас, чтобы при выдаче открылось окно оплаты полной суммы.
+      let target = w
+      if (!target.order_id) {
+        const ens = await api.wipBuilds.ensureOrder(w.id!)
+        if (ens?.error) { alert(ens.error); return }
+        if (ens?.order_id) {
+          target = { ...w, order_id: ens.order_id, total: ens.total ?? w.total }
+          setWipBuilds(bs => bs.map(b => b.id === w.id ? { ...b, order_id: ens.order_id, total: ens.total ?? b.total } : b))
+        }
+      }
       // Переводим заказ в done — backend начислит % сборщику
-      if (w.order_id) {
-        const res = await api.orders.updateStatus({ id: w.order_id, status: "done" })
-        if (res?.error === "remaining_unpaid") { setRemainingModal(w); return }
+      if (target.order_id) {
+        const res = await api.orders.updateStatus({ id: target.order_id, status: "done" })
+        if (res?.error === "remaining_unpaid") { setRemainingModal(target); return }
         if (res?.error) { alert(res.error); return }
       }
     }
@@ -1002,7 +1013,9 @@ export function AdminWipTab({
           orderId={remainingModal.order_id as number}
           total={remainingModal.total || 0}
           mode="remaining"
-          defaultAmount={Math.max(0, (remainingModal.total || 0) - (remainingModal.prepayment_amount || 0))}
+          defaultAmount={remainingModal.for_sale
+            ? (remainingModal.total || 0)
+            : Math.max(0, (remainingModal.total || 0) - (remainingModal.prepayment_amount || 0))}
           onClose={() => setRemainingModal(null)}
           onConfirmed={() => onRemainingConfirmed(remainingModal)}
         />
