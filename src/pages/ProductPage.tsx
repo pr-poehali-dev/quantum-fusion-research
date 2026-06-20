@@ -228,13 +228,13 @@ export default function ProductPage() {
         <div className="grid gap-8 lg:grid-cols-2 lg:gap-16 mb-12">
           {/* Левая часть — галерея */}
           <div className="space-y-3">
-            <div className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-muted group/img">
+            <div className="relative aspect-video overflow-hidden rounded-2xl border border-border bg-muted group/img">
               {images.length > 0 ? (
                 <>
                   <img
                     src={images[imgIdx]}
                     alt={product.name}
-                    className="h-full w-full object-cover cursor-zoom-in"
+                    className="h-full w-full object-contain cursor-zoom-in"
                     onClick={() => setLightboxOpen(true)}
                   />
                   <div className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover/img:opacity-100 transition-opacity pointer-events-none">
