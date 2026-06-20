@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense } from "react";
+import ConsentModal from "@/components/ConsentModal";
 
 const Index = lazy(() => import("./pages/Index"));
 const Shop = lazy(() => import("./pages/Shop"));
@@ -30,6 +31,7 @@ const Articles = lazy(() => import("./pages/Articles"));
 const HomeStonks = lazy(() => import("./pages/HomeStonks"));
 const Quiz = lazy(() => import("./pages/Quiz"));
 const Service = lazy(() => import("./pages/Service"));
+const Privacy = lazy(() => import("./pages/Privacy"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +73,7 @@ const App = () => (
               <Route path="/admin/order/:id" element={<OrderProcessPage />} />
               <Route path="/quiz" element={<Quiz />} />
               <Route path="/service" element={<Service />} />
+              <Route path="/privacy" element={<Privacy />} />
               <Route path="/articles" element={<Articles />} />
               <Route path="/articles/:id" element={<ArticlePage />} />
               <Route path="/product/:id" element={<ProductPage />} />
@@ -84,6 +87,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          <ConsentModal />
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
