@@ -3,6 +3,15 @@
 
 ---
 
+## v3.67 | 2026-06-20 | Подключение webhook Telegram-бота
+
+### Backend (tg-bot)
+- GET ?action=set_webhook — ставит webhook на свой URL (токен из секрета),
+  ?action=webhook_info — статус. Webhook успешно установлен («Webhook was set»).
+- Бот теперь принимает сообщения: /start, поиск железа, корзина, заказы.
+
+---
+
 ## v3.66 | 2026-06-20 | Скрипт безопасного апгрейда сервера
 
 ### DevOps

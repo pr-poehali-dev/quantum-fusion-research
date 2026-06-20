@@ -194,7 +194,8 @@ selftest-корзин (chat_id 100000000..199999999).
 Таблицы (V0114): tg_bot_carts (chat_id PK, state, state_data, items JSONB),
 tg_bot_managers (chat_id PK, username, full_name).
 Хелперы скопированы: tg_notify.py, warehouse_core.py.
-⚠️ Установка webhook (один раз): GET к api.telegram.org/bot<TOKEN>/setWebhook?url=<URL функции>.
+Установка webhook (один раз, токен из секрета): GET <URL функции>?action=set_webhook.
+Проверка: ?action=webhook_info. Webhook уже установлен (v3.67).
 Тот же бот продолжает слать уведомления (notify_managers) — webhook не мешает.
 
 ### Контакты (страница /contacts → src/pages/Contacts.tsx)

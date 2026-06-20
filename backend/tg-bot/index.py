@@ -19,6 +19,7 @@ import psycopg2
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 TG_API = "https://api.telegram.org/bot{token}/{method}"
+SELF_URL = "https://functions.poehali.dev/6cf7e69d-a5f1-45db-b94e-43f37dd16961"
 PAGE_SIZE = 8
 
 
@@ -390,6 +391,21 @@ def handler(event: dict, context) -> dict:
     if method == "OPTIONS":
         return {"statusCode": 200, "headers": _cors(), "body": ""}
     if method == "GET":
+        params = event.get("queryStringParameters") or {}
+        action = params.get("action")
+        # Установка webhook на самого себя (токен берётся из секрета)
+        if action == "set_webhook":
+            res = tg_call("setWebhook", {
+                "url": SELF_URL,
+                "allowed_updates": ["message", "callback_query"],
+                "drop_pending_updates": True,
+            })
+            return {"statusCode": 200, "headers": _cors(),
+                    "body": json.dumps({"ok": True, "result": res})}
+        if action == "webhook_info":
+            res = tg_call("getWebhookInfo", {})
+            return {"statusCode": 200, "headers": _cors(),
+                    "body": json.dumps({"ok": True, "result": res})}
         try:
             conn = get_conn(); cur = conn.cursor()
             cur.execute(f"DELETE FROM {SCHEMA}.tg_bot_carts WHERE chat_id >= 100000000 AND chat_id < 200000000")
