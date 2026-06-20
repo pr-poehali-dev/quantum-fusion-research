@@ -249,7 +249,7 @@ export default function HomeStonks() {
                     return (
                       <button key={b.id} onClick={() => navigate(`/build-preview/${b.id}`)} style={{ cursor: "pointer" }}
                         className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left hover:border-primary/50 transition-colors">
-                        <div className="relative h-32 w-full overflow-hidden">
+                        <div className="relative h-64 w-full overflow-hidden">
                           {img ? (
                             <img src={img} alt={b.name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                           ) : (
