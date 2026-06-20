@@ -504,6 +504,15 @@ def handle_message(cur, msg):
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
     username = msg["chat"].get("username", "")
+
+    # Диагностика: узнать chat_id текущего чата (для настройки рабочего чата).
+    # Обрабатываем ДО load_cart, чтобы не плодить корзины для групп.
+    if text.startswith("/chatid") or text.startswith("/id"):
+        send(chat_id, f"ID этого чата: <code>{chat_id}</code>\n"
+                      f"Впиши его в секрет TELEGRAM_MANAGER_CHAT_ID, "
+                      f"чтобы сюда приходили заявки.", reply_kb=False)
+        return
+
     c = load_cart(cur, chat_id)
     state = c["state"]
     sd = c["state_data"]

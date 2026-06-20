@@ -30,5 +30,5 @@ def notify_managers(text: str) -> bool:
             resp.read()
         return True
     except Exception as e:
-        print(f"TG_NOTIFY: ошибка отправки — {e}")
+        print(f"TG_NOTIFY: ошибка отправки на chat_id={chat_id} — {e}")
         return False
