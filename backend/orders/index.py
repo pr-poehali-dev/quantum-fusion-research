@@ -855,11 +855,18 @@ def handler(event: dict, context) -> dict:
                 # видно к какому заказу привязан минус.
                 import warehouse_core as wc
 
+                # ИДЕМПОТЕНТНОСТЬ: при создании заказа резервы уже могли быть
+                # созданы (ensure_order_reserves), но статусы слотов WIP остались
+                # pending. Чтобы повторный sync_order не задваивал резервы —
+                # снимаем существующие активные резервы заказа (кроме уже
+                # заказанных у поставщика) и резервируем заново с чистого листа.
+                wc.release_order_reserves(cur, order_id, only_new_negative=True)
+
                 for slot, name, status in zip(slot_names, slot_values, slot_statuses):
                     if not name or name.strip() == "":
                         continue
-                    # Уже обработан — пропускаем
-                    if status in ("ready", "need_order", "ordered_transit", "ordered_delay"):
+                    # Уже заказан у поставщика — резерв сохранён, пропускаем
+                    if status in ("ordered_transit", "ordered_delay"):
                         continue
 
                     product_id = slot_product_map.get(slot)
