@@ -23,7 +23,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const root = document.documentElement
     const accent = getAccent()
-    const effectiveMode = window.location.pathname === "/" ? "dark" : mode
+    const effectiveMode = window.location.pathname === "/welcome" ? "dark" : mode
 
     if (effectiveMode === "light") {
       root.style.setProperty("--background", "0 0% 97%")
@@ -69,7 +69,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const apply = () => {
       const root = document.documentElement
       const accent = getAccent()
-      const effectiveMode = window.location.pathname === "/" ? "dark" : mode
+      const effectiveMode = window.location.pathname === "/welcome" ? "dark" : mode
       if (effectiveMode === "light") {
         root.classList.remove("dark")
         root.style.setProperty("--background", "0 0% 97%")
