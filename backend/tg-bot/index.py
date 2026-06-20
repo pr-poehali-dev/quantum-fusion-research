@@ -630,7 +630,7 @@ def handler(event: dict, context) -> dict:
                                  "Если ты видишь это сообщение — уведомления о "
                                  "заявках настроены и работают.")
             return {"statusCode": 200, "headers": _cors(),
-                    "body": json.dumps({"ok": ok})}
+                    "body": json.dumps({"sent": ok})}
         try:
             conn = get_conn(); cur = conn.cursor()
             cur.execute(f"DELETE FROM {SCHEMA}.tg_bot_carts WHERE chat_id >= 100000000 AND chat_id < 200000000")

@@ -14,18 +14,21 @@ def notify_managers(text: str) -> bool:
     if not token or not chat_id:
         print("TG_NOTIFY: пропуск — нет TELEGRAM_BOT_TOKEN / TELEGRAM_MANAGER_CHAT_ID")
         return False
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        data = urllib.parse.urlencode({
-            "chat_id": chat_id,
-            "text": "@BeGraphicsPC\n" + text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": "true",
-        }).encode()
-        req = urllib.request.Request(url, data=data)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            resp.read()
-        return True
-    except Exception as e:
-        print(f"TG_NOTIFY: ошибка отправки — {e}")
-        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": "@BeGraphicsPC\n" + text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }).encode()
+    last_err = None
+    for _ in range(3):  # ретраи на случай сетевого таймаута / холодного старта
+        try:
+            req = urllib.request.Request(url, data=data)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp.read()
+            return True
+        except Exception as e:
+            last_err = e
+    print(f"TG_NOTIFY: ошибка отправки на chat_id={chat_id} — {last_err}")
+    return False
