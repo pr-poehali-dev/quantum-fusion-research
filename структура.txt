@@ -147,7 +147,9 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
 События:
   - orders POST (новый заказ) → «🛒 Новый заказ {display_number}»;
   - quiz submit (новый лид) → «🎯 Новый лид из квиза»;
-  - warehouse supply_in (товар приехал под NEGATIVE-резерв) → «📦 Товар приехал под заказ».
+  - warehouse supply_in (товар приехал под NEGATIVE-резерв) → «📦 Товар приехал под заказ»;
+  - schedule event_create (новое событие/задача в календаре) → «📅 Событие/Задача в календаре»
+    (название, дата, ответственные сотрудники, описание).
 
 ### Контакты (страница /contacts → src/pages/Contacts.tsx)
 Два офиса: Новокосино (сборка/продажа ПК) и Беляево (ремонт/обслуживание).

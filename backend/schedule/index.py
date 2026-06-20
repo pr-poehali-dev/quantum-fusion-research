@@ -365,6 +365,26 @@ def handler(event: dict, context) -> dict:
                     f"VALUES ({eid}, {int(emp)}) ON CONFLICT DO NOTHING"
                 )
             conn.commit()
+
+            try:
+                from tg_notify import notify_managers
+                _emp_names = []
+                if employee_ids:
+                    ids_csv = ",".join(str(int(e)) for e in employee_ids)
+                    cur.execute(f"SELECT name FROM {SCHEMA}.employees WHERE id IN ({ids_csv})")
+                    _emp_names = [r[0] for r in cur.fetchall()]
+                _kind_label = "Задача" if kind == "task" else "Событие"
+                _resp = ("\nОтветственные: " + ", ".join(_emp_names)) if _emp_names else ""
+                _descr = ("\n" + description) if description else ""
+                notify_managers(
+                    f"📅 <b>{_kind_label} в календаре</b>\n"
+                    f"{title}\n"
+                    f"Дата: {event_date}"
+                    f"{_resp}{_descr}"
+                )
+            except Exception as _e:
+                print(f"TG_NOTIFY calendar: {_e}")
+
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": eid, "ok": True})}
 
         elif action == "event_update" and method == "POST":
