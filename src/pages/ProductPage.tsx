@@ -16,6 +16,7 @@ interface Product {
   specs: Record<string, string>
   in_stock: boolean
   is_featured: boolean
+  is_used?: boolean
   category: { id: number; name: string; slug: string } | null
 }
 
@@ -251,6 +252,11 @@ export default function ProductPage() {
               {discount && (
                 <span className="absolute left-3 top-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground">
                   -{discount}%
+                </span>
+              )}
+              {product.is_used && (
+                <span className="absolute right-3 top-3 rounded-full bg-amber-500 px-3 py-1 text-xs font-bold text-white">
+                  Б/У
                 </span>
               )}
               {!product.in_stock && (

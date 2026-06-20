@@ -20,6 +20,7 @@ interface Product {
   specs: Record<string, string>
   in_stock: boolean
   is_featured: boolean
+  is_used?: boolean
   avg_cost: number
   category: { id: number; name: string; slug: string } | null
 }
@@ -99,6 +100,7 @@ export default function Shop() {
   const [communityBuilds, setCommunityBuilds] = useState<CommunityBuild[]>([])
   const [activeCategory, setActiveCategory] = useState<string>("all")
   const [search, setSearch] = useState("")
+  const [usedOnly, setUsedOnly] = useState(false)
   const [allTags, setAllTags] = useState<BuildTag[]>([])
   const [activeTagIds, setActiveTagIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
@@ -329,6 +331,16 @@ export default function Shop() {
               </div>
 
               <button
+                onClick={() => setUsedOnly(v => !v)}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${usedOnly ? "border-amber-500 bg-amber-500/10 text-amber-500" : "border-border bg-card text-foreground/70 hover:text-foreground hover:border-primary"}`}
+                style={{ cursor: "pointer" }}
+                title="Показать только бывшие в употреблении"
+              >
+                <Icon name="RotateCcw" size={16} />
+                <span className="hidden sm:inline">Б/У</span>
+              </button>
+
+              <button
                 onClick={() => navigate("/configurator")}
                 className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary transition-colors"
                 style={{ cursor: "pointer" }}
@@ -401,9 +413,10 @@ export default function Shop() {
                 <p>Товары не найдены</p>
               </div>
             ) : (() => {
-              const sorted = [...products].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+              const visible = usedOnly ? products.filter(p => p.is_used) : products
+              const sorted = [...visible].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
               // Рекомендуемые — всегда все is_featured из products (без фильтра по категории)
-              const featuredSource = (activeCategory === "all" && !search && allProducts.length > 0) ? allProducts : products
+              const featuredSource = (activeCategory === "all" && !search && !usedOnly && allProducts.length > 0) ? allProducts : visible
               const featured = [...featuredSource]
                 .filter(p => p.is_featured)
                 .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
@@ -677,6 +690,11 @@ function ProductCard({
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
       <button onClick={onOpen} className={`relative aspect-video bg-muted flex items-center justify-center overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`} style={{ cursor: "pointer" }}>
         <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} />
+        {p.is_used && (
+          <span className="absolute left-2 top-2 z-10 rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
+            Б/У
+          </span>
+        )}
         {p.old_price && p.in_stock && (
           <span className="absolute right-2 top-2 z-10 rounded bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">
             -{Math.round((1 - p.price / p.old_price) * 100)}%

@@ -64,6 +64,7 @@ def handler(event: dict, context) -> dict:
             "warehouse_group_id": row[16] if len(row) > 16 else None,
             "avg_cost": float(row[17]) if len(row) > 17 and row[17] else 0,
             "is_archived": bool(row[18]) if len(row) > 18 else False,
+            "is_used": bool(row[19]) if len(row) > 19 else False,
         }
 
     try:
@@ -145,7 +146,7 @@ def handler(event: dict, context) -> dict:
                                       FROM warehouse_supplies s
                                       JOIN warehouse_groups g ON g.id = s.group_id
                                       WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost,
-                            p.is_archived
+                            p.is_archived, p.is_used
                      FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
@@ -187,14 +188,15 @@ def handler(event: dict, context) -> dict:
             in_stock = body.get("in_stock", True)
             cur.execute(
                 """INSERT INTO products (category_id, name, description, price, old_price, image_url, image_urls, specs,
-                   in_stock, stock_qty, is_featured, sort_order, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
+                   in_stock, stock_qty, is_featured, sort_order, is_used, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
                 (body.get("category_id"), body["name"], body.get("description"),
                  body["price"], body.get("old_price"), image_url,
                  json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
-                 body.get("is_featured", False), body.get("sort_order", 0))
+                 body.get("is_featured", False), body.get("sort_order", 0),
+                 body.get("is_used", False))
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -208,13 +210,14 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 """UPDATE products SET category_id=%s, name=%s, description=%s, price=%s,
                    old_price=%s, image_url=%s, image_urls=%s, specs=%s, in_stock=%s, stock_qty=%s,
-                   is_featured=%s, sort_order=%s WHERE id=%s""",
+                   is_featured=%s, sort_order=%s, is_used=%s WHERE id=%s""",
                 (body.get("category_id"), body["name"], body.get("description"),
                  body["price"], body.get("old_price"), image_url,
                  json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
-                 body.get("is_featured", False), body.get("sort_order", 0), body["id"])
+                 body.get("is_featured", False), body.get("sort_order", 0),
+                 body.get("is_used", False), body["id"])
             )
             # синхронизируем цену и название в warehouse_group
             cur.execute(

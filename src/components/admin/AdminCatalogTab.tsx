@@ -103,7 +103,7 @@ export function AdminCatalogTab({
   const [productForm, setProductForm] = useState({
     id: null as number | null,
     category_id: "", name: "", description: "", price: "", old_price: "",
-    image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, sort_order: "0",
+    image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0",
   })
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
@@ -126,7 +126,7 @@ export function AdminCatalogTab({
       price: String(p.price), old_price: p.old_price ? String(p.old_price) : "",
       image_urls: p.image_urls?.length ? p.image_urls : (p.image_url ? [p.image_url] : []),
       specs: JSON.stringify(p.specs || {}),
-      in_stock: p.in_stock, is_featured: p.is_featured, sort_order: String(p.sort_order || 0),
+      in_stock: p.in_stock, is_featured: p.is_featured, is_used: !!p.is_used, sort_order: String(p.sort_order || 0),
     })
     setTab("add_product")
   }
@@ -140,13 +140,13 @@ export function AdminCatalogTab({
       name: productForm.name, description: productForm.description,
       price: Number(productForm.price), old_price: productForm.old_price ? Number(productForm.old_price) : null,
       image_url: productForm.image_urls[0] || null, image_urls: productForm.image_urls, specs,
-      in_stock: productForm.in_stock, is_featured: productForm.is_featured,
+      in_stock: productForm.in_stock, is_featured: productForm.is_featured, is_used: productForm.is_used,
       sort_order: Number(productForm.sort_order),
     }
     if (productForm.id) await api.products.update(payload)
     else await api.products.create(payload)
     setTab("products")
-    setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", image_urls: [], specs: "", in_stock: true, is_featured: false, sort_order: "0" })
+    setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
   }
   const handleExportExcel = async () => {
     setExportLoading(true)
@@ -586,6 +586,9 @@ export function AdminCatalogTab({
           </label>
           <label className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
             <input type="checkbox" checked={productForm.is_featured} onChange={e => setProductForm(f => ({ ...f, is_featured: e.target.checked }))} className="rounded" />Рекомендуем
+          </label>
+          <label className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={productForm.is_used} onChange={e => setProductForm(f => ({ ...f, is_used: e.target.checked }))} className="rounded" />Б/У (бывший в употреблении)
           </label>
         </div>
         <div className="flex gap-3 pt-2">

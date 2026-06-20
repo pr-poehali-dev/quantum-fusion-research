@@ -173,6 +173,7 @@ export interface Product {
   specs: Record<string, string>
   sort_order: number
   is_featured: boolean
+  is_used?: boolean
   image_url: string | null
   image_urls: string[]
 }
