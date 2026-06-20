@@ -15,6 +15,7 @@ import os
 import json
 import urllib.request
 import urllib.parse
+import urllib.error
 import psycopg2
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
@@ -32,22 +33,35 @@ def tg_call(method: str, payload: dict):
     if not token:
         print("TG_BOT: нет TELEGRAM_BOT_TOKEN")
         return None
-    try:
-        url = TG_API.format(token=token, method=method)
-        data = json.dumps(payload).encode()
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        print(f"TG_BOT {method}: {e}")
-        return None
+    url = TG_API.format(token=token, method=method)
+    data = json.dumps(payload).encode()
+    last_err = None
+    for attempt in range(2):  # 1 ретрай на случай сетевого подвисания
+        try:
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode()
+            except Exception:
+                pass
+            print(f"TG_BOT {method}: HTTP {e.code} {body}")
+            return None  # 400/403 ретраить бесполезно
+        except Exception as e:
+            last_err = e
+    print(f"TG_BOT {method}: {last_err}")
+    return None
 
 
-def send(chat_id, text, keyboard=None):
+def send(chat_id, text, keyboard=None, remove_reply_kb=False):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML",
                "disable_web_page_preview": True}
     if keyboard is not None:
         payload["reply_markup"] = {"inline_keyboard": keyboard}
+    elif remove_reply_kb:
+        payload["reply_markup"] = {"remove_keyboard": True}
     return tg_call("sendMessage", payload)
 
 
@@ -303,6 +317,8 @@ def handle_message(cur, msg):
 
     if text in ("/start", "/menu"):
         save_cart(cur, chat_id, state="idle", state_data={})
+        # Убираем старую reply-клавиатуру прежнего бота
+        send(chat_id, "Обновляю меню…", remove_reply_kb=True)
         menu(cur, chat_id, greeting=(text == "/start"))
         return
 
