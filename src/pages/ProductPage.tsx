@@ -224,6 +224,14 @@ export default function ProductPage() {
           <span className="text-foreground/70 truncate max-w-[200px]">{product.name}</span>
         </nav>
 
+        {/* Название — на всю ширину, чтобы тянулось до конца бокса */}
+        <div className="mb-6">
+          {product.category && (
+            <span className="mb-2 block text-xs font-mono text-foreground/40 uppercase tracking-wider">{product.category.name}</span>
+          )}
+          <h1 className="text-2xl sm:text-3xl font-light leading-tight text-foreground">{product.name}</h1>
+        </div>
+
         {/* Основной блок — фото слева, инфо справа */}
         <div className="grid gap-8 lg:grid-cols-5 lg:gap-12 mb-12">
           {/* Левая часть — галерея */}
@@ -297,12 +305,7 @@ export default function ProductPage() {
           </div>
 
           {/* Правая часть — инфо */}
-          <div className="flex flex-col">
-            {product.category && (
-              <span className="mb-2 text-xs font-mono text-foreground/40 uppercase tracking-wider">{product.category.name}</span>
-            )}
-            <h1 className="mb-4 text-2xl sm:text-3xl font-light leading-tight text-foreground">{product.name}</h1>
-
+          <div className="flex flex-col lg:col-span-2">
             {/* Цена */}
             <div className="mb-6 flex items-end gap-3">
               <span className="text-3xl font-bold text-foreground">{fmt(product.price)}</span>
