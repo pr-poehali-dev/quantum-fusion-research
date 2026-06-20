@@ -12,12 +12,11 @@ const REPAIR_PHOTOS = [
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/8e5b5e70-a7a7-4da1-859c-ac60472f1e07.jpg",
 ]
 
-// Статьи с Пикабу (заменишь на реальные ссылки)
-const PIKABU_ARTICLES = [
-  { title: "Как мы реанимировали залитый ноутбук", url: "https://pikabu.ru/" },
-  { title: "Чистка ПК от пыли: до и после", url: "https://pikabu.ru/" },
-  { title: "Ремонт видеокарты после майнинга", url: "https://pikabu.ru/" },
-]
+const PIKABU_URL = "https://pikabu.ru/@vladimag"
+const YANDEX_MAPS_URL = "https://yandex.ru/maps/-/CTApvRnd"
+const TELEGRAM_URL = "https://t.me/BeGraphicsCard"
+const PHONE = "+7 (960) 029-69-98"
+const PHONE_TEL = "+79600296998"
 
 const SERVICES = [
   { icon: "Cpu", title: "Ремонт ПК и ноутбуков", desc: "Диагностика, замена компонентов, восстановление после залития." },
@@ -83,13 +82,13 @@ export default function Service() {
             прозрачные цены и гарантия на все работы. Чиним то, от чего отказались другие.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <a href="tel:+70000000000" className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+            <a href={`tel:${PHONE_TEL}`} className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
               <Icon name="Phone" size={16} /> Позвонить
             </a>
-            <button onClick={() => navigate("/quiz")} style={{ cursor: "pointer" }}
+            <a href={TELEGRAM_URL} target="_blank" rel="noreferrer"
               className="flex items-center gap-2 rounded-lg border border-border px-6 py-3 text-sm font-semibold hover:border-primary transition-colors">
-              <Icon name="MessageSquare" size={16} /> Оставить заявку
-            </button>
+              <Icon name="Send" size={16} /> Telegram
+            </a>
           </div>
         </div>
 
@@ -139,41 +138,40 @@ export default function Service() {
           {/* Статьи */}
           <div className="lg:col-span-2">
             <h2 className="mb-4 text-2xl font-bold">Истории ремонтов на Пикабу</h2>
-            <div className="space-y-3">
-              {PIKABU_ARTICLES.map((a, i) => (
-                <a key={i} href={a.url} target="_blank" rel="noreferrer"
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 hover:border-primary transition-colors">
-                  <span className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Icon name="BookOpen" size={18} />
-                    </span>
-                    <span className="font-medium">{a.title}</span>
-                  </span>
-                  <Icon name="ExternalLink" size={16} className="shrink-0 text-foreground/40" />
-                </a>
-              ))}
-            </div>
+            <a href={PIKABU_URL} target="_blank" rel="noreferrer"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5 hover:border-primary transition-colors">
+              <span className="flex items-center gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon name="BookOpen" size={22} />
+                </span>
+                <span>
+                  <span className="block font-semibold">Все наши истории ремонтов</span>
+                  <span className="block text-sm text-foreground/55">Читайте подробные разборы на нашем профиле Пикабу</span>
+                </span>
+              </span>
+              <Icon name="ExternalLink" size={18} className="shrink-0 text-foreground/40" />
+            </a>
           </div>
 
           {/* Контакты и адрес */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <h2 className="mb-4 text-xl font-bold">Контакты</h2>
             <div className="space-y-3 text-sm">
-              <div className="flex items-start gap-3">
+              <a href={YANDEX_MAPS_URL} target="_blank" rel="noreferrer" className="flex items-start gap-3 hover:text-primary transition-colors">
                 <Icon name="MapPin" size={18} className="mt-0.5 shrink-0 text-primary" />
-                <span>г. Москва, ул. Примерная, д. 1, офис 10</span>
-              </div>
-              <a href="tel:+70000000000" className="flex items-center gap-3 hover:text-primary transition-colors">
-                <Icon name="Phone" size={18} className="shrink-0 text-primary" />
-                +7 (000) 000-00-00
+                <span>Мы на Яндекс.Картах — открыть маршрут</span>
               </a>
-              <a href="mailto:info@begraphics.ru" className="flex items-center gap-3 hover:text-primary transition-colors">
-                <Icon name="Mail" size={18} className="shrink-0 text-primary" />
-                info@begraphics.ru
+              <a href={`tel:${PHONE_TEL}`} className="flex items-center gap-3 hover:text-primary transition-colors">
+                <Icon name="Phone" size={18} className="shrink-0 text-primary" />
+                {PHONE}
+              </a>
+              <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" className="flex items-center gap-3 hover:text-primary transition-colors">
+                <Icon name="Send" size={18} className="shrink-0 text-primary" />
+                @BeGraphicsCard
               </a>
               <div className="flex items-start gap-3">
                 <Icon name="Clock" size={18} className="mt-0.5 shrink-0 text-primary" />
-                <span>Пн–Пт 10:00–20:00, Сб–Вс 11:00–18:00</span>
+                <span>Ежедневно с 11:00 до 21:00</span>
               </div>
             </div>
           </div>
