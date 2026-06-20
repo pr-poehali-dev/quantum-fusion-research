@@ -15,6 +15,49 @@ CORS = {
 def resp(status, data):
     return {"statusCode": status, "headers": CORS, "body": json.dumps(data, ensure_ascii=False, default=str)}
 
+SCHEMA = "t_p72635010_quantum_fusion_resea"
+
+
+def _sync_wip_from_build(cur, build_id, components):
+    """Если к pc_build привязана WIP-сборка — переносим названия комплектующих
+    из components в текстовые поля WIP (cpu/gpu/ram/...), чтобы железо
+    отображалось в «Сборках в процессе»."""
+    if not build_id:
+        return
+    cur.execute(f"SELECT id FROM {SCHEMA}.wip_builds WHERE build_id = %s", (build_id,))
+    rows = cur.fetchall()
+    if not rows:
+        return
+    if isinstance(components, str):
+        try:
+            components = json.loads(components or "[]")
+        except Exception:
+            components = []
+    slot_map = {"cpu": "", "motherboard": "", "ram": "", "gpu": "",
+                "storage": "", "psu": "", "case_name": "", "cooling": ""}
+    extras = []
+    for c in (components or []):
+        slot = c.get("slot")
+        name = (c.get("name") or "").strip()
+        if not name:
+            continue
+        key = "case_name" if slot == "case" else slot
+        if key in slot_map:
+            slot_map[key] = name
+        else:
+            extras.append(name)
+    extra_val = ", ".join(extras)
+    for r in rows:
+        cur.execute(
+            f"""UPDATE {SCHEMA}.wip_builds SET
+                cpu=%s, motherboard=%s, ram=%s, gpu=%s, storage=%s,
+                psu=%s, case_name=%s, cooling=%s, extra=%s, updated_at=NOW()
+                WHERE id=%s""",
+            (slot_map["cpu"], slot_map["motherboard"], slot_map["ram"], slot_map["gpu"],
+             slot_map["storage"], slot_map["psu"], slot_map["case_name"], slot_map["cooling"],
+             extra_val, r[0])
+        )
+
 def fmt_build(row, tags=None):
     return {
         "id": row[0], "name": row[1], "description": row[2],
@@ -280,6 +323,7 @@ def handler(event: dict, context) -> dict:
                  body.get("sort_order"), body.get("parent_id"),
                  body.get("sell_with_vat", False), body["id"])
             )
+            _sync_wip_from_build(cur, body["id"], body.get("components", []))
             conn.commit()
             return resp(200, {"ok": True})
 
@@ -334,6 +378,8 @@ def handler(event: dict, context) -> dict:
                 values.append(json.dumps(v) if isinstance(v, (list, dict)) else v)
             values.append(build_id)
             cur.execute(f"UPDATE pc_builds SET {', '.join(set_parts)} WHERE id=%s", values)
+            if "components" in updates:
+                _sync_wip_from_build(cur, build_id, updates["components"])
             conn.commit()
             return resp(200, {"ok": True})
 
