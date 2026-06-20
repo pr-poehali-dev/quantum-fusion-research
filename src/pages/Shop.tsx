@@ -440,6 +440,21 @@ export default function Shop() {
                 .filter(p => p.is_used && p.in_stock)
                 .sort((a, b) => (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0))
 
+              // Режим «Только Б/У» — плоский список всех б/у-лотов, без групп
+              if (usedOnly) {
+                return (
+                  <>
+                    <div className="mb-4 flex items-center gap-2">
+                      <span className="rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">Б/У</span>
+                      <p className="text-xs font-mono uppercase tracking-widest text-foreground/40">Бывшие в употреблении с гарантией</p>
+                    </div>
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {sorted.map(renderCard)}
+                    </div>
+                  </>
+                )
+              }
+
               // По категориям из allProducts — топ-3 по марже на категорию
               const catProducts = categories.map(cat => {
                 const inCat = allProducts
