@@ -55,6 +55,7 @@ def handler(event: dict, context) -> dict:
             "budget_min": r[4], "budget_max": r[5], "answers": r[6] or {},
             "extra_wishes": r[7], "status": r[8],
             "created_at": r[9].isoformat() if r[9] else None,
+            "telegram_tag": r[10] if len(r) > 10 else None,
         }
 
     # ─────────── ВОПРОСЫ ───────────
@@ -100,13 +101,15 @@ def handler(event: dict, context) -> dict:
 
     # ─────────── ОТПРАВКА АНКЕТЫ КЛИЕНТОМ ───────────
     if resource == "submit" and method == "POST":
+        _tg_tag = (body.get("telegram_tag") or "").strip().lstrip("@")
         cur.execute(
             "INSERT INTO quiz_requests (name, phone, contact_method, budget_min, "
-            "budget_max, answers, extra_wishes, status) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, 'new') RETURNING id",
+            "budget_max, answers, extra_wishes, telegram_tag, status) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new') RETURNING id",
             (body.get("name"), body.get("phone"), body.get("contact_method"),
              body.get("budget_min"), body.get("budget_max"),
-             Json(body.get("answers", {})), body.get("extra_wishes")),
+             Json(body.get("answers", {})), body.get("extra_wishes"),
+             _tg_tag or None),
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -118,11 +121,19 @@ def handler(event: dict, context) -> dict:
             _budget = ""
             if _bmin or _bmax:
                 _budget = f"\nБюджет: {_bmin or '?'}–{_bmax or '?'} ₽"
+            _method = body.get("contact_method", "—")
+            if _method == "telegram":
+                if _tg_tag:
+                    _contact = f"Telegram: <a href=\"https://t.me/{_tg_tag}\">@{_tg_tag}</a>"
+                else:
+                    _contact = "Telegram (тег не указан, искать по телефону)"
+            else:
+                _contact = f"Связь: {_method}"
             notify_managers(
                 f"🎯 <b>Новый лид из квиза</b>\n"
                 f"Имя: {body.get('name','—')}\n"
                 f"Телефон: {body.get('phone','—')}\n"
-                f"Связь: {body.get('contact_method','—')}"
+                f"{_contact}"
                 f"{_budget}"
             )
         except Exception as _e:
@@ -139,7 +150,7 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             cur.execute(
                 "SELECT id, name, phone, contact_method, budget_min, budget_max, "
-                "answers, extra_wishes, status, created_at "
+                "answers, extra_wishes, status, created_at, telegram_tag "
                 "FROM quiz_requests ORDER BY created_at DESC"
             )
             rows = [request_row(r) for r in cur.fetchall()]

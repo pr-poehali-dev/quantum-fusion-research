@@ -115,6 +115,7 @@ export default function Quiz() {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [contact, setContact] = useState("telegram")
+  const [tgTag, setTgTag] = useState("")
   const [extra, setExtra] = useState("")
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
@@ -139,9 +140,9 @@ export default function Quiz() {
   // автосохранение прогресса
   useEffect(() => {
     if (!loadedRef.current || done) return
-    const data = { step, answers, budget, name, phone, contact, extra, ts: Date.now() }
+    const data = { step, answers, budget, name, phone, contact, tgTag, extra, ts: Date.now() }
     try { localStorage.setItem(QUIZ_STORAGE_KEY, JSON.stringify(data)) } catch { /* ignore */ }
-  }, [step, answers, budget, name, phone, contact, extra, done])
+  }, [step, answers, budget, name, phone, contact, tgTag, extra, done])
 
   const resumeQuiz = () => {
     try {
@@ -151,6 +152,7 @@ export default function Quiz() {
       if (saved.name) setName(saved.name)
       if (saved.phone) setPhone(saved.phone)
       if (saved.contact) setContact(saved.contact)
+      if (saved.tgTag) setTgTag(saved.tgTag)
       if (saved.extra) setExtra(saved.extra)
       if (typeof saved.step === "number") setStep(saved.step)
     } catch { /* ignore */ }
@@ -191,6 +193,7 @@ export default function Quiz() {
       name: name.trim(),
       phone: phone.trim(),
       contact_method: contact,
+      telegram_tag: contact === "telegram" ? tgTag.trim().replace(/^@/, "") : "",
       budget_min: budget.min,
       budget_max: budget.max,
       answers,
@@ -290,6 +293,20 @@ export default function Quiz() {
                         </button>
                       ))}
                     </div>
+                    {contact === "telegram" && (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center rounded-xl border border-border bg-card px-4 focus-within:border-primary">
+                          <span className="text-foreground/40">@</span>
+                          <input value={tgTag.replace(/^@/, "")} onChange={e => setTgTag(e.target.value.replace(/^@/, ""))}
+                            placeholder="ваш_тег_в_telegram"
+                            className="w-full bg-transparent py-3 pl-1 text-sm outline-none" />
+                        </div>
+                        <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                          <Icon name="TriangleAlert" size={14} className="mt-0.5 shrink-0" />
+                          <span>Без тега мы сможем найти вас по номеру в Telegram, только если в настройках конфиденциальности у вас разрешён поиск по номеру для всех (не только контактов).</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : current.field_type === "text" ? (
                   <textarea value={answers[current.id]?.[0] || ""} onChange={e => setAns(current.id, [e.target.value])} rows={4}

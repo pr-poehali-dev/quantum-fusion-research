@@ -130,8 +130,11 @@ warehouse_stock_log, warehouse_backorders.
 «Входящие заявки» (/admin/quiz_requests → QuizRequestsTab.tsx).
 Таблицы: quiz_questions (вопросы анкеты, настраиваются из админки;
 field_type: multi/single/budget/contacts/text, options JSONB),
-quiz_requests (заявки клиентов: name, phone, contact_method, budget_min/max,
-answers JSONB {question_id: [варианты]}, extra_wishes, status new/in_progress/done/rejected).
+quiz_requests (заявки клиентов: name, phone, contact_method, telegram_tag (v3.64),
+budget_min/max, answers JSONB {question_id: [варианты]}, extra_wishes,
+status new/in_progress/done/rejected).
+На /quiz при выборе способа связи Telegram появляется поле тега + предупреждение
+о поиске по номеру (нужна настройка приватности). Тег виден в админке (кликабельно).
 Эндпоинты (?resource=):
   GET questions [&all=true] / POST/PUT/DELETE questions — CRUD вопросов;
   POST submit — приём анкеты от клиента;
@@ -148,7 +151,9 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
   - orders POST (новый заказ) → «🛒 Новый заказ {display_number}». Если клиент выбрал
     Telegram (customer_email = "tg:<ссылка|username>") — в сообщении кликабельная
     ссылка <a href=t.me/..>@username</a>; для vk/прочих — строка контакта;
-  - quiz submit (новый лид) → «🎯 Новый лид из квиза»;
+  - quiz submit (новый лид) → «🎯 Новый лид из квиза». Если способ связи telegram и
+    указан telegram_tag — «Telegram: @тег» (кликабельно); если тег пуст —
+    «Telegram (тег не указан, искать по телефону)»;
   - warehouse supply_in (товар приехал под NEGATIVE-резерв) → «📦 Товар приехал под заказ»;
   - schedule event_create (новое событие/задача в календаре) → «📅 Событие/Задача в календаре»
     (название, дата, ответственные сотрудники, описание);

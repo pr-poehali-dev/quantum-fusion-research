@@ -26,6 +26,7 @@ interface QuizRequest {
   extra_wishes: string | null
   status: string
   created_at: string
+  telegram_tag?: string | null
 }
 
 const STATUS_OPTS = [
@@ -161,6 +162,12 @@ export default function QuizRequestsTab() {
                           <p className="mb-1 text-xs font-semibold text-foreground/50">Контакты</p>
                           <p>{r.name || "—"}</p>
                           <p>{r.phone || "—"} · {CONTACT_LABELS[r.contact_method || ""] || r.contact_method || "—"}</p>
+                          {r.telegram_tag && (
+                            <p>
+                              <a href={`https://t.me/${r.telegram_tag.replace(/^@/, "")}`} target="_blank" rel="noreferrer"
+                                className="text-primary hover:underline">@{r.telegram_tag.replace(/^@/, "")}</a>
+                            </p>
+                          )}
                         </div>
                         <div className="rounded-lg bg-muted/40 p-3">
                           <p className="mb-1 text-xs font-semibold text-foreground/50">Бюджет</p>
