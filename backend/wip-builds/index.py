@@ -346,10 +346,20 @@ def handler(event: dict, context) -> dict:
                 except Exception:
                     pass
                 conn.commit()
-                return resp(201, {"order_id": new_order_id, "total": total_price, "ok": True})
 
-            # TODO: notify_telegram(wip_id, body.get("order_number"), body.get("contact"))
-            # Отправить уведомление в Telegram при создании новой сборки
+                try:
+                    from tg_notify import notify_managers
+                    notify_managers(
+                        f"🖥 <b>Новый заказ-сборка PC{str(new_order_id).zfill(5)}</b>\n"
+                        f"Сборка: {build_name or 'Сборка ПК'}\n"
+                        f"Клиент: {cust_name}\n"
+                        f"Телефон: {cust_phone}\n"
+                        f"Сумма: {float(total_price):,.0f} ₽".replace(",", " ")
+                    )
+                except Exception as _e:
+                    print(f"TG_NOTIFY wip ensure_order: {_e}")
+
+                return resp(201, {"order_id": new_order_id, "total": total_price, "ok": True})
 
             # Автогенерация номера заказа сборки, если не задан вручную:
             # отдельная нумерация PC: берём MAX среди PC-номеров и +1, формат PC00001
