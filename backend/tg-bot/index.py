@@ -631,6 +631,30 @@ def handler(event: dict, context) -> dict:
                                  "заявках настроены и работают.")
             return {"statusCode": 200, "headers": _cors(),
                     "body": json.dumps({"sent": ok})}
+        if action == "resend_last":
+            from tg_notify import notify_managers
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute(
+                f"""SELECT display_number, customer_name, customer_phone,
+                           customer_email, total
+                    FROM {SCHEMA}.orders WHERE order_type='parts'
+                    ORDER BY created_at DESC LIMIT 1""")
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            if not row:
+                return {"statusCode": 200, "headers": _cors(),
+                        "body": json.dumps({"sent": False, "reason": "no orders"})}
+            dn, name, phone, email, total = row
+            uname = ""
+            if email and email.startswith("tg:https://t.me/"):
+                uname = email.rsplit("/", 1)[-1]
+            tag = f"\nTelegram: <a href=\"https://t.me/{uname}\">@{uname}</a>" if uname else ""
+            ok = notify_managers(
+                f"🛒 <b>Заявка {dn}</b> (повтор)\n"
+                f"Тип: Железо\nКлиент: {name}\nТелефон: {phone}{tag}\n"
+                f"Сумма: {fmt_price(total)}")
+            return {"statusCode": 200, "headers": _cors(),
+                    "body": json.dumps({"sent": ok, "order": dn})}
         try:
             conn = get_conn(); cur = conn.cursor()
             cur.execute(f"DELETE FROM {SCHEMA}.tg_bot_carts WHERE chat_id >= 100000000 AND chat_id < 200000000")
