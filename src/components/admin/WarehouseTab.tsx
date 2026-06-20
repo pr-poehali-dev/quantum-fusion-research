@@ -328,7 +328,7 @@ function StoresModal({ stores, onClose, onSaved }: {
 
         <div className="mb-4 space-y-1 max-h-48 overflow-y-auto">
           {stores.length === 0 && <p className="text-sm text-foreground/40">Нет магазинов</p>}
-          {stores.map(s => (
+          {[...stores].sort((a, b) => (parseInt(a.code, 10) || 0) - (parseInt(b.code, 10) || 0)).map(s => (
             <div key={s.id} className="flex items-center gap-3 rounded-lg bg-background px-3 py-2">
               <span className="font-mono text-xs text-foreground/50">[{s.code}]</span>
               <span className="text-sm">{s.name}</span>
