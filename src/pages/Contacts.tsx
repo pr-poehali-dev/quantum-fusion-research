@@ -6,17 +6,16 @@ import NotificationBell from "@/components/NotificationBell"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/store/auth"
 
-const PHONE = "+7 (960) 029-69-98"
-const PHONE_TEL = "+79600296998"
-const TELEGRAM_URL = "https://t.me/BeGraphicsCard"
-const TELEGRAM = "@BeGraphicsCard"
-
 interface Office {
   title: string
   subtitle: string
   icon: string
   address: string
   mapsUrl: string
+  phone: string
+  phoneTel: string
+  telegram: string
+  telegramUrl: string
   hours: string
 }
 
@@ -27,6 +26,10 @@ const OFFICES: Office[] = [
     icon: "Cpu",
     address: "г. Москва, Новокосино",
     mapsUrl: "https://yandex.ru/maps/-/CTA~v8Lr",
+    phone: "+7 (910) 307-04-99",
+    phoneTel: "+79103070499",
+    telegram: "@BeGraphicsPC",
+    telegramUrl: "https://t.me/BeGraphicsPC",
     hours: "Ежедневно с 11:00 до 21:00",
   },
   {
@@ -35,6 +38,10 @@ const OFFICES: Office[] = [
     icon: "Wrench",
     address: "г. Москва, Беляево",
     mapsUrl: "https://yandex.ru/maps/-/CTApvRnd",
+    phone: "+7 (960) 029-69-98",
+    phoneTel: "+79600296998",
+    telegram: "@BeGraphicsCard",
+    telegramUrl: "https://t.me/BeGraphicsCard",
     hours: "Ежедневно с 11:00 до 21:00",
   },
 ]
@@ -100,13 +107,13 @@ export default function Contacts() {
                   <Icon name="MapPin" size={18} className="mt-0.5 shrink-0 text-primary" />
                   <span>{o.address} — открыть на Яндекс.Картах</span>
                 </a>
-                <a href={`tel:${PHONE_TEL}`} className="flex items-center gap-3 hover:text-primary transition-colors">
+                <a href={`tel:${o.phoneTel}`} className="flex items-center gap-3 hover:text-primary transition-colors">
                   <Icon name="Phone" size={18} className="shrink-0 text-primary" />
-                  {PHONE}
+                  {o.phone}
                 </a>
-                <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" className="flex items-center gap-3 hover:text-primary transition-colors">
+                <a href={o.telegramUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 hover:text-primary transition-colors">
                   <Icon name="Send" size={18} className="shrink-0 text-primary" />
-                  {TELEGRAM}
+                  {o.telegram}
                 </a>
                 <div className="flex items-start gap-3">
                   <Icon name="Clock" size={18} className="mt-0.5 shrink-0 text-primary" />
