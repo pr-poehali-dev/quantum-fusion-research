@@ -78,8 +78,9 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
             )
             brow = cur.fetchone()
             basket_status = brow[0] if brow else "NEW"
-            # ORDERED/RECEIVED — железо уже заказано у поставщика, оставляем в закупке
-            if only_new_negative and basket_status != "NEW":
+            # Оставляем нехватку в закупке ТОЛЬКО если товар уже заказан у
+            # поставщика и ещё не пришёл (ORDERED). NEW и RECEIVED — снимаем.
+            if only_new_negative and basket_status == "ORDERED":
                 released["kept_ordered"] += r_qty
                 continue
             if supply_id:
