@@ -155,48 +155,58 @@ class PDFWriter:
     def ln(self, h=3):
         self.y -= h
 
+    def _wrap_cell(self, text, inner_w, font, size):
+        """Разбивает текст на строки по ширине ячейки. Длинные слова без
+        пробелов (например серийные номера) дополнительно режутся по символам,
+        чтобы не вылезать за границу колонки."""
+        def split_long(word):
+            """Режет слишком длинное слово на куски, влезающие в inner_w."""
+            if self.c.stringWidth(word, font, size) <= inner_w:
+                return [word]
+            parts, chunk = [], ""
+            for ch in word:
+                if self.c.stringWidth(chunk + ch, font, size) <= inner_w:
+                    chunk += ch
+                else:
+                    if chunk:
+                        parts.append(chunk)
+                    chunk = ch
+            if chunk:
+                parts.append(chunk)
+            return parts
+
+        lines_out = []
+        line = ""
+        for w in text.split():
+            for piece in split_long(w):
+                test = (line + " " + piece).strip()
+                if self.c.stringWidth(test, font, size) <= inner_w:
+                    line = test
+                else:
+                    if line:
+                        lines_out.append(line)
+                    line = piece
+        if line:
+            lines_out.append(line)
+        return lines_out or [""]
+
     def cell_row(self, cells, col_widths, font="dj", size=8, row_h=None):
         """Рисует строку таблицы. cells = [text,...], col_widths = [w,...]"""
         self.c.setFont(font, size)
         lh = size * 1.35
+        # заранее переносим текст каждой ячейки (с учётом длинных слов)
+        wrapped = [self._wrap_cell(cell, cw - 4, font, size)
+                   for cell, cw in zip(cells, col_widths)]
         if row_h is None:
-            # вычислить нужную высоту по самой высокой ячейке
-            max_lines = 1
-            for i, cell in enumerate(cells):
-                words = cell.split()
-                cw = col_widths[i] - 4
-                line = ""
-                lines = 0
-                for w in words:
-                    test = (line + " " + w).strip()
-                    if self.c.stringWidth(test, font, size) <= cw:
-                        line = test
-                    else:
-                        if line: lines += 1
-                        line = w
-                if line: lines += 1
-                max_lines = max(max_lines, lines)
+            max_lines = max((len(w) for w in wrapped), default=1)
             row_h = lh * max_lines + 2
 
         self._check_page(row_h + 2)
         y0 = self.y
         x = self.ML
-        for i, (cell, cw) in enumerate(zip(cells, col_widths)):
+        for lines_out, cw in zip(wrapped, col_widths):
             self.c.rect(x, y0 - row_h, cw, row_h)
-            # текст с переносом внутри ячейки
-            inner_w = cw - 4
-            words = cell.split()
-            line = ""
-            lines_out = []
-            for w in words:
-                test = (line + " " + w).strip()
-                if self.c.stringWidth(test, font, size) <= inner_w:
-                    line = test
-                else:
-                    if line: lines_out.append(line)
-                    line = w
-            if line: lines_out.append(line)
-            ty = y0 - 2 - lh * 0
+            ty = y0 - 2
             for ln in lines_out:
                 self.c.drawString(x + 2, ty - lh + size * 0.3, ln)
                 ty -= lh
