@@ -225,10 +225,10 @@ export default function ProductPage() {
         </nav>
 
         {/* Основной блок — фото слева, инфо справа */}
-        <div className="grid gap-8 lg:grid-cols-2 lg:gap-16 mb-12">
+        <div className="grid gap-8 lg:grid-cols-5 lg:gap-12 mb-12">
           {/* Левая часть — галерея */}
-          <div className="space-y-3">
-            <div className="relative aspect-video overflow-hidden rounded-2xl border border-border bg-muted group/img">
+          <div className="space-y-3 lg:col-span-3">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border bg-muted group/img">
               {images.length > 0 ? (
                 <>
                   <img
