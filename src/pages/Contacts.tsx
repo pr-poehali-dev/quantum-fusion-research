@@ -26,7 +26,7 @@ const OFFICES: Office[] = [
     subtitle: "Сборка и продажа ПК и комплектующих",
     icon: "Cpu",
     address: "г. Москва, Новокосино",
-    mapsUrl: "https://yandex.ru/maps/",
+    mapsUrl: "https://yandex.ru/maps/-/CTA~v8Lr",
     hours: "Ежедневно с 11:00 до 21:00",
   },
   {
