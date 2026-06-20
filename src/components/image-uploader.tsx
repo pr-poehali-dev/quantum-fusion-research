@@ -10,6 +10,46 @@ interface Props {
   maxImages?: number
 }
 
+// Сжимает/уменьшает изображение в браузере перед загрузкой.
+// Большие фото (5–10 МБ) не помещаются в тело запроса облачной функции,
+// поэтому ресайзим до maxSide и пережимаем в JPEG.
+const compressImage = (file: File, maxSide = 2000, quality = 0.85): Promise<string> =>
+  new Promise((resolve, reject) => {
+    // SVG и GIF не трогаем — отдаём как есть
+    if (file.type === "image/svg+xml" || file.type === "image/gif") {
+      const r = new FileReader()
+      r.onload = () => resolve(r.result as string)
+      r.onerror = reject
+      r.readAsDataURL(file)
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxSide || height > maxSide) {
+          const scale = maxSide / Math.max(width, height)
+          width = Math.round(width * scale)
+          height = Math.round(height * scale)
+        }
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        if (!ctx) { reject(new Error("no canvas")); return }
+        ctx.drawImage(img, 0, 0, width, height)
+        // PNG с прозрачностью → оставляем PNG, иначе JPEG (меньше вес)
+        const hasAlpha = file.type === "image/png"
+        resolve(canvas.toDataURL(hasAlpha ? "image/png" : "image/jpeg", quality))
+      }
+      img.onerror = reject
+      img.src = reader.result as string
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+
 export function ImageUploader({ images: imagesProp, onChange, folder = "builds", maxImages = 8 }: Props) {
   const images = imagesProp || []
   const inputRef = useRef<HTMLInputElement>(null)
@@ -17,22 +57,26 @@ export function ImageUploader({ images: imagesProp, onChange, folder = "builds",
   const [uploadUrl, setUploadUrl] = useState("")
 
   const uploadFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = async () => {
-        try {
-          const res = await fetch(UPLOAD_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ file: reader.result, name: file.name, folder }),
-          })
-          const data = await res.json()
-          if (data.url) resolve(data.url)
-          else reject(new Error("No URL"))
-        } catch (e) { reject(e) }
-      }
-      reader.readAsDataURL(file)
+    // Сжимаем перед отправкой (если не вышло — шлём оригинал)
+    let dataUrl: string
+    try {
+      dataUrl = await compressImage(file)
+    } catch {
+      dataUrl = await new Promise<string>((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(r.result as string)
+        r.onerror = rej
+        r.readAsDataURL(file)
+      })
+    }
+    const res = await fetch(UPLOAD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: dataUrl, name: file.name, folder }),
     })
+    const data = await res.json()
+    if (data.url) return data.url
+    throw new Error(data.error || "No URL")
   }
 
   const handleFiles = async (files: FileList) => {
