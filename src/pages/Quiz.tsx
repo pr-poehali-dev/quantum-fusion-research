@@ -94,7 +94,7 @@ function TasksField({ options, value, onChange }: {
                       <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-md border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
                         {active && <Icon name="Check" size={11} />}
                       </span>
-                      {o.label}
+                      <span className="min-w-0 break-words">{o.label}</span>
                     </button>
                   )
                 })}
