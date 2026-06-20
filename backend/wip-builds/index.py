@@ -101,7 +101,7 @@ def fmt_row(row):
         "customer_name", "customer_phone", "total", "order_status",
         "client_token", "build_id", "build_components",
         "prepayment_percent", "prepayment_amount", "prepayment_confirmed",
-        "assembled_by", "assembler_name",
+        "assembled_by", "assembler_name", "for_sale",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -159,7 +159,7 @@ def handler(event: dict, context) -> dict:
                        w.client_token, w.build_id,
                        pb.components as build_components,
                        o.prepayment_percent, o.prepayment_amount, o.prepayment_confirmed,
-                       w.assembled_by, emp.name as assembler_name
+                       w.assembled_by, emp.name as assembler_name, w.for_sale
                 FROM wip_builds w
                 LEFT JOIN orders o ON w.order_id = o.id
                 LEFT JOIN pc_builds pb ON pb.id = w.build_id
@@ -387,27 +387,57 @@ def handler(event: dict, context) -> dict:
 
         elif method == "PUT":
             body = json.loads(event.get("body") or "{}")
+            for_sale = bool(body.get("for_sale"))
+            stage = body.get("stage")
             cur.execute(
                 """UPDATE wip_builds SET order_number=%s, stage=%s, contact=%s,
                    delivery_type=%s, delivery_address=%s,
                    received_at=%s, issued_at=%s, comment=%s,
                    cpu=%s, motherboard=%s, ram=%s, gpu=%s, storage=%s,
                    psu=%s, case_name=%s, cooling=%s, extra=%s,
-                   order_id=%s, assembled_by=%s,
+                   order_id=%s, assembled_by=%s, for_sale=%s,
                    build_id=COALESCE(%s, build_id), updated_at=NOW()
                    WHERE id=%s""",
                 (
-                    body.get("order_number"), body.get("stage"), body.get("contact"),
+                    body.get("order_number"), stage, body.get("contact"),
                     body.get("delivery_type"), body.get("delivery_address"),
                     body.get("received_at") or None, body.get("issued_at") or None,
                     body.get("comment"),
                     body.get("cpu"), body.get("motherboard"), body.get("ram"), body.get("gpu"),
                     body.get("storage"), body.get("psu"), body.get("case_name"),
                     body.get("cooling"), body.get("extra"),
-                    body.get("order_id"), body.get("assembled_by") or None,
+                    body.get("order_id"), body.get("assembled_by") or None, for_sale,
                     body.get("build_id"), body["id"],
                 )
             )
+
+            # Синхронизация «свободной продажи» со сборкой в каталоге «Наши ПК»
+            cur.execute(
+                f"SELECT build_id, for_sale, stage FROM {SCHEMA}.wip_builds WHERE id=%s",
+                (body["id"],)
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                bid, fs, st = row
+                if st == "Забрали":
+                    # Комп выдан → снимаем с продажи и архивируем карточку
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.pc_builds SET status='archive', in_stock=FALSE WHERE id=%s",
+                        (bid,)
+                    )
+                    cur.execute(f"UPDATE {SCHEMA}.wip_builds SET for_sale=FALSE WHERE id=%s", (body["id"],))
+                elif fs:
+                    # В свободной продаже → публикуем на сайте + тег «в наличии»
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
+                        (bid,)
+                    )
+                else:
+                    # Сняли галочку (не выдан) → убираем из наличия и снимаем с витрины
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.pc_builds SET in_stock=FALSE WHERE id=%s AND status='catalog'",
+                        (bid,)
+                    )
             conn.commit()
             return resp(200, {"ok": True})
 

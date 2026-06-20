@@ -271,6 +271,10 @@ export function AdminWipTab({
 
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
 
+  // Этап «Готов, можно забрать» у сборки в свободной продаже показываем как «В продаже»
+  const stageLabel = (w: WipBuild) =>
+    w.for_sale && w.stage === "Готов, можно забрать" ? "В продаже" : w.stage
+
 
 
   const saveWip = async () => {
@@ -630,8 +634,20 @@ export function AdminWipTab({
                   <label className="mb-1 block text-xs text-foreground/50">Этап</label>
                   <select value={wipForm.stage} onChange={e => setWipForm(f => f && ({ ...f, stage: e.target.value }))}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-                    {(wipStages.length ? wipStages : WIP_STAGES).map(s => <option key={s} value={s}>{s}</option>)}
+                    {(wipStages.length ? wipStages : WIP_STAGES).map(s => (
+                      <option key={s} value={s}>{wipForm.for_sale && s === "Готов, можно забрать" ? "В продаже" : s}</option>
+                    ))}
                   </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground hover:border-primary/50 transition-colors" style={{ cursor: "pointer" }}>
+                    <input type="checkbox" checked={!!wipForm.for_sale}
+                      onChange={e => setWipForm(f => f && ({ ...f, for_sale: e.target.checked }))}
+                      className="h-4 w-4 accent-primary" style={{ cursor: "pointer" }} />
+                    <Icon name="Tag" size={14} className="text-primary" />
+                    В свободную продажу
+                    <span className="ml-auto text-xs text-foreground/40">публикует в «Наши ПК» с тегом «в наличии»</span>
+                  </label>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-foreground/50">Контакт клиента</label>
@@ -804,7 +820,7 @@ export function AdminWipTab({
                       style={{ width: colW, minWidth: colW }}>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-semibold text-foreground text-xs">#{w.order_number}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}>{w.stage}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}>{stageLabel(w)}</span>
                       </div>
                       <div
                         onMouseDown={e => startResize(colId, e.clientX, colW)}
@@ -875,7 +891,9 @@ export function AdminWipTab({
                               onChange={e => changeStage(w, e.target.value)}
                               className={`rounded-full border-0 px-2 py-0.5 text-[10px] font-semibold focus:outline-none cursor-pointer ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}
                               style={{ cursor: "pointer" }}>
-                              {(wipStages.length ? wipStages : WIP_STAGES).map(s => <option key={s} value={s}>{s}</option>)}
+                              {(wipStages.length ? wipStages : WIP_STAGES).map(s => (
+                                <option key={s} value={s}>{w.for_sale && s === "Готов, можно забрать" ? "В продаже" : s}</option>
+                              ))}
                             </select>
                             {w.stage === "Забрали" && (
                               <button onClick={() => changeStage(w, "Архив")}

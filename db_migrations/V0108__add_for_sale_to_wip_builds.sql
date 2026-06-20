@@ -1,0 +1,2 @@
+ALTER TABLE t_p72635010_quantum_fusion_resea.wip_builds
+  ADD COLUMN IF NOT EXISTS for_sale BOOLEAN NOT NULL DEFAULT FALSE;

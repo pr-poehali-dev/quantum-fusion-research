@@ -259,6 +259,7 @@ export interface WipBuild {
   remaining_amount?: number
   assembled_by?: number | null
   assembler_name?: string | null
+  for_sale?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -269,7 +270,7 @@ export const EMPTY_WIP: WipBuild = {
   cpu: "", motherboard: "", ram: "", gpu: "", storage: "", psu: "", case_name: "", cooling: "", extra: "",
   cpu_status: "pending", motherboard_status: "pending", ram_status: "pending", gpu_status: "pending",
   storage_status: "pending", psu_status: "pending", case_status: "pending", cooling_status: "pending", extra_status: "pending",
-  order_id: null,
+  order_id: null, for_sale: false,
 }
 
 export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "users" | "schedule" | "calendar" | "finance" | "cables" | "rma" | "quiz_requests"
