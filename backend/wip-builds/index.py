@@ -189,20 +189,26 @@ def handler(event: dict, context) -> dict:
                     return resp(404, {"error": "Не найдено"})
                 oid, bid, total = wr[0], wr[1], float(wr[2] or 0)
 
-                # Себестоимость по слотам из резервов заказа
-                cost_by_slot = {}
+                # Себестоимость за 1 шт по товару (product_id) из резервов заказа.
+                # Группируем по product_id, чтобы привязывать себестоимость к конкретной
+                # позиции, а не к слоту (несколько одинаковых слотов раньше задваивались).
+                unit_cost_by_pid = {}
                 if oid:
                     cur.execute(
-                        f"SELECT r.slot, SUM(r.qty * COALESCE(r.cost_price_locked, sup.cost_price, 0)) "
+                        f"SELECT g.product_id, "
+                        f"SUM(r.qty * COALESCE(r.cost_price_locked, sup.cost_price, 0)), SUM(r.qty) "
                         f"FROM {SCHEMA}.warehouse_reserves r "
+                        f"JOIN {SCHEMA}.warehouse_groups g ON g.id = r.group_id "
                         f"LEFT JOIN {SCHEMA}.warehouse_supplies sup ON sup.id = r.supply_id "
                         f"WHERE r.order_id = %s AND r.type='POSITIVE' "
-                        f"AND r.status IN ('FULFILLED','ACTIVE') GROUP BY r.slot", (oid,)
+                        f"AND r.status IN ('FULFILLED','ACTIVE') GROUP BY g.product_id", (oid,)
                     )
-                    for s, c in cur.fetchall():
-                        cost_by_slot[s] = float(c or 0)
+                    for pid, total_cost, total_qty in cur.fetchall():
+                        q = float(total_qty or 0)
+                        unit_cost_by_pid[pid] = (float(total_cost or 0) / q) if q else 0.0
 
-                # Компоненты из pc_builds (цена продажи)
+                # Компоненты из pc_builds (цена продажи). Себестоимость берём по
+                # source_id (product_id) * qty компонента.
                 comps_out = []
                 sum_sale = 0.0
                 sum_cost = 0.0
@@ -216,7 +222,8 @@ def handler(event: dict, context) -> dict:
                         slot = c.get("slot")
                         qty = int(c.get("qty", 1) or 1)
                         sale = float(c.get("price", 0) or 0) * qty
-                        cost = cost_by_slot.get(slot, 0.0)
+                        pid = c.get("source_id")
+                        cost = unit_cost_by_pid.get(pid, 0.0) * qty if pid else 0.0
                         comps_out.append({
                             "slot": slot, "name": c.get("name", ""), "qty": qty,
                             "sale": round(sale, 2), "cost": round(cost, 2),
