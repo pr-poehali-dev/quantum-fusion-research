@@ -13,6 +13,24 @@ const REPAIR_PHOTOS = [
 ]
 
 const PIKABU_URL = "https://pikabu.ru/@vladimag"
+
+// Статьи с нашего Пикабу
+const PIKABU_ARTICLES = [
+  { title: "Правильное отключение фаз питания видеокарты — ремонт Thunderobot Zero на RTX 4080", url: "https://pikabu.ru/story/pravilnoe_otklyuchenie_faz_pitaniya_videokartyi_remont_thunderobot_zero_na_grafike_rtx_4080_13452933" },
+  { title: "RTX 4090 48 ГБ — возможно, первая модификация из RTX 4090 24 в 48 ГБ в РФ", url: "https://pikabu.ru/story/rtx_4090_48_gb_vozmozhno_pervaya_modifikatsiya_iz_rtx_4090_24_v_48_gb_v_rf_12934738" },
+  { title: "Типовая неисправность ноутбуков ASUS Strix G15/G17 — ремонт платформы G513/G533/G713/G733", url: "https://pikabu.ru/story/tipovaya_neispravnost_noutbukov_asus_strix_g15__g17_ili_ryadovoy_remont_platformyi_g513g533g713g733_12593328" },
+  { title: "Сложный ремонт Lenovo Legion — почему не стоит нести ноутбуки в ремонт «у дома»", url: "https://pikabu.ru/story/slozhnyiy_remont_lenovo_legion_pochemu_ne_stoit_nesti_noutbuki_v_remont_u_doma_12403955" },
+  { title: "Lenovo Legion в ремонте — почему никто не любит ремонтировать ноутбуки Lenovo", url: "https://pikabu.ru/story/lenovo_legion_v_remonte_pochemu_nikto_ne_lyubit_remontirovat_noutbuki_lenovo_12364250" },
+  { title: "Ремонт первых RTX, или ошибка производства", url: "https://pikabu.ru/story/remont_pervyikh_rtx_ili_oshibka_proizvodstva_12295440" },
+  { title: "Видеокарта с саморезами — весёлый ремонт Gamerock RTX 3080", url: "https://pikabu.ru/story/videokarta_s_samorezami_veselyiy_remont_gamerock_rtx_3080_12172869" },
+  { title: "Можно ли собрать видеокарту с нуля? Самая быстрая RTX 4090 в мире", url: "https://pikabu.ru/story/mozhno_li_sobrat_videokartu_s_nulya_samaya_byistraya_rtx_4090_v_mire_12006408" },
+  { title: "Интересный апгрейд игрового ноутбука — из 3060 в 3080, всё ли так просто", url: "https://pikabu.ru/story/chto_mozhno_sdelat_iz_igrovogo_noutbuka_interesnyiy_apgreyd_iz_noutbuchnoy_3060_v_3080_vsyo_li_tak_prosto_11806888" },
+  { title: "Ozon со стороны продавца — кто важнее: покупатель или продавец", url: "https://pikabu.ru/story/ozon_so_storonyi_prodavtsa_kto_vazhnee__pokupatel_ili_prodavets_11672863" },
+  { title: "Ремонт ноутбука MSI Pulse и вторая жизнь — можно ли впихнуть невпихуемое", url: "https://pikabu.ru/story/remont_noutbuka_msi_pulse_i_vtoraya_zhizn_mozhno_li_vpikhnut_nevpikhuemoe_11653121" },
+  { title: "Японская красавица Sakura RTX 3070 и что такое китайские видеокарты", url: "https://pikabu.ru/story/yaponskaya_krasavitsa_sakura_rtx_3070_i_chto_takoe_kitayskie_videokartyi_11424847" },
+  { title: "Брак охлаждения видеокарт Palit", url: "https://pikabu.ru/story/brak_okhlazhdeniya_videokart_palit_11311821" },
+]
+
 const YANDEX_MAPS_URL = "https://yandex.ru/maps/-/CTApvRnd"
 const TELEGRAM_URL = "https://t.me/BeGraphicsCard"
 const PHONE = "+7 (960) 029-69-98"
@@ -138,18 +156,23 @@ export default function Service() {
           {/* Статьи */}
           <div className="lg:col-span-2">
             <h2 className="mb-4 text-2xl font-bold">Истории ремонтов на Пикабу</h2>
+            <div className="space-y-2.5">
+              {PIKABU_ARTICLES.map((a, i) => (
+                <a key={i} href={a.url} target="_blank" rel="noreferrer"
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 hover:border-primary transition-colors">
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Icon name="BookOpen" size={18} />
+                    </span>
+                    <span className="font-medium leading-snug">{a.title}</span>
+                  </span>
+                  <Icon name="ExternalLink" size={16} className="shrink-0 text-foreground/40" />
+                </a>
+              ))}
+            </div>
             <a href={PIKABU_URL} target="_blank" rel="noreferrer"
-              className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5 hover:border-primary transition-colors">
-              <span className="flex items-center gap-3">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Icon name="BookOpen" size={22} />
-                </span>
-                <span>
-                  <span className="block font-semibold">Все наши истории ремонтов</span>
-                  <span className="block text-sm text-foreground/55">Читайте подробные разборы на нашем профиле Пикабу</span>
-                </span>
-              </span>
-              <Icon name="ExternalLink" size={18} className="shrink-0 text-foreground/40" />
+              className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+              Все статьи на нашем Пикабу <Icon name="ArrowRight" size={15} />
             </a>
           </div>
 
