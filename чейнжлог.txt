@@ -3,6 +3,18 @@
 
 ---
 
+## v3.43 | 2026-06-20 | Маржа WIP: учёт оплаты сборщику
+
+### wip-builds (backend, action=margin)
+- В себестоимость сборки добавлена оплата сборщику = employees.assembler_percent
+  × сумма заказа (по wip_builds.assembled_by). Вычитается из total_margin.
+- Ответ дополнен полями assembler_percent, assembler_cost.
+
+### WipEditModal (frontend)
+- В калькуляции маржи показывается строка «Оплата сборщику (N%)» со знаком минус.
+
+---
+
 ## v3.42 | 2026-06-20 | Фикс: завышенная себестоимость/маржа в WIP (action=margin)
 
 ### wip-builds (backend)

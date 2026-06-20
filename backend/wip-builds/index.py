@@ -233,13 +233,31 @@ def handler(event: dict, context) -> dict:
                         sum_cost += cost
                 # Если итог заказа больше суммы компонентов — разница это работа/сборка
                 assembly_fee = round(total - sum_sale, 2) if total > sum_sale else 0.0
+
+                # Оплата сборщику: процент сотрудника × сумма заказа. Это затраты,
+                # вычитаются из общей маржи.
+                assembler_cost = 0.0
+                asm_pct = 0.0
+                if oid:
+                    cur.execute(
+                        f"SELECT e.assembler_percent FROM {SCHEMA}.wip_builds wb "
+                        f"LEFT JOIN {SCHEMA}.employees e ON e.id = wb.assembled_by "
+                        f"WHERE wb.order_id = %s LIMIT 1", (oid,)
+                    )
+                    ar = cur.fetchone()
+                    asm_pct = float(ar[0] or 0) if ar else 0.0
+                    if asm_pct > 0 and total > 0:
+                        assembler_cost = round(total * asm_pct / 100, 2)
+
                 return resp(200, {
                     "components": comps_out,
                     "total": round(total, 2),
                     "sum_sale": round(sum_sale, 2),
                     "sum_cost": round(sum_cost, 2),
                     "assembly_fee": assembly_fee,
-                    "total_margin": round(total - sum_cost, 2),
+                    "assembler_percent": asm_pct,
+                    "assembler_cost": assembler_cost,
+                    "total_margin": round(total - sum_cost - assembler_cost, 2),
                 })
 
             if wip_id:

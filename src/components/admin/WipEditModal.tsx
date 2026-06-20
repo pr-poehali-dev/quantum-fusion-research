@@ -5,7 +5,7 @@ import { api } from "@/lib/api"
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU") + " ₽"
 
 interface MarginComp { slot: string; name: string; qty: number; sale: number; cost: number; margin: number }
-interface MarginData { components: MarginComp[]; total: number; sum_sale: number; sum_cost: number; assembly_fee: number; total_margin: number }
+interface MarginData { components: MarginComp[]; total: number; sum_sale: number; sum_cost: number; assembly_fee: number; assembler_percent?: number; assembler_cost?: number; total_margin: number }
 
 // ─── Модалка калькуляции маржи по компонентам ────────────────────────────────
 export function WipMarginModal({ wipId, orderNumber, onClose }: {
@@ -67,6 +67,9 @@ export function WipMarginModal({ wipId, orderNumber, onClose }: {
               <div className="flex justify-between"><span className="text-foreground/50">Себестоимость компонентов</span><span className="tabular-nums">{fmt(data.sum_cost)}</span></div>
               {data.assembly_fee > 0 && (
                 <div className="flex justify-between"><span className="text-foreground/50">Работа / сборка</span><span className="tabular-nums">{fmt(data.assembly_fee)}</span></div>
+              )}
+              {(data.assembler_cost ?? 0) > 0 && (
+                <div className="flex justify-between"><span className="text-foreground/50">Оплата сборщику ({data.assembler_percent}%)</span><span className="tabular-nums text-red-400">−{fmt(data.assembler_cost || 0)}</span></div>
               )}
               <div className="flex justify-between border-t border-border pt-1.5"><span className="text-foreground/50">Итог заказа</span><span className="tabular-nums font-semibold">{fmt(data.total)}</span></div>
               <div className="flex justify-between rounded-lg bg-green-400/10 px-3 py-2 mt-2">
