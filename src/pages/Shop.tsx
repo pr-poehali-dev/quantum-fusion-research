@@ -465,7 +465,7 @@ export default function Shop() {
                     <div className={featured.length > 0 ? "mt-10" : ""}>
                       <div className="mb-4 flex items-center gap-2">
                         <span className="rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">Б/У</span>
-                        <p className="text-xs font-mono uppercase tracking-widest text-foreground/40">Комплектующие бывшие в употреблении</p>
+                        <p className="text-xs font-mono uppercase tracking-widest text-foreground/40">Комплектующие бывшие в употреблении с гарантией</p>
                       </div>
                       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                         {usedProducts.slice(0, 3).map(renderCard)}
