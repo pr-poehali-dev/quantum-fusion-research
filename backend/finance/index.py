@@ -558,6 +558,12 @@ def handler(event: dict, context) -> dict:
                             f"prepayment_percent = CASE WHEN total > 0 THEN ROUND({amount}/total*100, 2) ELSE 0 END, "
                             f"updated_at = NOW() WHERE id = {int(order_id)}"
                         )
+                        # Предоплата подтверждена → ставим резерв на товары parts-заказа
+                        try:
+                            import warehouse_core as wc
+                            wc.reserve_parts_order(cur, int(order_id))
+                        except Exception as _re:
+                            print(f"FINANCE reserve_parts_order: {_re}")
                 conn.commit()
                 return resp(200, {"ok": True, "id": tx_id})
 

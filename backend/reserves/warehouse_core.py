@@ -270,6 +270,41 @@ def ensure_order_reserves(cur, order_id, build_id=None):
     return handle_reserve_and_purchase(cur, order_id, lines)
 
 
+def reserve_parts_order(cur, order_id):
+    """
+    Идемпотентно зарезервировать товары parts-заказа по его items.
+    Вызывается после подтверждения предоплаты (prepayment_confirmed).
+    Если у заказа уже есть активные резервы — ничего не делает.
+    Возвращает список результатов (или [] если резервировать нечего/уже есть).
+    """
+    if not order_id:
+        return []
+    cur.execute(
+        f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",
+        (order_id,),
+    )
+    if cur.fetchone():
+        return []
+    cur.execute(
+        f"SELECT order_type, items FROM {SCHEMA}.orders WHERE id = %s",
+        (order_id,),
+    )
+    row = cur.fetchone()
+    if not row or row[0] != "parts":
+        return []
+    import json as _json
+    items = row[1] if isinstance(row[1], list) else _json.loads(row[1] or "[]")
+    lines = [
+        {"product_id": int(it["id"]), "qty": int(it.get("quantity", 1)), "slot": "product"}
+        for it in items
+        if it.get("item_type") == "product" and it.get("id")
+    ]
+    if not lines:
+        return []
+    return handle_reserve_and_purchase(cur, order_id, lines)
+
+
 # ── Снятие всех резервов заказа (отмена / пересчёт) ──────────────────────────
 def release_order_reserves(cur, order_id, only_new_negative=True):
     """

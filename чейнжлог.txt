@@ -3,6 +3,26 @@
 
 ---
 
+## v3.77 | 2026-06-20 | Резерв parts-заказа только после подтверждения предоплаты
+
+### Backend (orders)
+- При создании parts-заказа резерв БОЛЬШЕ НЕ ставится (убран авторезерв).
+
+### Backend (tg-bot)
+- create_order: убран авторезерв при создании заказа из бота.
+
+### Backend (reserves/orders/tg-bot/finance — warehouse_core)
+- Новая функция reserve_parts_order(cur, order_id): идемпотентно резервирует
+  товары parts-заказа по items (POSITIVE/NEGATIVE + корзина закупки).
+  Если активные резервы уже есть — ничего не делает.
+- Добавлена копия warehouse_core.py в backend/finance.
+
+### Backend (finance)
+- confirm_prepayment: после prepayment_confirmed=TRUE вызывает
+  reserve_parts_order → резерв ставится в момент подтверждения предоплаты.
+
+---
+
 ## v3.76 | 2026-06-20 | Бот: фикс поиска кир/лат прямо в SQL
 
 ### Backend (tg-bot)

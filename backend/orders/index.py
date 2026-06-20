@@ -131,21 +131,10 @@ def handler(event: dict, context) -> dict:
 
             print(f"ORDER {order_id}: type={order_type}, items={json.dumps(items)}")
 
-            # ── АВТОРЕЗЕРВ через ядро: POSITIVE/NEGATIVE + корзина закупки ──────
-            # parts-заказы резервируются сразу, pc_build — при переходе на этап "Заказ"
-            import warehouse_core as wc
-            if order_type == "parts":
-                reserve_lines = [
-                    {"product_id": int(it["id"]), "qty": int(it.get("quantity", 1)), "slot": "product"}
-                    for it in items
-                    if it.get("item_type") == "product" and it.get("id")
-                ]
-                if reserve_lines:
-                    reserve_results = wc.handle_reserve_and_purchase(cur, order_id, reserve_lines)
-                    user_items = [r["input"] for r in reserve_results if r.get("skipped_reason") == "user_hardware"]
-                    if user_items:
-                        print(f"ORDER {order_id}: user_hardware (пересогласовать): {user_items}")
-            # pc_build: резерв создаётся при смене этапа wip_builds на "Заказ"
+            # ── РЕЗЕРВ НЕ СТАВИТСЯ ПРИ СОЗДАНИИ ────────────────────────────────
+            # parts-заказы резервируются только ПОСЛЕ подтверждения предоплаты
+            # (finance: action=confirm_prepayment -> wc.reserve_parts_order).
+            # pc_build: резерв создаётся при смене этапа wip_builds на "Заказ".
 
             def is_catalog_id(v):
                 try:
