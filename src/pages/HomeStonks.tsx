@@ -23,6 +23,16 @@ interface Article {
   slug?: string
   image_url?: string | null
 }
+interface CatalogBuild {
+  id: number
+  name: string
+  total_price?: number
+  assembly_fee?: number
+  image_urls?: string[]
+  parent_id?: number | null
+  components?: Array<{ price?: number }>
+  created_at?: string
+}
 
 const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
 const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/369e76c4-c4a6-46da-ab1d-843219204c9a.jpg"
@@ -41,6 +51,7 @@ export default function HomeStonks() {
   const { isAuthed } = useAuth()
   const { count } = useCart()
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
+  const [catalogBuilds, setCatalogBuilds] = useState<CatalogBuild[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [artIdx, setArtIdx] = useState(0)
   const artPaused = useRef(false)
@@ -81,7 +92,19 @@ export default function HomeStonks() {
         list.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
         setArticles(list.slice(0, 5))
       }).catch(() => {})
+    api.builds.getAll({ status: "catalog" })
+      .then(data => {
+        const all: CatalogBuild[] = Array.isArray(data) ? data : (data.builds || [])
+        const roots = all.filter(b => !b.parent_id)
+        roots.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+        setCatalogBuilds(roots.slice(0, 3))
+      }).catch(() => {})
   }, [])
+
+  const buildPrice = (b: CatalogBuild) => {
+    const parts = (b.components || []).reduce((s, c) => s + (c.price || 0), 0)
+    return parts + (b.assembly_fee || 0)
+  }
 
   const Banner = ({ img, title, to }: { img: string; title: string; to: string }) => (
     <button onClick={() => navigate(to)} style={{ cursor: "pointer" }}
@@ -209,6 +232,42 @@ export default function HomeStonks() {
                 )}
               </div>
             </div>
+
+            {/* Последние сборки из «Наши ПК» */}
+            {catalogBuilds.length > 0 && (
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-xl font-bold">Последние сборки</h3>
+                  <button onClick={() => navigate("/builds")} style={{ cursor: "pointer" }}
+                    className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                    Все ПК <Icon name="ArrowRight" size={15} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {catalogBuilds.map(b => {
+                    const img = b.image_urls?.[0]
+                    return (
+                      <button key={b.id} onClick={() => navigate(`/build-preview/${b.id}`)} style={{ cursor: "pointer" }}
+                        className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left hover:border-primary/50 transition-colors">
+                        <div className="relative h-32 w-full overflow-hidden">
+                          {img ? (
+                            <img src={img} alt={b.name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted/80 to-card">
+                              <Icon name="Monitor" size={28} className="text-foreground/30" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-1 flex-col p-3">
+                          <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary transition-colors">{b.name}</p>
+                          <p className="mt-2 text-base font-bold">{fmtPrice(buildPrice(b))}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Сайдбар */}
