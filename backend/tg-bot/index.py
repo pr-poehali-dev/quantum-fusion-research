@@ -199,18 +199,29 @@ def _similarity(a, b):
     return len(ta & tb) / len(ta | tb)
 
 
+# Унификация спутанных букв прямо в SQL: translate(lower(...), кир, лат).
+# Тогда «x3d»(лат) найдёт и «9800х3d»(кир), и «7800x3d»(лат).
+_SQL_FROM = "аєвекмнорстухії"
+_SQL_TO = "aebekmhopctyxii"
+_NAME_CANON = f"translate(LOWER(g.name), '{_SQL_FROM}', '{_SQL_TO}')"
+_CAT_CANON = f"translate(LOWER(g.category), '{_SQL_FROM}', '{_SQL_TO}')"
+
+
+def _canon_word(w):
+    """Латинизируем слово запроса теми же правилами, что и имя в SQL."""
+    return w.translate(_CONFUSABLES)
+
+
 def _run_search(cur, words, offset, limit):
     if not words:
         return [], False
     conds, params = [], []
     for w in words:
-        variants = _word_variants(w)
-        ors = " OR ".join(["(LOWER(g.name) LIKE %s OR LOWER(g.category) LIKE %s)"] * len(variants))
-        conds.append(f"({ors})")
-        for v in variants:
-            params += [f"%{v}%", f"%{v}%"]
+        cw = _canon_word(w)
+        conds.append(f"({_NAME_CANON} LIKE %s OR {_CAT_CANON} LIKE %s)")
+        params += [f"%{cw}%", f"%{cw}%"]
     where = " AND ".join(conds)
-    rank_word = words[0]
+    rank_word = _canon_word(words[0])
     sql = f"""
         SELECT g.product_id, g.name, g.price_retail,
                COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail
@@ -219,8 +230,8 @@ def _run_search(cur, words, offset, limit):
         WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL AND {where}
         GROUP BY g.id, g.product_id, g.name, g.price_retail
         HAVING (COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0)) > 0
-        ORDER BY (CASE WHEN POSITION(%s IN LOWER(g.name)) = 0 THEN 9999
-                       ELSE POSITION(%s IN LOWER(g.name)) END), g.name
+        ORDER BY (CASE WHEN POSITION(%s IN {_NAME_CANON}) = 0 THEN 9999
+                       ELSE POSITION(%s IN {_NAME_CANON}) END), g.name
         LIMIT %s OFFSET %s"""
     cur.execute(sql, params + [rank_word, rank_word, limit + 1, offset])
     rows = cur.fetchall()
