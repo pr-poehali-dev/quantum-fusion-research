@@ -426,14 +426,14 @@ def handler(event: dict, context) -> dict:
                         (bid,)
                     )
                     cur.execute(f"UPDATE {SCHEMA}.wip_builds SET for_sale=FALSE WHERE id=%s", (body["id"],))
-                elif fs:
-                    # В свободной продаже → публикуем на сайте + тег «в наличии»
+                elif fs and st == "Готов, можно забрать":
+                    # Свободная продажа И ПК готов → публикуем на сайте + тег «в наличии»
                     cur.execute(
                         f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
                         (bid,)
                     )
                 else:
-                    # Сняли галочку (не выдан) → убираем из наличия и снимаем с витрины
+                    # Галочка не стоит ИЛИ ПК ещё не готов → снимаем тег «в наличии»
                     cur.execute(
                         f"UPDATE {SCHEMA}.pc_builds SET in_stock=FALSE WHERE id=%s AND status='catalog'",
                         (bid,)
