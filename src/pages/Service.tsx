@@ -12,6 +12,8 @@ const REPAIR_PHOTOS = [
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/2ecd28b0-5720-465d-9e1a-1e15239f2b34.jpg",
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/cd91f011-25b9-4aa9-9de5-5741a2511beb.jpg",
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/50b13ef2-6dd4-4d41-8bb1-2d0f862dbe20.jpg",
+  "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/93c263ee-3512-4c6f-b42d-86c8240c169a.jpg",
+  "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/1aabcdb0-f5d7-4b3a-ae8a-5995c0323881.png",
 ]
 
 const PIKABU_URL = "https://pikabu.ru/@vladimag"
@@ -158,7 +160,7 @@ export default function Service() {
           <h2 className="mb-4 text-2xl font-bold">Наши работы</h2>
           <div className="relative overflow-hidden rounded-3xl border border-border"
             onMouseEnter={() => { paused.current = true }} onMouseLeave={() => { paused.current = false }}>
-            <div className="relative h-64 sm:h-[28rem]">
+            <div className="relative h-80 sm:h-[40rem]">
               {REPAIR_PHOTOS.map((src, i) => (
                 <img key={i} src={src} alt={`Ремонт ${i + 1}`}
                   className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${i === idx ? "opacity-100" : "opacity-0"}`} />
