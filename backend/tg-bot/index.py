@@ -138,6 +138,30 @@ SYNONYMS = {
 }
 
 
+# Похожие кириллические/латинские буквы → к латинице (для моделей: 9800х3d == 9800x3d)
+_CONFUSABLES = str.maketrans({
+    "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o",
+    "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "і": "i", "ї": "i",
+})
+
+
+def canon(s):
+    """Каноничная форма для сравнения: lower, унификация похожих букв,
+    выкидываем всё кроме букв/цифр. «RTX 3080 Ti» -> «rtx3080ti»,
+    «9800х3d»(кир) -> «9800x3d»."""
+    s = (s or "").lower().translate(_CONFUSABLES)
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+def _word_variants(w):
+    """Варианты слова для LIKE: само слово + версия с латинизацией спутанных букв."""
+    out = {w}
+    lat = w.translate(_CONFUSABLES)
+    if lat != w:
+        out.add(lat)
+    return out
+
+
 def normalize_query(q):
     q = (q or "").lower().strip()
     variants = set()
@@ -160,13 +184,31 @@ def normalize_query(q):
     return [list(v) for v in variants if v]
 
 
+def _trigrams(s):
+    s = f"  {s} "
+    return {s[i:i+3] for i in range(len(s) - 2)}
+
+
+def _similarity(a, b):
+    """Триграммное сходство 0..1 (аналог pg_trgm.similarity)."""
+    if not a or not b:
+        return 0.0
+    ta, tb = _trigrams(a), _trigrams(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
 def _run_search(cur, words, offset, limit):
     if not words:
         return [], False
     conds, params = [], []
     for w in words:
-        conds.append("(LOWER(g.name) LIKE %s OR LOWER(g.category) LIKE %s)")
-        params += [f"%{w}%", f"%{w}%"]
+        variants = _word_variants(w)
+        ors = " OR ".join(["(LOWER(g.name) LIKE %s OR LOWER(g.category) LIKE %s)"] * len(variants))
+        conds.append(f"({ors})")
+        for v in variants:
+            params += [f"%{v}%", f"%{v}%"]
     where = " AND ".join(conds)
     rank_word = words[0]
     sql = f"""
@@ -186,11 +228,72 @@ def _run_search(cur, words, offset, limit):
     return [r[:4] for r in rows[:limit]], has_more
 
 
+def _all_instock(cur):
+    """Все товары в наличии (id, name, price, avail) — для фаззи-поиска в Python."""
+    cur.execute(
+        f"""SELECT g.product_id, g.name, g.price_retail, g.category,
+                   COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail
+            FROM {SCHEMA}.warehouse_groups g
+            LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
+            WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL
+            GROUP BY g.id, g.product_id, g.name, g.price_retail, g.category
+            HAVING (COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0)) > 0""")
+    return cur.fetchall()
+
+
+def _fuzzy_search(cur, query):
+    """Поиск по модели «склеенной» и с опечатками: канонизуем запрос и названия,
+    матчим по вхождению подстроки и триграммному сходству. Возвращает
+    отсортированный список (pid, name, price, avail)."""
+    words = [w for ws in normalize_query(query) for w in ws]
+    q_canon = canon(query)
+    q_words_canon = [canon(w) for w in words if canon(w)]
+    if not q_canon and not q_words_canon:
+        return []
+    # слишком короткий запрос — фаззи даст мусор, пропускаем
+    if len(q_canon) < 3:
+        return []
+    scored = []
+    for pid, name, price, category, avail in _all_instock(cur):
+        nc = canon(name)
+        cc = canon(category)
+        score = 0.0
+        # 1) Прямое вхождение склеенного запроса в склеенное имя — топ-приоритет
+        if q_canon and q_canon in nc:
+            score = 1.0 + (0.3 if nc.startswith(q_canon) else 0.0)
+        else:
+            # 2) Каждое слово запроса — вхождение или похожесть
+            hit_words = 0
+            sim_sum = 0.0
+            for w in q_words_canon:
+                if w and (w in nc or w in cc):
+                    hit_words += 1
+                    sim_sum += 1.0
+                else:
+                    sim_sum += _similarity(w, nc)
+            if q_words_canon:
+                coverage = hit_words / len(q_words_canon)
+                score = coverage * 0.7 + (sim_sum / len(q_words_canon)) * 0.3
+            # 3) общее триграммное сходство всей строки (ловит опечатки в одном слове)
+            score = max(score, _similarity(q_canon, nc) * 0.9)
+        if score >= 0.34:
+            scored.append((score, name.lower(), pid, name, price, avail))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [(pid, name, price, avail) for _, _, pid, name, price, avail in scored]
+
+
 def search_products(cur, query, offset=0):
+    # 1) Быстрый точный поиск по словам (LIKE) с учётом раскладки и спутанных букв
     for words in normalize_query(query):
         rows, has_more = _run_search(cur, words, offset, PAGE_SIZE)
         if rows:
             return rows, has_more
+    # 2) Фаззи-поиск: модели слитно/раздельно + опечатки (триграммы)
+    fuzzy = _fuzzy_search(cur, query)
+    if fuzzy:
+        page = fuzzy[offset:offset + PAGE_SIZE]
+        return page, len(fuzzy) > offset + PAGE_SIZE
+    # 3) последний шанс — по самому длинному слову
     longest = max((w for ws in normalize_query(query) for w in ws), key=len, default="")
     if len(longest) >= 3:
         return _run_search(cur, [longest], offset, PAGE_SIZE)
