@@ -821,6 +821,11 @@ export function AdminWipTab({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-semibold text-foreground text-xs">#{w.order_number}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}>{stageLabel(w)}</span>
+                        {w.for_sale && (
+                          <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold text-green-400" title="Сборка в свободной продаже на сайте">
+                            <Icon name="Tag" size={9} />В продаже
+                          </span>
+                        )}
                       </div>
                       <div
                         onMouseDown={e => startResize(colId, e.clientX, colW)}
