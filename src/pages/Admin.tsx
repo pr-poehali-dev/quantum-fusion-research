@@ -147,6 +147,7 @@ export default function Admin() {
   ]
   // Группа 2 — Операции
   const bottomTabs = [
+    { key: "quiz_requests", label: "Входящие заявки", icon: "Inbox" },
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "warehouse", label: "Склад", icon: "Warehouse" },
     { key: "products", label: "Товары", icon: "Package" },
@@ -159,7 +160,6 @@ export default function Admin() {
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
-    { key: "quiz_requests", label: "Входящие заявки", icon: "Inbox" },
   ]
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
