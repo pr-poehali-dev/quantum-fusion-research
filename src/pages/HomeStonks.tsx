@@ -6,6 +6,7 @@ import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
+import Footer from "@/components/Footer"
 
 interface CommunityBuild {
   id: number
@@ -361,6 +362,7 @@ export default function HomeStonks() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import Footer from "@/components/Footer"
 
 interface Article {
   id: number
@@ -213,6 +214,7 @@ export default function Articles() {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   )
 }

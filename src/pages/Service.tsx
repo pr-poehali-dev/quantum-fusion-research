@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
+import Footer from "@/components/Footer"
 import { useAuth } from "@/store/auth"
 
 // Фото наших работ
@@ -206,6 +207,7 @@ export default function Service() {
           </a>
         </div>
       </div>
+      <Footer />
     </div>
   )
 }

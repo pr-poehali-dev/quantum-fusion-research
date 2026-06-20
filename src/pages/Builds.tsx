@@ -7,6 +7,7 @@ import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
+import Footer from "@/components/Footer"
 import { useRef } from "react"
 
 interface BuildTag {
@@ -336,6 +337,7 @@ export default function Builds() {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   )
 }
