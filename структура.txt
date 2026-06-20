@@ -163,7 +163,10 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
        визуально разделены «━━━», с упоминанием @тегов ответственных.
   Если данных нет — сообщение по типу не отправляется.
 - ⚠️ Платформа без cron: вызывать в 11:00 внешним планировщиком (cron-job.org / curl):
-  GET schedule?action=morning_ping&ak=begraphics2024
+  GET/POST schedule?action=morning_ping&ak=begraphics2024
+- Frontend: кнопка «Отправить сводку сейчас» в ScheduleTab (ручной запуск пинга,
+  POST action=morning_ping, показывает что отправлено). На своём сервере — crontab
+  (см. ЗАПУСК-НА-СЕРВЕРЕ.md, раздел 9).
 
 ### Контакты (страница /contacts → src/pages/Contacts.tsx)
 Два офиса: Новокосино (сборка/продажа ПК) и Беляево (ремонт/обслуживание).
