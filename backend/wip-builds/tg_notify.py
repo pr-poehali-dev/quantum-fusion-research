@@ -18,7 +18,7 @@ def notify_managers(text: str) -> bool:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         data = urllib.parse.urlencode({
             "chat_id": chat_id,
-            "text": text,
+            "text": "@BeGraphicsPC\n" + text,
             "parse_mode": "HTML",
             "disable_web_page_preview": "true",
         }).encode()

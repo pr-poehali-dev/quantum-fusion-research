@@ -3,6 +3,14 @@
 
 ---
 
+## v3.61 | 2026-06-20 | Тег @BeGraphicsPC в начале всех TG-уведомлений
+
+### Backend
+- Во всех tg_notify.py (orders, quiz, warehouse, schedule, wip-builds)
+  каждое сообщение начинается с «@BeGraphicsPC».
+
+---
+
 ## v3.60 | 2026-06-20 | Утренний автопинг задач (11:00) + Telegram-тег сотрудника
 
 ### DB

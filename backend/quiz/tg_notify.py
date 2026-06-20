@@ -2,10 +2,13 @@
 
 Берёт TELEGRAM_BOT_TOKEN и TELEGRAM_MANAGER_CHAT_ID из окружения.
 Никогда не роняет основной поток: при ошибке просто логирует и возвращает False.
+В начало каждого сообщения добавляется тег @BeGraphicsPC.
 """
 import os
 import urllib.request
 import urllib.parse
+
+NOTIFY_PREFIX = "@BeGraphicsPC"
 
 
 def notify_managers(text: str) -> bool:
@@ -18,7 +21,7 @@ def notify_managers(text: str) -> bool:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         data = urllib.parse.urlencode({
             "chat_id": chat_id,
-            "text": text,
+            "text": f"{NOTIFY_PREFIX}\n{text}",
             "parse_mode": "HTML",
             "disable_web_page_preview": "true",
         }).encode()
