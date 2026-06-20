@@ -145,7 +145,9 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
 Использует секреты TELEGRAM_BOT_TOKEN, TELEGRAM_MANAGER_CHAT_ID (sendMessage, HTML).
 Если секреты не заданы — тихо пропускает (сайт не падает).
 События:
-  - orders POST (новый заказ) → «🛒 Новый заказ {display_number}»;
+  - orders POST (новый заказ) → «🛒 Новый заказ {display_number}». Если клиент выбрал
+    Telegram (customer_email = "tg:<ссылка|username>") — в сообщении кликабельная
+    ссылка <a href=t.me/..>@username</a>; для vk/прочих — строка контакта;
   - quiz submit (новый лид) → «🎯 Новый лид из квиза»;
   - warehouse supply_in (товар приехал под NEGATIVE-резерв) → «📦 Товар приехал под заказ»;
   - schedule event_create (новое событие/задача в календаре) → «📅 Событие/Задача в календаре»

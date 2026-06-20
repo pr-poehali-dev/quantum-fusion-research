@@ -94,12 +94,32 @@ def handler(event: dict, context) -> dict:
                 _ord_total = float(body.get("total") or 0)
                 _ord_type_label = {"pc_build": "Сборка ПК", "parts": "Железо", "cart": "Корзина"}.get(
                     body.get("order_type", "cart"), body.get("order_type", "cart"))
+                # Контакт хранится в customer_email как "tg:<значение>" / "vk:<url>" / "max:..."
+                _contact_line = ""
+                _raw_contact = (body.get("customer_email") or "").strip()
+                if ":" in _raw_contact:
+                    _ctype, _cval = _raw_contact.split(":", 1)
+                    _ctype, _cval = _ctype.strip().lower(), _cval.strip()
+                    if _ctype == "tg" and _cval:
+                        if _cval.startswith("http"):
+                            _uname = _cval.rstrip("/").split("/")[-1].lstrip("@")
+                            _url = _cval
+                        else:
+                            _uname = _cval.lstrip("@")
+                            _url = f"https://t.me/{_uname}"
+                        _contact_line = f"\nTelegram: <a href=\"{_url}\">@{_uname}</a>"
+                    elif _ctype == "vk" and _cval:
+                        _contact_line = f"\nВКонтакте: {_cval}"
+                    elif _cval:
+                        _contact_line = f"\nКонтакт: {_cval}"
+                _amount = f"{_ord_total:,.0f}".replace(",", " ")
                 notify_managers(
                     f"🛒 <b>Новый заказ {display_number}</b>\n"
                     f"Тип: {_ord_type_label}\n"
                     f"Клиент: {body.get('customer_name','—')}\n"
-                    f"Телефон: {body.get('customer_phone','—')}\n"
-                    f"Сумма: {_ord_total:,.0f} ₽".replace(",", " ")
+                    f"Телефон: {body.get('customer_phone','—')}"
+                    f"{_contact_line}\n"
+                    f"Сумма: {_amount} ₽"
                 )
             except Exception as _e:
                 print(f"TG_NOTIFY order: {_e}")
