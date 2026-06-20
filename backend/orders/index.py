@@ -89,6 +89,21 @@ def handler(event: dict, context) -> dict:
             display_number = prefix + str(disp_num).zfill(5)
             cur.execute("UPDATE orders SET display_number=%s WHERE id=%s", (display_number, order_id))
 
+            try:
+                from tg_notify import notify_managers
+                _ord_total = float(body.get("total") or 0)
+                _ord_type_label = {"pc_build": "Сборка ПК", "parts": "Железо", "cart": "Корзина"}.get(
+                    body.get("order_type", "cart"), body.get("order_type", "cart"))
+                notify_managers(
+                    f"🛒 <b>Новый заказ {display_number}</b>\n"
+                    f"Тип: {_ord_type_label}\n"
+                    f"Клиент: {body.get('customer_name','—')}\n"
+                    f"Телефон: {body.get('customer_phone','—')}\n"
+                    f"Сумма: {_ord_total:,.0f} ₽".replace(",", " ")
+                )
+            except Exception as _e:
+                print(f"TG_NOTIFY order: {_e}")
+
             order_type = body.get("order_type", "cart")
             items = body.get("items") or []
             parts_total = float(body["total"])

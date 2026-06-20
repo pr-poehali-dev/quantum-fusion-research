@@ -631,6 +631,14 @@ def handler(event: dict, context) -> dict:
                             f"VALUES (%s, 'order', %s, %s)",
                             (neg_user_id, txt, link)
                         )
+                        try:
+                            from tg_notify import notify_managers
+                            notify_managers(
+                                f"📦 <b>Товар приехал под заказ №{str(neg_order_id).zfill(4)}</b>\n"
+                                f"«{prod_name}» поступил на склад и зарезервирован."
+                            )
+                        except Exception as _e:
+                            print(f"TG_NOTIFY backorder: {_e}")
 
             # Если что-то погасили — переводим позицию корзины закупки в 'RECEIVED'
             # (получено). Резервы и корзина независимы, но статус «получено» нужен

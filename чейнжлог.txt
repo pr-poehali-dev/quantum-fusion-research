@@ -3,6 +3,24 @@
 
 ---
 
+## v3.57 | 2026-06-20 | Telegram-бот уведомлений менеджеров + инструкция по серверу
+
+### Backend
+- Новый хелпер tg_notify.py (в orders, quiz, warehouse): notify_managers(text)
+  шлёт в общий чат через Bot API sendMessage (HTML). Без секретов — тихо пропускает.
+- orders POST: уведомление «🛒 Новый заказ {display_number}» (тип, клиент, телефон, сумма).
+- quiz submit: уведомление «🎯 Новый лид из квиза» (имя, телефон, связь, бюджет).
+- warehouse supply_in: уведомление «📦 Товар приехал под заказ» (приход под NEGATIVE-резерв).
+
+### Secrets
+- Запрошены TELEGRAM_BOT_TOKEN и TELEGRAM_MANAGER_CHAT_ID.
+
+### Docs
+- Новый файл ЗАПУСК-НА-СЕРВЕРЕ.md — пошаговый деплой проекта на свой VPS
+  (PostgreSQL, миграции, сборка фронта, Flask-обёртка для функций, Nginx, SSL, бот).
+
+---
+
 ## v3.56 | 2026-06-20 | Страница «Контакты» (/contacts)
 
 ### Frontend

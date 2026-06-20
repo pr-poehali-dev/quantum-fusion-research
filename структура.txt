@@ -139,6 +139,21 @@ answers JSONB {question_id: [варианты]}, extra_wishes, status new/in_pro
 GET requests авто-чистит selftest-мусор (name='__selftest__', title LIKE '__selftest%').
 Кнопка «Подобрать ПК» на главной (HomeStonks) ведёт на /quiz.
 
+### Telegram-уведомления менеджеров (v3.57)
+Бот пинает менеджеров в общий чат при событиях. Хелпер
+backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
+Использует секреты TELEGRAM_BOT_TOKEN, TELEGRAM_MANAGER_CHAT_ID (sendMessage, HTML).
+Если секреты не заданы — тихо пропускает (сайт не падает).
+События:
+  - orders POST (новый заказ) → «🛒 Новый заказ {display_number}»;
+  - quiz submit (новый лид) → «🎯 Новый лид из квиза»;
+  - warehouse supply_in (товар приехал под NEGATIVE-резерв) → «📦 Товар приехал под заказ».
+
+### Контакты (страница /contacts → src/pages/Contacts.tsx)
+Два офиса: Новокосино (сборка/продажа ПК) и Беляево (ремонт/обслуживание).
+В каждом: адрес+Яндекс.Карты, телефон, Telegram, часы. Footer ведёт сюда
+(ссылка «Контакты» вместо «Сервисный центр»).
+
 ### finance
 Раздел «Финансы» (вкладка /admin/finance, FinanceTab.tsx).
 GET action=summary — сводка: стоимость склада (закупка/продажа),

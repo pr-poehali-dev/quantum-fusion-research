@@ -110,6 +110,24 @@ def handler(event: dict, context) -> dict:
         )
         new_id = cur.fetchone()[0]
         conn.commit()
+
+        try:
+            from tg_notify import notify_managers
+            _bmin = body.get("budget_min")
+            _bmax = body.get("budget_max")
+            _budget = ""
+            if _bmin or _bmax:
+                _budget = f"\nБюджет: {_bmin or '?'}–{_bmax or '?'} ₽"
+            notify_managers(
+                f"🎯 <b>Новый лид из квиза</b>\n"
+                f"Имя: {body.get('name','—')}\n"
+                f"Телефон: {body.get('phone','—')}\n"
+                f"Связь: {body.get('contact_method','—')}"
+                f"{_budget}"
+            )
+        except Exception as _e:
+            print(f"TG_NOTIFY quiz: {_e}")
+
         return ok({"id": new_id, "ok": True}, 201)
 
     # ─────────── ЗАЯВКИ (АДМИН) ───────────
