@@ -24,9 +24,14 @@ export function ThemeSwitcher() {
   useEffect(() => {
     if (open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect()
+      const margin = 8
+      const popupWidth = Math.min(288, window.innerWidth - margin * 2)
+      // right так, чтобы левый край попапа не ушёл за экран
+      const maxRight = window.innerWidth - margin - popupWidth
+      const right = Math.min(window.innerWidth - r.right, maxRight)
       setPopupPos({
         top: r.bottom + 8,
-        right: window.innerWidth - r.right,
+        right: Math.max(margin, right),
       })
     }
   }, [open])
@@ -87,8 +92,8 @@ export function ThemeSwitcher() {
           />
           {/* Попап тоже вне main — курсор всегда виден */}
           <div
-            className="fixed z-[9999] w-72 rounded-2xl border border-border bg-card p-5 shadow-2xl"
-            style={{ top: popupPos.top, right: popupPos.right, cursor: "auto" }}
+            className="fixed z-[9999] rounded-2xl border border-border bg-card p-5 shadow-2xl"
+            style={{ top: popupPos.top, right: popupPos.right, width: "min(288px, calc(100vw - 16px))", cursor: "auto" }}
           >
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-foreground/40">Тема</p>
             <div className="mb-5 flex gap-2">
