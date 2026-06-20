@@ -331,7 +331,7 @@ export default function Shop() {
               </div>
 
               <button
-                onClick={() => setUsedOnly(v => !v)}
+                onClick={() => { const next = !usedOnly; setUsedOnly(next); if (next) { setActiveCategory("all"); setSearch("") } }}
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${usedOnly ? "border-amber-500 bg-amber-500/10 text-amber-500" : "border-border bg-card text-foreground/70 hover:text-foreground hover:border-primary"}`}
                 style={{ cursor: "pointer" }}
                 title="Показать только бывшие в употреблении"
@@ -407,13 +407,15 @@ export default function Shop() {
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {[...Array(8)].map((_, i) => <div key={i} className="h-72 rounded-xl bg-card animate-pulse" />)}
               </div>
-            ) : products.length === 0 ? (
+            ) : (usedOnly ? allProducts.filter(p => p.is_used).length === 0 : products.length === 0) ? (
               <div className="py-24 text-center text-foreground/50">
                 <Icon name="PackageSearch" size={48} className="mx-auto mb-4 opacity-30" />
-                <p>Товары не найдены</p>
+                <p>{usedOnly ? "Б/У товаров пока нет" : "Товары не найдены"}</p>
               </div>
             ) : (() => {
-              const visible = usedOnly ? products.filter(p => p.is_used) : products
+              // При фильтре Б/У показываем ВСЕ б/у-лоты из полного списка,
+              // независимо от выбранной категории
+              const visible = usedOnly ? allProducts.filter(p => p.is_used) : products
               const sorted = [...visible].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
               // Рекомендуемые — всегда все is_featured из products (без фильтра по категории)
               const featuredSource = (activeCategory === "all" && !search && !usedOnly && allProducts.length > 0) ? allProducts : visible
