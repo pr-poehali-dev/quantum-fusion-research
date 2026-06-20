@@ -165,14 +165,52 @@ export function AdminWipTab({
   const [stores, setStores] = useState<WipStore[]>([])
   // Выбор магазина по позиции (ключ "wipId:slot"). Источник — БД (приходит в корзине).
   const [itemStore, setItemStore] = useState<Record<string, string>>({})
-  const setComponentStore = (wipId: number, slot: string, storeId: string) => {
-    setItemStore(prev => ({ ...prev, [`${wipId}:${slot}`]: storeId }))
-    // Сохраняем магазин в БД, чтобы календарь заборов был общим для всех
-    fetch(`${BASKET_URL}?action=set_component_store`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wip_id: wipId, slot, store_id: storeId || null }),
-    })
+  // Статус сохранения магазина по ключу: "saving" | "ok" | "err"
+  const [storeSaveState, setStoreSaveState] = useState<Record<string, "saving" | "ok" | "err">>({})
+
+  // Короткий звук подтверждения/ошибки через Web Audio (без внешних файлов)
+  const beep = (ok: boolean) => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const ctx = new Ctx()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = "sine"
+      osc.frequency.value = ok ? 880 : 220
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18)
+      osc.start()
+      if (ok) osc.frequency.setValueAtTime(1175, ctx.currentTime + 0.09)
+      osc.stop(ctx.currentTime + 0.19)
+      osc.onended = () => ctx.close()
+    } catch { /* звук не критичен */ }
+  }
+
+  const setComponentStore = async (wipId: number, slot: string, storeId: string) => {
+    const key = `${wipId}:${slot}`
+    const prevVal = itemStore[key] || ""
+    setItemStore(prev => ({ ...prev, [key]: storeId }))
+    setStoreSaveState(prev => ({ ...prev, [key]: "saving" }))
+    try {
+      const r = await fetch(`${BASKET_URL}?action=set_component_store`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wip_id: wipId, slot, store_id: storeId || null }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d?.error) throw new Error(d?.error || "save_failed")
+      setStoreSaveState(prev => ({ ...prev, [key]: "ok" }))
+      beep(true)
+      setTimeout(() => setStoreSaveState(prev => { const n = { ...prev }; delete n[key]; return n }), 1500)
+    } catch {
+      // откатываем значение, чтобы пользователь видел, что НЕ сохранилось
+      setItemStore(prev => ({ ...prev, [key]: prevVal }))
+      setStoreSaveState(prev => ({ ...prev, [key]: "err" }))
+      beep(false)
+      alert("Не удалось сохранить магазин. Проверьте интернет и попробуйте ещё раз.")
+    }
   }
   useEffect(() => {
     api.warehouse.getStores().then((d: unknown) => {
@@ -498,17 +536,29 @@ export function AdminWipTab({
                                   </span>
                                 )}
                                 {/* Магазин (откуда поедет железка) — для удобства */}
-                                {stores.length > 0 && (
-                                  <select
-                                    value={itemStore[`${build.wip_id}:${item.slot}`] || ""}
-                                    onChange={e => setComponentStore(build.wip_id, item.slot, e.target.value)}
-                                    className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-foreground/70 focus:outline-none focus:border-primary transition-colors max-w-[130px]"
-                                    style={{ cursor: "pointer" }}
-                                    title="Магазин (откуда поедет)">
-                                    <option value="">Магазин</option>
-                                    {stores.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
-                                  </select>
-                                )}
+                                {stores.length > 0 && (() => {
+                                  const skey = `${build.wip_id}:${item.slot}`
+                                  const sstate = storeSaveState[skey]
+                                  return (
+                                    <div className="shrink-0 flex items-center gap-1">
+                                      <select
+                                        value={itemStore[skey] || ""}
+                                        onChange={e => setComponentStore(build.wip_id, item.slot, e.target.value)}
+                                        disabled={sstate === "saving"}
+                                        className={`rounded-lg border bg-background px-2 py-1 text-xs font-medium text-foreground/70 focus:outline-none transition-colors max-w-[130px] ${
+                                          sstate === "ok" ? "border-green-400/60" : sstate === "err" ? "border-red-400/60" : "border-border focus:border-primary"
+                                        }`}
+                                        style={{ cursor: "pointer" }}
+                                        title="Магазин (откуда поедет)">
+                                        <option value="">Магазин</option>
+                                        {stores.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                                      </select>
+                                      {sstate === "saving" && <Icon name="Loader" size={13} className="animate-spin text-foreground/40" />}
+                                      {sstate === "ok" && <Icon name="Check" size={14} className="text-green-400" />}
+                                      {sstate === "err" && <Icon name="TriangleAlert" size={14} className="text-red-400" />}
+                                    </div>
+                                  )
+                                })()}
                                 {/* Дата прихода железа = «Заказано» — кликабельный календарик */}
                                 <Popover>
                                   <PopoverTrigger asChild>
