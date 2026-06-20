@@ -1,0 +1,38 @@
+{
+  "tests": [
+    {
+      "name": "Healthcheck GET",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Webhook empty update",
+      "method": "POST",
+      "path": "/",
+      "body": {},
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Webhook unknown text -> menu",
+      "method": "POST",
+      "path": "/",
+      "body": {"message": {"chat": {"id": 100000001, "username": "selftest_bot_user"}, "text": "__selftest__ ping"}},
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Cleanup selftest carts",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

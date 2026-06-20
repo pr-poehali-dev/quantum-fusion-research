@@ -175,6 +175,28 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
   POST action=morning_ping, показывает что отправлено). На своём сервере — crontab
   (см. ЗАПУСК-НА-СЕРВЕРЕ.md, раздел 9).
 
+### Интерактивный Telegram-бот склада (v3.65) — backend/tg-bot
+URL: https://functions.poehali.dev/6cf7e69d-a5f1-45db-b94e-43f37dd16961
+Webhook-функция (Telegram шлёт POST с update). GET — healthcheck + автоочистка
+selftest-корзин (chat_id 100000000..199999999).
+Возможности:
+  - /start, /menu — меню (показывает режим: менеджер/клиент);
+  - 🔍 Поиск железа из наличия по названию (warehouse_groups + supplies):
+    выводит цену (price_retail) и доступный остаток (qty - qty_reserved > 0),
+    пагинация по 8 позиций;
+  - карточка товара → кнопки «➕ 1/2/5 шт» добавляют в корзину (проверка остатка);
+  - 🛒 Корзина (хранится в tg_bot_carts по chat_id): уменьшить/удалить/очистить;
+  - ✅ Оформить → бот спрашивает имя и телефон → создаёт заказ order_type='parts'
+    с display_number HWxxxxx, авторезерв через warehouse_core, уведомление менеджерам.
+Доступ: поиск+заказ доступны всем; менеджеры из таблицы tg_bot_managers (chat_id)
+помечаются в комментарии заказа «(менеджер)». Контакт клиента → customer_email
+"tg:https://t.me/{username}".
+Таблицы (V0114): tg_bot_carts (chat_id PK, state, state_data, items JSONB),
+tg_bot_managers (chat_id PK, username, full_name).
+Хелперы скопированы: tg_notify.py, warehouse_core.py.
+⚠️ Установка webhook (один раз): GET к api.telegram.org/bot<TOKEN>/setWebhook?url=<URL функции>.
+Тот же бот продолжает слать уведомления (notify_managers) — webhook не мешает.
+
 ### Контакты (страница /contacts → src/pages/Contacts.tsx)
 Два офиса: Новокосино (сборка/продажа ПК) и Беляево (ремонт/обслуживание).
 В каждом: адрес+Яндекс.Карты, телефон, Telegram, часы. Footer ведёт сюда
