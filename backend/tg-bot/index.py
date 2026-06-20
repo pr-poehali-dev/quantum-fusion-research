@@ -1,9 +1,11 @@
 """Telegram-бот склада BeGraphics.
 
 Возможности:
-- /start — меню
-- Поиск железа из наличия по названию (цена, остаток)
-- Корзина: добавление позиций с количеством, оформление заказа
+- /start — меню (навигация редактирует одно сообщение, без спама)
+- 📂 Категории — просмотр наличия по разделам (динамически из warehouse_groups)
+- 🔍 Интеллектуальный поиск: синонимы (видяха→видеокарта, проц→процессор...),
+  фикс раскладки, многословный AND-поиск, ранжирование, подсказка категорий
+- 🛒 Корзина: добавление позиций с количеством, оформление заказа
 - Создание заказа железа (order_type=parts) с авторезервом через warehouse_core
 
 Доступ: поиск — всем; оформление заказа доступно всем (клиентам — как клиентский
@@ -65,6 +67,21 @@ def send(chat_id, text, keyboard=None, remove_reply_kb=False):
     return tg_call("sendMessage", payload)
 
 
+def show(chat_id, text, keyboard=None, message_id=None):
+    """Показать экран: если задан message_id — редактируем сообщение,
+    иначе отправляем новое. Делает навигацию «в одном окне»."""
+    if message_id is not None:
+        payload = {"chat_id": chat_id, "message_id": message_id, "text": text,
+                   "parse_mode": "HTML", "disable_web_page_preview": True}
+        if keyboard is not None:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
+        res = tg_call("editMessageText", payload)
+        if res is not None:
+            return res
+        # не вышло отредактировать (напр. сообщение слишком старое) — шлём новое
+    return send(chat_id, text, keyboard)
+
+
 def answer_cb(cb_id, text=None):
     payload = {"callback_query_id": cb_id}
     if text:
@@ -103,26 +120,124 @@ def is_manager(cur, chat_id):
     return cur.fetchone() is not None
 
 
-# ─────────────────────────── ПОИСК ЖЕЛЕЗА ───────────────────────────
+# ─────────────────────────── ИНТЕЛЛЕКТУАЛЬНЫЙ ПОИСК ───────────────────────────
+
+# Раскладка: если человек печатает русскими буквами в англ. раскладке и наоборот
+_LAYOUT_RU2EN = str.maketrans(
+    "йцукенгшщзхъфывапролджэячсмитьбю",
+    "qwertyuiop[]asdfghjkl;'zxcvbnm,.")
+_LAYOUT_EN2RU = str.maketrans(
+    "qwertyuiop[]asdfghjkl;'zxcvbnm,.",
+    "йцукенгшщзхъфывапролджэячсмитьбю")
+
+# Синонимы/сокращения → к каноничным словам поиска
+SYNONYMS = {
+    "видяха": "видеокарта", "видюха": "видеокарта", "гпу": "видеокарта",
+    "гпушка": "видеокарта", "gpu": "видеокарта", "карта": "видеокарта",
+    "проц": "процессор", "цпу": "процессор", "cpu": "процессор",
+    "камень": "процессор",
+    "мать": "материнская", "матка": "материнская", "мамка": "материнская",
+    "мб": "материнская", "motherboard": "материнская", "плата": "материнская",
+    "озу": "оперативная память", "память": "память", "рам": "память",
+    "ram": "память", "ddr": "память",
+    "ссд": "ssd", "хард": "накопитель", "диск": "накопитель", "hdd": "накопитель",
+    "винт": "накопитель", "ссдшка": "ssd",
+    "бп": "блок питания", "psu": "блок питания", "питalik": "блок питания",
+    "кулер": "охлаждение", "куллер": "охлаждение", "вентилятор": "охлаждение",
+    "корпус": "корпус", "кейс": "корпус", "case": "корпус",
+}
+
+
+def normalize_query(q):
+    """Возвращает список вариантов нормализованного запроса (слова)."""
+    q = (q or "").lower().strip()
+    variants = set()
+
+    def words_of(s):
+        toks = []
+        for w in s.replace(",", " ").split():
+            w = w.strip(".,!?;:()[]\"'")
+            if not w:
+                continue
+            toks.append(SYNONYMS.get(w, w))
+        # синоним может быть из двух слов — разворачиваем
+        out = []
+        for t in toks:
+            out.extend(t.split())
+        return out
+
+    variants.add(tuple(words_of(q)))
+    # попытка исправить раскладку
+    variants.add(tuple(words_of(q.translate(_LAYOUT_EN2RU))))
+    variants.add(tuple(words_of(q.translate(_LAYOUT_RU2EN))))
+    # убираем пустые
+    return [list(v) for v in variants if v]
+
+
+def _run_search(cur, words, offset, limit):
+    """AND-поиск: каждое слово должно встречаться в названии или категории.
+    Ранжирование: сначала те, где запрос ближе к началу названия."""
+    if not words:
+        return [], False
+    conds, params = [], []
+    for w in words:
+        conds.append("(LOWER(g.name) LIKE %s OR LOWER(g.category) LIKE %s)")
+        params += [f"%{w}%", f"%{w}%"]
+    where = " AND ".join(conds)
+    rank_word = words[0]
+    sql = f"""
+        SELECT g.product_id, g.name, g.price_retail,
+               COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail,
+               POSITION(%s IN LOWER(g.name)) AS pos
+        FROM {SCHEMA}.warehouse_groups g
+        LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
+        WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL AND {where}
+        GROUP BY g.id, g.product_id, g.name, g.price_retail
+        HAVING (COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0)) > 0
+        ORDER BY (CASE WHEN POSITION(%s IN LOWER(g.name)) = 0 THEN 9999
+                       ELSE POSITION(%s IN LOWER(g.name)) END), g.name
+        LIMIT %s OFFSET %s"""
+    cur.execute(sql, [rank_word] + params + [rank_word, rank_word, limit + 1, offset])
+    rows = cur.fetchall()
+    has_more = len(rows) > limit
+    return [r[:4] for r in rows[:limit]], has_more
+
 
 def search_products(cur, query, offset=0):
-    like = f"%{query.lower()}%"
+    """Умный поиск: пробуем варианты нормализации, берём первый непустой.
+    Если по всем словам пусто — пробуем по самому длинному слову (fallback)."""
+    for words in normalize_query(query):
+        rows, has_more = _run_search(cur, words, offset, PAGE_SIZE)
+        if rows:
+            return rows, has_more
+    # fallback: ищем только по самому длинному слову
+    all_words = normalize_query(query)
+    longest = max((w for ws in all_words for w in ws), key=len, default="")
+    if len(longest) >= 3:
+        return _run_search(cur, [longest], offset, PAGE_SIZE)
+    return [], False
+
+
+def search_categories(cur, query):
+    """Похожие категории по запросу — чтобы предложить клиенту посмотреть раздел."""
+    words = normalize_query(query)
+    flat = [w for ws in words for w in ws]
+    if not flat:
+        return []
+    conds, params = [], []
+    for w in set(flat):
+        conds.append("LOWER(g.category) LIKE %s")
+        params.append(f"%{w}%")
     cur.execute(
-        f"""SELECT g.product_id, g.name, g.price_retail,
-                   COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail
+        f"""SELECT g.category, COUNT(DISTINCT g.id)
             FROM {SCHEMA}.warehouse_groups g
             LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
-            WHERE g.is_archived = FALSE
-              AND g.product_id IS NOT NULL
-              AND LOWER(g.name) LIKE %s
-            GROUP BY g.id, g.product_id, g.name, g.price_retail
-            HAVING (COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0)) > 0
-            ORDER BY g.name
-            LIMIT %s OFFSET %s""",
-        (like, PAGE_SIZE + 1, offset))
-    rows = cur.fetchall()
-    has_more = len(rows) > PAGE_SIZE
-    return rows[:PAGE_SIZE], has_more
+            WHERE g.is_archived = FALSE AND g.category <> '' AND ({' OR '.join(conds)})
+            GROUP BY g.category
+            HAVING SUM(GREATEST(COALESCE(s.qty,0)-COALESCE(s.qty_reserved,0),0)) > 0
+            ORDER BY 2 DESC LIMIT 4""",
+        params)
+    return [r[0] for r in cur.fetchall()]
 
 
 def fmt_price(v):
@@ -132,12 +247,17 @@ def fmt_price(v):
         return "—"
 
 
-def render_results(cur, chat_id, query, offset):
+def render_results(cur, chat_id, query, offset, message_id=None):
     rows, has_more = search_products(cur, query, offset)
     if not rows:
-        send(chat_id, f"По запросу «{query}» ничего не найдено в наличии.",
-             [[{"text": "🔍 Новый поиск", "callback_data": "search"}],
-              [{"text": "🏠 Меню", "callback_data": "menu"}]])
+        # ничего не нашли — предложим похожие категории
+        cats = search_categories(cur, query)
+        kb = [[{"text": f"📂 {c}", "callback_data": f"cat:{c}:0"}] for c in cats]
+        kb.append([{"text": "🔍 Новый поиск", "callback_data": "search"},
+                   {"text": "📂 Все категории", "callback_data": "cats"}])
+        kb.append([{"text": "🏠 Меню", "callback_data": "menu"}])
+        hint = "\n\nМожет, посмотришь в этих разделах? 👇" if cats else ""
+        show(chat_id, f"По запросу «{query}» ничего не нашёл в наличии.{hint}", kb, message_id)
         return
     kb = []
     for product_id, name, price, avail in rows:
@@ -153,27 +273,101 @@ def render_results(cur, chat_id, query, offset):
     if nav:
         kb.append(nav)
     kb.append([{"text": "🔍 Новый поиск", "callback_data": "search"},
+               {"text": "📂 Категории", "callback_data": "cats"}])
+    kb.append([{"text": "🏠 Меню", "callback_data": "menu"}])
+    show(chat_id, f"🔧 Результаты по «{query}»:\nВыбери товар, чтобы открыть.", kb, message_id)
+
+
+# ─────────────────────────── КАТЕГОРИИ ───────────────────────────
+
+def render_categories(cur, chat_id, message_id=None):
+    cur.execute(
+        f"""SELECT g.category,
+                   SUM(GREATEST(COALESCE(s.qty,0)-COALESCE(s.qty_reserved,0),0)) AS avail
+            FROM {SCHEMA}.warehouse_groups g
+            LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
+            WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL AND g.category <> ''
+            GROUP BY g.category
+            HAVING SUM(GREATEST(COALESCE(s.qty,0)-COALESCE(s.qty_reserved,0),0)) > 0
+            ORDER BY 2 DESC""")
+    cats = cur.fetchall()
+    if not cats:
+        show(chat_id, "Пока нет позиций в наличии.",
+             [[{"text": "🏠 Меню", "callback_data": "menu"}]], message_id)
+        return
+    kb = []
+    for cat, avail in cats:
+        kb.append([{"text": f"{_cat_icon(cat)} {cat} · {int(avail)} шт",
+                    "callback_data": f"cat:{cat}:0"}])
+    kb.append([{"text": "🔍 Поиск", "callback_data": "search"},
                {"text": "🏠 Меню", "callback_data": "menu"}])
-    send(chat_id, f"🔧 Результаты по «{query}»:\nВыбери товар, чтобы добавить в корзину.", kb)
+    show(chat_id, "📂 <b>Категории в наличии</b>\nВыбери раздел:", kb, message_id)
 
 
-def product_card(cur, chat_id, product_id):
+def _cat_icon(cat):
+    c = (cat or "").lower()
+    if "процесс" in c: return "💎"
+    if "видео" in c: return "🎮"
+    if "память" in c or "озу" in c: return "🧠"
+    if "накоп" in c or "ssd" in c or "диск" in c: return "💾"
+    if "матери" in c: return "🔌"
+    if "питан" in c: return "⚡"
+    if "охлажд" in c or "вентил" in c or "кулер" in c: return "❄️"
+    if "корпус" in c: return "🗄"
+    return "🔧"
+
+
+def render_category(cur, chat_id, category, offset, message_id=None):
     cur.execute(
         f"""SELECT g.product_id, g.name, g.price_retail,
                    COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail
             FROM {SCHEMA}.warehouse_groups g
             LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
-            WHERE g.product_id = %s AND g.is_archived = FALSE
+            WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL AND g.category = %s
             GROUP BY g.id, g.product_id, g.name, g.price_retail
+            HAVING (COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0)) > 0
+            ORDER BY g.name LIMIT %s OFFSET %s""",
+        (category, PAGE_SIZE + 1, offset))
+    rows = cur.fetchall()
+    has_more = len(rows) > PAGE_SIZE
+    rows = rows[:PAGE_SIZE]
+    if not rows:
+        render_categories(cur, chat_id, message_id)
+        return
+    kb = []
+    for product_id, name, price, avail in rows:
+        kb.append([{"text": f"{name[:40]} · {fmt_price(price)} · {int(avail)} шт",
+                    "callback_data": f"p:{product_id}"}])
+    nav = []
+    if offset > 0:
+        nav.append({"text": "◀️ Назад", "callback_data": f"cat:{category}:{max(0, offset-PAGE_SIZE)}"})
+    if has_more:
+        nav.append({"text": "Ещё ▶️", "callback_data": f"cat:{category}:{offset+PAGE_SIZE}"})
+    if nav:
+        kb.append(nav)
+    kb.append([{"text": "📂 Категории", "callback_data": "cats"},
+               {"text": "🏠 Меню", "callback_data": "menu"}])
+    show(chat_id, f"{_cat_icon(category)} <b>{category}</b>\nВыбери товар:", kb, message_id)
+
+
+def product_card(cur, chat_id, product_id, message_id=None):
+    cur.execute(
+        f"""SELECT g.product_id, g.name, g.price_retail, g.category,
+                   COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail
+            FROM {SCHEMA}.warehouse_groups g
+            LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
+            WHERE g.product_id = %s AND g.is_archived = FALSE
+            GROUP BY g.id, g.product_id, g.name, g.price_retail, g.category
             LIMIT 1""",
         (product_id,))
     row = cur.fetchone()
     if not row:
-        send(chat_id, "Товар не найден.", [[{"text": "🏠 Меню", "callback_data": "menu"}]])
+        show(chat_id, "Товар не найден.", [[{"text": "🏠 Меню", "callback_data": "menu"}]], message_id)
         return
-    pid, name, price, avail = row
+    pid, name, price, category, avail = row
     avail = int(avail or 0)
-    text = (f"<b>{name}</b>\n"
+    text = (f"{_cat_icon(category)} <b>{name}</b>\n"
+            f"Категория: {category or '—'}\n"
             f"Цена: {fmt_price(price)}\n"
             f"В наличии: {avail} шт")
     kb = [[
@@ -183,8 +377,11 @@ def product_card(cur, chat_id, product_id):
     ], [
         {"text": "🛒 Корзина", "callback_data": "cart"},
         {"text": "🔍 Поиск", "callback_data": "search"},
+    ], [
+        {"text": "📂 Категории", "callback_data": "cats"},
+        {"text": "🏠 Меню", "callback_data": "menu"},
     ]]
-    send(chat_id, text, kb)
+    show(chat_id, text, kb, message_id)
 
 
 # ─────────────────────────── КОРЗИНА ───────────────────────────
@@ -217,13 +414,14 @@ def add_to_cart(cur, chat_id, product_id, qty):
     return True, f"Добавлено: {name} ×{qty}"
 
 
-def render_cart(cur, chat_id):
+def render_cart(cur, chat_id, message_id=None):
     c = load_cart(cur, chat_id)
     items = c["items"]
     if not items:
-        send(chat_id, "🛒 Корзина пуста.",
+        show(chat_id, "🛒 Корзина пуста.",
              [[{"text": "🔍 Найти железо", "callback_data": "search"}],
-              [{"text": "🏠 Меню", "callback_data": "menu"}]])
+              [{"text": "📂 Категории", "callback_data": "cats"}],
+              [{"text": "🏠 Меню", "callback_data": "menu"}]], message_id)
         return
     lines, total = ["🛒 <b>Корзина</b>:"], 0
     kb = []
@@ -238,19 +436,20 @@ def render_cart(cur, chat_id):
     kb.append([{"text": "🗑 Очистить", "callback_data": "clear"},
                {"text": "🔍 Поиск", "callback_data": "search"}])
     kb.append([{"text": "🏠 Меню", "callback_data": "menu"}])
-    send(chat_id, "\n".join(lines), kb)
+    show(chat_id, "\n".join(lines), kb, message_id)
 
 
-def menu(cur, chat_id, greeting=False):
+def menu(cur, chat_id, greeting=False, message_id=None):
     mgr = is_manager(cur, chat_id)
     role = "менеджер" if mgr else "клиент"
     text = ("👋 <b>Склад BeGraphics</b>\n" if greeting else "🏠 <b>Меню</b>\n")
     text += f"Режим: {role}\n\nЧто делаем?"
     kb = [
+        [{"text": "📂 Категории", "callback_data": "cats"}],
         [{"text": "🔍 Найти железо", "callback_data": "search"}],
         [{"text": "🛒 Корзина", "callback_data": "cart"}],
     ]
-    send(chat_id, text, kb)
+    show(chat_id, text, kb, message_id)
 
 
 # ─────────────────────────── ОФОРМЛЕНИЕ ЗАКАЗА ───────────────────────────
@@ -349,28 +548,36 @@ def handle_message(cur, msg):
 
 def handle_callback(cur, cb):
     chat_id = cb["message"]["chat"]["id"]
-    username = cb["from"].get("username", "")
+    mid = cb["message"]["message_id"]
     data = cb.get("data", "")
     answer_cb(cb["id"])
 
     if data == "menu":
         save_cart(cur, chat_id, state="idle", state_data={})
-        menu(cur, chat_id)
+        menu(cur, chat_id, message_id=mid)
+    elif data == "cats":
+        save_cart(cur, chat_id, state="idle")
+        render_categories(cur, chat_id, message_id=mid)
+    elif data.startswith("cat:"):
+        _, category, off = data.split(":", 2)
+        render_category(cur, chat_id, category, int(off), message_id=mid)
     elif data == "search":
         save_cart(cur, chat_id, state="await_search")
-        send(chat_id, "🔍 Введи название железа (например: <i>RTX 4070</i>):")
+        show(chat_id, "🔍 Напиши, что ищешь (например: <i>RTX 4070</i>, <i>проц 7600</i>, <i>видяха</i>):",
+             [[{"text": "📂 Категории", "callback_data": "cats"}],
+              [{"text": "🏠 Меню", "callback_data": "menu"}]], mid)
     elif data.startswith("pg:"):
         _, query, off = data.split(":", 2)
-        render_results(cur, chat_id, query, int(off))
+        render_results(cur, chat_id, query, int(off), message_id=mid)
     elif data.startswith("p:"):
-        product_card(cur, chat_id, int(data[2:]))
+        product_card(cur, chat_id, int(data[2:]), message_id=mid)
     elif data.startswith("add:"):
         _, pid, qty = data.split(":")
         ok, m = add_to_cart(cur, chat_id, int(pid), int(qty))
         answer_cb(cb["id"], m)
-        render_cart(cur, chat_id)
+        render_cart(cur, chat_id, message_id=mid)
     elif data == "cart":
-        render_cart(cur, chat_id)
+        render_cart(cur, chat_id, message_id=mid)
     elif data.startswith("dec:"):
         pid = int(data[4:])
         c = load_cart(cur, chat_id)
@@ -382,23 +589,23 @@ def handle_callback(cur, cb):
                     continue
             items.append(it)
         save_cart(cur, chat_id, items=items)
-        render_cart(cur, chat_id)
+        render_cart(cur, chat_id, message_id=mid)
     elif data.startswith("del:"):
         pid = int(data[4:])
         c = load_cart(cur, chat_id)
         items = [it for it in c["items"] if it["id"] != pid]
         save_cart(cur, chat_id, items=items)
-        render_cart(cur, chat_id)
+        render_cart(cur, chat_id, message_id=mid)
     elif data == "clear":
         save_cart(cur, chat_id, items=[])
-        render_cart(cur, chat_id)
+        render_cart(cur, chat_id, message_id=mid)
     elif data == "checkout":
         c = load_cart(cur, chat_id)
         if not c["items"]:
-            render_cart(cur, chat_id)
+            render_cart(cur, chat_id, message_id=mid)
             return
         save_cart(cur, chat_id, state="await_name", state_data={})
-        send(chat_id, "📝 Оформление заказа.\nКак тебя зовут?")
+        show(chat_id, "📝 Оформление заказа.\nКак тебя зовут?", None, mid)
 
 
 def handler(event: dict, context) -> dict:
