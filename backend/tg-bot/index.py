@@ -282,22 +282,25 @@ def render_results(cur, chat_id, query, offset, message_id=None):
 
 def render_categories(cur, chat_id, message_id=None):
     cur.execute(
-        f"""SELECT g.category,
-                   SUM(GREATEST(COALESCE(s.qty,0)-COALESCE(s.qty_reserved,0),0)) AS avail
-            FROM {SCHEMA}.warehouse_groups g
-            LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
-            WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL AND g.category <> ''
-            GROUP BY g.category
-            HAVING SUM(GREATEST(COALESCE(s.qty,0)-COALESCE(s.qty_reserved,0),0)) > 0
-            ORDER BY 2 DESC""")
+        f"""SELECT category, COUNT(*) AS positions FROM (
+                SELECT g.category, g.id,
+                       COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0) AS avail
+                FROM {SCHEMA}.warehouse_groups g
+                LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id
+                WHERE g.is_archived = FALSE AND g.product_id IS NOT NULL AND g.category <> ''
+                GROUP BY g.category, g.id
+                HAVING (COALESCE(SUM(s.qty),0) - COALESCE(SUM(s.qty_reserved),0)) > 0
+            ) t
+            GROUP BY category
+            ORDER BY positions DESC""")
     cats = cur.fetchall()
     if not cats:
         show(chat_id, "Пока нет позиций в наличии.",
              [[{"text": "🏠 Меню", "callback_data": "menu"}]], message_id)
         return
     kb = []
-    for cat, avail in cats:
-        kb.append([{"text": f"{_cat_icon(cat)} {cat} · {int(avail)} шт",
+    for cat, positions in cats:
+        kb.append([{"text": f"{_cat_icon(cat)} {cat} · {int(positions)} поз.",
                     "callback_data": f"cat:{cat}:0"}])
     kb.append([{"text": "🔍 Поиск", "callback_data": "search"},
                {"text": "🏠 Меню", "callback_data": "menu"}])
