@@ -181,6 +181,54 @@ def handler(event: dict, context) -> dict:
                 return result, asm_type, asm_fee_val
 
             if order_type == "pc_build":
+                # ── ПРОДАЖА ИЗ НАЛИЧИЯ ─────────────────────────────────────────
+                # Если заказывают готовую сборку (есть wip с for_sale=TRUE и без
+                # активного заказа) — привязываем существующий wip к этому заказу,
+                # НЕ плодим копию сборки/wip. Сборку снимаем с витрины.
+                stock_build_ids = [
+                    int(it["id"]) for it in items
+                    if it.get("item_type") == "config" and it.get("id")
+                ]
+                stock_wip = None
+                if stock_build_ids:
+                    cur.execute(
+                        "SELECT wb.id, wb.build_id FROM wip_builds wb "
+                        "WHERE wb.build_id = ANY(%s) AND wb.for_sale = TRUE "
+                        "AND wb.stage = 'Готов, можно забрать' "
+                        "AND wb.order_id IS NULL "
+                        "ORDER BY wb.id ASC LIMIT 1",
+                        (stock_build_ids,)
+                    )
+                    stock_wip = cur.fetchone()
+
+                if stock_wip:
+                    # Привязываем готовый ПК к заказу, снимаем с витрины
+                    wip_id_stock, build_id_stock = stock_wip[0], stock_wip[1]
+                    cur.execute(
+                        "UPDATE wip_builds SET order_id=%s, stage='Готов, можно забрать', "
+                        "updated_at=NOW() WHERE id=%s",
+                        (order_id, wip_id_stock)
+                    )
+                    # Сборка под клиента; снимаем галочку «В наличии» (но оставляем
+                    # в каталоге до фактической выдачи — финально архивируем при выдаче)
+                    cur.execute(
+                        "UPDATE pc_builds SET in_stock=FALSE, updated_at=NOW() WHERE id=%s",
+                        (build_id_stock,)
+                    )
+                    try:
+                        from tg_notify import notify_managers as _notify
+                        _notify(
+                            f"✅ <b>Продажа из наличия {display_number}</b>\n"
+                            f"Готовый ПК заказан с витрины.\n"
+                            f"Клиент: {customer}\n"
+                            f"Сборка #{build_id_stock} привязана к заказу — собирать заново не нужно."
+                        )
+                    except Exception as _e:
+                        print(f"TG_NOTIFY stock-sale: {_e}")
+                    conn.commit()
+                    return {"statusCode": 201, "headers": cors,
+                            "body": json.dumps({"id": order_id, "ok": True, "from_stock": True})}
+
                 build_name = f"Заказ {order_id:05d}"
                 description = f"Заказ ПК #{order_id:05d} от {customer}"
                 has_assembly = any(it.get("assembly", True) for it in items if it.get("item_type") == "config")
