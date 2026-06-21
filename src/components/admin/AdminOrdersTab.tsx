@@ -170,9 +170,13 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
       ) : (
         <div className="space-y-3">
           {filtered.map(order => {
-            const statusInfo = order.order_type === "pc_build"
+            let statusInfo = order.order_type === "pc_build"
               ? (PC_STATUS_LABELS[order.wip_stage || order.status] || STATUS_LABELS[order.status])
               : STATUS_LABELS[order.status]
+            // Сборка свободной продажи на стадии «Готов, можно забрать» = «В продаже»
+            if (order.is_stock_sale && order.wip_stage === "Готов, можно забрать") {
+              statusInfo = { label: "В продаже", color: "text-green-400 bg-green-400/10" }
+            }
             // Сборка из свободной продажи, занятая заказом, но не выданная = «в резерве»
             const isReserved = !!order.for_sale && order.status !== "cancelled" && order.wip_stage !== "Забрали"
             return (
