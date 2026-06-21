@@ -275,8 +275,9 @@ def handler(event: dict, context) -> dict:
         wip = cur.fetchone()
         slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
 
-        # Маппинг slot -> product_id из pc_builds
+        # Маппинг slot -> product_id и slot -> цена из pc_builds.components
         slot_product_map = {}
+        slot_build_price = {}  # цена компонента из состава сборки (фолбэк для гарантийки)
         if wip and wip[9]:
             cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (wip[9],))
             pc_row = cur.fetchone()
@@ -284,8 +285,13 @@ def handler(event: dict, context) -> dict:
                 raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
                 for comp in raw:
                     s = comp.get("slot")
-                    if s and comp.get("source") == "catalog" and comp.get("source_id"):
+                    if not s:
+                        continue
+                    if comp.get("source") == "catalog" and comp.get("source_id"):
                         slot_product_map[s] = int(comp["source_id"])
+                    cp = float(comp.get("current_price") or comp.get("price") or 0)
+                    if cp:
+                        slot_build_price[s] = cp
 
         # Серийники из items[0].slot_serials (новый формат) или по slot (старый)
         slot_serials = {}
@@ -321,9 +327,15 @@ def handler(event: dict, context) -> dict:
                     continue
                 # Гарантия из склада
                 warranty = 12
-                pid = slot_product_map.get(slot)
+                pid = slot_product_map.get(slot) or slot_product_map.get(slot_alias)
                 if not pid:
-                    cur.execute(f"SELECT id FROM {SCHEMA}.products p WHERE p.name = %s LIMIT 1", (name,))
+                    # Устойчиво к лишним пробелам и регистру (имена в каталоге
+                    # бывают с хвостовым пробелом → точное сравнение не находило товар)
+                    cur.execute(
+                        f"SELECT id FROM {SCHEMA}.products p "
+                        f"WHERE LOWER(TRIM(p.name)) = LOWER(TRIM(%s)) LIMIT 1",
+                        (name,)
+                    )
                     pr = cur.fetchone()
                     if pr:
                         pid = pr[0]
@@ -336,7 +348,16 @@ def handler(event: dict, context) -> dict:
                     if wr and wr[0]:
                         warranty = wr[0]
                 serials = slot_serials.get(slot, [])
+                # Цена: сперва из items заказа, иначе из состава сборки (pc_builds),
+                # иначе актуальная цена каталога по товару.
                 price = slot_item_price.get(slot, 0)
+                if not price:
+                    price = slot_build_price.get(slot) or slot_build_price.get(slot_alias) or 0
+                if not price and pid:
+                    cur.execute(f"SELECT price FROM {SCHEMA}.products WHERE id = %s LIMIT 1", (pid,))
+                    pp = cur.fetchone()
+                    if pp and pp[0]:
+                        price = float(pp[0])
                 store_code = store_code_for_product(cur, pid)
                 enriched.append({
                     "name": name + (f" [{store_code}]" if store_code else ""),
