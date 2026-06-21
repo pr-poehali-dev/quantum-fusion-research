@@ -85,11 +85,6 @@ export default function SnArchiveTab() {
     load()
   }
 
-  const updateStore = async (id: number, storeId: number) => {
-    await api.snArchive.updateSerial({ id, store_id: storeId || null })
-    load()
-  }
-
   return (
     <div className="space-y-4">
       {/* Шапка */}
@@ -168,15 +163,8 @@ export default function SnArchiveTab() {
                 <td className="px-3 py-2 font-mono font-medium">{r.serial}</td>
                 <td className="px-3 py-2 text-foreground/70">{r.product_name || "—"}</td>
                 <td className="px-3 py-2 text-foreground/60">{r.category || "—"}</td>
-                <td className="px-3 py-2">
-                  <select
-                    className="rounded border border-border bg-background px-2 py-1 text-xs"
-                    value={r.store_id || ""}
-                    onChange={e => updateStore(r.id, parseInt(e.target.value))}
-                  >
-                    <option value="">— нет —</option>
-                    {stores.map(s => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
-                  </select>
+                <td className="px-3 py-2 text-foreground/70">
+                  {r.store_name ? <><span className="font-mono text-foreground/40">[{r.store_code}]</span> {r.store_name}</> : "—"}
                 </td>
                 <td className="px-3 py-2 text-foreground/60">{r.purchase_date?.substring(0, 10) || "—"}</td>
                 <td className="px-3 py-2 text-foreground/60">{r.warranty_until?.substring(0, 10) || "—"}</td>
