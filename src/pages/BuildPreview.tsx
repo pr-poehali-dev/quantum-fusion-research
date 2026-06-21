@@ -827,7 +827,7 @@ function HeroBuildCarousel({ images, active }: { images: string[]; active: boole
           style={{ opacity: i === idx && active ? 1 : 0 }}
         />
       ))}
-      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent" />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.85) 18%, hsl(var(--background) / 0.5) 40%, hsl(var(--background) / 0.2) 62%, transparent 85%)" }} />
       {/* Точки слева снизу */}
       {images.length > 1 && (
         <div className="absolute bottom-8 left-4 flex gap-1.5 pointer-events-auto">
