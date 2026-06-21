@@ -416,12 +416,15 @@ export default function Shop() {
                 <p>{usedOnly ? "Б/У товаров пока нет" : "Товары не найдены"}</p>
               </div>
             ) : (() => {
+              // Показываем товар только если у него есть фото (без фото — скрываем,
+              // даже не в наличии остаётся виден, если фото есть)
+              const hasPhoto = (p: Product) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
               // При фильтре Б/У показываем ВСЕ б/у-лоты из полного списка,
               // независимо от выбранной категории
-              const visible = usedOnly ? allProducts.filter(p => p.is_used) : products
+              const visible = (usedOnly ? allProducts.filter(p => p.is_used) : products).filter(hasPhoto)
               const sorted = [...visible].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
               // Рекомендуемые — всегда все is_featured из products (без фильтра по категории)
-              const featuredSource = (activeCategory === "all" && !search && !usedOnly && allProducts.length > 0) ? allProducts : visible
+              const featuredSource = ((activeCategory === "all" && !search && !usedOnly && allProducts.length > 0) ? allProducts : visible).filter(hasPhoto)
               const featured = [...featuredSource]
                 .filter(p => p.is_featured)
                 .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
@@ -440,7 +443,7 @@ export default function Shop() {
               )
               // Б/У комплектующие из allProducts (в наличии)
               const usedProducts = allProducts
-                .filter(p => p.is_used && p.in_stock)
+                .filter(p => p.is_used && p.in_stock && hasPhoto(p))
                 .sort((a, b) => (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0))
 
               // Режим «Только Б/У» — плоский список всех б/у-лотов, без групп
@@ -461,7 +464,7 @@ export default function Shop() {
               // По категориям из allProducts — топ-3 по марже на категорию
               const catProducts = categories.map(cat => {
                 const inCat = allProducts
-                  .filter(p => p.in_stock && p.category?.slug === cat.slug)
+                  .filter(p => p.in_stock && p.category?.slug === cat.slug && hasPhoto(p))
                   .sort((a, b) => {
                     const mA = a.avg_cost > 0 ? (a.price - a.avg_cost) / a.price : 0
                     const mB = b.avg_cost > 0 ? (b.price - b.avg_cost) / b.price : 0
