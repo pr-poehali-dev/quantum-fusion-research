@@ -716,9 +716,9 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
         </>
       )}
       {!inStock && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="rounded-xl border border-foreground/20 bg-background/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-foreground/70 backdrop-blur-sm">
-            Out of Stock
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
+          <span className="rounded-xl border border-white/25 bg-black/50 px-4 py-1.5 text-sm font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
+            Нет в наличии
           </span>
         </div>
       )}
@@ -741,7 +741,7 @@ function ProductCard({
   const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
-      <button onClick={onOpen} className={`relative aspect-video bg-muted flex items-center justify-center overflow-hidden ${!p.in_stock ? "opacity-60" : ""}`} style={{ cursor: "pointer" }}>
+      <button onClick={onOpen} className="relative aspect-video bg-muted flex items-center justify-center overflow-hidden" style={{ cursor: "pointer" }}>
         <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} />
         {p.is_used && (
           <span className="absolute left-2 top-2 z-10 rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
@@ -792,10 +792,17 @@ function ProductCard({
                 </div>
               </div>
             ) : (
-              <button onClick={onAddCart} disabled={!p.in_stock} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors" style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}>
-                <Icon name="Plus" size={14} />
-                В корзину
-              </button>
+              p.in_stock ? (
+                <button onClick={onAddCart} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+                  <Icon name="Plus" size={14} />
+                  В корзину
+                </button>
+              ) : (
+                <button onClick={onNavigate} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                  <Icon name="Clock" size={14} />
+                  Под заказ
+                </button>
+              )
             )}
           </div>
         </div>
