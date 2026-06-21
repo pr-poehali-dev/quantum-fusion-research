@@ -223,6 +223,23 @@ def handler(event: dict, context) -> dict:
                 notify_tasks("\n".join(blocks) + _cal_link)
                 sent.append("tasks")
 
+            # 3) КОРЗИНА ЗАКУПКИ: есть железо для заказа (status=NEW) — в основной чат
+            cur.execute(
+                f"SELECT COUNT(*), COALESCE(SUM(required_qty), 0) "
+                f"FROM {SCHEMA}.warehouse_purchase_basket "
+                f"WHERE status = 'NEW' AND required_qty > 0"
+            )
+            _b = cur.fetchone()
+            basket_positions = int(_b[0]) if _b else 0
+            basket_qty = int(_b[1]) if _b else 0
+            if basket_positions > 0:
+                _wip_link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть корзину закупки</a>" if _base else ""
+                notify_managers(
+                    f"🛒 <b>В корзине закупки есть железо для заказа</b>\n"
+                    f"Позиций: {basket_positions} (всего {basket_qty} шт)" + _wip_link
+                )
+                sent.append("basket")
+
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": sent})}
 
         admin_id = require_admin(cur, session_id, admin_key)

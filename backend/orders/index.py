@@ -1022,6 +1022,38 @@ def handler(event: dict, context) -> dict:
                     cur.execute("UPDATE wip_builds SET stage='Ожидание сборки', updated_at=NOW() WHERE id=%s", (wip_id,))
 
                 conn.commit()
+
+                # Мгновенное напоминание в рабочий чат: в корзине появилось железо
+                # для заказа. Дедуп — одно сообщение в сутки (ON CONFLICT по дате).
+                if negative_items:
+                    try:
+                        cur.execute(
+                            f"SELECT COUNT(*), COALESCE(SUM(required_qty), 0) "
+                            f"FROM {schema}.warehouse_purchase_basket "
+                            f"WHERE status = 'NEW' AND required_qty > 0"
+                        )
+                        _b = cur.fetchone()
+                        _positions = int(_b[0]) if _b else 0
+                        _qty = int(_b[1]) if _b else 0
+                        if _positions > 0:
+                            cur.execute(
+                                f"INSERT INTO {schema}.basket_purchase_notified (notify_date, positions) "
+                                f"VALUES (CURRENT_DATE, %s) ON CONFLICT (notify_date) DO NOTHING",
+                                (_positions,)
+                            )
+                            _fresh = cur.rowcount > 0
+                            conn.commit()
+                            if _fresh:
+                                from tg_notify import notify_managers
+                                _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                                _wip_link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть корзину закупки</a>" if _base else ""
+                                notify_managers(
+                                    f"🛒 <b>В корзине закупки есть железо для заказа</b>\n"
+                                    f"Позиций: {_positions} (всего {_qty} шт)" + _wip_link
+                                )
+                    except Exception as _be:
+                        print(f"TG_NOTIFY basket: {_be}")
+
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({
                     "ok": True,
                     "reserved": reserved_items,
