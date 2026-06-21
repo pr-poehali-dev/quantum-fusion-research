@@ -152,20 +152,20 @@ def get_summary(cur):
 
 # ── ЛОГ ДВИЖЕНИЯ СРЕДСТВ ─────────────────────────────────────────────────────
 def get_log(cur, limit=200, offset=0, date_from=None, date_to=None):
-    """Единый лог: финансовые транзакции + продажи (выданные заказы).
+    """Лента движения средств — только реальные финансовые проводки
+    (оплаты заказов, расходы, инкассации). Синтетические «Продажи» по
+    выданным заказам НЕ добавляем — иначе одно событие (оплата заказа)
+    дублировалось бы в ленте.
     date_from/date_to (YYYY-MM-DD) — фильтр по периоду (включительно)."""
     items = []
 
     # Условия по периоду
     tx_cond = ""
-    sale_cond = ""
     if date_from:
         tx_cond += f" AND t.occurred_at >= {esc(date_from)}::date"
-        sale_cond += f" AND o.updated_at >= {esc(date_from)}::date"
     if date_to:
         # включительно по конец дня
         tx_cond += f" AND t.occurred_at < ({esc(date_to)}::date + INTERVAL '1 day')"
-        sale_cond += f" AND o.updated_at < ({esc(date_to)}::date + INTERVAL '1 day')"
 
     # Финансовые транзакции
     cur.execute(
@@ -189,27 +189,6 @@ def get_log(cur, limit=200, offset=0, date_from=None, date_to=None):
             "type_name": r[6],
             "user": r[7],
             "order_id": r[8],
-        })
-
-    # Продажи (выданные заказы) — как приход
-    cur.execute(
-        f"SELECT o.id, o.order_type, o.total, o.customer_name, o.updated_at "
-        f"FROM {SCHEMA}.orders o WHERE o.status='done'{sale_cond} "
-        f"ORDER BY o.updated_at DESC LIMIT {int(limit)}"
-    )
-    for r in cur.fetchall():
-        items.append({
-            "source": "sale",
-            "id": r[0],
-            "kind": "income",
-            "amount": num(r[2]),
-            "note": f"Заказ #{r[0]} — {r[3]}",
-            "occurred_at": serial(r[4]),
-            "affects_pnl": True,
-            "type_name": "Продажа ПК" if r[1] == "pc_build" else "Продажа товаров",
-            "order_type": r[1],
-            "order_id": r[0],
-            "user": None,
         })
 
     items.sort(key=lambda x: x["occurred_at"] or "", reverse=True)
