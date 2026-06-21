@@ -47,6 +47,24 @@ def ensure_fonts():
     _fonts_registered = True
 
 
+def store_code_for_product(cur, pid):
+    """Код магазина, из поставки которого пришёл товар (для гарантийки).
+    product_id -> warehouse_groups -> последняя поставка с store_id -> code."""
+    if not pid:
+        return None
+    cur.execute(
+        f"SELECT st.code "
+        f"FROM {SCHEMA}.warehouse_supplies s "
+        f"JOIN {SCHEMA}.warehouse_groups g ON g.id = s.group_id "
+        f"JOIN {SCHEMA}.warehouse_stores st ON st.id = s.store_id "
+        f"WHERE g.product_id = %s AND s.store_id IS NOT NULL "
+        f"ORDER BY s.id DESC LIMIT 1",
+        (int(pid),),
+    )
+    row = cur.fetchone()
+    return (row[0].strip() if row and row[0] else None)
+
+
 def months_label(n: int) -> str:
     if n % 100 in range(11, 20):
         return f"{n} месяцев"
@@ -319,8 +337,9 @@ def handler(event: dict, context) -> dict:
                         warranty = wr[0]
                 serials = slot_serials.get(slot, [])
                 price = slot_item_price.get(slot, 0)
+                store_code = store_code_for_product(cur, pid)
                 enriched.append({
-                    "name": name,
+                    "name": name + (f" [{store_code}]" if store_code else ""),
                     "qty": 1,
                     "price": price,
                     "warranty": warranty,
@@ -378,8 +397,9 @@ def handler(event: dict, context) -> dict:
             if not serials and item.get("serial_number"):
                 serials = [item["serial_number"]]
             serials = [s for s in serials if s and str(s).strip()]
+            store_code = store_code_for_product(cur, pid) if (pid and item.get("item_type") == "product") else None
             enriched.append({
-                "name": item.get("name", ""),
+                "name": item.get("name", "") + (f" [{store_code}]" if store_code else ""),
                 "qty": item.get("quantity", 1),
                 "price": float(item.get("final_price") or item.get("price", 0)),
                 "warranty": warranty,
