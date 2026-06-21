@@ -87,7 +87,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   // Состояние фильтров
   const [search, setSearch] = useState("")
   const [onlyCompatible, setOnlyCompatible] = useState(true)
-  const [onlyStock, setOnlyStock] = useState(true)        // «В наличии» прожата по умолчанию
+  const [onlyStock, setOnlyStock] = useState(false)       // «В наличии» — фильтр, выкл по умолчанию (наличие приоритетно в сортировке)
   const [recommended, setRecommended] = useState(false)   // «Рекомендуемые» — выкл по умолчанию
   const [priceMin, setPriceMin] = useState("")
   const [priceMax, setPriceMax] = useState("")
@@ -201,8 +201,11 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         return true
       })
       .sort((a, b) => {
-        // совместимые сверху, дальше — скрытая сортировка по марже (макс → мин)
+        // совместимые сверху
         if (!!a.reason !== !!b.reason) return a.reason ? 1 : -1
+        // затем приоритет наличия (в наличии — выше)
+        if (!!a.p.in_stock !== !!b.p.in_stock) return a.p.in_stock ? -1 : 1
+        // затем скрытая сортировка по марже (макс → мин)
         const dm = (b.p.margin || 0) - (a.p.margin || 0)
         if (dm !== 0) return dm
         return a.p.price - b.p.price
@@ -222,7 +225,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
     })
   }
   const resetFilters = () => {
-    setSearch(""); setOnlyStock(true); setRecommended(false); setPriceMin(""); setPriceMax(""); setAttrFilters({})
+    setSearch(""); setOnlyStock(false); setRecommended(false); setPriceMin(""); setPriceMax(""); setAttrFilters({})
   }
 
   const hasSelection = Object.keys(selectedSpec).length > 0
@@ -369,19 +372,6 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                     </div>
                   </div>
                 ))}
-
-                {/* Домотал до конца со включённым «В наличии» — предложить отжать */}
-                {onlyStock && (
-                  <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-4 text-center">
-                    <p className="text-sm text-foreground/60">Это всё, что есть в наличии прямо сейчас.</p>
-                    <button onClick={() => setOnlyStock(false)}
-                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                      style={{ cursor: "pointer" }}>
-                      <Icon name="Eye" size={14} />
-                      Показать варианты под заказ
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </main>
