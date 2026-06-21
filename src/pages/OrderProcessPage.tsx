@@ -84,6 +84,7 @@ interface Order {
   prepayment_confirmed?: boolean
   remaining_paid?: boolean
   remaining_paid_amount?: number
+  is_stock_sale?: boolean
 }
 
 function fmt(n: number) {
@@ -414,20 +415,23 @@ export default function OrderProcessPage() {
               <p className="text-xs text-foreground/40 mb-1">Итого</p>
               <p className="text-xl font-bold">{fmt(total)}</p>
             </div>
-            <div className="text-right min-w-[160px]">
-              <p className="text-xs text-foreground/40 mb-1">Предоплата и остаток</p>
-              <PrepaymentEditor
-                total={total}
-                percent={order.prepayment_percent}
-                amount={order.prepayment_amount}
-                highlight={order.status === "done"}
-                onSave={async (payload) => {
-                  const res = await api.orders.setPrepayment({ id: order.id, ...payload })
-                  setOrder(prev => prev ? { ...prev, prepayment_percent: res.prepayment_percent, prepayment_amount: res.prepayment_amount, remaining_amount: res.remaining_amount } : prev)
-                  return res
-                }}
-              />
-            </div>
+            {/* Предоплата неактуальна для сборок свободной продажи */}
+            {!order.is_stock_sale && (
+              <div className="text-right min-w-[160px]">
+                <p className="text-xs text-foreground/40 mb-1">Предоплата и остаток</p>
+                <PrepaymentEditor
+                  total={total}
+                  percent={order.prepayment_percent}
+                  amount={order.prepayment_amount}
+                  highlight={order.status === "done"}
+                  onSave={async (payload) => {
+                    const res = await api.orders.setPrepayment({ id: order.id, ...payload })
+                    setOrder(prev => prev ? { ...prev, prepayment_percent: res.prepayment_percent, prepayment_amount: res.prepayment_amount, remaining_amount: res.remaining_amount } : prev)
+                    return res
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

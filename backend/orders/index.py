@@ -393,6 +393,16 @@ def handler(event: dict, context) -> dict:
                 order = fmt_order(row, row[18])
                 schema = "t_p72635010_quantum_fusion_resea"
 
+                # Признак «сборка из свободной продажи» (привязанный pc_build.status='catalog')
+                cur.execute(
+                    f"SELECT (pb.status = 'catalog') FROM {schema}.wip_builds wb "
+                    f"JOIN {schema}.pc_builds pb ON pb.id = wb.build_id "
+                    f"WHERE wb.order_id = %s LIMIT 1",
+                    (int(params["id"]),)
+                )
+                _iss = cur.fetchone()
+                order["is_stock_sale"] = bool(_iss[0]) if _iss and _iss[0] is not None else False
+
                 if order.get("order_type") == "pc_build":
                     # Для ПК-заказов: items = слоты из wip_build с данными склада и статусами
                     cur.execute(

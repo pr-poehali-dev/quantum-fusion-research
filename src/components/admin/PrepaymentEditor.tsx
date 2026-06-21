@@ -11,12 +11,14 @@ interface Props {
   /** Подсветить остаток как «К доплате» (на этапе выдачи). */
   highlight?: boolean
   compact?: boolean
+  /** Процент предоплаты по умолчанию (для сборок свободной продажи — 0). */
+  defaultPercent?: number
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU") + " ₽"
 
-export default function PrepaymentEditor({ total, percent, amount, onSave, highlight, compact }: Props) {
-  const initPct = percent ?? 30
+export default function PrepaymentEditor({ total, percent, amount, onSave, highlight, compact, defaultPercent = 30 }: Props) {
+  const initPct = percent ?? defaultPercent
   const initAmt = amount ?? Math.round(total * initPct / 100)
 
   const [pct, setPct] = useState(initPct)

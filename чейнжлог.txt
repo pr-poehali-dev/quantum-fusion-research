@@ -3,6 +3,16 @@
 
 ---
 
+## v4.15 | 2026-06-21 | Предоплата для сборок свободной продажи убрана (страница заказа)
+
+### Backend (orders GET одиночный заказ)
+- В ответ добавлен is_stock_sale (привязанный pc_builds.status='catalog').
+
+### Frontend
+- OrderProcessPage (/admin/order/N): блок «Предоплата и остаток» скрыт для
+  сборок свободной продажи (is_stock_sale) — раньше стоял дефолт 30%.
+- PrepaymentEditor: новый проп defaultPercent (для будущих случаев 0%).
+
 ## v4.14 | 2026-06-21 | Автоархив заказа при выдаче всех позиций
 
 ### Backend (orders set_status)
