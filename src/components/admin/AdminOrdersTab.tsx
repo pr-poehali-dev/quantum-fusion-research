@@ -43,13 +43,14 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     }
   }
 
-  // Очистить резерв сборки из свободной продажи: снять резерв, очистить данные
-  // клиента, отвязать заказ от сборки, вернуть сборку в наличие, отменить заказ.
+  // Очистить резерв: снять складской резерв и пометку «в резерве» (for_sale),
+  // но заказ остаётся активным и привязанным к сборке для дальнейшей обработки.
   const clearReservation = async (orderId: number) => {
-    if (!confirm("Очистить резерв этого заказа?\nСборка вернётся в наличие, данные клиента сотрутся, заказ будет отменён.")) return
+    if (!confirm("Снять резерв с этого заказа?\nПометка «в резерве» исчезнет, складской резерв снимется, но заказ останется активным для обработки.")) return
     const res = await api.orders.updateItem({ id: orderId, action: "clear_reservation" })
     if (res.error) { alert(res.error); return }
-    setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, status: "cancelled" } : ord))
+    // Заказ остаётся, снимаем только признак резерва (for_sale)
+    setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, for_sale: false } : ord))
   }
 
   // Сборка-заказ считается активной, пока WIP-стадия не «Забрали»/«Отменён»/«Архив»

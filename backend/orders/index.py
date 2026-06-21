@@ -1288,28 +1288,21 @@ def handler(event: dict, context) -> dict:
                         "body": json.dumps({"ok": True, "wrote_off": wrote_off, "items": items})}
 
             elif action == "clear_reservation":
-                # «Очистить резерв» для сборки из свободной продажи:
-                # снимаем складские резервы, очищаем данные клиента, отвязываем
-                # заказ от сборки, возвращаем сборку в наличие, отменяем заказ.
+                # «Очистить резерв»: снимаем складские резервы и снимаем у сборки
+                # флаг for_sale (пометка «в резерве» уходит). ЗАКАЗ ОСТАЁТСЯ
+                # активным и привязанным к сборке — это уже обычная сборка под
+                # клиента, которую нужно обработать/выдать. На витрину НЕ
+                # возвращаем (сборка ушла под клиента).
                 import warehouse_core as wc
-                # 1) снять резервы заказа (POSITIVE → назад в наличие)
                 try:
                     wc.release_order_reserves(cur, order_id, only_new_negative=True)
                 except Exception as _re:
                     print(f"clear_reservation release: {_re}")
-                # 2) вернуть сборку в наличие (ДО отвязки order_id, иначе не найдём build_id)
+                # Снимаем флаг свободной продажи у WIP-сборки заказа → больше не «в резерве»
                 cur.execute(
-                    f"UPDATE {schema}.pc_builds SET in_stock=TRUE WHERE id IN "
-                    f"(SELECT build_id FROM {schema}.wip_builds WHERE order_id=%s AND build_id IS NOT NULL)",
+                    f"UPDATE {schema}.wip_builds SET for_sale=FALSE, updated_at=NOW() WHERE order_id=%s",
                     (order_id,)
                 )
-                # 3) очистить данные клиента и отвязать заказ от сборки
-                cur.execute(
-                    f"UPDATE {schema}.wip_builds SET contact='', order_id=NULL, updated_at=NOW() WHERE order_id=%s",
-                    (order_id,)
-                )
-                # 4) отменить сам заказ (резерв снят, сборка снова свободна)
-                cur.execute("UPDATE orders SET status='cancelled', updated_at=NOW() WHERE id=%s", (order_id,))
                 conn.commit()
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "cleared": True})}
 
