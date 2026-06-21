@@ -7,6 +7,20 @@
 - DB: PostgreSQL, схема t_p72635010_quantum_fusion_resea
 - Хранилище: S3 (bucket.poehali.dev), CDN (cdn.poehali.dev)
 
+## АДРЕС САЙТА ДЛЯ ССЫЛОК В TELEGRAM-УВЕДОМЛЕНИЯХ  ← переключается одной отмашкой
+- Управляется ТОЛЬКО секретом SITE_BASE_URL (значение без слэша в конце).
+- Код менять НЕ нужно — все уведомления читают этот секрет через os.environ.
+- Сейчас стоит: https://quantum-fusion-research--preview.poehali.dev (превью поехали).
+- Когда пользователь даст отмашку «ставим begraphics» — поменять значение
+  секрета на:  https://begraphics.ru   (через put_secret, без правок кода).
+- Если секрет пустой — уведомления приходят без ссылок (ничего не ломается).
+- Где используется (формат ссылки → раздел админки):
+    • orders «Новый заказ»: ПК → /admin/wip_builds, железо → /admin/order/{id}
+    • orders «Продажа из наличия» → /admin/wip_builds
+    • quiz «Новый лид» → /admin/quiz_requests
+    • schedule «Забрать заказы»/«Задачи» → /admin/calendar
+    • reserves «Задержка железа» → /admin/wip_builds
+
 ## URL функций (из backend/func2url.json)
 - auth          → https://functions.poehali.dev/edc2010c-4d58-425e-8c01-0ea5459331e3
 - products      → https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd
