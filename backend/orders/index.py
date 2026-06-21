@@ -46,8 +46,11 @@ def handler(event: dict, context) -> dict:
             prepay = float(row[14])
         else:
             prepay = round(total * pct / 100, 2)
+        # Фолбэк номера: учитываем тип заказа (сборка → PC, иначе HW),
+        # чтобы заказы без сохранённого display_number не превращались в HW.
+        _prefix = "PC" if row[4] == "pc_build" else "HW"
         return {
-            "id": row[0], "display_number": disp or ("HW" + str(row[0]).zfill(5)),
+            "id": row[0], "display_number": disp or (_prefix + str(row[0]).zfill(5)),
             "customer_name": row[1], "customer_phone": row[2],
             "customer_email": row[3], "order_type": row[4], "items": row[5],
             "total": total, "comment": row[7], "status": row[8],

@@ -336,6 +336,17 @@ def handler(event: dict, context) -> dict:
                     (cust_name[:255], cust_phone[:50], json.dumps(items), total_price)
                 )
                 new_order_id = cur.fetchone()[0]
+                # Номер заказа-сборки: всегда префикс PC (отдельная нумерация от HW)
+                cur.execute(
+                    f"SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(display_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
+                    f"FROM {SCHEMA}.orders WHERE display_number LIKE 'PC%'"
+                )
+                _disp_num = (cur.fetchone()[0] or 0) + 1
+                _display_number = "PC" + str(_disp_num).zfill(5)
+                cur.execute(
+                    f"UPDATE {SCHEMA}.orders SET display_number = %s WHERE id = %s",
+                    (_display_number, new_order_id)
+                )
                 cur.execute(
                     f"UPDATE {SCHEMA}.wip_builds SET order_id = %s, updated_at = NOW() WHERE id = %s",
                     (new_order_id, wip_id)
@@ -353,7 +364,7 @@ def handler(event: dict, context) -> dict:
                     _link_line = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
                     _sum_str = f"{float(total_price):,.0f}".replace(",", " ")
                     notify_managers(
-                        f"🖥 <b>Новый заказ-сборка PC{str(new_order_id).zfill(5)}</b>\n"
+                        f"🖥 <b>Новый заказ-сборка {_display_number}</b>\n"
                         f"Сборка: {build_name or 'Сборка ПК'}\n"
                         f"Клиент: {cust_name}\n"
                         f"Телефон: {cust_phone}\n"
