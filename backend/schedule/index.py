@@ -194,7 +194,7 @@ def handler(event: dict, context) -> dict:
 
             # 2) ЗАДАЧИ НА СЕГОДНЯ (calendar_events kind='task', не done) + ответственные
             cur.execute(
-                f"SELECT ce.id, ce.title, ce.description, "
+                f"SELECT ce.id, ce.title, ce.description, ce.origin_date, ce.event_date, "
                 f"COALESCE(json_agg(json_build_object('name', e.name, 'tag', e.telegram_tag)) "
                 f"  FILTER (WHERE e.id IS NOT NULL), '[]') AS emps "
                 f"FROM {SCHEMA}.calendar_events ce "
@@ -206,10 +206,15 @@ def handler(event: dict, context) -> dict:
             tasks = cur.fetchall()
             if tasks:
                 blocks = ["📋 <b>Задачи на сегодня</b>"]
-                for _id, title, descr, emps_json in tasks:
+                for _id, title, descr, origin_date, event_date, emps_json in tasks:
                     emps = json.loads(emps_json) if isinstance(emps_json, str) else (emps_json or [])
                     resp = fmt_resp([(e.get("name"), e.get("tag")) for e in emps])
-                    block = f"\n━━━━━━━━━━\n• <b>{title}</b>"
+                    # Дни простоя задачи (xN) — если переносилась с прошлых дней
+                    days_idle = 0
+                    if origin_date and event_date:
+                        days_idle = (event_date - origin_date).days + 1
+                    _x = f" <b>×{days_idle}</b>" if days_idle > 1 else ""
+                    block = f"\n━━━━━━━━━━\n• <b>{title}</b>{_x}"
                     if descr:
                         block += f"\n{descr}"
                     if resp:
