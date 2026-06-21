@@ -48,6 +48,7 @@ interface OrderItem {
   slot_label?: string
   wip_status?: string
   warranty_months?: number
+  preorder?: boolean
   _supplies?: Supply[]
 }
 
@@ -553,6 +554,12 @@ export default function OrderProcessPage() {
                     {item.slot_label && <p className="text-xs text-foreground/40 mb-0.5">{item.slot_label}</p>}
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{item.name}</p>
+                      {item.preorder && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-primary bg-primary/10">
+                          <Icon name="Clock" size={11} />
+                          Под заказ
+                        </span>
+                      )}
                       {item.item_status && (
                         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusInfo.color}`}>
                           <Icon name={statusInfo.icon as "Clock"} size={11} />

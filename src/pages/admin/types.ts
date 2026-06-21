@@ -149,7 +149,7 @@ export interface Order {
   customer_phone: string
   customer_email: string
   order_type: string
-  items: Array<{ name: string; price: number; quantity: number }>
+  items: Array<{ name: string; price: number; quantity: number; preorder?: boolean }>
   total: number
   comment: string
   status: string

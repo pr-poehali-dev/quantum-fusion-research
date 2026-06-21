@@ -32,14 +32,19 @@ export default function Cart() {
     const hasBuildWithAssembly = items.some(i => i.type === "config" && i.assembly !== false)
     const hasOnlyParts = items.every(i => i.type === "product" || (i.type === "config" && i.assembly === false))
     const orderType = hasBuildWithAssembly ? "pc_build" : hasOnlyParts ? "parts" : "cart"
+    const preorderNames = items.filter(i => i.preorder).map(i => i.name)
+    const preorderNote = preorderNames.length
+      ? `⚠️ Товары под заказ (нет в наличии, связаться с клиентом): ${preorderNames.join(", ")}`
+      : ""
+    const comment = [form.comment, preorderNote].filter(Boolean).join("\n\n") || undefined
     await api.orders.createWithSession({
       customer_name: form.name,
       customer_phone: form.phone,
       customer_email: form.contact_value ? `${form.contact_type}:${form.contact_value}` : undefined,
       order_type: orderType,
-      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type, assembly: i.assembly, components: i.components })),
+      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type, assembly: i.assembly, components: i.components, preorder: i.preorder })),
       total: total(),
-      comment: form.comment || undefined,
+      comment,
     }, sessionId)
     clearCart()
     setSuccess(true)
@@ -115,6 +120,12 @@ export default function Cart() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
                     <p className="text-xs text-foreground/40">{item.type === "config" ? "Кастомная сборка" : "Комплектующее"}</p>
+                    {item.preorder && (
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                        <Icon name="Clock" size={11} />
+                        Под заказ — с вами свяжется менеджер
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1 rounded-lg border border-border">

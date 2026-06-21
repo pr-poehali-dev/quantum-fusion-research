@@ -212,7 +212,9 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       <div className="mt-2 space-y-0.5">
                         {order.items.map((item, i) => (
                           <p key={i} className="text-xs text-foreground/60">
-                            {item.name} × {item.quantity} — {item.price.toLocaleString("ru-RU")} ₽
+                            {item.name}
+                            {item.preorder && <span className="ml-1.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Под заказ</span>}
+                            {" "}× {item.quantity} — {item.price.toLocaleString("ru-RU")} ₽
                           </p>
                         ))}
                         <p className="text-xs font-semibold text-foreground mt-1">Итого: {order.total.toLocaleString("ru-RU")} ₽</p>

@@ -19,6 +19,7 @@ export interface CartItem {
   type: "product" | "config"
   assembly?: boolean
   components?: CartComponent[]
+  preorder?: boolean
 }
 
 interface CartStore {

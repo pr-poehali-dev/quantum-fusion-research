@@ -220,8 +220,8 @@ export default function Shop() {
     } catch { /* AudioContext недоступен */ }
   }
 
-  const handleAddToCart = (p: Product) => {
-    addItem({ id: p.id, name: p.name, price: p.price, image_url: p.image_url, type: "product" })
+  const handleAddToCart = (p: Product, preorder = false) => {
+    addItem({ id: p.id, name: p.name, price: p.price, image_url: p.image_url, type: "product", preorder })
     showAddedToast(p.name)
   }
 
@@ -435,6 +435,7 @@ export default function Shop() {
                   product={p}
                   onOpen={() => setSelectedProduct(p)}
                   onAddCart={() => handleAddToCart(p)}
+                  onPreorder={() => handleAddToCart(p, true)}
                   onUpdateQty={(qty) => updateQty(p.id, qty)}
                   cartQty={getItemQty(p.id, "product")}
                   fmt={fmt}
@@ -728,11 +729,12 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
 
 // ── ProductCard с кнопкой «в корзине» ──
 function ProductCard({
-  product: p, onOpen, onAddCart, onUpdateQty, cartQty, fmt, onNavigate
+  product: p, onOpen, onAddCart, onPreorder, onUpdateQty, cartQty, fmt, onNavigate
 }: {
   product: Product
   onOpen: () => void
   onAddCart: () => void
+  onPreorder: () => void
   onUpdateQty: (qty: number) => void
   cartQty: number
   fmt: (n: number) => string
@@ -798,7 +800,7 @@ function ProductCard({
                   В корзину
                 </button>
               ) : (
-                <button onClick={onNavigate} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/70 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                <button onClick={onPreorder} className="flex items-center gap-1.5 rounded-lg border border-primary/40 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10 transition-colors" style={{ cursor: "pointer" }}>
                   <Icon name="Clock" size={14} />
                   Под заказ
                 </button>
