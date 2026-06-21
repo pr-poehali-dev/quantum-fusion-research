@@ -466,6 +466,131 @@ function StoresModal({ stores, onClose, onSaved }: {
   )
 }
 
+// ─── Внесение серийников к уже принятой поставке ──────────────────────────────
+
+function SupplySerialsModal({ supplyId, onClose, onSaved }: {
+  supplyId: number
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [info, setInfo] = useState<{
+    qty: number; remaining: number; product_name: string; category: string;
+    store_code: string | null; store_name: string | null; purchase_date: string | null;
+    existing: { id: number; serial: string }[];
+  } | null>(null)
+  const [serials, setSerials] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const inputs = useRef<(HTMLInputElement | null)[]>([])
+
+  useEffect(() => {
+    api.snArchive.supplySerials(supplyId).then(d => {
+      if (d.error) { setError(d.error); return }
+      setInfo(d)
+      setSerials(Array.from({ length: Math.max(0, d.remaining) }, () => ""))
+    })
+  }, [supplyId])
+
+  // Дубли в текущем вводе
+  const dupIndexes = (() => {
+    const seen = new Map<string, number>()
+    const dup = new Set<number>()
+    serials.forEach((s, i) => {
+      const key = s.trim().toLowerCase()
+      if (!key) return
+      if (seen.has(key)) { dup.add(i); dup.add(seen.get(key)!) }
+      else seen.set(key, i)
+    })
+    return dup
+  })()
+
+  const save = async () => {
+    const clean = serials.map(s => s.trim()).filter(Boolean)
+    if (!clean.length) { setError("Введите хотя бы один серийник"); return }
+    if (dupIndexes.size) { setError("Есть повторяющиеся серийники"); return }
+    setLoading(true)
+    setError("")
+    const data = await api.snArchive.addSerials({ supply_id: supplyId, serials: clean })
+    setLoading(false)
+    if (data.error) { setError(data.error); return }
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Серийные номера</h2>
+          <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+        </div>
+        {!info && !error && <p className="py-6 text-center text-sm text-foreground/40">Загрузка...</p>}
+        {info && (
+          <>
+            <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+              <p className="font-medium">{info.product_name}</p>
+              <p className="mt-0.5 text-xs text-foreground/50">
+                всего {info.qty} шт. · внесено {info.existing.length} · осталось {serials.length}
+                {info.store_name && <> · магазин <span className="font-medium text-foreground/70">[{info.store_code}] {info.store_name}</span></>}
+                {info.purchase_date && <> · принято {info.purchase_date.substring(0, 10).split("-").reverse().join(".")}</>}
+              </p>
+            </div>
+
+            {info.existing.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1 text-xs text-foreground/40">Уже внесены:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {info.existing.map(e => (
+                    <span key={e.id} className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-foreground/60">{e.serial}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {serials.length === 0 ? (
+              <p className="py-4 text-center text-sm text-green-500">Все серийники внесены ✓</p>
+            ) : (
+              <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+                {serials.map((sn, i) => {
+                  const isDup = dupIndexes.has(i)
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{info.existing.length + i + 1}.</span>
+                      <Input
+                        ref={(el) => { inputs.current[i] = el }}
+                        autoFocus={i === 0}
+                        value={sn}
+                        placeholder="S/N"
+                        className={isDup ? "border-red-500 ring-1 ring-red-500" : ""}
+                        onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            if (i < serials.length - 1) inputs.current[i + 1]?.focus()
+                            else save()
+                          }
+                        }}
+                      />
+                      {isDup && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {info && serials.length > 0 && (
+          <div className="mt-5 flex justify-end gap-2">
+            <Button onClick={save} disabled={loading || dupIndexes.size > 0}>
+              {loading ? "Сохранение..." : "Сохранить серийники"}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Строка группы с разворотом ──────────────────────────────────────────────
 
 function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, isArchived, isSelected, onToggleSelect }: {
@@ -481,9 +606,19 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
 }) {
   const [expanded, setExpanded] = useState(false)
   const [supplyModal, setSupplyModal] = useState<Supply | null | "new">(null)
+  const [serialsSupplyId, setSerialsSupplyId] = useState<number | null>(null)
   const [detail, setDetail] = useState<Group | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [reservesModal, setReservesModal] = useState(false)
+  const [snTracked, setSnTracked] = useState(false)
+
+  useEffect(() => {
+    if (!expanded) return
+    api.snArchive.getCategories().then(d => {
+      const cats: { category: string }[] = d.categories || []
+      setSnTracked(cats.some(c => c.category === group.category))
+    })
+  }, [expanded, group.category])
 
   const load = useCallback(async () => {
     if (!expanded) return
@@ -655,10 +790,20 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
                           <td className="py-1 text-right text-orange-400">{fmtNum(s.qty_reserved)}</td>
                           <td className="py-1 text-right text-foreground/60">{fmt(s.cost_price)}</td>
                           <td className="py-1 text-right">
-                            <button className="text-foreground/30 hover:text-foreground/70 transition-colors"
-                              onClick={() => setSupplyModal(s)}>
-                              <Icon name="Pencil" size={11} />
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              {snTracked && (
+                                <button
+                                  className="flex items-center gap-1 text-primary hover:underline"
+                                  title="Внести / дозаполнить серийные номера"
+                                  onClick={() => setSerialsSupplyId(s.id)}>
+                                  <Icon name="ScanBarcode" size={11} />S/N
+                                </button>
+                              )}
+                              <button className="text-foreground/30 hover:text-foreground/70 transition-colors"
+                                onClick={() => setSupplyModal(s)}>
+                                <Icon name="Pencil" size={11} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -679,6 +824,14 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
           stores={stores}
           onClose={() => setSupplyModal(null)}
           onSaved={() => { load(); onRefresh() }}
+        />
+      )}
+
+      {serialsSupplyId !== null && (
+        <SupplySerialsModal
+          supplyId={serialsSupplyId}
+          onClose={() => setSerialsSupplyId(null)}
+          onSaved={() => { setSerialsSupplyId(null); load() }}
         />
       )}
     </>

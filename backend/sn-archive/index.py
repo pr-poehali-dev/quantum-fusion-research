@@ -100,6 +100,8 @@ def handler(event, context):
             return res
         if action == "stores":
             return stores(cur)
+        if action == "supply_serials":
+            return supply_serials(cur, params)
         return err(f"unknown action: {action}")
     except Exception as e:
         conn.rollback()
@@ -296,3 +298,41 @@ def stores(cur):
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     return ok({"stores": rows})
+
+
+def supply_serials(cur, params):
+    """Данные поставки + уже внесённые серийники + сколько ещё осталось.
+    Нужно для кнопки «Внести серийники» на складе: знаем кол-во товара
+    в поставке и сколько SN ещё не заполнено."""
+    supply_id = params.get("supply_id")
+    if not supply_id or not str(supply_id).isdigit():
+        return err("supply_id required")
+    sid = int(supply_id)
+    cur.execute(
+        f"SELECT s.id, s.qty, s.purchase_date, st.code, st.name, "
+        f"g.name AS product_name, g.category "
+        f"FROM {SCHEMA}.warehouse_supplies s "
+        f"JOIN {SCHEMA}.warehouse_groups g ON g.id = s.group_id "
+        f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = s.store_id "
+        f"WHERE s.id = {sid}"
+    )
+    sup = cur.fetchone()
+    if not sup:
+        return err("supply not found", 404)
+    qty = int(sup[1] or 0)
+    cur.execute(
+        f"SELECT id, serial FROM {SCHEMA}.sn_archive "
+        f"WHERE supply_id = {sid} ORDER BY id"
+    )
+    existing = [{"id": r[0], "serial": r[1]} for r in cur.fetchall()]
+    return ok({
+        "supply_id": sup[0],
+        "qty": qty,
+        "purchase_date": sup[2],
+        "store_code": sup[3],
+        "store_name": sup[4],
+        "product_name": sup[5],
+        "category": sup[6],
+        "existing": existing,
+        "remaining": max(0, qty - len(existing)),
+    })

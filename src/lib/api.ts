@@ -198,6 +198,7 @@ export const api = {
     },
     lookup: (serial: string) => fetch(`${URLS.snArchive}?action=lookup&serial=${encodeURIComponent(serial)}`).then(r => r.json()),
     addSerials: (data: { supply_id: number, serials: string[] }) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add_serials", ...data }) }).then(r => r.json()),
+    supplySerials: (supplyId: number) => fetch(`${URLS.snArchive}?action=supply_serials&supply_id=${supplyId}`).then(r => r.json()),
     updateSerial: (data: unknown) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update_serial", ...data as object }) }).then(r => r.json()),
     deleteSerial: (id: number) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete_serial", id }) }).then(r => r.json()),
     getCategories: () => fetch(`${URLS.snArchive}?action=categories`).then(r => r.json()),
