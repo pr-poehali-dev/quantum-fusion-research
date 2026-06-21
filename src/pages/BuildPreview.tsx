@@ -824,14 +824,10 @@ function HeroBuildCarousel({ images, active }: { images: string[]; active: boole
         <img
           key={i} src={src} alt=""
           className="absolute inset-0 h-full w-full object-contain object-right transition-opacity duration-1000"
-          style={{
-            opacity: i === idx && active ? 1 : 0,
-            maskImage: "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.15) 22%, rgba(0,0,0,0.6) 45%, #000 70%)",
-            WebkitMaskImage: "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.15) 22%, rgba(0,0,0,0.6) 45%, #000 70%)",
-          }}
+          style={{ opacity: i === idx && active ? 1 : 0 }}
         />
       ))}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.6) 28%, hsl(var(--background) / 0.2) 55%, transparent 80%)" }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.4) 25%, transparent 55%)" }} />
       {/* Точки слева снизу */}
       {images.length > 1 && (
         <div className="absolute bottom-8 left-4 flex gap-1.5 pointer-events-auto">
