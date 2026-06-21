@@ -380,6 +380,24 @@ export default function BuildPreview() {
     navigate("/cart")
   }
 
+  // Открыть текущую сборку в конфигураторе — клиент сам меняет компоненты
+  // и оставляет заявку с нужной конфигурацией.
+  const editInConfigurator = () => {
+    if (!build) return
+    // Нормализуем под формат конфигуратора: актуальная цена + source
+    const initialComponents = components.map(c => ({
+      slot: c.slot,
+      name: c.name,
+      price: (c.current_price ?? c.price) || 0,
+      qty: c.qty || 1,
+      source: (c.source_id ? "catalog" : "custom") as "catalog" | "custom",
+      source_id: c.source_id,
+      description: c.description,
+      image_urls: c.image_urls,
+    }))
+    navigate("/configurator", { state: { initialComponents, buildName: build.name } })
+  }
+
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
@@ -582,6 +600,10 @@ export default function BuildPreview() {
                     <button onClick={orderBuild} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full border border-border px-5 sm:px-7 py-3 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
                       Заказать сейчас
+                    </button>
+                    <button onClick={editInConfigurator} style={{ cursor: "pointer" }}
+                      className="flex items-center gap-2 rounded-full border border-border px-5 sm:px-7 py-3 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
+                      <Icon name="SlidersHorizontal" size={15} /> Открыть в конфигураторе
                     </button>
                   </div>
                 </div>

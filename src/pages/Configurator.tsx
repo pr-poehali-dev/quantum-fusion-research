@@ -193,6 +193,25 @@ export default function Configurator() {
       setLoading(false)
     })
 
+    // Загрузка готовой сборки, переданной из BuildPreview (компоненты на руках)
+    const navState = window.history.state?.usr as { initialComponents?: SelectedComp[]; buildName?: string } | undefined
+    if (navState?.initialComponents?.length) {
+      const loaded: Record<string, SelectedComp | null> = {}
+      const extras: Record<string, SlotExtra> = {}
+      for (const c of navState.initialComponents) {
+        if (c.slot) {
+          loaded[c.slot] = { ...c, qty: c.qty || 1 }
+          if (c.description || c.image_urls?.length) {
+            extras[c.slot] = { description: c.description || "", image_urls: c.image_urls || [] }
+          }
+        }
+      }
+      setSelected(loaded)
+      setSlotExtras(extras)
+      if (navState.buildName) setBuildName(`${navState.buildName} (моя версия)`)
+      return
+    }
+
     // Загрузка сборки по токену из URL
     const token = searchParams.get("build")
     const editMode = searchParams.get("edit") === "1"
