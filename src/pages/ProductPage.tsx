@@ -218,7 +218,7 @@ export default function ProductPage() {
           <button onClick={() => navigate("/shop")} className="hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Каталог</button>
           {product.category && <>
             <span>/</span>
-            <span>{product.category.name}</span>
+            <button onClick={() => navigate(`/shop?category=${product.category!.slug}`)} className="hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>{product.category.name}</button>
           </>}
           <span>/</span>
           <span className="text-foreground/70 truncate max-w-[200px]">{product.name}</span>

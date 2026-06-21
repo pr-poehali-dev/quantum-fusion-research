@@ -137,6 +137,8 @@ export default function Shop() {
     const tab = searchParams.get("tab")
     if (tab === "community") setShopTab("community")
     else if (searchParams.get("build")) setShopTab("builds")
+    const cat = searchParams.get("category")
+    if (cat) setActiveCategory(cat)
   }, [searchParams])
 
   useEffect(() => {
