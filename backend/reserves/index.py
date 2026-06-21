@@ -288,6 +288,77 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # ── КРОН: разослать пинги по НОВЫМ задержкам (1 раз на событие) ────────
+        # Берёт события из журнала с notified_at IS NULL, шлёт по одному
+        # уведомлению и СРАЗУ помечает notified_at (+ commit после каждого).
+        # Так таймаут Telegram не приводит к повторной рассылке.
+        if action == "notify_delays" and method == "GET":
+            _ru = {
+                "cpu": "Процессор", "motherboard": "Материнская плата", "ram": "Память",
+                "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
+                "case": "Корпус", "cooling": "Охлаждение", "extra": "Доп.", "fan": "Доп.",
+            }
+            _nf = {
+                "cpu": "cpu", "motherboard": "motherboard", "ram": "ram", "gpu": "gpu",
+                "storage": "storage", "psu": "psu", "case": "case_name",
+                "cooling": "cooling", "extra": "extra", "fan": "extra",
+            }
+            cur.execute(
+                f"SELECT n.wip_id, n.slot, n.eta_date, wb.order_number, wb.order_id, "
+                f"       o.display_number, wb.build_id "
+                f"FROM {SCHEMA}.wip_delay_notified n "
+                f"JOIN {SCHEMA}.wip_builds wb ON wb.id = n.wip_id "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = wb.order_id "
+                f"WHERE n.notified_at IS NULL "
+                f"AND wb.stage NOT IN ('Архив','Забрали','Отменён','Готов, можно забрать','Отнести в сдэк') "
+                f"ORDER BY n.eta_date ASC"
+            )
+            pending = cur.fetchall()
+            _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+            _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
+            sent = 0
+            for wip_id, slot, eta_date, order_number, order_id, display_number, build_id in pending:
+                slot_canon = "extra" if slot == "fan" else slot
+                nf = _nf.get(slot, "extra")
+                cur.execute(f"SELECT {nf} FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,))
+                nr = cur.fetchone()
+                component_name = (nr[0] if nr else None)
+                if (not component_name) and build_id:
+                    cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id=%s", (build_id,))
+                    pr = cur.fetchone()
+                    comps = pr[0] if pr and pr[0] else []
+                    if isinstance(comps, str):
+                        comps = json.loads(comps)
+                    for c in (comps or []):
+                        cs = "extra" if c.get("slot") == "fan" else c.get("slot")
+                        if cs == slot_canon and c.get("name"):
+                            component_name = c["name"]
+                            break
+                ordn = display_number or order_number or (str(order_id) if order_id else "—")
+                slot_label = _ru.get(slot, slot)
+                # Помечаем ДО отправки и коммитим — чтобы при таймауте TG
+                # событие не разослалось повторно.
+                cur.execute(
+                    f"UPDATE {SCHEMA}.wip_delay_notified SET notified_at=NOW() "
+                    f"WHERE wip_id=%s AND slot=%s AND eta_date=%s",
+                    (wip_id, slot, eta_date),
+                )
+                conn.commit()
+                try:
+                    from tg_notify import notify_tasks
+                    notify_tasks(
+                        f"⚠️ <b>Задержка железа</b>\n"
+                        f"Заказ: #{ordn}\n"
+                        f"Компонент: {component_name or '—'} ({slot_label})\n"
+                        f"Ожидался: {eta_date.isoformat() if eta_date else '—'}"
+                        f"{_link}"
+                    )
+                    sent += 1
+                except Exception as _te:
+                    print(f"NOTIFY_DELAYS: {_te}")
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"ok": True, "sent": sent, "pending": len(pending)})}
+
         # ── ТЕСТ: РОВНО ОДНО уведомление о задержке (первая просроченная) ──────
         # Ничего в БД не меняет. Шлёт максимум 1 сообщение за вызов.
         if action == "test_delay_notify" and method == "GET":
@@ -574,43 +645,34 @@ def handler(event: dict, context) -> dict:
 
         # ── Корзина закупки, сгруппированная по сборкам ─────────────────────
         if action == "basket_by_wip" and method == "GET":
-            # Сначала помечаем просроченные ETA как «Задержка» (ordered_delay).
-            # Возвращает только что задержавшиеся позиции — уведомляем и дублируем
-            # в календарь (однократно, т.к. повторно статус уже ordered_delay).
+            # Помечаем просроченные ETA как «Задержка» (ordered_delay) и СРАЗУ
+            # коммитим — чтобы статус и журнал уведомлений сохранились даже если
+            # дальнейшая отправка в Telegram зависнет/упадёт по таймауту.
+            # ВАЖНО: Telegram-уведомления здесь НЕ шлём. Открытие корзины —
+            # частое действие (автообновление фронта), отправка отсюда давала
+            # лавину дублей при сетевых таймаутах TG. Пинги о задержке шлёт
+            # отдельный крон (action=notify_delays), строго 1 раз на событие.
             newly_delayed = core.mark_overdue_delays(cur)
-            for d in (newly_delayed or []):
-                ordn = d.get("order_number") or (str(d.get("order_id")) if d.get("order_id") else "—")
-                title = f"⚠️ Задержка: {d.get('slot_label')} (заказ #{ordn})"
-                descr = (
-                    f"Компонент: {d.get('component_name')}\n"
-                    f"Слот: {d.get('slot_label')}\n"
-                    f"Заказ: #{ordn}\n"
-                    f"Ожидался: {d.get('eta_date') or '—'}"
-                )
-                # Событие в календаре (на сегодня, как задача)
-                try:
-                    cur.execute(
-                        f"INSERT INTO {SCHEMA}.calendar_events "
-                        f"(event_date, title, description, kind, status, origin_date) "
-                        f"VALUES (CURRENT_DATE, %s, %s, 'task', 'new', CURRENT_DATE)",
-                        (title, descr),
-                    )
-                except Exception as _ce:
-                    print(f"DELAY calendar: {_ce}")
-                # Уведомление в беседу задач
-                try:
-                    from tg_notify import notify_tasks
-                    _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
-                    _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
-                    notify_tasks(
-                        f"⚠️ <b>Задержка железа</b>\n"
+            if newly_delayed:
+                for d in newly_delayed:
+                    ordn = d.get("order_number") or (str(d.get("order_id")) if d.get("order_id") else "—")
+                    title = f"⚠️ Задержка: {d.get('slot_label')} (заказ #{ordn})"
+                    descr = (
+                        f"Компонент: {d.get('component_name')}\n"
+                        f"Слот: {d.get('slot_label')}\n"
                         f"Заказ: #{ordn}\n"
-                        f"Компонент: {d.get('component_name')} ({d.get('slot_label')})\n"
                         f"Ожидался: {d.get('eta_date') or '—'}"
-                        f"{_link}"
                     )
-                except Exception as _te:
-                    print(f"DELAY notify: {_te}")
+                    try:
+                        cur.execute(
+                            f"INSERT INTO {SCHEMA}.calendar_events "
+                            f"(event_date, title, description, kind, status, origin_date) "
+                            f"VALUES (CURRENT_DATE, %s, %s, 'task', 'new', CURRENT_DATE)",
+                            (title, descr),
+                        )
+                    except Exception as _ce:
+                        print(f"DELAY calendar: {_ce}")
+                conn.commit()
             cur.execute(
                 f"""
                 SELECT
