@@ -402,17 +402,37 @@ def handler(event: dict, context) -> dict:
         if action == "set_component_eta" and method == "POST":
             wip_id = int(body["wip_id"])
             slot = body["slot"]
+            # Допы приходят со слотом 'fan' — нормализуем к 'extra' (единая колонка).
+            if slot == "fan":
+                slot = "extra"
+            _ALLOWED_SLOTS = {"cpu", "motherboard", "ram", "gpu", "storage",
+                              "psu", "case", "cooling", "extra"}
+            if slot not in _ALLOWED_SLOTS:
+                return {"statusCode": 400, "headers": cors,
+                        "body": json.dumps({"error": "bad_slot"})}
             eta = body.get("eta_date") or None  # 'YYYY-MM-DD' или null (сброс)
+            # Магазин: если ключ store_id вообще не передан — НЕ трогаем уже
+            # сохранённый магазин (иначе выбор даты затирал бы его в NULL).
+            store_passed = "store_id" in body
             store_id = body.get("store_id")
             store_id = int(store_id) if store_id not in (None, "") else None
             # 1) Сохраняем/сбрасываем ETA позиции (+ магазин если передан)
-            cur.execute(
-                f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, eta_date, store_id) "
-                f"VALUES (%s, %s, %s, %s) "
-                f"ON CONFLICT (wip_id, slot) DO UPDATE SET "
-                f"eta_date = EXCLUDED.eta_date, store_id = EXCLUDED.store_id, updated_at = NOW()",
-                (wip_id, slot, eta, store_id),
-            )
+            if store_passed:
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, eta_date, store_id) "
+                    f"VALUES (%s, %s, %s, %s) "
+                    f"ON CONFLICT (wip_id, slot) DO UPDATE SET "
+                    f"eta_date = EXCLUDED.eta_date, store_id = EXCLUDED.store_id, updated_at = NOW()",
+                    (wip_id, slot, eta, store_id),
+                )
+            else:
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.wip_component_eta (wip_id, slot, eta_date) "
+                    f"VALUES (%s, %s, %s) "
+                    f"ON CONFLICT (wip_id, slot) DO UPDATE SET "
+                    f"eta_date = EXCLUDED.eta_date, updated_at = NOW()",
+                    (wip_id, slot, eta),
+                )
             # 2) Статус железки: дата задана → "ordered_transit" (Едет/Заказано),
             #    если дата уже в прошлом → "ordered_delay" (Задержка); сброс → "need_order"
             field = "case_status" if slot == "case" else slot + "_status"
@@ -440,6 +460,8 @@ def handler(event: dict, context) -> dict:
         if action == "set_component_store" and method == "POST":
             wip_id = int(body["wip_id"])
             slot = body["slot"]
+            if slot == "fan":
+                slot = "extra"
             store_id = body.get("store_id")
             store_id = int(store_id) if store_id not in (None, "") else None
             cur.execute(
@@ -495,7 +517,9 @@ def handler(event: dict, context) -> dict:
                     COALESCE((comp->>'qty')::int, 1) as required_qty,
                     b.status, g.url_supplier,
                     wb.id as wip_id, wb.order_number, wb.order_id, wb.stage,
-                    comp->>'slot' as slot,
+                    -- Допы хранятся со слотом 'fan', но статус-колонка одна — extra_status.
+                    -- Нормализуем slot к каноничному ключу слота wip_builds.
+                    CASE comp->>'slot' WHEN 'fan' THEN 'extra' ELSE comp->>'slot' END as slot,
                     CASE comp->>'slot'
                         WHEN 'cpu'         THEN wb.cpu_status
                         WHEN 'motherboard' THEN wb.motherboard_status
@@ -506,6 +530,7 @@ def handler(event: dict, context) -> dict:
                         WHEN 'case'        THEN wb.case_status
                         WHEN 'cooling'     THEN wb.cooling_status
                         WHEN 'extra'       THEN wb.extra_status
+                        WHEN 'fan'         THEN wb.extra_status
                         ELSE 'pending'
                     END as slot_status,
                     eta.eta_date, eta.store_id
@@ -515,7 +540,8 @@ def handler(event: dict, context) -> dict:
                 JOIN jsonb_array_elements(pcb.components) comp ON (comp->>'source_id')::int = g.product_id
                 JOIN {SCHEMA}.wip_builds wb ON wb.build_id = pcb.id
                 LEFT JOIN {SCHEMA}.wip_component_eta eta
-                    ON eta.wip_id = wb.id AND eta.slot = comp->>'slot'
+                    ON eta.wip_id = wb.id
+                    AND eta.slot = CASE comp->>'slot' WHEN 'fan' THEN 'extra' ELSE comp->>'slot' END
                 WHERE b.required_qty > 0
                   AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён', 'Согласование')
                 ORDER BY wb.order_number, b.status

@@ -228,6 +228,10 @@ export function AdminWipTab({
     api.warehouse.getStores().then((d: unknown) => {
       if (Array.isArray(d)) setStores(d as WipStore[])
     }).catch(() => {})
+    // Предзагрузка корзины закупки, чтобы индикатор задолженности светился
+    // ещё до открытия корзины (иначе basketBuilds пуст и подсветки нет).
+    loadBasket()
+     
   }, [])
 
   const loadBasket = async () => {
@@ -267,10 +271,11 @@ export function AdminWipTab({
     const statusKey = slot === "case" ? "case_status" : slot + "_status"
     const wipStatus = etaDate ? (etaDate < today ? "ordered_delay" : "ordered_transit") : "need_order"
     setWipBuilds(bs => bs.map(b => b.id === wipId ? { ...b, [statusKey]: wipStatus } : b))
+    const curStore = itemStore[`${wipId}:${slot}`]
     const res = await fetch(`${BASKET_URL}?action=set_component_eta`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wip_id: wipId, slot, eta_date: etaDate || null }),
+      body: JSON.stringify({ wip_id: wipId, slot, eta_date: etaDate || null, store_id: curStore || null }),
     })
     const data = await res.json()
     // Авто-этап и дата прихода сборки могли измениться на сервере
@@ -282,6 +287,9 @@ export function AdminWipTab({
   }
 
   const totalNewCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status === "NEW").length, 0)
+  // Задолженность = все незавершённые позиции корзины (NEW + ORDERED),
+  // т.е. всё, что ещё не получено (RECEIVED). Используется для подсветки.
+  const totalDebtCount = basketBuilds.reduce((s, b) => s + b.items.filter(i => i.status !== "RECEIVED").length, 0)
 
   // Этап «Готов, можно забрать» у сборки в свободной продаже показываем как «В продаже»
   const stageLabel = (w: WipBuild) =>
@@ -437,13 +445,15 @@ export function AdminWipTab({
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
                   totalNewCount > 0
                     ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
-                    : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
+                    : totalDebtCount > 0
+                      ? "border-amber-400/40 bg-amber-400/5 text-amber-500 hover:bg-amber-400/10"
+                      : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
                 }`}
                 style={{ cursor: "pointer" }}>
                 <Icon name="ShoppingCart" size={15} />
                 Корзина закупки
-                {totalNewCount > 0 && (
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-400 text-[10px] font-bold text-white">{totalNewCount}</span>
+                {totalDebtCount > 0 && (
+                  <span className={`flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ${totalNewCount > 0 ? "bg-orange-400" : "bg-amber-500"}`}>{totalNewCount > 0 ? totalNewCount : totalDebtCount}</span>
                 )}
               </button>
 

@@ -489,14 +489,16 @@ def handler(event: dict, context) -> dict:
                     if pb and pb[0]:
                         comps = pb[0] if isinstance(pb[0], list) else json.loads(pb[0])
                         slot_key = "case" if component == "case" else component
+                        # Допы (extra) в составе сборки хранятся со слотом 'fan'.
+                        slot_aliases = {"extra", "fan"} if slot_key == "extra" else {slot_key}
                         for c in comps:
-                            if c.get("slot") == slot_key:
+                            if c.get("slot") in slot_aliases:
                                 comp_qty = int(c.get("qty", 1))
                                 break
                         # Находим supply по product_id компонента
                         product_id = None
                         for c in comps:
-                            if c.get("slot") == slot_key and c.get("source_id"):
+                            if c.get("slot") in slot_aliases and c.get("source_id"):
                                 product_id = int(c["source_id"])
                                 break
                         if product_id:
