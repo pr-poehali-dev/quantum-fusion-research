@@ -4,13 +4,14 @@ import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
 
 type TaskOption = { label: string; group: "games" | "work" }
+type OptObj = { label: string; image_url?: string }
 
 interface Question {
   id: number
   sort_order: number
   title: string
   field_type: string // multi | single | budget | contacts | text | tasks
-  options: Array<string | TaskOption>
+  options: Array<string | TaskOption | OptObj>
   description?: string
 }
 
@@ -317,32 +318,77 @@ export default function Quiz() {
                     options={(current.options as Array<string | TaskOption>).map(o => typeof o === "string" ? { label: o, group: "work" as const } : o)}
                     value={answers[current.id] || []}
                     onChange={v => setAns(current.id, v)} />
-                ) : (
-                  <div className="flex flex-col gap-2.5">
-                    {current.options.map(rawOpt => {
-                      const opt = typeof rawOpt === "string" ? rawOpt : rawOpt.label
-                      const vals = answers[current.id] || []
-                      const active = vals.includes(opt)
-                      const single = current.field_type === "single"
-                      const toggle = () => {
-                        if (single) setAns(current.id, [opt])
-                        else setAns(current.id, active ? vals.filter(v => v !== opt) : [...vals, opt])
-                      }
-                      return (
-                        <button key={opt} type="button" onClick={toggle} style={{ cursor: "pointer" }}
-                          className={`flex items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm font-medium transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary"}`}>
-                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center border ${single ? "rounded-full" : "rounded-md"} ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
-                            {active && <Icon name="Check" size={13} />}
-                          </span>
-                          {opt}
-                        </button>
-                      )
-                    })}
-                    {current.field_type !== "single" && (
-                      <p className="pt-1 text-xs text-foreground/40">Можно выбрать несколько вариантов</p>
-                    )}
-                  </div>
-                )}
+                ) : (() => {
+                  // Нормализуем варианты к { label, image_url? }
+                  const opts = current.options.map(o =>
+                    typeof o === "string" ? { label: o } as OptObj : (o as OptObj)
+                  )
+                  // Плиточный режим: если фото есть более чем у 2 вариантов
+                  const withImg = opts.filter(o => o.image_url && o.image_url.trim())
+                  const tileMode = withImg.length > 2
+                  const vals = answers[current.id] || []
+                  const single = current.field_type === "single"
+                  const toggle = (label: string, active: boolean) => {
+                    if (single) setAns(current.id, [label])
+                    else setAns(current.id, active ? vals.filter(v => v !== label) : [...vals, label])
+                  }
+                  if (tileMode) {
+                    // ПК — 2 столбца, телефон — строчки (1 столбец)
+                    return (
+                      <div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {opts.map(o => {
+                            const active = vals.includes(o.label)
+                            return (
+                              <button key={o.label} type="button" onClick={() => toggle(o.label, active)} style={{ cursor: "pointer" }}
+                                className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${active ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary"}`}>
+                                {o.image_url ? (
+                                  <img src={o.image_url} alt={o.label} className="h-32 w-full object-cover sm:h-36" />
+                                ) : (
+                                  <div className="flex h-32 w-full items-center justify-center bg-muted sm:h-36">
+                                    <Icon name="Image" size={28} className="text-foreground/20" />
+                                  </div>
+                                )}
+                                <div className={`flex items-center gap-2 px-3 py-2.5 text-sm font-medium ${active ? "bg-primary/10 text-primary" : "text-foreground"}`}>
+                                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center border ${single ? "rounded-full" : "rounded-md"} ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                                    {active && <Icon name="Check" size={13} />}
+                                  </span>
+                                  {o.label}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {current.field_type !== "single" && (
+                          <p className="pt-2 text-xs text-foreground/40">Можно выбрать несколько вариантов</p>
+                        )}
+                      </div>
+                    )
+                  }
+                  // Обычный режим — список строк (с миниатюрой, если фото задано)
+                  return (
+                    <div className="flex flex-col gap-2.5">
+                      {opts.map(o => {
+                        const active = vals.includes(o.label)
+                        return (
+                          <button key={o.label} type="button" onClick={() => toggle(o.label, active)} style={{ cursor: "pointer" }}
+                            className={`flex items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm font-medium transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary"}`}>
+                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center border ${single ? "rounded-full" : "rounded-md"} ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                              {active && <Icon name="Check" size={13} />}
+                            </span>
+                            {o.image_url && o.image_url.trim() && (
+                              <img src={o.image_url} alt={o.label} className="h-10 w-10 shrink-0 rounded-md object-cover" />
+                            )}
+                            {o.label}
+                          </button>
+                        )
+                      })}
+                      {current.field_type !== "single" && (
+                        <p className="pt-1 text-xs text-foreground/40">Можно выбрать несколько вариантов</p>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
 

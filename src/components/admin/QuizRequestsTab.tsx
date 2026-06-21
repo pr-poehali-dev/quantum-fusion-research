@@ -2,15 +2,17 @@ import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import RichTextEditor from "@/components/ui/rich-text-editor"
+import { ImageUploader } from "@/components/image-uploader"
 
 type TaskOption = { label: string; group: "games" | "work" }
+type OptObj = { label: string; image_url?: string }
 
 interface Question {
   id: number
   sort_order: number
   title: string
   field_type: string
-  options: Array<string | TaskOption>
+  options: Array<string | TaskOption | OptObj>
   is_active: boolean
   description?: string
 }
@@ -260,19 +262,34 @@ export default function QuizRequestsTab() {
               {(editQ.field_type === "multi" || editQ.field_type === "single") && (
                 <div>
                   <label className="mb-1 block text-xs text-foreground/60">Варианты ответов</label>
-                  <div className="space-y-2">
-                    {editQ.options.map((opt, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input value={typeof opt === "string" ? opt : opt.label} onChange={e => {
-                          const next = [...editQ.options]; next[i] = e.target.value; setEditQ({ ...editQ, options: next })
-                        }} className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-                        <button onClick={() => setEditQ({ ...editQ, options: editQ.options.filter((_, j) => j !== i) })} style={{ cursor: "pointer" }}
-                          className="rounded-lg p-2 text-foreground/40 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-                          <Icon name="X" size={15} />
-                        </button>
-                      </div>
-                    ))}
-                    <button onClick={() => setEditQ({ ...editQ, options: [...editQ.options, ""] })} style={{ cursor: "pointer" }}
+                  <p className="mb-2 text-xs text-foreground/40">Можно добавить фото к варианту. Если фото есть у 3+ вариантов — на квизе они покажутся плиткой.</p>
+                  <div className="space-y-3">
+                    {editQ.options.map((opt, i) => {
+                      const o: OptObj = typeof opt === "string" ? { label: opt } : (opt as OptObj)
+                      const setOpt = (patch: Partial<OptObj>) => {
+                        const next = [...editQ.options]; next[i] = { ...o, ...patch }; setEditQ({ ...editQ, options: next })
+                      }
+                      return (
+                        <div key={i} className="rounded-lg border border-border bg-background/50 p-2.5">
+                          <div className="flex items-center gap-2">
+                            <input value={o.label} onChange={e => setOpt({ label: e.target.value })}
+                              placeholder="Текст варианта"
+                              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                            <button onClick={() => setEditQ({ ...editQ, options: editQ.options.filter((_, j) => j !== i) })} style={{ cursor: "pointer" }}
+                              className="rounded-lg p-2 text-foreground/40 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                              <Icon name="X" size={15} />
+                            </button>
+                          </div>
+                          <div className="mt-2">
+                            <ImageUploader
+                              images={o.image_url ? [o.image_url] : []}
+                              onChange={urls => setOpt({ image_url: urls[0] || "" })}
+                              folder="quiz" maxImages={1} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <button onClick={() => setEditQ({ ...editQ, options: [...editQ.options, { label: "" }] })} style={{ cursor: "pointer" }}
                       className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-foreground/60 hover:border-primary hover:text-foreground transition-colors">
                       <Icon name="Plus" size={14} />Добавить вариант
                     </button>
