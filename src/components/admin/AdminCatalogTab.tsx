@@ -128,9 +128,8 @@ export function AdminCatalogTab({
   }
   const submitProduct = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Обязательные: цена продажи и категория (гарантия по умолчанию 0)
+    // Цена и гарантия подтягиваются со склада, обязательна только категория
     if (!productForm.category_id) { alert("Выберите категорию"); return }
-    if (productForm.price === "" || Number(productForm.price) < 0) { alert("Укажите цену продажи"); return }
     let specs = {}
     try { specs = JSON.parse(productForm.specs || "{}") } catch { specs = {} }
     const payload = {
@@ -570,9 +569,10 @@ export function AdminCatalogTab({
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs text-foreground/60">Цена продажи * (₽)</label>
-            <input required type="number" value={productForm.price} onChange={e => setProductForm(f => ({ ...f, price: e.target.value }))}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="89990" style={{ cursor: "text" }} />
+            <label className="mb-1 block text-xs text-foreground/60">Цена продажи (₽)</label>
+            <input type="number" value={productForm.price} readOnly disabled
+              className="w-full rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm text-foreground/60 cursor-not-allowed" placeholder="—" />
+            <p className="mt-1 text-[11px] text-foreground/40">Подтягивается со склада</p>
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/60">Старая цена (₽)</label>
@@ -580,9 +580,10 @@ export function AdminCatalogTab({
               className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="99990" style={{ cursor: "text" }} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-foreground/60">Гарантия (мес) *</label>
-            <input required type="number" min="0" value={productForm.warranty_months} onChange={e => setProductForm(f => ({ ...f, warranty_months: e.target.value }))}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="0" style={{ cursor: "text" }} />
+            <label className="mb-1 block text-xs text-foreground/60">Гарантия (мес)</label>
+            <input type="number" value={productForm.warranty_months} readOnly disabled
+              className="w-full rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm text-foreground/60 cursor-not-allowed" placeholder="—" />
+            <p className="mt-1 text-[11px] text-foreground/40">Подтягивается со склада</p>
           </div>
         </div>
         <div>

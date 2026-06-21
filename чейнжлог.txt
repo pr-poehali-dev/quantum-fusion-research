@@ -3,6 +3,19 @@
 
 ---
 
+## v4.27 | 2026-06-21 | Товары: наличие, цена и гарантия — со склада
+
+### Frontend (AdminCatalogTab)
+- Колонка «Остаток» → «На складе»: реальное кол-во со склада, 0 = «Нет в наличии».
+- Убрана ручная кнопка переключения наличия и чекбокс «В наличии» в форме.
+- Поля «Цена продажи» и «Гарантия» стали read-only (подтягиваются со склада).
+- Снята обязательная валидация цены в форме товара.
+
+### Backend (products GET)
+- price = warehouse_groups.price_retail (если >0), иначе p.price (fallback).
+- warranty_months = COALESCE(wg.warranty_months, p.warranty_months).
+- Добавлен LEFT JOIN warehouse_groups wg ON wg.id = p.warehouse_group_id.
+
 ## v4.26 | 2026-06-21 | Лента финансов: убраны дубли «Продажи»
 
 ### Причина

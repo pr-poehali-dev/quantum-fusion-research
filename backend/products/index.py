@@ -201,7 +201,9 @@ def handler(event: dict, context) -> dict:
 
         # ── PRODUCTS ──
         elif method == "GET":
-            sel = """SELECT p.id, p.name, p.description, p.price, p.old_price,
+            sel = """SELECT p.id, p.name, p.description,
+                            CASE WHEN COALESCE(wg.price_retail, 0) > 0 THEN wg.price_retail ELSE p.price END as price,
+                            p.old_price,
                             p.image_url, p.specs, p.in_stock, p.is_featured,
                             p.sort_order, p.created_at,
                             COALESCE((SELECT SUM(s.qty) FROM warehouse_supplies s
@@ -213,8 +215,11 @@ def handler(event: dict, context) -> dict:
                                       FROM warehouse_supplies s
                                       JOIN warehouse_groups g ON g.id = s.group_id
                                       WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost,
-                            p.is_archived, p.is_used, p.warranty_months
-                     FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
+                            p.is_archived, p.is_used,
+                            COALESCE(wg.warranty_months, p.warranty_months) as warranty_months
+                     FROM products p
+                     LEFT JOIN categories c ON p.category_id = c.id
+                     LEFT JOIN warehouse_groups wg ON wg.id = p.warehouse_group_id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
                 row = cur.fetchone()
