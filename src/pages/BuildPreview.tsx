@@ -118,6 +118,15 @@ async function enrichComponents(comps: Component[], livePrice = false): Promise<
   })
 }
 
+// Обогащает компоненты ВСЕХ вариантов актуальными ценами каталога,
+// чтобы корректно считать разницу цен между вариантами (а не по устаревшей price из БД).
+async function enrichVariants(list: Build[]): Promise<Build[]> {
+  return Promise.all(list.map(async (b) => ({
+    ...b,
+    components: await enrichComponents(b.components || [], b.status === "catalog"),
+  })))
+}
+
 export default function BuildPreview() {
   const { id, code } = useParams<{ id: string; code: string }>()
   const [searchParams] = useSearchParams()
@@ -164,11 +173,10 @@ export default function BuildPreview() {
       const rootBuild: Build = (root && root.id) ? root : data
       const variantsRaw = await api.builds.getVariants(rootBuild.id).catch(() => [])
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
-      const list = [rootBuild, ...children]
-      // Витринные сборки (status=catalog) показывают актуальные цены каталога
-      const comps = await enrichComponents(rootBuild.components || [], rootBuild.status === "catalog")
+      // Обогащаем все варианты актуальными ценами — для корректной разницы цен
+      const list = await enrichVariants([rootBuild, ...children])
       setVariants(list)
-      setComponents(comps)
+      setComponents(list[0]?.components || [])
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
     // Подгружаем статус сборки в процессе (если есть)
@@ -190,10 +198,10 @@ export default function BuildPreview() {
       const root = rawList.find(b => !b.parent_id) ?? rawList[0]
       const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
-      const list = [root, ...children]
-      const rootComps = await enrichComponents(root.components || [], root.status === "catalog")
+      // Обогащаем все варианты актуальными ценами — для корректной разницы цен
+      const list = await enrichVariants([root, ...children])
       setVariants(list)
-      setComponents(rootComps)
+      setComponents(list[0]?.components || [])
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
@@ -206,11 +214,11 @@ export default function BuildPreview() {
     }).catch(() => {})
   }, [token, isTokenMode, user])
 
-  // При смене варианта
+  // При смене варианта (компоненты уже обогащены при загрузке списка)
   useEffect(() => {
-    if (!variants[activeVariant]) return
     const v = variants[activeVariant]
-    enrichComponents(v.components || [], v.status === "catalog").then(setComponents)
+    if (!v) return
+    setComponents(v.components || [])
     setCurrentSection(0)
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
   }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
