@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
@@ -39,6 +40,7 @@ export function AdminWipTab({
   editBuild, setTab,
 }: Props) {
   const { sessionId } = useAuth()
+  const navigate = useNavigate()
   const [viewArchive, setViewArchive] = useState(false)
   const isArchive = viewArchive
 
@@ -869,45 +871,62 @@ export function AdminWipTab({
                         {row.key === "_order" && (
                           <div className="flex items-center gap-1.5">
                             <button onClick={() => { setWipForm(w); setWipFormOpen(true) }}
-                              className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                              title="Редактировать сборку"
+                              className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                               style={{ cursor: "pointer" }}>
-                              <Icon name="Pencil" size={10} />Ред.
+                              <Icon name="Pencil" size={13} />
                             </button>
                             <button onClick={() => setWipPasteId(w.id!)}
-                              className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                              title="Вставить состав"
+                              className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                               style={{ cursor: "pointer" }}>
-                              <Icon name="Copy" size={10} />Паста
+                              <Icon name="Copy" size={13} />
                             </button>
                             <button onClick={() => copyWip(w)}
                               title="Скопировать сборку в новую"
-                              className="flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1 text-[10px] text-primary hover:bg-primary/10 transition-colors"
+                              className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary/5 p-1.5 text-primary hover:bg-primary/10 transition-colors"
                               style={{ cursor: "pointer" }}>
-                              <Icon name="CopyPlus" size={10} />Копир.
+                              <Icon name="CopyPlus" size={13} />
                             </button>
                             {w.id && (
                               <button onClick={() => setMarginWip(w)}
                                 title="Маржа сборки"
-                                className="flex items-center gap-1 rounded-lg border border-green-400/30 bg-green-400/5 px-2 py-1 text-[12px] hover:bg-green-400/10 transition-colors"
+                                className="flex items-center justify-center rounded-lg border border-green-400/30 bg-green-400/5 p-1.5 text-[13px] hover:bg-green-400/10 transition-colors"
                                 style={{ cursor: "pointer" }}>
                                 🤑
+                              </button>
+                            )}
+                            {w.order_id && (
+                              <button onClick={() => navigate(`/admin/order/${w.order_id}`)}
+                                title="Обработать заказ"
+                                className="flex items-center justify-center rounded-lg border border-blue-400/30 bg-blue-400/5 p-1.5 text-blue-400 hover:bg-blue-400/10 transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="ClipboardList" size={13} />
+                              </button>
+                            )}
+                            {w.build_id && (
+                              <button onClick={() => navigate(`/order-sheet/${w.build_id}`)}
+                                title="Лист сборки — забрать железо со склада"
+                                className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="Warehouse" size={13} />
                               </button>
                             )}
                             {w.stage === "Заказ" && w.order_id && w.id && (
                               <button onClick={() => syncWipOrder(w)}
                                 disabled={syncingWipId === w.id}
                                 title="Выбить компоненты со склада и создать резервы"
-                                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${syncDoneWipId === w.id ? "border-green-400/30 bg-green-400/5 text-green-400" : "border-yellow-400/30 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
+                                className={`flex items-center justify-center rounded-lg border p-1.5 font-medium transition-colors disabled:opacity-50 ${syncDoneWipId === w.id ? "border-green-400/30 bg-green-400/5 text-green-400" : "border-yellow-400/30 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
                                 style={{ cursor: "pointer" }}>
-                                <Icon name={syncingWipId === w.id ? "Loader" : syncDoneWipId === w.id ? "Check" : "RefreshCw"} size={10} className={syncingWipId === w.id ? "animate-spin" : ""} />
-                                {syncDoneWipId === w.id ? "Готово" : "Синх."}
+                                <Icon name={syncingWipId === w.id ? "Loader" : syncDoneWipId === w.id ? "Check" : "RefreshCw"} size={13} className={syncingWipId === w.id ? "animate-spin" : ""} />
                               </button>
                             )}
                             {w.id && (
                               <button onClick={() => openCancelModal(w)}
                                 title="Отменить заказ"
-                                className="flex items-center gap-1 rounded-lg border border-red-400/20 px-2 py-1 text-[10px] text-red-400/50 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-colors"
+                                className="flex items-center justify-center rounded-lg border border-red-400/20 p-1.5 text-red-400/50 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-colors"
                                 style={{ cursor: "pointer" }}>
-                                <Icon name="XCircle" size={10} />Отмена
+                                <Icon name="XCircle" size={13} />
                               </button>
                             )}
                           </div>
