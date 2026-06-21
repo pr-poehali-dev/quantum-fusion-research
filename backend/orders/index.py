@@ -38,7 +38,7 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
 
-    def fmt_order(row, disp=None, for_sale=None):
+    def fmt_order(row, disp=None, for_sale=None, is_stock_sale=None):
         total = float(row[6])
         # Предоплата (опц. поля в конце выборки одиночного заказа)
         pct = float(row[13]) if len(row) > 13 and row[13] is not None else 30.0
@@ -65,6 +65,7 @@ def handler(event: dict, context) -> dict:
             "remaining_paid": bool(row[16]) if len(row) > 16 and row[16] is not None else False,
             "remaining_paid_amount": float(row[17]) if len(row) > 17 and row[17] is not None else 0,
             "for_sale": bool(for_sale) if for_sale is not None else False,
+            "is_stock_sale": bool(is_stock_sale) if is_stock_sale is not None else False,
         }
 
     try:
@@ -578,13 +579,15 @@ def handler(event: dict, context) -> dict:
                            o.items, o.total, o.comment, o.status, o.created_at, o.updated_at, o.user_id,
                            wb.stage as wip_stage, o.prepayment_percent, o.prepayment_amount,
                            o.prepayment_confirmed, o.remaining_paid, o.remaining_paid_amount,
-                           o.display_number, wb.for_sale
+                           o.display_number, wb.for_sale,
+                           (pb.status = 'catalog') AS is_stock_sale
                     FROM orders o
                     LEFT JOIN wip_builds wb ON wb.order_id = o.id
+                    LEFT JOIN pc_builds pb ON pb.id = wb.build_id
                     {where} ORDER BY o.created_at DESC LIMIT 200""",
                 args
             )
-            orders = [fmt_order(r, r[18], r[19]) for r in cur.fetchall()]
+            orders = [fmt_order(r, r[18], r[19], r[20]) for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"orders": orders})}
 
         elif method == "PUT":

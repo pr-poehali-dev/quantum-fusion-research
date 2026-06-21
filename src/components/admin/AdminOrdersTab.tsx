@@ -188,8 +188,8 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       {isReserved && (
                         <span className="rounded-full bg-orange-400/15 px-2.5 py-0.5 text-xs font-medium text-orange-400" title="Готовый ПК из наличия зарезервирован под этого клиента">В резерве</span>
                       )}
-                      {/* Предоплата неактуальна для сборок свободной продажи */}
-                      {order.status !== "cancelled" && !order.for_sale && (
+                      {/* Предоплата неактуальна для сборок из свободной продажи (catalog) */}
+                      {order.status !== "cancelled" && !order.is_stock_sale && (
                         order.prepayment_confirmed ? (
                           <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата внесена</span>
                         ) : (
