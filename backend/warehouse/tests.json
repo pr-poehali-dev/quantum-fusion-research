@@ -17,6 +17,12 @@
       "method": "GET",
       "path": "/?action=categories",
       "expectedStatus": 200
+    },
+    {
+      "name": "Spec slot products (motherboard)",
+      "method": "GET",
+      "path": "/?action=spec_slot_products&slot=motherboard",
+      "expectedStatus": 200
     }
   ]
 }

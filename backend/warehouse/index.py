@@ -1843,6 +1843,63 @@ def handler(event: dict, context) -> dict:
                 })
             return {"statusCode": 200, "headers": cors, "body": json.dumps(items, default=str)}
 
+        # ── ТОВАРЫ СЛОТА + ИХ ЗНАЧЕНИЯ ХАРАКТЕРИСТИК (для конфигуратора) ──────
+        # Отдаёт все товары одной spec-категории (по её коду, напр. motherboard)
+        # со всеми заполненными характеристиками — чтобы фронт построил фильтры
+        # и посчитал совместимость без множества запросов.
+        if action == "spec_slot_products" and method == "GET":
+            slot_code = (params.get("slot") or params.get("code") or "").strip()
+            if not slot_code:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "slot обязателен"})}
+            cur.execute(
+                f"SELECT id FROM {SCHEMA}.spec_categories WHERE code = {esc(slot_code)}"
+            )
+            sc_row = cur.fetchone()
+            if not sc_row:
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"products": [], "attributes": []})}
+            spec_cat_id = sc_row[0]
+            # атрибуты этой spec-категории
+            cur.execute(
+                f"SELECT id, code, name, field_type, options, unit, affects_compat, is_required, sort_order "
+                f"FROM {SCHEMA}.spec_attributes WHERE category_id = {spec_cat_id} ORDER BY sort_order, id"
+            )
+            attributes = [{"id": r[0], "code": r[1], "name": r[2], "field_type": r[3],
+                           "options": r[4] or [], "unit": r[5], "affects_compat": r[6],
+                           "is_required": r[7], "sort_order": r[8]} for r in cur.fetchall()]
+            # товары, чья товарная категория привязана к этой spec-категории
+            cur.execute(
+                f"SELECT p.id, p.name, p.price, p.image_url, p.image_urls, p.in_stock, "
+                f"p.stock_qty, p.description "
+                f"FROM {SCHEMA}.products p "
+                f"JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+                f"JOIN {SCHEMA}.spec_categories sc ON sc.product_category_slug = c.slug "
+                f"WHERE sc.id = {spec_cat_id} AND p.is_archived = FALSE "
+                f"ORDER BY p.in_stock DESC NULLS LAST, p.sort_order NULLS LAST, p.name"
+            )
+            prod_rows = cur.fetchall()
+            pids = [r[0] for r in prod_rows]
+            # значения характеристик всех этих товаров одним запросом
+            vals_by_pid = {}
+            if pids:
+                ids_sql = ",".join(str(p) for p in pids)
+                cur.execute(
+                    f"SELECT product_id, attribute_id, value, value_json "
+                    f"FROM {SCHEMA}.product_spec_values WHERE product_id IN ({ids_sql})"
+                )
+                for pid, aid, value, vjson in cur.fetchall():
+                    vals_by_pid.setdefault(pid, {})[str(aid)] = vjson if vjson is not None else value
+            products = []
+            for r in prod_rows:
+                pid = r[0]
+                products.append({
+                    "id": pid, "name": r[1], "price": float(r[2]) if r[2] is not None else 0,
+                    "image_url": r[3], "image_urls": r[4] or [],
+                    "in_stock": r[5], "stock_qty": r[6], "description": r[7],
+                    "values": vals_by_pid.get(pid, {}),
+                })
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(
+                {"spec_category_id": spec_cat_id, "attributes": attributes, "products": products}, default=str)}
+
         # ── ЗНАЧЕНИЯ ХАРАКТЕРИСТИК ОДНОГО ТОВАРА ─────────────────────────────
         if action == "spec_values_get" and method == "GET":
             pid = int(params.get("product_id") or 0)

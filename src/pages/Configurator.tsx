@@ -9,6 +9,7 @@ import RichTextEditor from "@/components/ui/rich-text-editor"
 import { ImageUploader } from "@/components/image-uploader"
 import CommentSection from "@/components/CommentSection"
 import NotificationBell from "@/components/NotificationBell"
+import SlotPickerModal, { SelectedSpecValues } from "@/components/configurator/SlotPickerModal"
 
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
@@ -156,6 +157,10 @@ export default function Configurator() {
   const [mode, setMode] = useState<"catalog" | "custom">("catalog")
   const [slotMode, setSlotMode] = useState<Record<string, "catalog" | "custom">>({})
   const [openSlot, setOpenSlot] = useState<string | null>(null)
+  // НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип)
+  const [pickerSlot, setPickerSlot] = useState<string | null>(null)
+  // Значения характеристик уже выбранных деталей (для расчёта совместимости)
+  const [selectedSpec, setSelectedSpec] = useState<SelectedSpecValues>({})
   const [loading, setLoading] = useState(true)
   const [wantAssembly, setWantAssembly] = useState(draft0.wantAssembly ?? true)
 
@@ -279,6 +284,21 @@ export default function Configurator() {
     setOpenSlot(null)
   }
 
+  // Выбор из НОВОГО окна (с фильтрами совместимости).
+  // p — товар слота с values характеристик, specCatId — id spec-категории.
+  const pickFromPicker = (slot: string) => (
+    p: { id: number; name: string; price: number; image_urls?: string[]; description?: string; values: Record<string, string | string[]> },
+    specCatId: number
+  ) => {
+    setSelected(s => ({ ...s, [slot]: {
+      slot, name: p.name, price: p.price, qty: 1, source: "catalog", source_id: p.id,
+      description: p.description, image_urls: p.image_urls,
+    } }))
+    // запоминаем характеристики выбранной детали для совместимости остальных слотов
+    setSelectedSpec(prev => ({ ...prev, [specCatId]: p.values }))
+    setPickerSlot(null)
+  }
+
   const applyCustom = (slot: string) => {
     const inp = customInputs[slot]
     if (!inp?.name || !inp?.price) return
@@ -381,6 +401,13 @@ export default function Configurator() {
           {!buildAuthor && (
             <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
           )}
+          {/* ТЕСТ: новое окно выбора с фильтрами совместимости */}
+          <button onClick={() => setPickerSlot("motherboard")}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="SlidersHorizontal" size={15} />
+            Тест: выбрать материнскую плату (новые фильтры)
+          </button>
         </div>
 
         {/* Mode toggle */}
@@ -993,6 +1020,18 @@ export default function Configurator() {
           </div>
         </div>
       </div>
+
+      {/* НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип) */}
+      {pickerSlot && (
+        <SlotPickerModal
+          slotCode={pickerSlot}
+          slotLabel={SLOT_LABELS[pickerSlot]?.label || pickerSlot}
+          selectedSpec={selectedSpec}
+          onPick={pickFromPicker(pickerSlot)}
+          onClose={() => setPickerSlot(null)}
+          onCustom={() => { setPickerSlot(null); setMode("custom"); setOpenSlot(pickerSlot) }}
+        />
+      )}
     </div>
   )
 }
