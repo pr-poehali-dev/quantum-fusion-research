@@ -202,18 +202,35 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
   const [code, setCode] = useState(attr?.code || "")
   const [fieldType, setFieldType] = useState<FieldType>(attr?.field_type || "text")
   const [unit, setUnit] = useState(attr?.unit || "")
-  const [optionsText, setOptionsText] = useState((attr?.options || []).join(", "))
+  const [options, setOptions] = useState<string[]>(attr?.options || [])
+  const [draft, setDraft] = useState("")
+  const [editIdx, setEditIdx] = useState<number | null>(null)
+  const [editText, setEditText] = useState("")
   const [affects, setAffects] = useState(attr?.affects_compat ?? false)
   const [required, setRequired] = useState(attr?.is_required ?? false)
   const [saving, setSaving] = useState(false)
 
   const hasOptions = fieldType === "select" || fieldType === "multiselect"
 
+  const addOption = () => {
+    const v = draft.trim()
+    if (!v || options.includes(v)) { setDraft(""); return }
+    setOptions(o => [...o, v])
+    setDraft("")
+  }
+  const removeOption = (i: number) => setOptions(o => o.filter((_, idx) => idx !== i))
+  const startEdit = (i: number) => { setEditIdx(i); setEditText(options[i]) }
+  const commitEdit = () => {
+    if (editIdx === null) return
+    const v = editText.trim()
+    setOptions(o => v ? o.map((x, idx) => idx === editIdx ? v : x) : o.filter((_, idx) => idx !== editIdx))
+    setEditIdx(null); setEditText("")
+  }
+
   const save = async () => {
     if (!name.trim() || (!attr && !code.trim())) return
     setSaving(true)
-    const options = hasOptions ? optionsText.split(",").map(s => s.trim()).filter(Boolean) : []
-    const payload = { name, field_type: fieldType, unit: unit || null, options, affects_compat: affects, is_required: required }
+    const payload = { name, field_type: fieldType, unit: unit || null, options: hasOptions ? options : [], affects_compat: affects, is_required: required }
     if (attr) await api.warehouse.specAttrUpdate({ id: attr.id, ...payload })
     else await api.warehouse.specAttrCreate({ category_id: categoryId, code: code.trim(), ...payload })
     setSaving(false)
@@ -235,8 +252,38 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
         </select>
       </Field>
       {hasOptions && (
-        <Field label="Варианты (через запятую)">
-          <input value={optionsText} onChange={e => setOptionsText(e.target.value)} className={inp} placeholder="AM5, AM4, LGA1700" />
+        <Field label="Варианты">
+          <div className="flex gap-2">
+            <input value={draft} onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addOption() } }}
+              className={inp} placeholder="Напишите вариант и нажмите Enter" />
+            <button type="button" onClick={addOption}
+              className="shrink-0 rounded-lg bg-primary px-3 text-primary-foreground hover:opacity-90" style={{ cursor: "pointer" }}>
+              <Icon name="Plus" size={16} />
+            </button>
+          </div>
+          {options.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {options.map((o, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5">
+                  {editIdx === i ? (
+                    <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); commitEdit() } }}
+                      onBlur={commitEdit}
+                      className="flex-1 bg-transparent text-sm outline-none" />
+                  ) : (
+                    <span className="flex-1 text-sm text-foreground cursor-text" onClick={() => startEdit(i)}>{o}</span>
+                  )}
+                  <button type="button" onClick={() => startEdit(i)} className="text-foreground/30 hover:text-primary" style={{ cursor: "pointer" }}>
+                    <Icon name="Pencil" size={13} />
+                  </button>
+                  <button type="button" onClick={() => removeOption(i)} className="text-foreground/30 hover:text-red-400" style={{ cursor: "pointer" }}>
+                    <Icon name="X" size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Field>
       )}
       {fieldType === "number" && (
