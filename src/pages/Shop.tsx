@@ -99,7 +99,9 @@ export default function Shop() {
   const [categories, setCategories] = useState<Category[]>([])
   const [builds, setBuilds] = useState<Build[]>([])
   const [communityBuilds, setCommunityBuilds] = useState<CommunityBuild[]>([])
-  const [activeCategory, setActiveCategory] = useState<string>("all")
+  const [activeCategory, setActiveCategory] = useState<string>(
+    () => new URLSearchParams(window.location.search).get("category") || "all"
+  )
   const [search, setSearch] = useState("")
   const [usedOnly, setUsedOnly] = useState(false)
   const [allTags, setAllTags] = useState<BuildTag[]>([])
@@ -137,8 +139,6 @@ export default function Shop() {
     const tab = searchParams.get("tab")
     if (tab === "community") setShopTab("community")
     else if (searchParams.get("build")) setShopTab("builds")
-    const cat = searchParams.get("category")
-    if (cat) setActiveCategory(cat)
   }, [searchParams])
 
   useEffect(() => {
