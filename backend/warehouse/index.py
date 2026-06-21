@@ -499,10 +499,12 @@ def handler(event: dict, context) -> dict:
             warranty_until = body.get("warranty_until")
 
             # НДС: фронт шлёт price_with_vat (введённая цена) и has_vat.
-            # Себестоимость:
-            #   с НДС  → cost_price = цена закупки С НДС КАК ЕСТЬ, без скидки
-            #            (НДС-товары считаем тупо по цене закупки с НДС)
+            # Себестоимость (cost_price):
+            #   с НДС  → cost_price = цена × (1 − скидка_закупки/100)
+            #            (по НДС-товарам мы получаем вычет, поэтому реальный
+            #             заход ниже цены с НДС)
             #   без НДС → cost_price = введённая цена как есть
+            # price_with_vat сохраняем КАК ВВЕДЕНО (для отчётности/НДС).
             # Поддержка legacy: если пришло только cost_price — берём его.
             has_vat = body.get("has_vat")
             price_with_vat = body.get("price_with_vat")
@@ -511,6 +513,18 @@ def handler(event: dict, context) -> dict:
             else:
                 price_in = float(body.get("cost_price", 0))
             cost_price = round(price_in, 2)
+            if has_vat is True:
+                # Скидка закупки для НДС-товаров из настроек (app_settings)
+                cur.execute(
+                    f"SELECT value FROM {SCHEMA}.app_settings "
+                    f"WHERE key = 'purchase_discount_percent' LIMIT 1"
+                )
+                ds = cur.fetchone()
+                try:
+                    discount_pct = float(ds[0]) if ds and ds[0] is not None else 0.0
+                except (TypeError, ValueError):
+                    discount_pct = 0.0
+                cost_price = round(price_in * (1 - discount_pct / 100), 2)
 
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_supplies "
