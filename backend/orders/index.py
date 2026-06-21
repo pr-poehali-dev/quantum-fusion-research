@@ -787,6 +787,14 @@ def handler(event: dict, context) -> dict:
                 items[item_idx]["item_status"] = body.get("item_status", "reserved")
                 cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
+                # Автозавершение заказа: если ВСЕ позиции выданы/возвращены и есть
+                # хотя бы одна выданная — переводим заказ в done (уходит в архив).
+                _prod_items = [it for it in items if it.get("item_type") == "product"]
+                if _prod_items:
+                    _all_closed = all(it.get("item_status") in ("issued", "returned") for it in _prod_items)
+                    _any_issued = any(it.get("item_status") == "issued" for it in _prod_items)
+                    if _all_closed and _any_issued:
+                        cur.execute("UPDATE orders SET status='done', updated_at=NOW() WHERE id=%s", (order_id,))
 
             elif action == "unreserve":
                 # Возврат товара на склад: снимаем ВСЕ резервы позиции через ядро
