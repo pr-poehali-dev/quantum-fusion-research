@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react"
+import React, { useEffect, useState, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
@@ -277,13 +277,31 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
     onClose()
   }
 
+  // Дубли внутри текущего ввода (без учёта регистра/пробелов)
+  const dupIndexes = (() => {
+    const seen = new Map<string, number>()
+    const dup = new Set<number>()
+    serials.forEach((s, i) => {
+      const key = s.trim().toLowerCase()
+      if (!key) return
+      if (seen.has(key)) { dup.add(i); dup.add(seen.get(key)!) }
+      else seen.set(key, i)
+    })
+    return dup
+  })()
+
   const saveSerials = async () => {
     const clean = serials.map(s => s.trim())
     if (snRule?.require_serial && clean.some(s => !s)) {
       setError("Заполни все серийные номера")
       return
     }
+    if (dupIndexes.size) {
+      setError("Есть повторяющиеся серийники — исправь подсвеченные строки")
+      return
+    }
     setLoading(true)
+    setError("")
     const data = await api.snArchive.addSerials({ supply_id: snSupplyId!, serials: clean.filter(Boolean) })
     setLoading(false)
     if (data.error) { setError(data.error); return }
@@ -303,31 +321,38 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
           <p className="mb-4 text-xs text-foreground/50">
             {category} · {serials.length} шт.
             {store && <> · магазин <span className="font-medium text-foreground/70">[{store.code}] {store.name}</span></>}
+            {form.purchase_date && <> · принято {form.purchase_date.split("-").reverse().join(".")}</>}
           </p>
           <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-            {serials.map((sn, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
-                <Input
-                  ref={(el) => { snInputs.current[i] = el }}
-                  autoFocus={i === 0}
-                  value={sn}
-                  placeholder="S/N"
-                  onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
-                      else saveSerials()
-                    }
-                  }}
-                />
-              </div>
-            ))}
+            {serials.map((sn, i) => {
+              const isDup = dupIndexes.has(i)
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
+                  <Input
+                    ref={(el) => { snInputs.current[i] = el }}
+                    autoFocus={i === 0}
+                    value={sn}
+                    placeholder="S/N"
+                    className={isDup ? "border-red-500 ring-1 ring-red-500" : ""}
+                    onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
+                        else saveSerials()
+                      }
+                    }}
+                  />
+                  {isDup && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                </div>
+              )
+            })}
           </div>
-          {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+          {dupIndexes.size > 0 && <p className="mt-3 text-xs text-red-500">Повторяющиеся серийники подсвечены</p>}
+          {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
           <div className="mt-5 flex justify-end gap-2">
-            <Button onClick={saveSerials} disabled={loading}>{loading ? "Сохранение..." : "Сохранить серийники"}</Button>
+            <Button onClick={saveSerials} disabled={loading || dupIndexes.size > 0}>{loading ? "Сохранение..." : "Сохранить серийники"}</Button>
           </div>
         </div>
       </div>
@@ -1440,6 +1465,18 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
   const canSave = !storeInvalid && !priceInvalid && !vatInvalid
   const [alerts, setAlerts] = useState<{product: string, reserved: number, orders: number[]}[]>([])
 
+  // ── Ввод серийников после приёмки (для категорий из учёта SN) ──
+  const [snCats, setSnCats] = useState<{ category: string, require_serial: boolean }[]>([])
+  const [snStep, setSnStep] = useState(false)
+  const [snSupplyId, setSnSupplyId] = useState<number | null>(null)
+  const [serials, setSerials] = useState<string[]>([])
+  const snInputs = useRef<(HTMLInputElement | null)[]>([])
+
+  useEffect(() => { api.snArchive.getCategories().then(d => setSnCats(d.categories || [])) }, [])
+
+  const snRule = snCats.find(c => c.category === selectedGroup?.category)
+  const needSerials = !!snRule
+
   useEffect(() => {
     if (!searchQ || searchQ.length < 2) { setSearchResults([]); return }
     let cancelled = false
@@ -1465,12 +1502,107 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
     })
     setLoading(false)
     if (data.error) { setError(data.error); return }
+    // Категория с учётом серийников → переходим к вводу SN (не закрываем).
+    if (needSerials && data.id && form.qty > 0) {
+      setSnSupplyId(data.id)
+      setSerials(Array.from({ length: form.qty }, () => ""))
+      setSnStep(true)
+      if (data.negative_alerts?.length) setAlerts(data.negative_alerts)
+      return
+    }
     if (data.negative_alerts?.length) {
       setAlerts(data.negative_alerts)
       return
     }
     onSaved()
     onClose()
+  }
+
+  // Дубли внутри текущего ввода (без учёта регистра/пробелов)
+  const dupIndexes = (() => {
+    const seen = new Map<string, number>()
+    const dup = new Set<number>()
+    serials.forEach((s, i) => {
+      const key = s.trim().toLowerCase()
+      if (!key) return
+      if (seen.has(key)) { dup.add(i); dup.add(seen.get(key)!) }
+      else seen.set(key, i)
+    })
+    return dup
+  })()
+
+  const saveSerials = async () => {
+    const clean = serials.map(s => s.trim())
+    if (snRule?.require_serial && clean.some(s => !s)) {
+      setError("Заполни все серийные номера")
+      return
+    }
+    if (dupIndexes.size) {
+      setError("Есть повторяющиеся серийники — исправь подсвеченные строки")
+      return
+    }
+    setLoading(true)
+    setError("")
+    const data = await api.snArchive.addSerials({ supply_id: snSupplyId!, serials: clean.filter(Boolean) })
+    setLoading(false)
+    if (data.error) { setError(data.error); return }
+    onSaved()
+    onClose()
+  }
+
+  if (snStep) {
+    const store = stores.find(s => s.id === form.store_id)
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Серийные номера</h2>
+            <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+          </div>
+          <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+            <p className="font-medium">{selectedGroup?.name}</p>
+            <p className="mt-0.5 text-xs text-foreground/50">
+              {serials.length} шт.
+              {store && <> · магазин <span className="font-medium text-foreground/70">[{store.code}] {store.name}</span></>}
+              {form.purchase_date && <> · принято {form.purchase_date.split("-").reverse().join(".")}</>}
+            </p>
+          </div>
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+            {serials.map((sn, i) => {
+              const isDup = dupIndexes.has(i)
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
+                  <Input
+                    ref={(el) => { snInputs.current[i] = el }}
+                    autoFocus={i === 0}
+                    value={sn}
+                    placeholder="S/N"
+                    className={isDup ? "border-red-500 ring-1 ring-red-500" : ""}
+                    onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
+                        else saveSerials()
+                      }
+                    }}
+                  />
+                  {isDup && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                </div>
+              )
+            })}
+          </div>
+          {dupIndexes.size > 0 && <p className="mt-3 text-xs text-red-500">Повторяющиеся серийники подсвечены</p>}
+          {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button onClick={saveSerials} disabled={loading || dupIndexes.size > 0}>
+              {loading ? "Сохранение..." : "Сохранить серийники"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (alerts.length) return (

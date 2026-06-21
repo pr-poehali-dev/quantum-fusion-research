@@ -173,6 +173,23 @@ def add_serials(cur, body):
     if not serials:
         return err("serials required")
 
+    # Дубли внутри переданного списка (без учёта регистра).
+    seen = set()
+    for s in serials:
+        k = s.lower()
+        if k in seen:
+            return err(f"Повтор серийника в списке: {s}")
+        seen.add(k)
+
+    # Дубли с уже существующими в реестре (защита от повторного ввода).
+    cur.execute(
+        f"SELECT serial FROM {SCHEMA}.sn_archive "
+        f"WHERE LOWER(serial) IN ({', '.join(esc(s.lower()) for s in serials)})"
+    )
+    existing = [r[0] for r in cur.fetchall()]
+    if existing:
+        return err("Серийники уже есть в реестре: " + ", ".join(existing))
+
     # Данные поставки: группа, товар, магазин, даты, категория.
     cur.execute(
         f"SELECT s.id, s.group_id, s.store_id, s.purchase_date, s.warranty_until, "
