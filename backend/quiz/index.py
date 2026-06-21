@@ -129,12 +129,15 @@ def handler(event: dict, context) -> dict:
                     _contact = "Telegram (тег не указан, искать по телефону)"
             else:
                 _contact = f"Связь: {_method}"
+            _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+            _link = f"\n🔗 <a href=\"{_base}/admin/quiz_requests\">Открыть заявки</a>" if _base else ""
             notify_managers(
                 f"🎯 <b>Новый лид из квиза</b>\n"
                 f"Имя: {body.get('name','—')}\n"
                 f"Телефон: {body.get('phone','—')}\n"
                 f"{_contact}"
                 f"{_budget}"
+                f"{_link}"
             )
         except Exception as _e:
             print(f"TG_NOTIFY quiz: {_e}")

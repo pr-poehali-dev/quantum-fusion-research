@@ -113,6 +113,13 @@ def handler(event: dict, context) -> dict:
                     elif _cval:
                         _contact_line = f"\nКонтакт: {_cval}"
                 _amount = f"{_ord_total:,.0f}".replace(",", " ")
+                _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                _link_line = ""
+                if _base:
+                    if body.get("order_type") == "pc_build":
+                        _link_line = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>"
+                    else:
+                        _link_line = f"\n🔗 <a href=\"{_base}/admin/order/{order_id}\">Открыть заказ</a>"
                 notify_managers(
                     f"🛒 <b>Новый заказ {display_number}</b>\n"
                     f"Тип: {_ord_type_label}\n"
@@ -120,6 +127,7 @@ def handler(event: dict, context) -> dict:
                     f"Телефон: {body.get('customer_phone','—')}"
                     f"{_contact_line}\n"
                     f"Сумма: {_amount} ₽"
+                    f"{_link_line}"
                 )
             except Exception as _e:
                 print(f"TG_NOTIFY order: {_e}")
@@ -217,11 +225,14 @@ def handler(event: dict, context) -> dict:
                     )
                     try:
                         from tg_notify import notify_managers as _notify
+                        _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                        _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
                         _notify(
                             f"✅ <b>Продажа из наличия {display_number}</b>\n"
                             f"Готовый ПК заказан с витрины.\n"
                             f"Клиент: {customer}\n"
                             f"Сборка #{build_id_stock} привязана к заказу — собирать заново не нужно."
+                            f"{_link}"
                         )
                     except Exception as _e:
                         print(f"TG_NOTIFY stock-sale: {_e}")

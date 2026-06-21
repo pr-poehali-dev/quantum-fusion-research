@@ -3,6 +3,19 @@
 
 ---
 
+## v3.90 | 2026-06-21 | Кликабельные ссылки в Telegram-уведомлениях
+
+### Backend
+- Новый секрет SITE_BASE_URL — базовый адрес сайта для ссылок в уведомлениях.
+- orders: «Новый заказ» — ссылка на /admin/wip_builds (ПК) или /admin/order/N (железо).
+- orders: «Продажа из наличия» — ссылка на /admin/wip_builds.
+- quiz: «Новый лид из квиза» — ссылка на /admin/quiz_requests.
+- schedule: «Забрать заказы сегодня» и «Задачи на сегодня» — ссылка на /admin/calendar.
+- reserves: «Задержка железа» — ссылка на /admin/wip_builds.
+- reserves/warehouse_core.mark_overdue_delays: номер заказа берётся из orders.display_number
+  (надёжный PC00001), название компонента подтягивается из pc_builds.components,
+  если колонка слота в wip_builds пустая — больше нет пустых «#—» и «—».
+
 ## v3.89 | 2026-06-21 | Добавление товара: обязательные поля
 
 ### Frontend (WarehouseTab — GroupModal)

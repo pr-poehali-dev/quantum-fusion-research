@@ -534,11 +534,14 @@ def handler(event: dict, context) -> dict:
                 # Уведомление в беседу задач
                 try:
                     from tg_notify import notify_tasks
+                    _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                    _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
                     notify_tasks(
                         f"⚠️ <b>Задержка железа</b>\n"
                         f"Заказ: #{ordn}\n"
                         f"Компонент: {d.get('component_name')} ({d.get('slot_label')})\n"
                         f"Ожидался: {d.get('eta_date') or '—'}"
+                        f"{_link}"
                     )
                 except Exception as _te:
                     print(f"DELAY notify: {_te}")

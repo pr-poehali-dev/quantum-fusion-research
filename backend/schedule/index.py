@@ -155,6 +155,8 @@ def handler(event: dict, context) -> dict:
                 return ", ".join([p for p in parts if p])
 
             sent = []
+            _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+            _cal_link = f"\n🔗 <a href=\"{_base}/admin/calendar\">Открыть календарь</a>" if _base else ""
 
             # 1) ЗАБОР ЗАКАЗОВ на сегодня (wip_component_eta по магазинам)
             cur.execute(
@@ -172,7 +174,7 @@ def handler(event: dict, context) -> dict:
                 lines = ["📦 <b>Забрать заказы сегодня</b>", ""]
                 for store, cnt in pickups:
                     lines.append(f"• {store} — {int(cnt)} заказ(ов)")
-                notify_managers("\n".join(lines))
+                notify_managers("\n".join(lines) + _cal_link)
                 sent.append("pickups")
 
             # 2) ЗАДАЧИ НА СЕГОДНЯ (calendar_events kind='task', не done) + ответственные
@@ -198,7 +200,7 @@ def handler(event: dict, context) -> dict:
                     if resp:
                         block += f"\nОтветственные: {resp}"
                     blocks.append(block)
-                notify_tasks("\n".join(blocks))
+                notify_tasks("\n".join(blocks) + _cal_link)
                 sent.append("tasks")
 
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": sent})}
