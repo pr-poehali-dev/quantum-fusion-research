@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { playScanOk, playScanError } from "@/lib/scanSound"
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -217,6 +218,28 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
   )
 }
 
+// ─── Звуковая проверка серийника при вводе (Enter) ────────────────────────────
+// Мгновенно: пустой/дубль → ошибка. Иначе спрашиваем архив (lookup):
+// уже принят (не в этой же поставке) → ошибка, новый → успех.
+async function checkSerialSound(
+  value: string,
+  index: number,
+  allSerials: string[],
+  ignoreSupplyId?: number | null,
+): Promise<boolean> {
+  const v = value.trim().toLowerCase()
+  if (!v) { playScanError(); return false }
+  // локальный дубль (то же значение в другой строке)
+  const localDup = allSerials.some((s, j) => j !== index && s.trim().toLowerCase() === v)
+  if (localDup) { playScanError(); return false }
+  const d = await api.snArchive.lookup(value.trim()).catch(() => ({ found: false }))
+  const isArchived = d.found && d.record &&
+    (ignoreSupplyId == null || d.record.supply_id !== ignoreSupplyId)
+  if (isArchived) { playScanError(); return false }
+  playScanOk()
+  return true
+}
+
 // ─── Проверка серийников по всему архиву (уже принятые) ───────────────────────
 // Возвращает мапу: индекс строки -> запись из sn_archive (магазин/товар), если
 // такой серийник уже есть в базе. Проверка идёт с задержкой (debounce).
@@ -390,6 +413,7 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
                     onKeyDown={e => {
                       if (e.key === "Enter") {
                         e.preventDefault()
+                        checkSerialSound(sn, i, serials, snSupplyId)
                         if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
                         else saveSerials()
                       }
@@ -630,6 +654,7 @@ function SupplySerialsModal({ supplyId, onClose, onSaved }: {
                           onKeyDown={e => {
                             if (e.key === "Enter") {
                               e.preventDefault()
+                              checkSerialSound(sn, i, serials, supplyId)
                               if (i < serials.length - 1) inputs.current[i + 1]?.focus()
                               else save()
                             }
@@ -1815,6 +1840,7 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
                       onKeyDown={e => {
                         if (e.key === "Enter") {
                           e.preventDefault()
+                          checkSerialSound(sn, i, serials, snSupplyId)
                           if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
                           else saveSerials()
                         }
