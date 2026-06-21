@@ -484,6 +484,12 @@ export default function Shop() {
                       </div>
                     </>
                   )}
+                  {/* Остальные товары — при выбранной категории или поиске показываем весь список */}
+                  {(activeCategory !== "all" || search) && rest.length > 0 && (
+                    <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${featured.length > 0 ? "mt-6" : ""}`}>
+                      {rest.map(renderCard)}
+                    </div>
+                  )}
                   {/* Б/У комплектующие — на главной без фильтра */}
                   {usedProducts.length > 0 && activeCategory === "all" && !search && !usedOnly && (
                     <div className={featured.length > 0 ? "mt-10" : ""}>
