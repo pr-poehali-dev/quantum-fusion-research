@@ -123,6 +123,7 @@ export default function Quiz() {
   const [step, setStep] = useState(0)
   const [resumeAvailable, setResumeAvailable] = useState(false)
   const [restored, setRestored] = useState(false)
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const loadedRef = useRef(false)
 
   useEffect(() => {
@@ -343,7 +344,7 @@ export default function Quiz() {
                               <button key={o.label} type="button" onClick={() => toggle(o.label, active)} style={{ cursor: "pointer" }}
                                 className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${active ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary"}`}>
                                 {o.image_url ? (
-                                  <img src={o.image_url} alt={o.label} className="h-40 w-full bg-muted object-contain sm:h-48" />
+                                  <img src={o.image_url} alt={o.label} onDoubleClick={(e) => { e.stopPropagation(); setLightbox(o.image_url!) }} className="h-40 w-full bg-muted object-contain sm:h-48" title="Двойной клик — открыть фото" />
                                 ) : (
                                   <div className="flex h-32 w-full items-center justify-center bg-muted sm:h-36">
                                     <Icon name="Image" size={28} className="text-foreground/20" />
@@ -377,7 +378,7 @@ export default function Quiz() {
                               {active && <Icon name="Check" size={13} />}
                             </span>
                             {o.image_url && o.image_url.trim() && (
-                              <img src={o.image_url} alt={o.label} className="h-10 w-10 shrink-0 rounded-md object-cover" />
+                              <img src={o.image_url} alt={o.label} onDoubleClick={(e) => { e.stopPropagation(); setLightbox(o.image_url!) }} className="h-10 w-10 shrink-0 rounded-md object-cover" title="Двойной клик — открыть фото" />
                             )}
                             {o.label}
                           </button>
@@ -422,6 +423,18 @@ export default function Quiz() {
           </>
         )}
       </div>
+
+      {lightbox && (
+        <div onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
+          <button onClick={() => setLightbox(null)} aria-label="Закрыть"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
+            <Icon name="X" size={22} />
+          </button>
+          <img src={lightbox} alt="" onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain" />
+        </div>
+      )}
     </div>
   )
 }
