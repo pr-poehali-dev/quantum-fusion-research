@@ -109,13 +109,10 @@ def get_summary(cur):
     fin_expense = num(r[1])
     fin_collection = num(r[2])
 
-    # В кассу добавляем выручку выданных заказов (нал) минус себестоимость не нужна — это деньги
-    cur.execute(
-        f"SELECT COALESCE(SUM(total), 0) FROM {SCHEMA}.orders WHERE status='done'"
-    )
-    sales_cash = num(cur.fetchone()[0])
-
-    cash = sales_cash + fin_income - fin_expense - fin_collection
+    # Касса = только фактические движения денег из finance_transactions.
+    # Оплаты заказов (предоплата + остаток) уже лежат тут как income,
+    # поэтому orders.total НЕ добавляем — иначе выручка считается дважды.
+    cash = fin_income - fin_expense - fin_collection
 
     # Авто-расходы на закупку товара (приход на склад) — выделяем отдельно
     cur.execute(
@@ -139,7 +136,6 @@ def get_summary(cur):
             "income": round(fin_income, 2),
             "expense": round(fin_expense, 2),
             "collection": round(fin_collection, 2),
-            "sales_cash": round(sales_cash, 2),
         },
         "office": {
             "balance": office_balance,

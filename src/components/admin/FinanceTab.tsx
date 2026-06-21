@@ -13,7 +13,7 @@ interface Summary {
   margin_pc: MarginBlock
   margin_parts: MarginBlock
   cash: number
-  fin: { income: number; expense: number; collection: number; sales_cash: number }
+  fin: { income: number; expense: number; collection: number }
   office?: { balance: number; income: number; expense: number; supply_expense: number; other_expense: number; transferred: number }
 }
 interface LogItem {
