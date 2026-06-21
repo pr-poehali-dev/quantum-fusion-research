@@ -596,8 +596,26 @@ def handler(event: dict, context) -> dict:
                             (json.dumps(items), order_id))
 
             elif action == "set_price":
-                # Изменить финальную цену позиции
-                items[item_idx]["final_price"] = float(body["price"])
+                new_price = float(body["price"])
+                # НДС-сборки: цену можно только повышать (скидка запрещена).
+                # Узнаём sell_with_vat сборки этого заказа.
+                cur.execute(
+                    "SELECT pb.sell_with_vat FROM pc_builds pb "
+                    "JOIN wip_builds wb ON wb.build_id = pb.id "
+                    "WHERE wb.order_id = %s LIMIT 1",
+                    (order_id,),
+                )
+                vat_row = cur.fetchone()
+                is_vat = bool(vat_row[0]) if vat_row else False
+                cur_price = items[item_idx].get("final_price")
+                if cur_price is None:
+                    cur_price = items[item_idx].get("price", 0)
+                if is_vat and new_price < float(cur_price):
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                        "error": "vat_no_discount",
+                        "message": "Товар с НДС: цену можно только повысить, скидка недоступна.",
+                    })}
+                items[item_idx]["final_price"] = new_price
                 # Пересчитать total
                 total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
                             for it in items)

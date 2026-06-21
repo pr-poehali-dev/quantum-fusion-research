@@ -31,9 +31,13 @@ interface Build {
   in_stock: boolean
   parent_id: number | null
   client_token: string | null
+  sell_with_vat?: boolean
   tags?: BuildTag[]
   variantsCount?: number
 }
+
+// Продажа с НДС: +22% и округление вверх до 250 ₽ (единая формула проекта)
+const withVat = (base: number, vat?: boolean) => vat ? Math.ceil(base * 1.22 / 250) * 250 : base
 
 const TAG_COLOR_MAP: Record<string, string> = {
   primary: "border-primary/40 bg-primary/15 text-primary",
@@ -57,7 +61,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
   const gpu = b.components.find(c => c.slot === "gpu")
   // Считаем цену из компонентов (поле total_price в БД может быть устаревшим)
   const calcPartsTotal = b.components.reduce((s, c) => s + (c.price || 0), 0)
-  const calcTotal = calcPartsTotal + (b.assembly_fee || 0)
+  const calcTotal = withVat(calcPartsTotal + (b.assembly_fee || 0), b.sell_with_vat)
   const tags = b.tags || []
   const previewTags = tags.slice(0, 2)
 

@@ -165,7 +165,7 @@ export default function OrderProcessPage() {
     setSaving(`${action}-${itemIdx}`)
     const res = await api.orders.updateItem({ id: Number(id), action, item_idx: itemIdx, ...extra })
     setSaving(null)
-    if (res.error) { alert(res.error); return res }
+    if (res.error) { alert(res.message || res.error); return res }
     if (res.ok) {
       // set_serial не перезагружает — просто обновляем локально
       if (action === "set_serial") {

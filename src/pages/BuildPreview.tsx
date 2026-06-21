@@ -52,8 +52,12 @@ interface Build {
   assembly_type: string; image_urls: string[]
   is_featured?: boolean; status?: string
   client_token?: string | null; client_user_id?: number | null; parent_id?: number | null
+  sell_with_vat?: boolean
   tags?: BuildTag[]
 }
+
+// Продажа с НДС: +22% и округление вверх до 250 ₽ (единая формула проекта)
+const withVat = (base: number, vat?: boolean) => vat ? Math.ceil(base * 1.22 / 250) * 250 : base
 
 const DELIVERY_DESCRIPTIONS: Record<string, { title: string; desc: string }> = {
   "Самовывоз Беляево":    { title: "Самовывоз · Беляево", desc: "м. Беляево, Профсоюзная ул. Уточним адрес при подтверждении." },
@@ -212,7 +216,8 @@ export default function BuildPreview() {
   // Для витринных сборок current_price = актуальная цена каталога.
   const calcPartsTotal = components.reduce((s, c) => s + ((c.current_price ?? c.price) || 0) * (c.qty || 1), 0)
   const calcAssemblyFee = build?.assembly_fee || 0
-  const calcTotalPrice = calcPartsTotal + calcAssemblyFee
+  // Для НДС-сборок применяем +22% с округлением до 250 ₽ (как в админке)
+  const calcTotalPrice = withVat(calcPartsTotal + calcAssemblyFee, build?.sell_with_vat)
   const totalSections = components.length + 2
 
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([])
