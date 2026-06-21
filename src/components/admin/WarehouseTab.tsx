@@ -217,6 +217,48 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
   )
 }
 
+// ─── Проверка серийников по всему архиву (уже принятые) ───────────────────────
+// Возвращает мапу: индекс строки -> запись из sn_archive (магазин/товар), если
+// такой серийник уже есть в базе. Проверка идёт с задержкой (debounce).
+type RemoteHit = { serial: string; store_code: string | null; store_name: string | null; product_name: string | null; purchase_date: string | null }
+
+function useArchivedSerialCheck(serials: string[], ignoreSupplyId?: number | null) {
+  const [hits, setHits] = useState<Record<number, RemoteHit>>({})
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const result: Record<number, RemoteHit> = {}
+      // Уникальные непустые значения → один запрос на значение
+      const checked = new Map<string, RemoteHit | null>()
+      await Promise.all(serials.map(async (s, i) => {
+        const key = s.trim()
+        if (!key) return
+        if (!checked.has(key.toLowerCase())) {
+          const d = await api.snArchive.lookup(key).catch(() => ({ found: false }))
+          // Игнорируем совпадение с серийниками этой же поставки (дозаполнение)
+          const rec = d.found && d.record &&
+            (ignoreSupplyId == null || d.record.supply_id !== ignoreSupplyId)
+            ? {
+                serial: d.record.serial,
+                store_code: d.record.store_code ?? null,
+                store_name: d.record.store_name ?? null,
+                product_name: d.record.product_name ?? null,
+                purchase_date: d.record.purchase_date ?? null,
+              } as RemoteHit
+            : null
+          checked.set(key.toLowerCase(), rec)
+        }
+        const hit = checked.get(key.toLowerCase())
+        if (hit) result[i] = hit
+      }))
+      setHits(result)
+    }, 500)
+    return () => clearTimeout(t)
+  }, [serials, ignoreSupplyId])
+
+  return hits
+}
+
 // ─── Модалка поставки ─────────────────────────────────────────────────────────
 
 function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
@@ -290,6 +332,8 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
     return dup
   })()
 
+  const archivedHits = useArchivedSerialCheck(serials, snSupplyId)
+
   const saveSerials = async () => {
     const clean = serials.map(s => s.trim())
     if (snRule?.require_serial && clean.some(s => !s)) {
@@ -298,6 +342,10 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
     }
     if (dupIndexes.size) {
       setError("Есть повторяющиеся серийники — исправь подсвеченные строки")
+      return
+    }
+    if (Object.keys(archivedHits).length) {
+      setError("Некоторые серийники уже приняты ранее — исправь подсвеченные строки")
       return
     }
     setLoading(true)
@@ -326,15 +374,18 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
           <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
             {serials.map((sn, i) => {
               const isDup = dupIndexes.has(i)
+              const hit = archivedHits[i]
+              const bad = isDup || !!hit
               return (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i}>
+                  <div className="flex items-center gap-2">
                   <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
                   <Input
                     ref={(el) => { snInputs.current[i] = el }}
                     autoFocus={i === 0}
                     value={sn}
                     placeholder="S/N"
-                    className={isDup ? "border-red-500 ring-1 ring-red-500" : ""}
+                    className={bad ? "border-red-500 ring-1 ring-red-500" : ""}
                     onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
                     onKeyDown={e => {
                       if (e.key === "Enter") {
@@ -344,7 +395,14 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
                       }
                     }}
                   />
-                  {isDup && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                  {bad && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                  </div>
+                  {hit && (
+                    <p className="ml-8 mt-0.5 text-[11px] text-red-500">
+                      Уже принят{hit.store_name ? ` в [${hit.store_code}] ${hit.store_name}` : ""}
+                      {hit.purchase_date ? ` (${hit.purchase_date.substring(0, 10).split("-").reverse().join(".")})` : ""}
+                    </p>
+                  )}
                 </div>
               )
             })}
@@ -352,7 +410,7 @@ function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
           {dupIndexes.size > 0 && <p className="mt-3 text-xs text-red-500">Повторяющиеся серийники подсвечены</p>}
           {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
           <div className="mt-5 flex justify-end gap-2">
-            <Button onClick={saveSerials} disabled={loading || dupIndexes.size > 0}>{loading ? "Сохранение..." : "Сохранить серийники"}</Button>
+            <Button onClick={saveSerials} disabled={loading || dupIndexes.size > 0 || Object.keys(archivedHits).length > 0}>{loading ? "Сохранение..." : "Сохранить серийники"}</Button>
           </div>
         </div>
       </div>
@@ -504,10 +562,14 @@ function SupplySerialsModal({ supplyId, onClose, onSaved }: {
     return dup
   })()
 
+  // Серийники, уже принятые ранее (по всему архиву). Свою поставку игнорируем.
+  const archivedHits = useArchivedSerialCheck(serials, supplyId)
+
   const save = async () => {
     const clean = serials.map(s => s.trim()).filter(Boolean)
     if (!clean.length) { setError("Введите хотя бы один серийник"); return }
     if (dupIndexes.size) { setError("Есть повторяющиеся серийники"); return }
+    if (Object.keys(archivedHits).length) { setError("Некоторые серийники уже приняты ранее"); return }
     setLoading(true)
     setError("")
     const data = await api.snArchive.addSerials({ supply_id: supplyId, serials: clean })
@@ -552,25 +614,35 @@ function SupplySerialsModal({ supplyId, onClose, onSaved }: {
               <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
                 {serials.map((sn, i) => {
                   const isDup = dupIndexes.has(i)
+                  const hit = archivedHits[i]
+                  const bad = isDup || !!hit
                   return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{info.existing.length + i + 1}.</span>
-                      <Input
-                        ref={(el) => { inputs.current[i] = el }}
-                        autoFocus={i === 0}
-                        value={sn}
-                        placeholder="S/N"
-                        className={isDup ? "border-red-500 ring-1 ring-red-500" : ""}
-                        onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            if (i < serials.length - 1) inputs.current[i + 1]?.focus()
-                            else save()
-                          }
-                        }}
-                      />
-                      {isDup && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                    <div key={i}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{info.existing.length + i + 1}.</span>
+                        <Input
+                          ref={(el) => { inputs.current[i] = el }}
+                          autoFocus={i === 0}
+                          value={sn}
+                          placeholder="S/N"
+                          className={bad ? "border-red-500 ring-1 ring-red-500" : ""}
+                          onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              if (i < serials.length - 1) inputs.current[i + 1]?.focus()
+                              else save()
+                            }
+                          }}
+                        />
+                        {bad && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                      </div>
+                      {hit && (
+                        <p className="ml-8 mt-0.5 text-[11px] text-red-500">
+                          Уже принят{hit.store_name ? ` в [${hit.store_code}] ${hit.store_name}` : ""}
+                          {hit.purchase_date ? ` (${hit.purchase_date.substring(0, 10).split("-").reverse().join(".")})` : ""}
+                        </p>
+                      )}
                     </div>
                   )
                 })}
@@ -581,7 +653,7 @@ function SupplySerialsModal({ supplyId, onClose, onSaved }: {
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
         {info && serials.length > 0 && (
           <div className="mt-5 flex justify-end gap-2">
-            <Button onClick={save} disabled={loading || dupIndexes.size > 0}>
+            <Button onClick={save} disabled={loading || dupIndexes.size > 0 || Object.keys(archivedHits).length > 0}>
               {loading ? "Сохранение..." : "Сохранить серийники"}
             </Button>
           </div>
@@ -1681,6 +1753,9 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
     return dup
   })()
 
+  // Серийники, уже принятые ранее (по всему архиву) — с указанием магазина
+  const archivedHits = useArchivedSerialCheck(serials, snSupplyId)
+
   const saveSerials = async () => {
     const clean = serials.map(s => s.trim())
     if (snRule?.require_serial && clean.some(s => !s)) {
@@ -1689,6 +1764,10 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
     }
     if (dupIndexes.size) {
       setError("Есть повторяющиеся серийники — исправь подсвеченные строки")
+      return
+    }
+    if (Object.keys(archivedHits).length) {
+      setError("Некоторые серийники уже приняты ранее — исправь подсвеченные строки")
       return
     }
     setLoading(true)
@@ -1720,25 +1799,35 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
           <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
             {serials.map((sn, i) => {
               const isDup = dupIndexes.has(i)
+              const hit = archivedHits[i]
+              const bad = isDup || !!hit
               return (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
-                  <Input
-                    ref={(el) => { snInputs.current[i] = el }}
-                    autoFocus={i === 0}
-                    value={sn}
-                    placeholder="S/N"
-                    className={isDup ? "border-red-500 ring-1 ring-red-500" : ""}
-                    onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
-                    onKeyDown={e => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
-                        else saveSerials()
-                      }
-                    }}
-                  />
-                  {isDup && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                <div key={i}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
+                    <Input
+                      ref={(el) => { snInputs.current[i] = el }}
+                      autoFocus={i === 0}
+                      value={sn}
+                      placeholder="S/N"
+                      className={bad ? "border-red-500 ring-1 ring-red-500" : ""}
+                      onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
+                          else saveSerials()
+                        }
+                      }}
+                    />
+                    {bad && <Icon name="TriangleAlert" size={15} className="shrink-0 text-red-500" />}
+                  </div>
+                  {hit && (
+                    <p className="ml-8 mt-0.5 text-[11px] text-red-500">
+                      Уже принят{hit.store_name ? ` в [${hit.store_code}] ${hit.store_name}` : ""}
+                      {hit.purchase_date ? ` (${hit.purchase_date.substring(0, 10).split("-").reverse().join(".")})` : ""}
+                    </p>
+                  )}
                 </div>
               )
             })}
@@ -1746,7 +1835,7 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
           {dupIndexes.size > 0 && <p className="mt-3 text-xs text-red-500">Повторяющиеся серийники подсвечены</p>}
           {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
           <div className="mt-5 flex justify-end gap-2">
-            <Button onClick={saveSerials} disabled={loading || dupIndexes.size > 0}>
+            <Button onClick={saveSerials} disabled={loading || dupIndexes.size > 0 || Object.keys(archivedHits).length > 0}>
               {loading ? "Сохранение..." : "Сохранить серийники"}
             </Button>
           </div>

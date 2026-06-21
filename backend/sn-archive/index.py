@@ -152,10 +152,10 @@ def lookup(cur, params):
     cur.execute(
         f"SELECT a.id, a.serial, a.category, a.product_name, a.store_id, "
         f"st.name AS store_name, st.code AS store_code, a.purchase_date, "
-        f"a.warranty_until, a.status, a.order_id "
+        f"a.warranty_until, a.status, a.order_id, a.supply_id "
         f"FROM {SCHEMA}.sn_archive a "
         f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = a.store_id "
-        f"WHERE a.serial = {esc(serial)} ORDER BY a.id DESC LIMIT 1"
+        f"WHERE LOWER(a.serial) = LOWER({esc(serial)}) ORDER BY a.id DESC LIMIT 1"
     )
     row = cur.fetchone()
     if not row:
