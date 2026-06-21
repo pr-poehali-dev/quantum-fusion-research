@@ -140,6 +140,21 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": code, "headers": cors, "body": json.dumps({"error": msg})}
 
     try:
+        # ── Разовая чистка: удалить ВСЕ авто-события «Задержка» из календаря ──────
+        # Они захламляли календарь и размножались автопереносом задач.
+        if action == "cleanup_delay_events":
+            cur.execute(
+                f"DELETE FROM {SCHEMA}.calendar_event_employees WHERE event_id IN "
+                f"(SELECT id FROM {SCHEMA}.calendar_events WHERE title LIKE '⚠️ Задержка%')"
+            )
+            cur.execute(
+                f"DELETE FROM {SCHEMA}.calendar_events WHERE title LIKE '⚠️ Задержка%'"
+            )
+            deleted = cur.rowcount
+            conn.commit()
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"ok": True, "deleted": deleted})}
+
         # ── Утренний автопинг (11:00) — вызывается планировщиком ──────────────────
         # Доступ по admin-паролю панели (ak) ИЛИ по сессии админа.
         if action == "morning_ping":

@@ -652,26 +652,10 @@ def handler(event: dict, context) -> dict:
             # частое действие (автообновление фронта), отправка отсюда давала
             # лавину дублей при сетевых таймаутах TG. Пинги о задержке шлёт
             # отдельный крон (action=notify_delays), строго 1 раз на событие.
-            newly_delayed = core.mark_overdue_delays(cur)
-            if newly_delayed:
-                for d in newly_delayed:
-                    ordn = d.get("order_number") or (str(d.get("order_id")) if d.get("order_id") else "—")
-                    title = f"⚠️ Задержка: {d.get('slot_label')} (заказ #{ordn})"
-                    descr = (
-                        f"Компонент: {d.get('component_name')}\n"
-                        f"Слот: {d.get('slot_label')}\n"
-                        f"Заказ: #{ordn}\n"
-                        f"Ожидался: {d.get('eta_date') or '—'}"
-                    )
-                    try:
-                        cur.execute(
-                            f"INSERT INTO {SCHEMA}.calendar_events "
-                            f"(event_date, title, description, kind, status, origin_date) "
-                            f"VALUES (CURRENT_DATE, %s, %s, 'task', 'new', CURRENT_DATE)",
-                            (title, descr),
-                        )
-                    except Exception as _ce:
-                        print(f"DELAY calendar: {_ce}")
+            # Помечаем задержки в статусах (для UI сборок) и коммитим.
+            # В КАЛЕНДАРЬ задержки больше НЕ пишем — они захламляли его и
+            # размножались автопереносом задач. Задержка видна на странице сборок.
+            if core.mark_overdue_delays(cur):
                 conn.commit()
             cur.execute(
                 f"""
