@@ -589,8 +589,15 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         if action == "group_archive" and method == "PUT":
-            gid = body.get("id")
+            gid = int(body.get("id"))
             cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET is_archived = TRUE, updated_at = NOW() WHERE id = {gid}")
+            # Архивируем и подвязанную карточку товара (по обеим связям),
+            # чтобы товар пропал из каталога, конфигуратора и совместимости.
+            cur.execute(f"UPDATE {SCHEMA}.products SET is_archived = TRUE WHERE warehouse_group_id = {gid}")
+            cur.execute(
+                f"UPDATE {SCHEMA}.products SET is_archived = TRUE WHERE id IN "
+                f"(SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid} AND product_id IS NOT NULL)"
+            )
             log_movement(cur, gid, None, None, None, "group_archived", 0, note="Группа архивирована")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
@@ -598,6 +605,12 @@ def handler(event: dict, context) -> dict:
         if action == "group_unarchive" and method == "PUT":
             gid = int(body.get("id"))
             cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET is_archived = FALSE, updated_at = NOW() WHERE id = {gid}")
+            # Возвращаем из архива и подвязанную карточку товара
+            cur.execute(f"UPDATE {SCHEMA}.products SET is_archived = FALSE WHERE warehouse_group_id = {gid}")
+            cur.execute(
+                f"UPDATE {SCHEMA}.products SET is_archived = FALSE WHERE id IN "
+                f"(SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid} AND product_id IS NOT NULL)"
+            )
             log_movement(cur, gid, None, None, None, "group_unarchived", 0, note="Группа восстановлена из архива")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
@@ -1807,7 +1820,8 @@ def handler(event: dict, context) -> dict:
                 f"FROM {SCHEMA}.products p "
                 f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
                 f"LEFT JOIN {SCHEMA}.spec_categories sc ON sc.product_category_slug = c.slug "
-                f"WHERE p.is_archived = FALSE "
+                f"LEFT JOIN {SCHEMA}.warehouse_groups wg ON wg.id = p.warehouse_group_id "
+                f"WHERE p.is_archived = FALSE AND COALESCE(wg.is_archived, FALSE) = FALSE "
                 f"ORDER BY c.sort_order, p.name"
             )
             prods = cur.fetchall()
@@ -1873,7 +1887,9 @@ def handler(event: dict, context) -> dict:
                 f"FROM {SCHEMA}.products p "
                 f"JOIN {SCHEMA}.categories c ON c.id = p.category_id "
                 f"JOIN {SCHEMA}.spec_categories sc ON sc.product_category_slug = c.slug "
+                f"LEFT JOIN {SCHEMA}.warehouse_groups wg ON wg.id = p.warehouse_group_id "
                 f"WHERE sc.id = {spec_cat_id} AND p.is_archived = FALSE "
+                f"AND COALESCE(wg.is_archived, FALSE) = FALSE "
                 f"ORDER BY p.in_stock DESC NULLS LAST, p.sort_order NULLS LAST, p.name"
             )
             prod_rows = cur.fetchall()
