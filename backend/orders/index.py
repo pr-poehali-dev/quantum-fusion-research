@@ -1339,6 +1339,14 @@ def handler(event: dict, context) -> dict:
                     f"updated_at=NOW() WHERE order_id=%s",
                     (order_id,)
                 )
+                # Снимаем каталожную сборку с витрины: комп выдан, продавать нечего.
+                # (writeoff_order идёт в обход PATCH wip-builds, где архивация уже есть.)
+                cur.execute(
+                    f"UPDATE {schema}.pc_builds SET status='archive', in_stock=FALSE "
+                    f"WHERE id IN (SELECT build_id FROM {schema}.wip_builds "
+                    f"WHERE order_id=%s AND build_id IS NOT NULL)",
+                    (order_id,)
+                )
                 conn.commit()
                 return {"statusCode": 200, "headers": cors,
                         "body": json.dumps({"ok": True, "wrote_off": wrote_off, "items": items})}
