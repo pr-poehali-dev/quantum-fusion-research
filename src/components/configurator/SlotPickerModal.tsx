@@ -230,6 +230,22 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
 
   const hasSelection = Object.keys(selectedSpec).length > 0
 
+  // Главные характеристики товара (влияющие на совместимость, заполненные) —
+  // показываем серым под названием: «Сокет: AM5», «TDP макс: 300 Вт» и т.д.
+  const keySpecs = (p: SlotProduct): string[] => {
+    return attributes
+      .filter(a => a.affects_compat)
+      .map(a => {
+        const v = p.values[String(a.id)]
+        if (v === undefined || v === null) return null
+        const text = Array.isArray(v) ? v.join(", ") : String(v)
+        if (!text.trim()) return null
+        return `${a.name}: ${text}${a.unit ? ` ${a.unit}` : ""}`
+      })
+      .filter((x): x is string => !!x)
+      .slice(0, 4)
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4" onClick={onClose}>
       <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-background" onClick={e => e.stopPropagation()}>
@@ -351,7 +367,14 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground line-clamp-2">{p.name}</p>
-                      <div className="mt-1 flex items-center gap-2">
+                      {keySpecs(p).length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {keySpecs(p).map((s, i) => (
+                            <p key={i} className="text-xs leading-tight text-foreground/45">{s}</p>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-1.5 flex items-center gap-2">
                         {p.in_stock
                           ? <span className="text-xs text-green-500">В наличии</span>
                           : <span className="text-xs text-foreground/40">Под заказ</span>}
