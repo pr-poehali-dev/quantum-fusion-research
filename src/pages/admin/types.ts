@@ -170,6 +170,7 @@ export interface Product {
   price: number
   old_price: number | null
   in_stock: boolean
+  stock_qty?: number
   category: { name: string } | null
   description: string
   specs: Record<string, string>

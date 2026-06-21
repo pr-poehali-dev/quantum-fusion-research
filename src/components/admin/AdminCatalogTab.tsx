@@ -108,11 +108,6 @@ export function AdminCatalogTab({
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
 
-  const toggleStock = async (p: Product) => {
-    const newQty = p.in_stock ? 0 : 1
-    await api.products.patch({ id: p.id, stock_qty: newQty })
-    setProducts(ps => ps.map(pp => pp.id === p.id ? { ...pp, in_stock: newQty > 0 } : pp))
-  }
   const deleteProduct = async (id: number) => {
     if (!confirm("Архивировать товар? Он скроется из каталога, но данные сохранятся.")) return
     await api.products.delete(id)
@@ -145,7 +140,7 @@ export function AdminCatalogTab({
       price: Number(productForm.price), old_price: productForm.old_price ? Number(productForm.old_price) : null,
       warranty_months: Number(productForm.warranty_months) || 0,
       image_url: productForm.image_urls[0] || null, image_urls: productForm.image_urls, specs,
-      in_stock: productForm.in_stock, is_featured: productForm.is_featured, is_used: productForm.is_used,
+      is_featured: productForm.is_featured, is_used: productForm.is_used,
       sort_order: Number(productForm.sort_order),
     }
     if (productForm.id) await api.products.update(payload)
@@ -483,7 +478,7 @@ export function AdminCatalogTab({
                   <th className="px-4 py-3 text-left text-xs font-semibold text-foreground/50">Товар</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-foreground/50">Категория</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-foreground/50">Цена</th>
-                  {!showArchived && <th className="px-4 py-3 text-center text-xs font-semibold text-foreground/50">Остаток</th>}
+                  {!showArchived && <th className="px-4 py-3 text-center text-xs font-semibold text-foreground/50">На складе</th>}
                   <th className="px-4 py-3" />
                   <th className="px-4 py-3 text-center w-12">
                     <input type="checkbox" checked={allSelected} onChange={() => toggleSelectAll(rowIds)} className="h-4 w-4 cursor-pointer accent-primary" />
@@ -509,9 +504,15 @@ export function AdminCatalogTab({
                     </td>
                     {!showArchived && (
                       <td className="px-4 py-3 text-center">
-                        <button onClick={() => toggleStock(p)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${p.in_stock ? "bg-green-400/10 text-green-400 hover:bg-green-400/20" : "bg-red-400/10 text-red-400 hover:bg-red-400/20"}`} style={{ cursor: "pointer" }}>
-                          {p.in_stock ? "В наличии" : "Нет"}
-                        </button>
+                        {(p.stock_qty ?? 0) > 0 ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-400/10 px-3 py-1 text-xs font-medium text-green-400">
+                            {p.stock_qty} шт.
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-red-400/10 px-3 py-1 text-xs font-medium text-red-400">
+                            Нет в наличии
+                          </span>
+                        )}
                       </td>
                     )}
                     <td className="px-4 py-3">
@@ -594,9 +595,6 @@ export function AdminCatalogTab({
             className="w-full rounded-lg border border-border bg-card px-3 py-2.5 font-mono text-xs text-foreground focus:border-primary focus:outline-none resize-none" placeholder='{"vram":"16GB"}' style={{ cursor: "text" }} />
         </div>
         <div className="flex flex-wrap gap-6">
-          <label className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
-            <input type="checkbox" checked={productForm.in_stock} onChange={e => setProductForm(f => ({ ...f, in_stock: e.target.checked }))} className="rounded" />В наличии
-          </label>
           <label className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
             <input type="checkbox" checked={productForm.is_featured} onChange={e => setProductForm(f => ({ ...f, is_featured: e.target.checked }))} className="rounded" />Рекомендуем
           </label>
