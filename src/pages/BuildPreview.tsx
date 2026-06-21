@@ -301,7 +301,9 @@ export default function BuildPreview() {
 
   const orderBuild = () => {
     if (!build) return
-    addItem({ id: build.id, name: build.name, price: build.total_price, type: "config" })
+    // Цена считается из компонентов: поля parts_total/total_price в БД
+    // могут быть устаревшими (0), поэтому используем актуальный расчёт.
+    addItem({ id: build.id, name: build.name, price: calcTotalPrice, type: "config" })
     navigate("/cart")
   }
 
@@ -371,7 +373,7 @@ export default function BuildPreview() {
           )}
           <button onClick={orderBuild} style={{ cursor: "pointer" }}
             className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-            <span className="hidden sm:inline">Заказать — </span>{fmt(build.total_price)}
+            <span className="hidden sm:inline">Заказать — </span>{fmt(calcTotalPrice)}
           </button>
         </div>
       </header>
@@ -574,17 +576,17 @@ export default function BuildPreview() {
                 <div className="mb-6 w-full max-w-lg flex items-center justify-center gap-4 sm:gap-8 rounded-2xl border border-border bg-card px-4 sm:px-10 py-4 sm:py-6">
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground mb-0.5">Железо</p>
-                    <p className="text-base sm:text-xl font-semibold text-foreground">{fmt(build.parts_total)}</p>
+                    <p className="text-base sm:text-xl font-semibold text-foreground">{fmt(calcPartsTotal)}</p>
                   </div>
                   <div className="h-8 w-px bg-border" />
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground mb-0.5">Сборка</p>
-                    <p className="text-base sm:text-xl font-semibold text-foreground">{fmt(build.assembly_fee)}</p>
+                    <p className="text-base sm:text-xl font-semibold text-foreground">{fmt(calcAssemblyFee)}</p>
                   </div>
                   <div className="h-8 w-px bg-border" />
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground mb-0.5">Итого</p>
-                    <p className="text-xl sm:text-2xl font-bold text-primary">{fmt(build.total_price)}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{fmt(calcTotalPrice)}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
