@@ -106,23 +106,7 @@ export default function ScheduleTab() {
     setSchedules(prev => prev.filter(s => !(s.work_date === date && s.employee_id === empId)))
   }
 
-  const [pinging, setPinging] = useState(false)
-  const sendMorningPing = async () => {
-    setPinging(true)
-    try {
-      const d = await call("action=morning_ping", { method: "POST", body: "{}" })
-      const sent: string[] = d?.sent || []
-      if (sent.length === 0) {
-        alert("На сегодня нет задач и заказов к забору — отправлять нечего.")
-      } else {
-        const map: Record<string, string> = { pickups: "Забор заказов", tasks: "Задачи на сегодня" }
-        alert("Сводка отправлена в Telegram: " + sent.map(s => map[s] || s).join(", "))
-      }
-    } catch {
-      alert("Не удалось отправить сводку. Проверь, что бот подключён.")
-    }
-    setPinging(false)
-  }
+  // Кнопка «Отправить сводку сейчас» перенесена на вкладку «Календарь».
 
   const saveEmployee = async () => {
     if (!empModal) return
@@ -198,12 +182,6 @@ export default function ScheduleTab() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-foreground">График работ</h2>
         <div className="flex items-center gap-2">
-          <button onClick={sendMorningPing} disabled={pinging}
-            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/80 hover:border-primary disabled:opacity-50"
-            style={{ cursor: "pointer" }}
-            title="Отправить менеджерам сводку задач и заборов на сегодня в Telegram">
-            <Icon name="Send" size={15} /> {pinging ? "Отправка..." : "Отправить сводку сейчас"}
-          </button>
           <button onClick={() => setEmpModal({ name: "", color: PALETTE[0], is_active: true })}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             style={{ cursor: "pointer" }}>

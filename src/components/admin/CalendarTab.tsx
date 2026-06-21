@@ -65,6 +65,24 @@ export default function CalendarTab() {
     return res.json()
   }, [sessionId])
 
+  const [pinging, setPinging] = useState(false)
+  const sendMorningPing = async () => {
+    setPinging(true)
+    try {
+      const d = await call("action=morning_ping", { method: "POST", body: "{}" })
+      const sent: string[] = d?.sent || []
+      if (sent.length === 0) {
+        alert("На сегодня нет задач и заказов к забору — отправлять нечего.")
+      } else {
+        const map: Record<string, string> = { pickups: "Забор заказов", tasks: "Задачи на сегодня" }
+        alert("Сводка отправлена в Telegram: " + sent.map(s => map[s] || s).join(", "))
+      }
+    } catch {
+      alert("Не удалось отправить сводку. Проверь, что бот подключён.")
+    }
+    setPinging(false)
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     const [d, e] = await Promise.all([
@@ -145,8 +163,16 @@ export default function CalendarTab() {
   return (
     <div>
       {/* Шапка с навигацией по месяцам */}
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-xl font-light text-foreground">Календарь событий</h2>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-light text-foreground">Календарь событий</h2>
+          <button onClick={sendMorningPing} disabled={pinging}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground/80 hover:border-primary disabled:opacity-50"
+            style={{ cursor: "pointer" }}
+            title="Отправить менеджерам сводку задач и заборов на сегодня в Telegram">
+            <Icon name="Send" size={15} /> {pinging ? "Отправка..." : "Отправить сводку сейчас"}
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={prevMonth} className="rounded-lg border border-border p-2 text-foreground/60 hover:text-foreground hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="ChevronLeft" size={16} />
