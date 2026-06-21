@@ -610,15 +610,20 @@ def parse_pick(text):
 
 def handle_message(cur, msg):
     chat_id = msg["chat"]["id"]
+    chat_type = msg["chat"].get("type", "private")
     text = (msg.get("text") or "").strip()
     username = msg["chat"].get("username", "")
 
     # Диагностика: узнать chat_id текущего чата (для настройки рабочего чата).
-    # Обрабатываем ДО load_cart, чтобы не плодить корзины для групп.
+    # Работает в любом чате, в т.ч. в группах уведомлений.
     if text.startswith("/chatid") or text.startswith("/id"):
-        send(chat_id, f"ID этого чата: <code>{chat_id}</code>\n"
-                      f"Впиши его в секрет TELEGRAM_MANAGER_CHAT_ID, "
-                      f"чтобы сюда приходили заявки.", reply_kb=False)
+        send(chat_id, f"ID этого чата: <code>{chat_id}</code>", reply_kb=False)
+        return
+
+    # МАГАЗИН-БОТ РАБОТАЕТ ТОЛЬКО В ЛИЧНЫХ ЧАТАХ. В группах/каналах
+    # (чаты уведомлений) бот НЕ отвечает и НЕ показывает инлайн-меню —
+    # только шлёт уведомления через notify_managers/notify_tasks.
+    if chat_type != "private":
         return
 
     c = load_cart(cur, chat_id)
@@ -689,7 +694,11 @@ def handle_message(cur, msg):
 
 def handle_callback(cur, cb):
     chat_id = cb["message"]["chat"]["id"]
+    chat_type = cb["message"]["chat"].get("type", "private")
     data = cb.get("data", "")
+    # В группах/каналах (чаты уведомлений) бот не реагирует на кнопки
+    if chat_type != "private":
+        return
     tg_call("answerCallbackQuery", {"callback_query_id": cb["id"]})
 
     if data.startswith("more:"):
