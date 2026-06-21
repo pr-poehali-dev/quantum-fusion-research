@@ -781,7 +781,7 @@ export default function Configurator() {
               <div className="mb-4 border-t border-border pt-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Сборка PCPRO</p>
+                    <p className="text-sm font-medium text-foreground">Профессиональная сборка BeGraphics</p>
                     <p className="text-xs text-foreground/50">7% от стоимости железа</p>
                   </div>
                   <button
