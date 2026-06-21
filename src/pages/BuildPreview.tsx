@@ -89,10 +89,13 @@ const TAG_COLOR_MAP: Record<string, string> = {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
-// Подтягивает фото каждого компонента из каталога по source_id
-async function enrichComponents(comps: Component[]): Promise<Component[]> {
+// Подтягивает фото каждого компонента из каталога по source_id.
+// livePrice=true — также обновляет цену компонента до актуальной цены продажи
+// из каталога (для витринных сборок «на показ»). Для сборок в заказах цена
+// остаётся зафиксированной (livePrice=false).
+async function enrichComponents(comps: Component[], livePrice = false): Promise<Component[]> {
   const ids = [...new Set(comps.filter(c => c.source_id).map(c => c.source_id!))]
-  const products: Record<number, { image_urls?: string[]; image_url?: string; description?: string }> = {}
+  const products: Record<number, { image_urls?: string[]; image_url?: string; description?: string; price?: number }> = {}
   await Promise.all(ids.map(id =>
     api.products.getById(id).then(p => { if (p?.id) products[id] = p }).catch(() => {})
   ))
@@ -105,6 +108,8 @@ async function enrichComponents(comps: Component[]): Promise<Component[]> {
       image_urls: (p.image_urls && p.image_urls.length > 0) ? p.image_urls : undefined,
       image_url: p.image_url || (p.image_urls && p.image_urls[0]) || c.image_url,
       description: c.description || p.description,
+      // Актуальная цена каталога — только для витринных сборок
+      current_price: livePrice && typeof p.price === "number" ? p.price : c.current_price,
     }
   })
 }
@@ -150,7 +155,8 @@ export default function BuildPreview() {
     if (isTokenMode || !id) return
     api.builds.getById(Number(id)).then(async (data) => {
       if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
-      const comps = await enrichComponents(data.components || [])
+      // Витринные сборки (status=catalog) показывают актуальные цены каталога
+      const comps = await enrichComponents(data.components || [], data.status === "catalog")
       setVariants([data])
       setComponents(comps)
       setLoading(false)
@@ -175,7 +181,7 @@ export default function BuildPreview() {
       const variantsRaw = await api.builds.getVariants(root.id).catch(() => [])
       const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
       const list = [root, ...children]
-      const rootComps = await enrichComponents(root.components || [])
+      const rootComps = await enrichComponents(root.components || [], root.status === "catalog")
       setVariants(list)
       setComponents(rootComps)
       if (root.client_user_id && user && root.client_user_id === user.id) setClaimed(true)
@@ -194,7 +200,7 @@ export default function BuildPreview() {
   useEffect(() => {
     if (!variants[activeVariant]) return
     const v = variants[activeVariant]
-    enrichComponents(v.components || []).then(setComponents)
+    enrichComponents(v.components || [], v.status === "catalog").then(setComponents)
     setCurrentSection(0)
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
   }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -202,8 +208,9 @@ export default function BuildPreview() {
   const build = variants[activeVariant] ?? null
   const hasMultipleVariants = variants.length > 1
 
-  // Считаем суммы из компонентов (поля в БД могут быть устаревшими)
-  const calcPartsTotal = components.reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0)
+  // Считаем суммы из компонентов (поля в БД могут быть устаревшими).
+  // Для витринных сборок current_price = актуальная цена каталога.
+  const calcPartsTotal = components.reduce((s, c) => s + ((c.current_price ?? c.price) || 0) * (c.qty || 1), 0)
   const calcAssemblyFee = build?.assembly_fee || 0
   const calcTotalPrice = calcPartsTotal + calcAssemblyFee
   const totalSections = components.length + 2
