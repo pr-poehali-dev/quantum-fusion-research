@@ -343,7 +343,7 @@ export default function Quiz() {
                               <button key={o.label} type="button" onClick={() => toggle(o.label, active)} style={{ cursor: "pointer" }}
                                 className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${active ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary"}`}>
                                 {o.image_url ? (
-                                  <img src={o.image_url} alt={o.label} className="h-32 w-full object-cover sm:h-36" />
+                                  <img src={o.image_url} alt={o.label} className="h-40 w-full bg-muted object-contain sm:h-48" />
                                 ) : (
                                   <div className="flex h-32 w-full items-center justify-center bg-muted sm:h-36">
                                     <Icon name="Image" size={28} className="text-foreground/20" />
