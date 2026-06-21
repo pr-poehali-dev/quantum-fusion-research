@@ -462,11 +462,14 @@ export default function Shop() {
                 )
               }
 
-              // По категориям из allProducts — топ-3 по марже на категорию
+              // По категориям из allProducts — топ-3 по марже на категорию.
+              // Показываем и товары под заказ (нет в наличии, но с фото),
+              // в наличии — выше.
               const catProducts = categories.map(cat => {
                 const inCat = allProducts
-                  .filter(p => p.in_stock && p.category?.slug === cat.slug && hasPhoto(p))
+                  .filter(p => p.category?.slug === cat.slug && hasPhoto(p))
                   .sort((a, b) => {
+                    if ((b.in_stock ? 1 : 0) !== (a.in_stock ? 1 : 0)) return (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0)
                     const mA = a.avg_cost > 0 ? (a.price - a.avg_cost) / a.price : 0
                     const mB = b.avg_cost > 0 ? (b.price - b.avg_cost) / b.price : 0
                     return mB - mA
