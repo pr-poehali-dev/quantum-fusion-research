@@ -353,6 +353,29 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
 
         elif method == "GET":
+            # Тестовая отправка уведомления «Покупка ПК из наличия» по заказу
+            # (ничего не меняет в БД). Вызов: GET ?action=test_stock_notify&id=N
+            if params.get("action") == "test_stock_notify" and params.get("id"):
+                cur.execute(
+                    "SELECT display_number, customer_name, customer_phone, id FROM orders WHERE id=%s",
+                    (int(params["id"]),)
+                )
+                r = cur.fetchone()
+                if not r:
+                    return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
+                _dn, _cn, _cp, _oid = r
+                from tg_notify import notify_managers as _notify
+                _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                _link = f"\n🔗 <a href=\"{_base}/admin/order/{_oid}\">Открыть заказ</a>" if _base else ""
+                ok = _notify(
+                    f"🛒 <b>Покупка ПК из наличия ({_dn})</b>\n"
+                    f"Тип: ПК\n"
+                    f"Клиент: {_cn or '—'}\n"
+                    f"Телефон: {_cp or '—'}"
+                    f"{_link}"
+                )
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": bool(ok)})}
+
             # Один заказ по id
             if params.get("id"):
                 cur.execute(
