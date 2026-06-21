@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useParams, useSearchParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
@@ -212,6 +212,24 @@ export default function BuildPreview() {
   const build = variants[activeVariant] ?? null
   const hasMultipleVariants = variants.length > 1
 
+  // Слоты, которые ОТЛИЧАЮТСЯ между вариантами (по названию компонента).
+  // Такие комплектующие подсвечиваем цветом — они и есть разница вариантов.
+  const variantDiffSlots = useMemo(() => {
+    const diff = new Set<string>()
+    if (variants.length <= 1) return diff
+    const bySlot: Record<string, Set<string>> = {}
+    for (const v of variants) {
+      for (const c of (v.components || [])) {
+        if (!bySlot[c.slot]) bySlot[c.slot] = new Set()
+        bySlot[c.slot].add((c.name || "").trim())
+      }
+    }
+    for (const slot in bySlot) {
+      if (bySlot[slot].size > 1) diff.add(slot)
+    }
+    return diff
+  }, [variants])
+
   // Считаем суммы из компонентов (поля в БД могут быть устаревшими).
   // Для витринных сборок current_price = актуальная цена каталога.
   const calcPartsTotal = components.reduce((s, c) => s + ((c.current_price ?? c.price) || 0) * (c.qty || 1), 0)
@@ -359,16 +377,6 @@ export default function BuildPreview() {
             <Icon name="ArrowLeft" size={16} />
             <span className="text-sm hidden sm:inline">{isTokenMode ? "Главная" : "Все сборки"}</span>
           </button>
-          {hasMultipleVariants && (
-            <div className="flex items-center gap-1.5 ml-2">
-              {variants.map((_, i) => (
-                <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${i === activeVariant ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary hover:text-foreground"}`}>
-                  {i === 0 ? "Основная" : `Вариант ${i + 1}`}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-2">
           {isTokenMode && !claimed && (
@@ -504,6 +512,20 @@ export default function BuildPreview() {
                       </div>
                     )}
                   </div>
+                  {/* Выбор варианта конфигурации — под итоговой стоимостью */}
+                  {hasMultipleVariants && (
+                    <div className="mb-6">
+                      <p className="mb-1.5 text-xs text-muted-foreground">Вариант конфигурации</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {variants.map((_, i) => (
+                          <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${i === activeVariant ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary hover:text-foreground"}`}>
+                            {i === 0 ? "Основная" : `Вариант ${i + 1}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-3">
                     <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
                       className="flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
@@ -526,15 +548,16 @@ export default function BuildPreview() {
                     const statusKey = wipField ? wipInfo?.[`${wipField}_status` as keyof WipInfo] as string | undefined : undefined
                     const statusInfo = statusKey ? COMPONENT_STATUS_LABELS[statusKey] : null
                     const qty = c.qty && c.qty > 1 ? c.qty : null
+                    const isDiff = variantDiffSlots.has(c.slot)
                     return (
-                      <div key={i} className="flex items-start justify-between gap-3">
+                      <div key={i} className={`flex items-start justify-between gap-3 ${isDiff ? "-mx-2 rounded-lg bg-primary/5 px-2 py-1 ring-1 ring-primary/30" : ""}`}>
                         <div className="flex items-start gap-2 min-w-0 flex-1">
                           <span className="w-5 h-5 mt-0.5 shrink-0 rounded flex items-center justify-center bg-primary/10 text-primary">
                             <ComponentIcon slot={c.slot} />
                           </span>
                           <div className="min-w-0">
                             <p className="text-xs text-muted-foreground leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
-                            <p className="text-sm text-foreground leading-snug break-words">
+                            <p className={`text-sm leading-snug break-words ${isDiff ? "font-semibold text-primary" : "text-foreground"}`}>
                               {c.name}
                               {qty ? <span className="ml-1.5 inline-block rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-bold text-primary align-middle">×{qty}</span> : null}
                             </p>
@@ -545,7 +568,7 @@ export default function BuildPreview() {
                             )}
                           </div>
                         </div>
-                        <span className="shrink-0 text-sm font-medium text-foreground text-right">{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
+                        <span className={`shrink-0 text-sm font-medium text-right ${isDiff ? "text-primary" : "text-foreground"}`}>{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
                       </div>
                     )
                   })}
