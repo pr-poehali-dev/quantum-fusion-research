@@ -5,6 +5,24 @@ import psycopg2
 def get_conn():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
+
+def _validate_required(body: dict):
+    """Проверка обязательных полей товара. Возвращает текст ошибки или None.
+    Обязательны: цена продажи (price), категория (category_id), название (name).
+    Гарантия (warranty_months) необязательна, по умолчанию 0."""
+    if not str(body.get("name") or "").strip():
+        return "Укажите название товара"
+    price = body.get("price")
+    try:
+        if price is None or str(price) == "" or float(price) < 0:
+            return "Укажите цену продажи"
+    except (TypeError, ValueError):
+        return "Цена продажи указана неверно"
+    if not body.get("category_id"):
+        return "Выберите категорию"
+    return None
+
+
 def handler(event: dict, context) -> dict:
     """
     Товары и компоненты конфигуратора.
@@ -65,6 +83,7 @@ def handler(event: dict, context) -> dict:
             "avg_cost": float(row[17]) if len(row) > 17 and row[17] else 0,
             "is_archived": bool(row[18]) if len(row) > 18 else False,
             "is_used": bool(row[19]) if len(row) > 19 else False,
+            "warranty_months": int(row[20]) if len(row) > 20 and row[20] is not None else 0,
         }
 
     try:
@@ -78,6 +97,7 @@ def handler(event: dict, context) -> dict:
                        FROM {schema}.products p
                        JOIN {schema}.categories c ON p.category_id = c.id
                        WHERE c.slug IN ('cpu','gpu','ram','storage','psu','case','motherboard','cooling','fan')
+                         AND p.is_archived = FALSE
                        ORDER BY p.in_stock DESC, c.slug ASC, p.sort_order ASC, p.id ASC"""
                 )
                 rows = cur.fetchall()
@@ -146,7 +166,7 @@ def handler(event: dict, context) -> dict:
                                       FROM warehouse_supplies s
                                       JOIN warehouse_groups g ON g.id = s.group_id
                                       WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost,
-                            p.is_archived, p.is_used
+                            p.is_archived, p.is_used, p.warranty_months
                      FROM products p LEFT JOIN categories c ON p.category_id = c.id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
@@ -183,20 +203,25 @@ def handler(event: dict, context) -> dict:
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
+            # Обязательные поля: цена продажи и категория (гарантия по умолч. 0)
+            err = _validate_required(body)
+            if err:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": err})}
             image_urls = body.get("image_urls") or ([body["image_url"]] if body.get("image_url") else [])
             image_url = image_urls[0] if image_urls else body.get("image_url")
             in_stock = body.get("in_stock", True)
+            warranty = int(body.get("warranty_months") or 0)
             cur.execute(
                 """INSERT INTO products (category_id, name, description, price, old_price, image_url, image_urls, specs,
-                   in_stock, stock_qty, is_featured, sort_order, is_used, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
+                   in_stock, stock_qty, is_featured, sort_order, is_used, warranty_months, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
                 (body.get("category_id"), body["name"], body.get("description"),
                  body["price"], body.get("old_price"), image_url,
                  json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0),
-                 body.get("is_used", False))
+                 body.get("is_used", False), warranty)
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -204,25 +229,29 @@ def handler(event: dict, context) -> dict:
 
         elif method == "PUT":
             body = json.loads(event.get("body") or "{}")
+            err = _validate_required(body)
+            if err:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": err})}
             image_urls = body.get("image_urls") or ([body["image_url"]] if body.get("image_url") else [])
             image_url = image_urls[0] if image_urls else body.get("image_url")
             in_stock = body.get("in_stock", True)
+            warranty = int(body.get("warranty_months") or 0)
             cur.execute(
                 """UPDATE products SET category_id=%s, name=%s, description=%s, price=%s,
                    old_price=%s, image_url=%s, image_urls=%s, specs=%s, in_stock=%s, stock_qty=%s,
-                   is_featured=%s, sort_order=%s, is_used=%s WHERE id=%s""",
+                   is_featured=%s, sort_order=%s, is_used=%s, warranty_months=%s WHERE id=%s""",
                 (body.get("category_id"), body["name"], body.get("description"),
                  body["price"], body.get("old_price"), image_url,
                  json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0),
-                 body.get("is_used", False), body["id"])
+                 body.get("is_used", False), warranty, body["id"])
             )
-            # синхронизируем цену и название в warehouse_group
+            # синхронизируем цену, название и гарантию в warehouse_group
             cur.execute(
-                "UPDATE warehouse_groups SET price_retail=%s, name=%s, updated_at=NOW() WHERE product_id=%s",
-                (body["price"], body["name"], body["id"])
+                "UPDATE warehouse_groups SET price_retail=%s, name=%s, warranty_months=%s, updated_at=NOW() WHERE product_id=%s",
+                (body["price"], body["name"], warranty, body["id"])
             )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}

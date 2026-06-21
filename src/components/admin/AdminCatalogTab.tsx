@@ -102,7 +102,7 @@ export function AdminCatalogTab({
   }
   const [productForm, setProductForm] = useState({
     id: null as number | null,
-    category_id: "", name: "", description: "", price: "", old_price: "",
+    category_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0",
     image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0",
   })
   const [importLoading, setImportLoading] = useState(false)
@@ -124,6 +124,7 @@ export function AdminCatalogTab({
       category_id: p.category ? String(categories.find(c => c.name === p.category?.name)?.id || "") : "",
       name: p.name, description: p.description || "",
       price: String(p.price), old_price: p.old_price ? String(p.old_price) : "",
+      warranty_months: String(p.warranty_months ?? 0),
       image_urls: p.image_urls?.length ? p.image_urls : (p.image_url ? [p.image_url] : []),
       specs: JSON.stringify(p.specs || {}),
       in_stock: p.in_stock, is_featured: p.is_featured, is_used: !!p.is_used, sort_order: String(p.sort_order || 0),
@@ -132,6 +133,9 @@ export function AdminCatalogTab({
   }
   const submitProduct = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Обязательные: цена продажи и категория (гарантия по умолчанию 0)
+    if (!productForm.category_id) { alert("Выберите категорию"); return }
+    if (productForm.price === "" || Number(productForm.price) < 0) { alert("Укажите цену продажи"); return }
     let specs = {}
     try { specs = JSON.parse(productForm.specs || "{}") } catch { specs = {} }
     const payload = {
@@ -139,6 +143,7 @@ export function AdminCatalogTab({
       category_id: productForm.category_id ? Number(productForm.category_id) : null,
       name: productForm.name, description: productForm.description,
       price: Number(productForm.price), old_price: productForm.old_price ? Number(productForm.old_price) : null,
+      warranty_months: Number(productForm.warranty_months) || 0,
       image_url: productForm.image_urls[0] || null, image_urls: productForm.image_urls, specs,
       in_stock: productForm.in_stock, is_featured: productForm.is_featured, is_used: productForm.is_used,
       sort_order: Number(productForm.sort_order),
@@ -146,7 +151,7 @@ export function AdminCatalogTab({
     if (productForm.id) await api.products.update(payload)
     else await api.products.create(payload)
     setTab("products")
-    setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
+    setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
   }
   const handleExportExcel = async () => {
     setExportLoading(true)
@@ -547,10 +552,10 @@ export function AdminCatalogTab({
               className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="NVIDIA RTX 4090" style={{ cursor: "text" }} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-foreground/60">Категория</label>
-            <select value={productForm.category_id} onChange={e => setProductForm(f => ({ ...f, category_id: e.target.value }))}
+            <label className="mb-1 block text-xs text-foreground/60">Категория *</label>
+            <select required value={productForm.category_id} onChange={e => setProductForm(f => ({ ...f, category_id: e.target.value }))}
               className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-              <option value="">Без категории</option>
+              <option value="">Выберите категорию</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
@@ -559,9 +564,9 @@ export function AdminCatalogTab({
           <label className="mb-1 block text-xs text-foreground/60">Описание</label>
           <RichTextEditor value={productForm.description} onChange={v => setProductForm(f => ({ ...f, description: v }))} placeholder="Описание..." />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs text-foreground/60">Цена * (₽)</label>
+            <label className="mb-1 block text-xs text-foreground/60">Цена продажи * (₽)</label>
             <input required type="number" value={productForm.price} onChange={e => setProductForm(f => ({ ...f, price: e.target.value }))}
               className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="89990" style={{ cursor: "text" }} />
           </div>
@@ -569,6 +574,11 @@ export function AdminCatalogTab({
             <label className="mb-1 block text-xs text-foreground/60">Старая цена (₽)</label>
             <input type="number" value={productForm.old_price} onChange={e => setProductForm(f => ({ ...f, old_price: e.target.value }))}
               className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="99990" style={{ cursor: "text" }} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-foreground/60">Гарантия (мес) *</label>
+            <input required type="number" min="0" value={productForm.warranty_months} onChange={e => setProductForm(f => ({ ...f, warranty_months: e.target.value }))}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="0" style={{ cursor: "text" }} />
           </div>
         </div>
         <div>
@@ -595,7 +605,7 @@ export function AdminCatalogTab({
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {productForm.id ? "Сохранить" : "Добавить"}
           </button>
-          <button type="button" onClick={() => { setTab("products"); setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", image_urls: [], specs: "", in_stock: true, is_featured: false, sort_order: "0" }) }}
+          <button type="button" onClick={() => { setTab("products"); setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }) }}
             className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>

@@ -174,6 +174,7 @@ export interface Product {
   sort_order: number
   is_featured: boolean
   is_used?: boolean
+  warranty_months?: number
   image_url: string | null
   image_urls: string[]
 }

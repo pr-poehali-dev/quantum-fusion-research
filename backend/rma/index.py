@@ -465,9 +465,33 @@ def handler(event: dict, context) -> dict:
         if action == "resolve_refund" and method == "POST":
             rma_id = int(body.get("rma_id", 0))
             group_id = int(body.get("group_id", 0))
+            cash_account_id = body.get("cash_account_id")
             if not rma_id:
                 return {"statusCode": 400, "headers": cors,
                         "body": json.dumps({"error": "rma_id required"})}
+            # Данные РМА для расчёта суммы и описания
+            cur.execute(
+                f"SELECT order_id, qty, item_name FROM {SCHEMA}.warehouse_rma WHERE id = %s",
+                (rma_id,),
+            )
+            rma_row = cur.fetchone()
+            order_id_rma = rma_row[0] if rma_row else None
+            rma_qty = int(rma_row[1]) if rma_row and rma_row[1] else 1
+            item_name = rma_row[2] if rma_row else ""
+            # Сумма возврата: передана с фронта, иначе розничная цена группы × qty
+            refund_amount = 0.0
+            try:
+                refund_amount = float(body.get("refund_amount") or 0)
+            except (TypeError, ValueError):
+                refund_amount = 0.0
+            if refund_amount <= 0 and group_id:
+                cur.execute(
+                    f"SELECT price_retail FROM {SCHEMA}.warehouse_groups WHERE id = %s",
+                    (group_id,),
+                )
+                pr = cur.fetchone()
+                if pr and pr[0]:
+                    refund_amount = float(pr[0]) * rma_qty
             # Обнуляем карантинную партию
             if group_id:
                 cur.execute(
@@ -477,6 +501,38 @@ def handler(event: dict, context) -> dict:
                     f"ORDER BY created_at DESC LIMIT 1",
                     (group_id,),
                 )
+            # Финансовый расход с выбранного денежного счёта
+            if cash_account_id and refund_amount > 0:
+                acc_id = int(cash_account_id)
+                note = f"Возврат средств по RMA #{rma_id}" + (f" (заказ #{order_id_rma})" if order_id_rma else "") + (f": {item_name}" if item_name else "")
+                cur.execute(
+                    f"UPDATE {SCHEMA}.cash_accounts SET balance = balance - %s, updated_at = NOW() WHERE id = %s",
+                    (refund_amount, acc_id),
+                )
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.cash_account_tx (cash_account_id, amount, note, order_id, created_at) "
+                    f"VALUES (%s, %s, %s, %s, NOW())",
+                    (acc_id, -refund_amount, note, order_id_rma),
+                )
+                # Тип операции «Возврат средств» (создаём при отсутствии)
+                cur.execute(
+                    f"SELECT id FROM {SCHEMA}.finance_types WHERE name = 'Возврат средств' LIMIT 1"
+                )
+                tr = cur.fetchone()
+                if tr:
+                    type_id = tr[0]
+                else:
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.finance_types (name, direction, is_system, sort_order) "
+                        f"VALUES ('Возврат средств', 'expense', TRUE, 6) RETURNING id"
+                    )
+                    type_id = cur.fetchone()[0]
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.finance_transactions "
+                    f"(kind, type_id, amount, note, affects_pnl, cash_account_id, order_id, occurred_at) "
+                    f"VALUES ('expense', %s, %s, %s, TRUE, %s, %s, NOW())",
+                    (type_id, refund_amount, note, acc_id, order_id_rma),
+                )
             cur.execute(
                 f"UPDATE {SCHEMA}.warehouse_rma "
                 f"SET status = 'resolved', resolution = 'refund', "
@@ -485,7 +541,8 @@ def handler(event: dict, context) -> dict:
                 (rma_id,),
             )
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"ok": True, "refund_amount": refund_amount})}
 
         # ── Получить одну запись RMA ─────────────────────────────────────────
         if action == "get" and method == "GET":

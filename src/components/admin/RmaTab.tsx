@@ -2,6 +2,8 @@ import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 
+const WARRANTY_URL = "https://functions.poehali.dev/4f468c20-b028-4d53-8dad-affcf1b45618"
+
 interface RmaItem {
   id: number
   order_id: number | null
@@ -111,6 +113,19 @@ export default function RmaTab() {
   const [replacementQty, setReplacementQty] = useState(1)
   const [replacementCost, setReplacementCost] = useState("")
   const [resolving, setResolving] = useState(false)
+  const [warrantyLoading, setWarrantyLoading] = useState(false)
+  // Возврат средств: выбор денежного счёта (касса/Авито/терминал) + сумма
+  const [cashAccounts, setCashAccounts] = useState<{ id: number; name: string; is_active: boolean }[]>([])
+  const [refundAccount, setRefundAccount] = useState("")
+  const [refundAmount, setRefundAmount] = useState("")
+
+  useEffect(() => {
+    api.finance.getCashAccounts().then((d: { accounts?: { id: number; name: string; is_active: boolean }[] }) => {
+      const list = (d.accounts || []).filter(a => a.is_active)
+      setCashAccounts(list)
+      if (list.length) setRefundAccount(String(list[0].id))
+    }).catch(() => {})
+  }, [])
 
   const load = async () => {
     setLoading(true)
@@ -255,12 +270,30 @@ export default function RmaTab() {
 
   const doRefund = async () => {
     if (!detail) return
+    if (!refundAccount) { alert("Выберите счёт, с которого вернуть средства"); return }
     setResolving(true)
-    await api.rma.resolveRefund({ rma_id: detail.id, group_id: detail.group_id })
+    await api.rma.resolveRefund({
+      rma_id: detail.id,
+      group_id: detail.group_id,
+      cash_account_id: Number(refundAccount),
+      refund_amount: refundAmount ? Number(refundAmount) : null,
+    })
+    setRefundAmount("")
     setResolving(false)
     setResolveMode("")
     load()
     openDetail(detail.id)
+  }
+
+  const downloadWarranty = async (orderId: number) => {
+    setWarrantyLoading(true)
+    const res = await fetch(`${WARRANTY_URL}?order_id=${orderId}`).then(r => r.json()).catch(() => null)
+    setWarrantyLoading(false)
+    if (!res?.pdf_b64) { alert("Не удалось сформировать гарантийку"); return }
+    const link = document.createElement("a")
+    link.href = `data:application/pdf;base64,${res.pdf_b64}`
+    link.download = res.filename || `warranty_${orderId}.pdf`
+    link.click()
   }
 
   const totalOpen = (stats.new || 0) + (stats.to_supplier || 0) + (stats.in_progress || 0)
@@ -625,6 +658,28 @@ export default function RmaTab() {
                   )}
                 </div>
 
+                {/* Ссылка на исходный заказ + гарантийка */}
+                {detail.order_id && (
+                  <div className="mb-4 rounded-xl border border-blue-400/20 bg-blue-400/5 px-4 py-3 flex items-center gap-3">
+                    <Icon name="FileText" size={16} className="text-blue-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-foreground/50">Исходный заказ</p>
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        <a href={`/admin/order/${detail.order_id}`}
+                          className="text-sm font-semibold text-blue-400 hover:underline">
+                          #{String(detail.order_id).padStart(5, "0")} →
+                        </a>
+                        <button onClick={() => downloadWarranty(detail.order_id!)} disabled={warrantyLoading}
+                          className="flex items-center gap-1 text-xs font-medium text-blue-400/70 hover:text-blue-400 border-l border-blue-400/20 pl-2 disabled:opacity-50"
+                          style={{ cursor: "pointer" }}>
+                          <Icon name={warrantyLoading ? "Loader" : "Download"} size={12} className={warrantyLoading ? "animate-spin" : ""} />
+                          Гарантийка
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Ссылка на заказ-замену */}
                 {detail.replacement_order_id && (
                   <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3">
@@ -756,8 +811,28 @@ export default function RmaTab() {
 
                     {resolveMode === "refund" && (
                       <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-                        <p className="text-sm font-medium text-foreground">Возврат денег от поставщика</p>
+                        <p className="text-sm font-medium text-foreground">Возврат денег</p>
                         <p className="text-xs text-foreground/50">Карантинный товар будет списан.</p>
+                        <div>
+                          <label className="mb-1 block text-xs text-foreground/50">Счёт, с которого вернуть средства</label>
+                          <div className="flex flex-wrap gap-2">
+                            {cashAccounts.map(c => (
+                              <button key={c.id} type="button" onClick={() => setRefundAccount(String(c.id))} style={{ cursor: "pointer" }}
+                                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${refundAccount === String(c.id) ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40 text-foreground/70"}`}>
+                                {c.name}
+                              </button>
+                            ))}
+                          </div>
+                          {cashAccounts.length === 0 && (
+                            <p className="text-xs text-orange-400">Нет активных денежных счетов. Создайте их в финансах.</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-foreground/50">Сумма возврата (₽)</label>
+                          <input type="number" min="0" value={refundAmount} onChange={e => setRefundAmount(e.target.value)}
+                            placeholder="оставьте пустым — возьмём цену товара"
+                            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                        </div>
                         <div className="flex gap-2">
                           <button onClick={doRefund} disabled={resolving}
                             className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
