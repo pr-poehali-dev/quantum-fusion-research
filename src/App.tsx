@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense } from "react";
 import ConsentModal from "@/components/ConsentModal";
+import AdminGuard from "@/components/admin/AdminGuard";
 
 const Index = lazy(() => import("./pages/Index"));
 const Shop = lazy(() => import("./pages/Shop"));
@@ -70,8 +71,8 @@ const App = () => (
               <Route path="/build" element={<BuildPreview />} />
               <Route path="/b/:code" element={<BuildPreview />} />
               <Route path="/build-preview/:id" element={<BuildPreview />} />
-              <Route path="/order-sheet/:id" element={<OrderSheet />} />
-              <Route path="/admin/order/:id" element={<OrderProcessPage />} />
+              <Route path="/order-sheet/:id" element={<AdminGuard><OrderSheet /></AdminGuard>} />
+              <Route path="/admin/order/:id" element={<AdminGuard><OrderProcessPage /></AdminGuard>} />
               <Route path="/quiz" element={<Quiz />} />
               <Route path="/service" element={<Service />} />
               <Route path="/privacy" element={<Privacy />} />
