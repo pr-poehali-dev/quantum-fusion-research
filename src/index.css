@@ -113,6 +113,17 @@
     @apply bg-background text-foreground;
   }
 
+  /* Скрываем штатные браузерные стрелки у number-инпутов (есть свои кнопки +/−) */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   /* Кастомный курсор только на главной странице */
   .custom-cursor-active,
   .custom-cursor-active * {
