@@ -249,6 +249,26 @@ export default function BuildPreview() {
   const calcTotalPrice = withVat(calcPartsTotal + calcAssemblyFee, build?.sell_with_vat)
   const totalSections = components.length + 2
 
+  // ── Разница цен относительно ОСНОВНОГО варианта (variants[0]) ──
+  const baseVariant = variants[0] ?? null
+  const isBaseActive = activeVariant === 0
+  // Итоговая цена основного варианта (по тем же правилам: железо + сборка + НДС)
+  const basePartsTotal = (baseVariant?.components || []).reduce(
+    (s, c) => s + ((c.current_price ?? c.price) || 0) * (c.qty || 1), 0)
+  const baseTotalPrice = withVat(basePartsTotal + (baseVariant?.assembly_fee || 0), baseVariant?.sell_with_vat)
+  // Разница итога текущего варианта от основного (>0 дороже, <0 дешевле)
+  const totalDiff = isBaseActive ? 0 : (calcTotalPrice - baseTotalPrice)
+  // Сумма по слоту в основном варианте — для разницы рядом с конкретной железкой
+  const baseSlotTotal = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of (baseVariant?.components || [])) {
+      m[c.slot] = (m[c.slot] || 0) + ((c.current_price ?? c.price) || 0) * (c.qty || 1)
+    }
+    return m
+  }, [baseVariant])
+  // Формат знаковой разницы: +123 / −123
+  const fmtDiff = (n: number) => (n > 0 ? "+" : "−") + fmt(Math.abs(n))
+
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const scrollToSection = useCallback((index: number) => {
@@ -511,6 +531,11 @@ export default function BuildPreview() {
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Итоговая стоимость</p>
                       <p className="font-bold text-foreground" style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)" }}>{fmt(calcTotalPrice)}</p>
+                      {!isBaseActive && totalDiff !== 0 && (
+                        <p className={`mt-1 text-sm font-semibold ${totalDiff > 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                          {fmtDiff(totalDiff)} к основному
+                        </p>
+                      )}
                     </div>
                     <div className="mb-0.5 flex flex-col gap-0.5">
                       <p className="text-xs text-muted-foreground">Железо: <span className="text-foreground/70">{fmt(calcPartsTotal)}</span></p>
@@ -560,6 +585,8 @@ export default function BuildPreview() {
                     const statusInfo = statusKey ? COMPONENT_STATUS_LABELS[statusKey] : null
                     const qty = c.qty && c.qty > 1 ? c.qty : null
                     const isDiff = activeVariant > 0 && variantDiffSlots.has(c.slot)
+                    const lineTotal = (c.current_price ?? c.price) * (c.qty || 1)
+                    const slotDiff = isDiff ? lineTotal - (baseSlotTotal[c.slot] || 0) : 0
                     return (
                       <div key={i} className={`flex items-start justify-between gap-3 ${isDiff ? "-mx-2 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/40" : ""}`}>
                         <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -579,7 +606,12 @@ export default function BuildPreview() {
                             )}
                           </div>
                         </div>
-                        <span className={`shrink-0 text-sm font-medium text-right ${isDiff ? "text-emerald-500" : "text-foreground"}`}>{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
+                        <div className="shrink-0 text-right">
+                          <span className={`block text-sm font-medium ${isDiff ? "text-emerald-500" : "text-foreground"}`}>{fmt(lineTotal)}</span>
+                          {isDiff && slotDiff !== 0 && (
+                            <span className={`block text-xs font-semibold ${slotDiff > 0 ? "text-emerald-500" : "text-rose-500"}`}>{fmtDiff(slotDiff)}</span>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
