@@ -120,10 +120,14 @@ async function enrichComponents(comps: Component[], livePrice = false): Promise<
 
 // Обогащает компоненты ВСЕХ вариантов актуальными ценами каталога,
 // чтобы корректно считать разницу цен между вариантами (а не по устаревшей price из БД).
+// ВАЖНО: livePrice определяется по статусу КОРНЯ (list[0]) и применяется ко всем
+// вариантам одинаково — иначе варианты-копии (status=draft/client) считаются
+// по устаревшей price из БД, а корень (catalog) — по актуальной, и разница врёт.
 async function enrichVariants(list: Build[]): Promise<Build[]> {
+  const livePrice = list[0]?.status === "catalog"
   return Promise.all(list.map(async (b) => ({
     ...b,
-    components: await enrichComponents(b.components || [], b.status === "catalog"),
+    components: await enrichComponents(b.components || [], livePrice),
   })))
 }
 
