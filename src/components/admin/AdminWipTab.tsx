@@ -452,8 +452,8 @@ export function AdminWipTab({
                 style={{ cursor: "pointer" }}>
                 <Icon name="ShoppingCart" size={15} />
                 Корзина закупки
-                {totalDebtCount > 0 && (
-                  <span className={`flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ${totalNewCount > 0 ? "bg-orange-400" : "bg-amber-500"}`}>{totalNewCount > 0 ? totalNewCount : totalDebtCount}</span>
+                {totalNewCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-white">{totalNewCount}</span>
                 )}
               </button>
 
