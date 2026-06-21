@@ -288,10 +288,9 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # ── ТЕСТ: одно уведомление о задержке по РЕАЛЬНОЙ позиции ───────────
-        # Ничего в БД не меняет. Берёт ближайшую просроченную ETA живой сборки
-        # (или самую раннюю запланированную, если просрочек нет) и шлёт пинг
-        # с реальным номером заказа и названием компонента.
+        # ── ТЕСТ: уведомления о задержке по ВСЕМ реально просроченным позициям ─
+        # Ничего в БД не меняет. По каждой просроченной ETA живой сборки шлёт
+        # отдельный пинг с реальным номером заказа и названием компонента.
         if action == "test_delay_notify" and method == "GET":
             _name_fields = {
                 "cpu": "cpu", "motherboard": "motherboard", "ram": "ram", "gpu": "gpu",
@@ -305,59 +304,59 @@ def handler(event: dict, context) -> dict:
             }
             cur.execute(
                 f"SELECT eta.wip_id, eta.slot, eta.eta_date, wb.order_number, "
-                f"       wb.order_id, o.display_number, wb.build_id, "
-                f"       (eta.eta_date < CURRENT_DATE) AS overdue "
+                f"       wb.order_id, o.display_number, wb.build_id "
                 f"FROM {SCHEMA}.wip_component_eta eta "
                 f"JOIN {SCHEMA}.wip_builds wb ON wb.id = eta.wip_id "
                 f"LEFT JOIN {SCHEMA}.orders o ON o.id = wb.order_id "
-                f"WHERE eta.eta_date IS NOT NULL "
+                f"WHERE eta.eta_date IS NOT NULL AND eta.eta_date < CURRENT_DATE "
                 f"AND wb.stage NOT IN ('Архив','Забрали','Отменён','Готов, можно забрать','Отнести в сдэк') "
-                f"ORDER BY (eta.eta_date < CURRENT_DATE) DESC, eta.eta_date ASC LIMIT 1"
+                f"ORDER BY eta.eta_date ASC"
             )
-            row = cur.fetchone()
-            if not row:
+            rows = cur.fetchall()
+            if not rows:
                 return {"statusCode": 200, "headers": cors,
-                        "body": json.dumps({"ok": False, "reason": "Нет позиций с ETA для теста"})}
-            wip_id, slot, eta_date, order_number, order_id, display_number, build_id, overdue = row
-            slot_canon = "extra" if slot == "fan" else slot
-            nf = _name_fields.get(slot, "extra")
-            cur.execute(
-                f"SELECT {nf} FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,)
-            )
-            nr = cur.fetchone()
-            component_name = (nr[0] if nr else None)
-            if (not component_name) and build_id:
-                cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id=%s", (build_id,))
-                pr = cur.fetchone()
-                comps = pr[0] if pr and pr[0] else []
-                if isinstance(comps, str):
-                    comps = json.loads(comps)
-                for c in (comps or []):
-                    cs = "extra" if c.get("slot") == "fan" else c.get("slot")
-                    if cs == slot_canon and c.get("name"):
-                        component_name = c["name"]
-                        break
-            ordn = display_number or order_number or (str(order_id) if order_id else "—")
-            slot_label = _ru.get(slot, slot)
+                        "body": json.dumps({"ok": False, "sent": 0,
+                                            "reason": "Нет просроченных позиций"})}
             _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
             _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
-            _tag = "" if overdue else "\n<i>(тест — позиция ещё не просрочена)</i>"
-            try:
-                from tg_notify import notify_tasks
-                notify_tasks(
-                    f"🧪 <b>ТЕСТ · Задержка железа</b>\n"
-                    f"Заказ: #{ordn}\n"
-                    f"Компонент: {component_name or '—'} ({slot_label})\n"
-                    f"Ожидался: {eta_date.isoformat() if eta_date else '—'}"
-                    f"{_tag}{_link}"
-                )
-            except Exception as _te:
-                return {"statusCode": 200, "headers": cors,
-                        "body": json.dumps({"ok": False, "error": str(_te)})}
+            from tg_notify import notify_tasks
+            sent_list = []
+            total = len(rows)
+            for idx, row in enumerate(rows, 1):
+                wip_id, slot, eta_date, order_number, order_id, display_number, build_id = row
+                slot_canon = "extra" if slot == "fan" else slot
+                nf = _name_fields.get(slot, "extra")
+                cur.execute(f"SELECT {nf} FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,))
+                nr = cur.fetchone()
+                component_name = (nr[0] if nr else None)
+                if (not component_name) and build_id:
+                    cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id=%s", (build_id,))
+                    pr = cur.fetchone()
+                    comps = pr[0] if pr and pr[0] else []
+                    if isinstance(comps, str):
+                        comps = json.loads(comps)
+                    for c in (comps or []):
+                        cs = "extra" if c.get("slot") == "fan" else c.get("slot")
+                        if cs == slot_canon and c.get("name"):
+                            component_name = c["name"]
+                            break
+                ordn = display_number or order_number or (str(order_id) if order_id else "—")
+                slot_label = _ru.get(slot, slot)
+                try:
+                    notify_tasks(
+                        f"🧪 <b>ТЕСТ · Задержка железа</b> ({idx}/{total})\n"
+                        f"Заказ: #{ordn}\n"
+                        f"Компонент: {component_name or '—'} ({slot_label})\n"
+                        f"Ожидался: {eta_date.isoformat() if eta_date else '—'}"
+                        f"{_link}"
+                    )
+                    sent_list.append({"order": ordn, "component": component_name or "—",
+                                      "slot": slot_label,
+                                      "eta_date": eta_date.isoformat() if eta_date else None})
+                except Exception as _te:
+                    print(f"TEST DELAY notify {idx}: {_te}")
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
-                "ok": True, "sent": True, "overdue": bool(overdue),
-                "order": ordn, "component": component_name or "—",
-                "slot": slot_label, "eta_date": eta_date.isoformat() if eta_date else None,
+                "ok": True, "sent": len(sent_list), "total": total, "items": sent_list,
             })}
 
         # ── Зарезервировать заказ (ядро) ────────────────────────────────────
