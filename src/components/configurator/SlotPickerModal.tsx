@@ -323,10 +323,10 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                 {visible.map(({ p, reason }) => (
                   <div key={p.id}
                     className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-all ${reason ? "border-border opacity-50" : "border-border hover:border-primary/50"}`}>
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                    <div className="flex h-48 w-48 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                       {(p.image_url || p.image_urls?.[0]) ? (
                         <img src={p.image_url || p.image_urls?.[0]} alt={p.name} className="h-full w-full object-contain" />
-                      ) : <Icon name="Image" size={20} className="text-foreground/20" />}
+                      ) : <Icon name="Image" size={48} className="text-foreground/20" />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground line-clamp-2">{p.name}</p>
