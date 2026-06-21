@@ -18,6 +18,7 @@ const URLS = {
   rma: "https://functions.poehali.dev/6e92e4fb-4e76-42ee-88a7-0638374f9dcc",
   finance: "https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc",
   quiz: "https://functions.poehali.dev/8660d01d-f97e-4034-8704-30fd94dc3041",
+  snArchive: "https://functions.poehali.dev/147bf909-3e68-44c2-bd73-5c6dc9b11195",
 }
 
 function authHeaders(session?: string | null) {
@@ -189,6 +190,20 @@ export const api = {
     recalcSupplyExpense: () => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "recalc_supply_expense" }) }).then(r => r.json()),
     getSettings: () => fetch(`${URLS.warehouse}?action=settings`).then(r => r.json()),
     setSettings: (settings: Record<string, string | number>) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "settings_set", settings }) }).then(r => r.json()),
+  },
+  snArchive: {
+    list: (params?: Record<string, string>) => {
+      const qs = "?" + new URLSearchParams({ action: "list_serials", ...(params || {}) }).toString()
+      return fetch(URLS.snArchive + qs).then(r => r.json())
+    },
+    lookup: (serial: string) => fetch(`${URLS.snArchive}?action=lookup&serial=${encodeURIComponent(serial)}`).then(r => r.json()),
+    addSerials: (data: { supply_id: number, serials: string[] }) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add_serials", ...data }) }).then(r => r.json()),
+    updateSerial: (data: unknown) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update_serial", ...data as object }) }).then(r => r.json()),
+    deleteSerial: (id: number) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete_serial", id }) }).then(r => r.json()),
+    getCategories: () => fetch(`${URLS.snArchive}?action=categories`).then(r => r.json()),
+    addCategory: (data: { category: string, require_serial?: boolean }) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_add", ...data }) }).then(r => r.json()),
+    removeCategory: (category: string) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_remove", category }) }).then(r => r.json()),
+    getStores: () => fetch(`${URLS.snArchive}?action=stores`).then(r => r.json()),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),

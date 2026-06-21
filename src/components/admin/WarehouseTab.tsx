@@ -219,8 +219,9 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
 
 // ─── Модалка поставки ─────────────────────────────────────────────────────────
 
-function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
+function SupplyModal({ groupId, category, stores, supply, onClose, onSaved }: {
   groupId: number
+  category?: string | null
   supply?: Supply | null
   stores: Store[]
   onClose: () => void
@@ -237,6 +238,20 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  // ── Шаг 2: ввод серийников (для категорий из учёта SN) ──
+  const [snCats, setSnCats] = useState<{ category: string, require_serial: boolean }[]>([])
+  const [snStep, setSnStep] = useState(false)
+  const [snSupplyId, setSnSupplyId] = useState<number | null>(null)
+  const [serials, setSerials] = useState<string[]>([])
+  const snInputs = React.useRef<(HTMLInputElement | null)[]>([])
+
+  useEffect(() => {
+    if (isNew) api.snArchive.getCategories().then(d => setSnCats(d.categories || []))
+  }, [isNew])
+
+  const snRule = snCats.find(c => c.category === category)
+  const needSerials = isNew && !!snRule
+
   const save = async () => {
     setLoading(true)
     const data = isNew
@@ -251,8 +266,72 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
       ).join('\n')
       alert(`Товар из отрицательного резерва поставлен в резерв:\n\n${msgs}`)
     }
+    // Категория с учётом серийников → переходим к вводу SN
+    if (needSerials && data.id && form.qty > 0) {
+      setSnSupplyId(data.id)
+      setSerials(Array.from({ length: form.qty }, () => ""))
+      setSnStep(true)
+      return
+    }
     onSaved()
     onClose()
+  }
+
+  const saveSerials = async () => {
+    const clean = serials.map(s => s.trim())
+    if (snRule?.require_serial && clean.some(s => !s)) {
+      setError("Заполни все серийные номера")
+      return
+    }
+    setLoading(true)
+    const data = await api.snArchive.addSerials({ supply_id: snSupplyId!, serials: clean.filter(Boolean) })
+    setLoading(false)
+    if (data.error) { setError(data.error); return }
+    onSaved()
+    onClose()
+  }
+
+  if (snStep) {
+    const store = stores.find(s => s.id === form.store_id)
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Серийные номера</h2>
+            <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+          </div>
+          <p className="mb-4 text-xs text-foreground/50">
+            {category} · {serials.length} шт.
+            {store && <> · магазин <span className="font-medium text-foreground/70">[{store.code}] {store.name}</span></>}
+          </p>
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            {serials.map((sn, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="w-6 shrink-0 text-right text-xs text-foreground/40">{i + 1}.</span>
+                <Input
+                  ref={(el) => { snInputs.current[i] = el }}
+                  autoFocus={i === 0}
+                  value={sn}
+                  placeholder="S/N"
+                  onChange={e => setSerials(p => p.map((v, j) => j === i ? e.target.value : v))}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      if (i < serials.length - 1) snInputs.current[i + 1]?.focus()
+                      else saveSerials()
+                    }
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button onClick={saveSerials} disabled={loading}>{loading ? "Сохранение..." : "Сохранить серийники"}</Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -290,11 +369,18 @@ function SupplyModal({ groupId, supply, stores, onClose, onSaved }: {
 
         </div>
 
+        {needSerials && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-primary">
+            <Icon name="ScanBarcode" size={13} />
+            После приёмки откроется ввод серийников ({form.qty} шт.)
+          </p>
+        )}
+
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Отмена</Button>
-          <Button onClick={save} disabled={loading}>{loading ? "Сохранение..." : isNew ? "Добавить" : "Сохранить"}</Button>
+          <Button onClick={save} disabled={loading}>{loading ? "Сохранение..." : isNew ? (needSerials ? "Далее" : "Добавить") : "Сохранить"}</Button>
         </div>
       </div>
     </div>
@@ -563,6 +649,7 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
       {supplyModal !== null && (
         <SupplyModal
           groupId={group.id}
+          category={group.category}
           supply={supplyModal === "new" ? null : supplyModal}
           stores={stores}
           onClose={() => setSupplyModal(null)}
@@ -736,6 +823,9 @@ export default function WarehouseTab() {
         <Badge variant="outline">{total} {showArchived ? "в архиве" : "позиций"}</Badge>
         <div className="flex-1" />
 
+        <Button variant="outline" size="sm" onClick={() => { window.location.href = "/admin/sn_archive" }}>
+          <Icon name="ScanBarcode" size={14} className="mr-1.5" />Архив SN
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
           <Icon name="Store" size={14} className="mr-1.5" />Магазины
         </Button>

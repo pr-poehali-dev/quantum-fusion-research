@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "List serials",
+      "method": "GET",
+      "path": "/?action=list_serials",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Categories list",
+      "method": "GET",
+      "path": "/?action=categories",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Stores list",
+      "method": "GET",
+      "path": "/?action=stores",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Lookup unknown serial",
+      "method": "GET",
+      "path": "/?action=lookup&serial=__nonexistent_sn__",
+      "expectedStatus": 200
+    }
+  ]
+}

@@ -65,6 +65,37 @@ def store_code_for_product(cur, pid):
     return (row[0].strip() if row and row[0] else None)
 
 
+def store_code_for_serial(cur, serial):
+    """Код магазина по конкретному серийнику из реестра sn_archive.
+    Главный приоритет для гарантийки: знаем, откуда КОНКРЕТНО куплена железка
+    (например, проц), даже если потом докупали ту же модель в другом месте."""
+    if not serial:
+        return None
+    s = str(serial).strip()
+    if not s:
+        return None
+    cur.execute(
+        f"SELECT st.code "
+        f"FROM {SCHEMA}.sn_archive a "
+        f"JOIN {SCHEMA}.warehouse_stores st ON st.id = a.store_id "
+        f"WHERE a.serial = %s AND a.store_id IS NOT NULL "
+        f"ORDER BY a.id DESC LIMIT 1",
+        (s,),
+    )
+    row = cur.fetchone()
+    return (row[0].strip() if row and row[0] else None)
+
+
+def store_code_by_serials(cur, serials, pid):
+    """Магазин для строки гарантийки: сперва по серийнику (точно),
+    иначе фолбэк на последнюю поставку товара."""
+    for sn in (serials or []):
+        code = store_code_for_serial(cur, sn)
+        if code:
+            return code
+    return store_code_for_product(cur, pid)
+
+
 def months_label(n: int) -> str:
     if n % 100 in range(11, 20):
         return f"{n} месяцев"
@@ -358,7 +389,8 @@ def handler(event: dict, context) -> dict:
                     pp = cur.fetchone()
                     if pp and pp[0]:
                         price = float(pp[0])
-                store_code = store_code_for_product(cur, pid)
+                # Магазин: сперва точно по серийнику (sn_archive), затем по поставке.
+                store_code = store_code_by_serials(cur, serials, pid)
                 enriched.append({
                     "name": name + (f" [{store_code}]" if store_code else ""),
                     "qty": 1,
@@ -418,7 +450,10 @@ def handler(event: dict, context) -> dict:
             if not serials and item.get("serial_number"):
                 serials = [item["serial_number"]]
             serials = [s for s in serials if s and str(s).strip()]
-            store_code = store_code_for_product(cur, pid) if (pid and item.get("item_type") == "product") else None
+            # Магазин: точно по серийнику из sn_archive, иначе по последней поставке.
+            store_code = store_code_for_serial(cur, serials[0]) if serials else None
+            if not store_code and pid and item.get("item_type") == "product":
+                store_code = store_code_for_product(cur, pid)
             enriched.append({
                 "name": item.get("name", "") + (f" [{store_code}]" if store_code else ""),
                 "qty": item.get("quantity", 1),
