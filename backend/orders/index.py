@@ -198,23 +198,22 @@ def handler(event: dict, context) -> dict:
                 return result, asm_type, asm_fee_val
 
             if order_type == "pc_build":
-                # ── ПРОДАЖА ИЗ НАЛИЧИЯ ─────────────────────────────────────────
-                # Если заказывают готовую сборку (есть wip с for_sale=TRUE и без
-                # активного заказа) — привязываем существующий wip к этому заказу,
-                # НЕ плодим копию сборки/wip. Сборку снимаем с витрины.
+                # ── ПРОДАЖА ИЗ НАЛИЧИЯ (модель «вечный заказ-затычка») ──────────
+                # У сборки свободной продажи (for_sale=TRUE) есть ПОСТОЯННЫЙ заказ.
+                # Покупка через сайт НЕ создаёт новый заказ, а вписывает данные
+                # клиента в существующий заказ-затычку. Сборка остаётся in_stock
+                # (баннер на витрине переключится «В наличии» → «В резерве»
+                # автоматически, т.к. в затычке появились данные клиента).
                 stock_build_ids = [
                     int(it["id"]) for it in items
                     if it.get("item_type") == "config" and it.get("id")
                 ]
                 stock_wip = None
                 if stock_build_ids:
-                    # Ищем готовую сборку «в свободную продажу» (for_sale=TRUE), ещё не
-                    # привязанную к заказу. Stage НЕ фиксируем — берём готовую на любой
-                    # стадии (кроме архива/отмены), чтобы не плодить дубль конфига.
                     cur.execute(
-                        "SELECT wb.id, wb.build_id, wb.stage FROM wip_builds wb "
+                        "SELECT wb.id, wb.build_id, wb.order_id FROM wip_builds wb "
                         "WHERE wb.build_id = ANY(%s) AND wb.for_sale = TRUE "
-                        "AND wb.order_id IS NULL "
+                        "AND wb.order_id IS NOT NULL "
                         "AND wb.stage NOT IN ('Архив','Отменён') "
                         "ORDER BY wb.id ASC LIMIT 1",
                         (stock_build_ids,)
@@ -222,10 +221,18 @@ def handler(event: dict, context) -> dict:
                     stock_wip = cur.fetchone()
 
                 if stock_wip:
-                    # Привязываем существующую готовую сборку к заказу + вписываем
-                    # данные клиента. Новый конфиг НЕ создаём. Stage сохраняем как есть.
-                    wip_id_stock, build_id_stock, wip_stage = stock_wip[0], stock_wip[1], stock_wip[2]
-                    # Контакт клиента для карточки WIP: имя + телефон (+ доп. контакт)
+                    # Вписываем данные клиента в СУЩЕСТВУЮЩИЙ заказ-затычку,
+                    # а лишний только что созданный заказ удаляем.
+                    wip_id_stock, build_id_stock, stub_order_id = stock_wip[0], stock_wip[1], stock_wip[2]
+                    cur.execute("DELETE FROM orders WHERE id=%s", (order_id,))
+                    # Обновляем заказ-затычку реальными данными клиента
+                    cur.execute(
+                        "UPDATE orders SET customer_name=%s, customer_phone=%s, customer_email=%s, "
+                        "comment=%s, status='waiting_assembly', updated_at=NOW() WHERE id=%s",
+                        (body["customer_name"], body["customer_phone"], body.get("customer_email"),
+                         body.get("comment"), stub_order_id)
+                    )
+                    # Контакт для карточки WIP
                     _contact = (body.get("customer_name") or "").strip()
                     _phone = (body.get("customer_phone") or "").strip()
                     if _phone:
@@ -234,31 +241,29 @@ def handler(event: dict, context) -> dict:
                     if _extra_contact:
                         _contact = f"{_contact} · {_extra_contact}" if _contact else _extra_contact
                     cur.execute(
-                        "UPDATE wip_builds SET order_id=%s, contact=%s, updated_at=NOW() WHERE id=%s",
-                        (order_id, _contact[:128], wip_id_stock)
+                        "UPDATE wip_builds SET contact=%s, updated_at=NOW() WHERE id=%s",
+                        (_contact[:128], wip_id_stock)
                     )
-                    # Снимаем галочку «В наличии» (сборка ушла под клиента).
-                    # ВНИМАНИЕ: в pc_builds НЕТ колонки updated_at — не добавлять её сюда!
-                    cur.execute(
-                        "UPDATE pc_builds SET in_stock=FALSE WHERE id=%s",
-                        (build_id_stock,)
-                    )
+                    # in_stock НЕ снимаем — сборка остаётся, баннер станет «В резерве».
+                    cur.execute("SELECT display_number FROM orders WHERE id=%s", (stub_order_id,))
+                    _dn_row = cur.fetchone()
+                    _stub_dn = _dn_row[0] if _dn_row else display_number
                     try:
                         from tg_notify import notify_managers as _notify
                         _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
                         _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
                         _notify(
-                            f"✅ <b>Продажа из наличия {display_number}</b>\n"
+                            f"✅ <b>Продажа из наличия {_stub_dn}</b>\n"
                             f"Готовый ПК заказан с витрины.\n"
                             f"Клиент: {customer}\n"
-                            f"Сборка #{build_id_stock} привязана к заказу — собирать заново не нужно."
+                            f"Сборка #{build_id_stock} — собирать заново не нужно."
                             f"{_link}"
                         )
                     except Exception as _e:
                         print(f"TG_NOTIFY stock-sale: {_e}")
                     conn.commit()
                     return {"statusCode": 201, "headers": cors,
-                            "body": json.dumps({"id": order_id, "ok": True, "from_stock": True})}
+                            "body": json.dumps({"id": stub_order_id, "ok": True, "from_stock": True})}
 
                 # Определяем, не была ли это ГОТОВАЯ сборка из каталога, которую
                 # уже продали (есть wip с этим build_id). Тогда создаём копию, но
@@ -1291,19 +1296,28 @@ def handler(event: dict, context) -> dict:
                         "body": json.dumps({"ok": True, "wrote_off": wrote_off, "items": items})}
 
             elif action == "clear_reservation":
-                # «Очистить резерв»: снимаем складские резервы и снимаем у сборки
-                # флаг for_sale (пометка «в резерве» уходит). ЗАКАЗ ОСТАЁТСЯ
-                # активным и привязанным к сборке — это уже обычная сборка под
-                # клиента, которую нужно обработать/выдать. На витрину НЕ
-                # возвращаем (сборка ушла под клиента).
+                # «Снять резерв» (клиент передумал): возвращаем заказ-затычку в
+                # ПУСТОЕ состояние — стираем данные клиента. Сборка остаётся в
+                # наличии и в свободной продаже (for_sale/in_stock не трогаем),
+                # заказ-затычку сохраняем для следующего клиента. На витрине
+                # баннер вернётся «В резерве» → «В наличии».
                 import warehouse_core as wc
                 try:
                     wc.release_order_reserves(cur, order_id, only_new_negative=True)
                 except Exception as _re:
                     print(f"clear_reservation release: {_re}")
-                # Снимаем флаг свободной продажи у WIP-сборки заказа → больше не «в резерве»
+                cur.execute("SELECT display_number FROM orders WHERE id=%s", (order_id,))
+                _dn = cur.fetchone()
+                _stub_name = f"Сборка {(_dn[0] if _dn and _dn[0] else order_id)}"
+                # Возвращаем затычку в пустое состояние
                 cur.execute(
-                    f"UPDATE {schema}.wip_builds SET for_sale=FALSE, updated_at=NOW() WHERE order_id=%s",
+                    "UPDATE orders SET customer_name=%s, customer_phone='-', customer_email=NULL, "
+                    "status='waiting_assembly', updated_at=NOW() WHERE id=%s",
+                    (_stub_name, order_id)
+                )
+                # Чистим контакт в WIP (for_sale остаётся TRUE — сборка снова на витрине)
+                cur.execute(
+                    f"UPDATE {schema}.wip_builds SET contact='', updated_at=NOW() WHERE order_id=%s",
                     (order_id,)
                 )
                 conn.commit()

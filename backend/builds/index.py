@@ -83,16 +83,19 @@ def fmt_build(row, tags=None, reserved=False):
 
 
 def get_reserved_build_ids(cur, build_ids):
-    """Возвращает множество build_id, которые «в резерве»: готовая сборка
-    свободной продажи привязана к незавершённому заказу (for_sale=TRUE,
-    order_id IS NOT NULL, stage != 'Забрали')."""
+    """Возвращает множество build_id, которые «в резерве»: сборка свободной
+    продажи (for_sale=TRUE), у которой в заказе-затычке ЕСТЬ данные клиента
+    (телефон заполнен и не '-', т.е. кто-то заказал через сайт)."""
     if not build_ids:
         return set()
     ids_str = ",".join(str(int(i)) for i in build_ids)
     cur.execute(
-        f"SELECT DISTINCT build_id FROM {SCHEMA}.wip_builds "
-        f"WHERE build_id IN ({ids_str}) AND for_sale = TRUE "
-        f"AND order_id IS NOT NULL AND stage <> 'Забрали'"
+        f"SELECT DISTINCT wb.build_id FROM {SCHEMA}.wip_builds wb "
+        f"JOIN {SCHEMA}.orders o ON o.id = wb.order_id "
+        f"WHERE wb.build_id IN ({ids_str}) AND wb.for_sale = TRUE "
+        f"AND wb.stage <> 'Забрали' "
+        f"AND COALESCE(NULLIF(TRIM(o.customer_phone), ''), '-') <> '-' "
+        f"AND o.status NOT IN ('cancelled','archived')"
     )
     return {r[0] for r in cur.fetchall()}
 

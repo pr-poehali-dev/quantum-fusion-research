@@ -177,8 +177,11 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
             if (order.is_stock_sale && order.wip_stage === "Готов, можно забрать") {
               statusInfo = { label: "В продаже", color: "text-green-400 bg-green-400/10" }
             }
-            // Сборка из свободной продажи, занятая заказом, но не выданная = «в резерве»
-            const isReserved = !!order.for_sale && order.status !== "cancelled" && order.wip_stage !== "Забрали"
+            // «В резерве» = сборка свободной продажи, у которой в заказе-затычке
+            // есть реальные данные клиента (телефон заполнен и не «-»).
+            const _phone = (order.customer_phone || "").trim()
+            const hasClient = !!_phone && _phone !== "-"
+            const isReserved = !!order.is_stock_sale && hasClient && order.wip_stage !== "Забрали"
             return (
               <div key={order.id} className="rounded-xl border border-border bg-card p-5">
                 <div className="flex flex-wrap items-start gap-4">
