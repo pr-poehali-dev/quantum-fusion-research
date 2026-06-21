@@ -681,6 +681,15 @@ def mark_overdue_delays(cur):
             (wip_id,),
         )
         if cur.rowcount:
+            # Дедуп: РОВНО ОДНО уведомление на событие (wip_id+slot+eta_date).
+            # Если запись уже есть в журнале — пропускаем (не уведомляем повторно).
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.wip_delay_notified (wip_id, slot, eta_date) "
+                f"VALUES (%s, %s, %s) ON CONFLICT (wip_id, slot, eta_date) DO NOTHING",
+                (wip_id, slot, eta_date),
+            )
+            if cur.rowcount == 0:
+                continue
             name_field = _SLOT_NAME_FIELD.get(slot, "extra")
             # Тянем номер заказа из orders (display_number — надёжный «PC00001»),
             # компонент — из колонки слота wip_builds.
