@@ -111,7 +111,7 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
     name: group?.name || "",
     category: group?.category || "",
     part_number: group?.part_number || "",
-    warranty_months: group?.warranty_months ?? 12,
+    warranty_months: group?.warranty_months ?? 0,
     price_retail: group?.price_retail ?? 0,
     price_opt1: group?.price_opt1 ?? 0,
     price_opt2: group?.price_opt2 ?? 0,
@@ -124,6 +124,11 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
 
   const save = async () => {
     if (!form.name.trim()) { setError("Название обязательно"); return }
+    if (!form.category.trim()) { setError("Укажите категорию"); return }
+    if (!(form.price_retail > 0)) { setError("Укажите цену продажи"); return }
+    if (form.warranty_months === null || form.warranty_months === undefined || Number.isNaN(form.warranty_months)) {
+      setError("Укажите гарантию (можно 0)"); return
+    }
     setLoading(true)
     const data = isNew
       ? await api.warehouse.createGroup({ ...form })
@@ -153,7 +158,7 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
             <Input value={form.name} onChange={f("name")} placeholder="Intel Core i9-14900K" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-foreground/50">Категория</label>
+            <label className="mb-1 block text-xs text-foreground/50">Категория *</label>
             <input
               list="group-categories"
               value={form.category}
@@ -174,11 +179,11 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
             <Input value={form.cell} onChange={f("cell")} placeholder="A1-2" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-foreground/50">Гарантия (мес.)</label>
+            <label className="mb-1 block text-xs text-foreground/50">Гарантия (мес.) *</label>
             <Input type="number" value={form.warranty_months} onChange={fNum("warranty_months")} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-foreground/50">Цена продажи</label>
+            <label className="mb-1 block text-xs text-foreground/50">Цена продажи *</label>
             <Input type="number" value={form.price_retail} onChange={fNum("price_retail")} />
           </div>
           <div>
