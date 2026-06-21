@@ -1332,6 +1332,13 @@ def handler(event: dict, context) -> dict:
 
                 cur.execute("UPDATE orders SET items=%s, status='done', updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
+                # Синхронизируем WIP-сборку: при выдаче переводим стадию в «Забрали»
+                # (иначе в /orders статус берётся из WIP и остаётся «Готов/В продаже»).
+                cur.execute(
+                    f"UPDATE {schema}.wip_builds SET stage='Забрали', issued_at=CURRENT_DATE, "
+                    f"updated_at=NOW() WHERE order_id=%s",
+                    (order_id,)
+                )
                 conn.commit()
                 return {"statusCode": 200, "headers": cors,
                         "body": json.dumps({"ok": True, "wrote_off": wrote_off, "items": items})}
