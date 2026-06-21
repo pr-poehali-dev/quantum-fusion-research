@@ -494,8 +494,8 @@ def handler(event: dict, context) -> dict:
 
             # НДС: фронт шлёт price_with_vat (введённая цена) и has_vat.
             # Себестоимость:
-            #   с НДС  → cost_price = цена × (1 − скидка%/100)
-            #            (поставщик даёт скидку по текущей ставке)
+            #   с НДС  → cost_price = цена закупки С НДС КАК ЕСТЬ, без скидки
+            #            (НДС-товары считаем тупо по цене закупки с НДС)
             #   без НДС → cost_price = введённая цена как есть
             # Поддержка legacy: если пришло только cost_price — берём его.
             has_vat = body.get("has_vat")
@@ -504,11 +504,7 @@ def handler(event: dict, context) -> dict:
                 price_in = float(price_with_vat)
             else:
                 price_in = float(body.get("cost_price", 0))
-            if has_vat is True:
-                discount = get_setting_num(cur, "purchase_discount_percent", 0.0)
-                cost_price = round(price_in * (1.0 - discount / 100.0), 2)
-            else:
-                cost_price = round(price_in, 2)
+            cost_price = round(price_in, 2)
 
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_supplies "
@@ -755,12 +751,25 @@ def handler(event: dict, context) -> dict:
 
         if action == "supply_update" and method == "PUT":
             sid = body.get("id")
-            # Запоминаем старые магазин+дату поставки (для пересчёта расхода)
+            # Запоминаем старые магазин+дату+цену+НДС поставки
             cur.execute(
-                f"SELECT store_id, purchase_date FROM {SCHEMA}.warehouse_supplies WHERE id = {int(sid)}"
+                f"SELECT store_id, purchase_date, cost_price, has_vat "
+                f"FROM {SCHEMA}.warehouse_supplies WHERE id = {int(sid)}"
             )
             old_row = cur.fetchone()
             old_store, old_date = (old_row[0], old_row[1]) if old_row else (None, None)
+            old_cost = float(old_row[2]) if old_row and old_row[2] is not None else 0.0
+            old_has_vat = bool(old_row[3]) if old_row and old_row[3] is not None else False
+            # НДС-товары: цену (себестоимость) можно только ПОВЫШАТЬ.
+            if old_has_vat and "cost_price" in body:
+                try:
+                    if float(body["cost_price"]) < old_cost:
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                            "error": "vat_no_discount",
+                            "message": "Товар с НДС: цену можно только повысить, понижение недоступно.",
+                        })}
+                except (TypeError, ValueError):
+                    pass
             fields = []
             for f in ["cell"]:
                 if f in body:
