@@ -349,12 +349,16 @@ def handler(event: dict, context) -> dict:
 
                 try:
                     from tg_notify import notify_managers
+                    _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                    _link_line = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
+                    _sum_str = f"{float(total_price):,.0f}".replace(",", " ")
                     notify_managers(
                         f"🖥 <b>Новый заказ-сборка PC{str(new_order_id).zfill(5)}</b>\n"
                         f"Сборка: {build_name or 'Сборка ПК'}\n"
                         f"Клиент: {cust_name}\n"
                         f"Телефон: {cust_phone}\n"
-                        f"Сумма: {float(total_price):,.0f} ₽".replace(",", " ")
+                        f"Сумма: {_sum_str} ₽"
+                        f"{_link_line}"
                     )
                 except Exception as _e:
                     print(f"TG_NOTIFY wip ensure_order: {_e}")
