@@ -309,18 +309,25 @@ def handler(event: dict, context) -> dict:
 
         elif method == "PUT":
             body = json.loads(event.get("body") or "{}")
+            # parent_id и status НЕ обнуляем, если фронт их не прислал —
+            # иначе вариация теряет связь с родителем (становится самостоятельной).
+            # COALESCE(%s, <колонка>) оставляет прежнее значение при NULL.
+            parent_id = body.get("parent_id") if "parent_id" in body else None
+            status = body.get("status") if body.get("status") else None
             cur.execute(
                 """UPDATE pc_builds SET name=%s, description=%s, image_urls=%s, components=%s,
                    parts_total=%s, assembly_type=%s, assembly_fee=%s, total_price=%s,
-                   status=%s, is_featured=%s, in_stock=%s, sort_order=%s, parent_id=%s, sell_with_vat=%s
+                   status=COALESCE(%s, status), is_featured=%s, in_stock=%s,
+                   sort_order=COALESCE(%s, sort_order),
+                   parent_id=COALESCE(%s, parent_id), sell_with_vat=%s
                    WHERE id=%s""",
                 (body.get("name"), body.get("description"),
                  json.dumps(body.get("image_urls", [])), json.dumps(body.get("components", [])),
                  body.get("parts_total", 0), body.get("assembly_type", "manual"),
                  body.get("assembly_fee", 0), body.get("total_price", 0),
-                 body.get("status", "draft"), body.get("is_featured", False),
+                 status, body.get("is_featured", False),
                  body.get("in_stock", False),
-                 body.get("sort_order"), body.get("parent_id"),
+                 body.get("sort_order"), parent_id,
                  body.get("sell_with_vat", False), body["id"])
             )
             _sync_wip_from_build(cur, body["id"], body.get("components", []))

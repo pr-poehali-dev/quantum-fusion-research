@@ -189,6 +189,7 @@ export function AdminCatalogTab({
     assembly_fee_manual: "",
     image_urls: [] as string[],
     sell_with_vat: false,
+    parent_id: null as number | null,
   })
   const [buildComponents, setBuildComponents] = useState<Array<{
     slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; qty: number; image_urls?: string[]
@@ -221,6 +222,7 @@ export function AdminCatalogTab({
       assembly_fee_manual: b.assembly_fee ? String(b.assembly_fee) : "",
       image_urls: b.image_urls || [],
       sell_with_vat: b.sell_with_vat ?? false,
+      parent_id: b.parent_id ?? null,
     })
     setBuildComponents(b.components?.map(c => ({
       slot: c.slot, source: (c.source as "catalog" | "custom") || "catalog",
@@ -253,6 +255,7 @@ export function AdminCatalogTab({
       parts_total: partsTotal, total_price: buildTotal,
       sell_with_vat: buildForm.sell_with_vat,
       image_urls: buildForm.image_urls,
+      parent_id: buildForm.parent_id,
       components: buildComponents.map(c => ({
         slot: c.slot, source: c.source, source_id: c.source_id,
         name: c.name, price: c.price, qty: c.qty, image_urls: c.image_urls,
@@ -271,7 +274,7 @@ export function AdminCatalogTab({
     }
     const d = await api.builds.getAll()
     setBuilds(Array.isArray(d) ? d : (d.builds || []))
-    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false })
+    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, parent_id: null })
     setBuildComponents([])
     setBuildTagIds([])
     setTab("builds")
