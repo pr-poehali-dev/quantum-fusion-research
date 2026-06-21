@@ -336,6 +336,35 @@ def handler(event: dict, context) -> dict:
                             break
                 ordn = display_number or order_number or (str(order_id) if order_id else "—")
                 slot_label = _ru.get(slot, slot)
+
+                # Задача Гоше(1) и Саеду(3): пнуть клиента о задержке и смещении сроков.
+                # Не дублируем — одна задача на (заказ+слот) в сутки.
+                task_title = f"Пнуть клиента по задержке #{ordn} ({slot_label})"
+                cur.execute(
+                    f"SELECT 1 FROM {SCHEMA}.calendar_events "
+                    f"WHERE kind='task' AND event_date=CURRENT_DATE AND title=%s LIMIT 1",
+                    (task_title,),
+                )
+                if not cur.fetchone():
+                    task_descr = (
+                        f"Задержка железа по заказу #{ordn}.\n"
+                        f"Компонент: {component_name or '—'} ({slot_label}), ожидался {eta_date.isoformat() if eta_date else '—'}.\n"
+                        f"Связаться с клиентом, предупредить о задержке и смещении сроков сборки/выдачи."
+                    )
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.calendar_events "
+                        f"(event_date, title, description, kind, status, origin_date) "
+                        f"VALUES (CURRENT_DATE, %s, %s, 'task', 'new', CURRENT_DATE) RETURNING id",
+                        (task_title, task_descr),
+                    )
+                    _tid = cur.fetchone()[0]
+                    for _emp in (1, 3):  # Гоша, Саед
+                        cur.execute(
+                            f"INSERT INTO {SCHEMA}.calendar_event_employees (event_id, employee_id) "
+                            f"VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            (_tid, _emp),
+                        )
+
                 # Помечаем ДО отправки и коммитим — чтобы при таймауте TG
                 # событие не разослалось повторно.
                 cur.execute(
