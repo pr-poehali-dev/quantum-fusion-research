@@ -202,26 +202,36 @@ def handler(event: dict, context) -> dict:
                 ]
                 stock_wip = None
                 if stock_build_ids:
+                    # Ищем готовую сборку «в свободную продажу» (for_sale=TRUE), ещё не
+                    # привязанную к заказу. Stage НЕ фиксируем — берём готовую на любой
+                    # стадии (кроме архива/отмены), чтобы не плодить дубль конфига.
                     cur.execute(
-                        "SELECT wb.id, wb.build_id FROM wip_builds wb "
+                        "SELECT wb.id, wb.build_id, wb.stage FROM wip_builds wb "
                         "WHERE wb.build_id = ANY(%s) AND wb.for_sale = TRUE "
-                        "AND wb.stage = 'Готов, можно забрать' "
                         "AND wb.order_id IS NULL "
+                        "AND wb.stage NOT IN ('Архив','Отменён') "
                         "ORDER BY wb.id ASC LIMIT 1",
                         (stock_build_ids,)
                     )
                     stock_wip = cur.fetchone()
 
                 if stock_wip:
-                    # Привязываем готовый ПК к заказу, снимаем с витрины
-                    wip_id_stock, build_id_stock = stock_wip[0], stock_wip[1]
+                    # Привязываем существующую готовую сборку к заказу + вписываем
+                    # данные клиента. Новый конфиг НЕ создаём. Stage сохраняем как есть.
+                    wip_id_stock, build_id_stock, wip_stage = stock_wip[0], stock_wip[1], stock_wip[2]
+                    # Контакт клиента для карточки WIP: имя + телефон (+ доп. контакт)
+                    _contact = (body.get("customer_name") or "").strip()
+                    _phone = (body.get("customer_phone") or "").strip()
+                    if _phone:
+                        _contact = f"{_contact} · {_phone}" if _contact else _phone
+                    _extra_contact = (body.get("customer_email") or "").strip()
+                    if _extra_contact:
+                        _contact = f"{_contact} · {_extra_contact}" if _contact else _extra_contact
                     cur.execute(
-                        "UPDATE wip_builds SET order_id=%s, stage='Готов, можно забрать', "
-                        "updated_at=NOW() WHERE id=%s",
-                        (order_id, wip_id_stock)
+                        "UPDATE wip_builds SET order_id=%s, contact=%s, updated_at=NOW() WHERE id=%s",
+                        (order_id, _contact[:128], wip_id_stock)
                     )
-                    # Сборка под клиента; снимаем галочку «В наличии» (но оставляем
-                    # в каталоге до фактической выдачи — финально архивируем при выдаче)
+                    # Снимаем галочку «В наличии» (сборка ушла под клиента)
                     cur.execute(
                         "UPDATE pc_builds SET in_stock=FALSE, updated_at=NOW() WHERE id=%s",
                         (build_id_stock,)
