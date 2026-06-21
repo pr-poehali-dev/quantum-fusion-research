@@ -1947,6 +1947,49 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        # ── ЭКСПОРТ: значения характеристик ВСЕХ товаров (для CSV) ───────────
+        # Отдаёт по каждому товару его значения {attribute_id: value} — фронт
+        # собирает CSV-матрицу товары × характеристики.
+        if action == "spec_export_values" and method == "GET":
+            cur.execute(
+                f"SELECT product_id, attribute_id, value, value_json "
+                f"FROM {SCHEMA}.product_spec_values"
+            )
+            by_pid = {}
+            for pid, aid, value, vjson in cur.fetchall():
+                v = vjson if vjson is not None else value
+                by_pid.setdefault(pid, {})[str(aid)] = v
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"values": by_pid}, default=str)}
+
+        # ── ИМПОРТ: массовое сохранение значений нескольких товаров ──────────
+        # body.items = [{ product_id, values: { attribute_id: value | [..] } }, ...]
+        if action == "spec_import" and method == "PUT":
+            items = body.get("items") or []
+            saved = 0
+            for it in items:
+                pid = int(it.get("product_id") or 0)
+                if not pid:
+                    continue
+                values = it.get("values") or {}
+                for aid_str, val in values.items():
+                    aid = int(aid_str)
+                    if isinstance(val, list):
+                        cur.execute(
+                            f"INSERT INTO {SCHEMA}.product_spec_values (product_id, attribute_id, value, value_json, updated_at) "
+                            f"VALUES ({pid}, {aid}, NULL, {esc(json.dumps(val))}::jsonb, NOW()) "
+                            f"ON CONFLICT (product_id, attribute_id) DO UPDATE SET value = NULL, value_json = EXCLUDED.value_json, updated_at = NOW()"
+                        )
+                    else:
+                        sval = "" if val is None else str(val)
+                        cur.execute(
+                            f"INSERT INTO {SCHEMA}.product_spec_values (product_id, attribute_id, value, value_json, updated_at) "
+                            f"VALUES ({pid}, {aid}, {esc(sval)}, NULL, NOW()) "
+                            f"ON CONFLICT (product_id, attribute_id) DO UPDATE SET value = EXCLUDED.value, value_json = NULL, updated_at = NOW()"
+                        )
+                saved += 1
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "saved": saved})}
+
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 
     finally:

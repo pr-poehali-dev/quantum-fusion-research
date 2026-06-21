@@ -208,6 +208,8 @@ export const api = {
     specValuesGet: (productId: number) => fetch(`${URLS.warehouse}?action=spec_values_get&product_id=${productId}`).then(r => r.json()),
     specValuesSave: (productId: number, values: Record<string, unknown>) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_values_save", product_id: productId, values }) }).then(r => r.json()),
     specSlotProducts: (slot: string) => fetch(`${URLS.warehouse}?action=spec_slot_products&slot=${encodeURIComponent(slot)}`).then(r => r.json()),
+    specExportValues: () => fetch(`${URLS.warehouse}?action=spec_export_values`).then(r => r.json()),
+    specImport: (items: { product_id: number; values: Record<string, unknown> }[]) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_import", items }) }).then(r => r.json()),
   },
   snArchive: {
     list: (params?: Record<string, string>) => {

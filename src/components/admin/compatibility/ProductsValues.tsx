@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { SpecSchema, SpecProduct, SpecAttribute } from "./types"
 import { Modal, Field } from "./AttributesBuilder"
+import { buildCsv, parseCsv, downloadCsv } from "./specCsv"
 
 interface Props { schema: SpecSchema }
 
@@ -13,12 +14,47 @@ export default function ProductsValues({ schema }: Props) {
   const [catFilter, setCatFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState<"all" | "new" | "ready">("all")
   const [editing, setEditing] = useState<SpecProduct | null>(null)
+  const [ioBusy, setIoBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     setLoading(true)
     api.warehouse.specProducts().then((d: SpecProduct[]) => { setRows(Array.isArray(d) ? d : []); setLoading(false) })
   }
   useEffect(load, [])
+
+  // Экспорт характеристик выбранной категории в CSV
+  const handleExport = async () => {
+    if (catFilter === "all") { alert("Выберите конкретную категорию для экспорта (колонки зависят от типа железа)."); return }
+    const cat = schema.categories.find(c => c.code === catFilter)
+    if (!cat) return
+    setIoBusy(true)
+    const attrs = schema.attributes.filter(a => a.category_id === cat.id)
+    const prods = rows.filter(r => r.spec_category_code === catFilter)
+    const resp = await api.warehouse.specExportValues()
+    const valuesByPid = (resp?.values || {}) as Record<number, Record<string, unknown>>
+    const csv = buildCsv(attrs, prods, valuesByPid)
+    downloadCsv(`Характеристики_${cat.name}.csv`, csv)
+    setIoBusy(false)
+  }
+
+  // Импорт CSV обратно
+  const handleImportFile = async (file: File) => {
+    if (catFilter === "all") { alert("Выберите категорию, в которую импортируете (для сопоставления колонок)."); return }
+    const cat = schema.categories.find(c => c.code === catFilter)
+    if (!cat) return
+    setIoBusy(true)
+    const text = await file.text()
+    const attrs = schema.attributes.filter(a => a.category_id === cat.id)
+    const { items, errors } = parseCsv(text, attrs)
+    if (errors.length) { alert("Проблемы при чтении файла:\n" + errors.slice(0, 5).join("\n")) }
+    if (items.length === 0) { setIoBusy(false); return }
+    if (!confirm(`Импортировать характеристики для ${items.length} товаров? Текущие значения этих полей будут перезаписаны.`)) { setIoBusy(false); return }
+    await api.warehouse.specImport(items)
+    setIoBusy(false)
+    load()
+    alert(`Готово! Обновлено товаров: ${items.length}`)
+  }
 
   const filtered = useMemo(() => rows.filter(r => {
     if (catFilter !== "all" && r.spec_category_code !== catFilter) return false
@@ -53,8 +89,25 @@ export default function ProductsValues({ schema }: Props) {
         <div className="ml-auto flex items-center gap-2 text-sm">
           <span className="rounded-lg bg-amber-500/10 px-2.5 py-1 text-amber-500">Новые: <b>{stats.neww}</b></span>
           <span className="rounded-lg bg-green-500/10 px-2.5 py-1 text-green-500">Готовы: <b>{stats.ready}</b></span>
+          <button onClick={handleExport} disabled={ioBusy}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-foreground/70 hover:border-primary hover:text-primary disabled:opacity-50" style={{ cursor: "pointer" }}
+            title="Скачать характеристики выбранной категории в CSV">
+            <Icon name="Download" size={14} /> Экспорт
+          </button>
+          <button onClick={() => fileRef.current?.click()} disabled={ioBusy}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-foreground/70 hover:border-primary hover:text-primary disabled:opacity-50" style={{ cursor: "pointer" }}
+            title="Загрузить отредактированный CSV">
+            <Icon name="Upload" size={14} /> Импорт
+          </button>
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = "" }} />
           <button onClick={load} className="rounded-lg border border-border p-2 text-foreground/60 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="RefreshCw" size={14} /></button>
         </div>
+      </div>
+
+      <div className="mb-4 flex items-start gap-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-foreground/60">
+        <Icon name="Info" size={14} className="mt-0.5 shrink-0 text-blue-500" />
+        <span>Для экспорта/импорта выберите конкретную <b>категорию</b> — колонки зависят от типа железа. Правьте файл в Excel или Google Sheets и загрузите обратно. Колонка <b>product_id</b> и заголовки менять нельзя. Несколько значений в одной ячейке разделяйте символом <b>|</b>.</span>
       </div>
 
       {loading ? <div className="py-20 text-center text-foreground/40">Загрузка...</div>

@@ -23,6 +23,12 @@
       "method": "GET",
       "path": "/?action=spec_slot_products&slot=motherboard",
       "expectedStatus": 200
+    },
+    {
+      "name": "Spec export values",
+      "method": "GET",
+      "path": "/?action=spec_export_values",
+      "expectedStatus": 200
     }
   ]
 }
