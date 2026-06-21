@@ -252,14 +252,8 @@ def handler(event: dict, context) -> dict:
                         from tg_notify import notify_managers as _notify
                         _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
                         _link = f"\n🔗 <a href=\"{_base}/admin/order/{stub_order_id}\">Открыть заказ</a>" if _base else ""
-                        # Кол-во ПК из заказа (quantity у config/pc_build позиции)
-                        _pc_qty = 1
-                        for _oi in items:
-                            if _oi.get("item_type") in ("config", "pc_build"):
-                                _pc_qty = int(_oi.get("quantity", 1) or 1)
-                                break
                         _notify(
-                            f"🛒 <b>Покупка ПК из наличия ({_pc_qty} ПК)</b>\n"
+                            f"🛒 <b>Покупка ПК из наличия ({_stub_dn})</b>\n"
                             f"Тип: ПК\n"
                             f"Клиент: {body.get('customer_name','—')}\n"
                             f"Телефон: {body.get('customer_phone','—')}"
