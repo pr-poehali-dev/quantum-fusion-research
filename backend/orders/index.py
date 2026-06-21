@@ -92,7 +92,11 @@ def handler(event: dict, context) -> dict:
             display_number = prefix + str(disp_num).zfill(5)
             cur.execute("UPDATE orders SET display_number=%s WHERE id=%s", (display_number, order_id))
 
+            # Общее уведомление — только для НЕ-сборок (железо/корзина).
+            # Для pc_build уведомления шлёт спец-логика ниже (наличие/новая/дубль),
+            # иначе пришло бы два сообщения на один заказ.
             try:
+              if body.get("order_type") != "pc_build":
                 from tg_notify import notify_managers
                 _ord_total = float(body.get("total") or 0)
                 _ord_type_label = {"pc_build": "Сборка ПК", "parts": "Железо", "cart": "Корзина"}.get(
@@ -254,6 +258,18 @@ def handler(event: dict, context) -> dict:
                     return {"statusCode": 201, "headers": cors,
                             "body": json.dumps({"id": order_id, "ok": True, "from_stock": True})}
 
+                # Определяем, не была ли это ГОТОВАЯ сборка из каталога, которую
+                # уже продали (есть wip с этим build_id). Тогда создаём копию, но
+                # предупреждаем менеджера: эту сборку надо собрать заново.
+                _was_sold_copy = False
+                if stock_build_ids:
+                    cur.execute(
+                        "SELECT 1 FROM wip_builds WHERE build_id = ANY(%s) LIMIT 1",
+                        (stock_build_ids,)
+                    )
+                    if cur.fetchone():
+                        _was_sold_copy = True
+
                 build_name = f"Заказ {order_id:05d}"
                 description = f"Заказ ПК #{order_id:05d} от {customer}"
                 has_assembly = any(it.get("assembly", True) for it in items if it.get("item_type") == "config")
@@ -298,8 +314,33 @@ def handler(event: dict, context) -> dict:
                      slot_map.get("case_name"), slot_map.get("cooling"), slot_map.get("extra"))
                 )
 
-                # TODO: notify_telegram(order_id, body["customer_name"], body["customer_phone"])
-                # Отправить уведомление менеджеру в Telegram о новом заказе ПК
+                # Уведомление в Telegram о новом заказе-сборке (всегда).
+                try:
+                    from tg_notify import notify_managers as _notify
+                    _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+                    _link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
+                    _amt = f"{parts_total:,.0f}".replace(",", " ")
+                    if _was_sold_copy:
+                        _notify(
+                            f"⚠️ <b>Дубликат сборки {display_number}</b>\n"
+                            f"Готовая сборка уже продана/занята — создана КОПИЯ под заказ, "
+                            f"её нужно собрать заново.\n"
+                            f"Клиент: {customer}\n"
+                            f"Телефон: {body.get('customer_phone','—')}\n"
+                            f"Сумма: {_amt} ₽"
+                            f"{_link}"
+                        )
+                    else:
+                        _notify(
+                            f"🖥 <b>Новый заказ-сборка {display_number}</b>\n"
+                            f"Сборку нужно собрать.\n"
+                            f"Клиент: {customer}\n"
+                            f"Телефон: {body.get('customer_phone','—')}\n"
+                            f"Сумма: {_amt} ₽"
+                            f"{_link}"
+                        )
+                except Exception as _e:
+                    print(f"TG_NOTIFY new-build: {_e}")
 
             conn.commit()
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
