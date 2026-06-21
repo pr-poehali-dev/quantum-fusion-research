@@ -66,6 +66,67 @@ def detect_component_type(cur, product_id, category_name=""):
     return "other"
 
 
+# Обязательные поля характеристик по типу компонента.
+# Товар считается "готовым" когда заполнены ВСЕ поля из своего списка.
+# Для типов без жёстких связок (fan/other) обязательных полей нет — сразу готов.
+SPECS_REQUIRED = {
+    "cpu":         ["socket", "mem_type", "tdp_watt"],
+    "motherboard": ["socket", "chipset", "form_factor", "mem_type", "mem_slots"],
+    "ram":         ["mem_type", "ram_form", "ram_modules", "ram_capacity_gb"],
+    "gpu":         ["gpu_length_mm", "tdp_watt", "gpu_power_connector"],
+    "psu":         ["psu_watt", "psu_form_factor"],
+    "case":        ["case_form_factors", "max_gpu_length_mm", "max_cooler_height_mm"],
+    "cooling":     ["cooler_sockets", "cooler_type"],
+    "storage":     ["storage_interface"],
+    "fan":         [],
+    "other":       [],
+}
+
+# Все колонки характеристик (без служебных) — для select/update.
+SPECS_COLUMNS = [
+    "component_type", "socket", "mem_type", "tdp_watt", "has_igpu",
+    "chipset", "form_factor", "mem_slots", "m2_slots",
+    "ram_form", "ram_modules", "ram_capacity_gb", "ram_freq",
+    "gpu_length_mm", "gpu_power_connector",
+    "psu_watt", "psu_form_factor", "psu_connectors",
+    "case_form_factors", "max_gpu_length_mm", "max_cooler_height_mm", "radiator_support",
+    "cooler_sockets", "cooler_type", "cooler_height_mm", "radiator_size", "cooler_tdp_rating",
+    "storage_interface",
+]
+SPECS_JSON_COLS = {"psu_connectors", "case_form_factors", "radiator_support", "cooler_sockets"}
+SPECS_INT_COLS = {
+    "tdp_watt", "mem_slots", "m2_slots", "ram_modules", "ram_capacity_gb", "ram_freq",
+    "gpu_length_mm", "psu_watt", "max_gpu_length_mm", "max_cooler_height_mm",
+    "cooler_height_mm", "radiator_size", "cooler_tdp_rating",
+}
+SPECS_BOOL_COLS = {"has_igpu"}
+
+
+def _spec_field_filled(col, val):
+    """Поле считается заполненным, если оно не None/'' и (для json-списков) непустое."""
+    if val is None:
+        return False
+    if col in SPECS_JSON_COLS:
+        if isinstance(val, str):
+            try:
+                val = json.loads(val)
+            except Exception:
+                return False
+        return bool(val)
+    if isinstance(val, str):
+        return val.strip() != ""
+    return True
+
+
+def compute_specs_ready(component_type, spec_row):
+    """spec_row — dict колонок. Возвращает True если все обязательные поля заполнены."""
+    req = SPECS_REQUIRED.get(component_type or "other", [])
+    for col in req:
+        if not _spec_field_filled(col, spec_row.get(col)):
+            return False
+    return True
+
+
 def ensure_product_specs(cur, product_id, category_name=""):
     """Создаёт пустую строку характеристик совместимости для товара.
     Если строка уже есть — только обновляет component_type."""
@@ -1477,6 +1538,105 @@ def handler(event: dict, context) -> dict:
             notify_finance_supply_expense()
             return {"statusCode": 200, "headers": cors,
                     "body": json.dumps({"ok": True})}
+
+        # ── ХАРАКТЕРИСТИКИ СОВМЕСТИМОСТИ (product_specs) ─────────────────────
+        # Список всех железок (товары + их характеристики + статус new/ready).
+        if action == "specs_list" and method == "GET":
+            cols_sql = ", ".join(f"ps.{c}" for c in SPECS_COLUMNS)
+            cur.execute(
+                f"SELECT p.id, p.name, c.name AS cat_name, c.slug AS cat_slug, "
+                f"p.image_url, p.is_archived, {cols_sql} "
+                f"FROM {SCHEMA}.products p "
+                f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+                f"LEFT JOIN {SCHEMA}.product_specs ps ON ps.product_id = p.id "
+                f"WHERE p.is_archived = FALSE "
+                f"ORDER BY (ps.product_id IS NULL) DESC, c.sort_order, p.name"
+            )
+            rows = cur.fetchall()
+            items = []
+            for r in rows:
+                pid, pname, cat_name, cat_slug, image_url, is_archived = r[0], r[1], r[2], r[3], r[4], r[5]
+                spec = {}
+                for i, col in enumerate(SPECS_COLUMNS):
+                    spec[col] = r[6 + i]
+                ctype = spec.get("component_type") or CATEGORY_TO_COMPONENT.get((cat_slug or "").lower()) or CATEGORY_TO_COMPONENT.get((cat_name or "").lower()) or "other"
+                spec["component_type"] = ctype
+                has_row = any(r[6 + i] is not None for i in range(len(SPECS_COLUMNS)))
+                ready = has_row and compute_specs_ready(ctype, spec)
+                items.append({
+                    "product_id": pid, "name": pname,
+                    "category": cat_name, "category_slug": cat_slug,
+                    "image_url": image_url,
+                    "component_type": ctype,
+                    "has_specs": has_row,
+                    "ready": ready,
+                    "required": SPECS_REQUIRED.get(ctype, []),
+                    "specs": spec,
+                })
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(items, default=str)}
+
+        # Получить характеристики одного товара.
+        if action == "specs_get" and method == "GET":
+            pid = int(params.get("product_id") or 0)
+            ensure_product_specs(cur, pid)
+            conn.commit()
+            cols_sql = ", ".join(SPECS_COLUMNS)
+            cur.execute(
+                f"SELECT {cols_sql} FROM {SCHEMA}.product_specs WHERE product_id = {pid}"
+            )
+            row = cur.fetchone()
+            spec = {}
+            if row:
+                for i, col in enumerate(SPECS_COLUMNS):
+                    spec[col] = row[i]
+            ctype = spec.get("component_type") or "other"
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "product_id": pid, "specs": spec, "component_type": ctype,
+                "required": SPECS_REQUIRED.get(ctype, []),
+                "ready": compute_specs_ready(ctype, spec),
+            }, default=str)}
+
+        # Обновить характеристики товара.
+        if action == "specs_update" and method == "PUT":
+            pid = int(body.get("product_id") or 0)
+            if not pid:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "product_id обязателен"})}
+            ensure_product_specs(cur, pid)
+            incoming = body.get("specs") or {}
+            sets = []
+            for col in SPECS_COLUMNS:
+                if col not in incoming:
+                    continue
+                val = incoming[col]
+                if col in SPECS_JSON_COLS:
+                    sets.append(f"{col} = {esc(json.dumps(val if val is not None else []))}::jsonb")
+                elif col in SPECS_BOOL_COLS:
+                    sets.append(f"{col} = {'TRUE' if val else 'FALSE'}" if val is not None else f"{col} = NULL")
+                elif col in SPECS_INT_COLS:
+                    if val in (None, "", "null"):
+                        sets.append(f"{col} = NULL")
+                    else:
+                        sets.append(f"{col} = {int(val)}")
+                else:
+                    sets.append(f"{col} = {esc(val) if val not in (None, '') else 'NULL'}")
+            if sets:
+                sets.append("updated_at = NOW()")
+                cur.execute(
+                    f"UPDATE {SCHEMA}.product_specs SET {', '.join(sets)} WHERE product_id = {pid}"
+                )
+            conn.commit()
+            # пересчитываем готовность
+            cols_sql = ", ".join(SPECS_COLUMNS)
+            cur.execute(f"SELECT {cols_sql} FROM {SCHEMA}.product_specs WHERE product_id = {pid}")
+            row = cur.fetchone()
+            spec = {}
+            if row:
+                for i, col in enumerate(SPECS_COLUMNS):
+                    spec[col] = row[i]
+            ctype = spec.get("component_type") or "other"
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                "ok": True, "ready": compute_specs_ready(ctype, spec), "specs": spec,
+            }, default=str)}
 
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 

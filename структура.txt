@@ -97,6 +97,23 @@ products.price И вызывает warehouse_core.recalc_builds_for_product — 
 warehouse_movements, warehouse_reserves, warehouse_purchase_basket,
 warehouse_stock_log, warehouse_backorders.
 
+### Совместимость комплектующих / конфигуратор (v4.30)
+Цель: база характеристик железа, по которой конфигуратор подбирает совместимое.
+- Таблица product_specs (V0140): 1 строка на товар (product_id UNIQUE).
+  Поля: component_type + socket/mem_type/tdp_watt/has_igpu/chipset/form_factor/
+  mem_slots/m2_slots/ram_*/gpu_length_mm/gpu_power_connector/psu_*/case_*/cooler_*/
+  storage_interface/radiator_support/extra(jsonb).
+- warehouse group_create: автосоздаёт пустую строку product_specs с component_type
+  по категории (CATEGORY_TO_COMPONENT). Хелперы ensure_product_specs,
+  detect_component_type, compute_specs_ready, SPECS_REQUIRED (обязательные поля
+  по типу — определяют статус «новый»/«готов»).
+- warehouse actions: specs_list (все железки + статус ready), specs_get,
+  specs_update (PUT). api.warehouse.specsList/specsGet/specsUpdate.
+- Frontend: вкладка /admin/compatibility (CompatibilityTab) — справа от «Товары».
+  Таблица всех железок с фильтрами (категория, статус новый/готов, поиск),
+  модальный редактор полей по типу компонента. Товар «новый» пока не заполнены
+  все обязательные поля, затем «готов». Строгость: только жёсткие блокировки.
+
 ### НДС / скидка / предоплата (v3.13)
 - warehouse.supply_create: обязательный has_vat (да/нет); менеджер вводит
   price_with_vat, в заход пишется cost_price = price_with_vat×(1−скидка%).

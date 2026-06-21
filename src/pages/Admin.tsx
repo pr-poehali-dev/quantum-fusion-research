@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
 import WarehouseTab from "@/components/admin/WarehouseTab"
 import SnArchiveTab from "@/components/admin/SnArchiveTab"
+import CompatibilityTab from "@/components/admin/CompatibilityTab"
 import ScheduleTab from "@/components/admin/ScheduleTab"
 import CalendarTab from "@/components/admin/CalendarTab"
 import FinanceTab from "@/components/admin/FinanceTab"
@@ -153,6 +154,7 @@ export default function Admin() {
     { key: "warehouse", label: "Склад", icon: "Warehouse" },
     { key: "sn_archive", label: "Архив SN", icon: "ScanBarcode" },
     { key: "products", label: "Товары", icon: "Package" },
+    { key: "compatibility", label: "Совместимость", icon: "Puzzle" },
     { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
   ]
   // Группа 3 — Прочее
@@ -266,6 +268,13 @@ export default function Admin() {
       {tab === "sn_archive" && (
         <div style={{ padding: "32px 50px 48px" }}>
           <SnArchiveTab />
+        </div>
+      )}
+
+      {/* COMPATIBILITY — характеристики совместимости для конфигуратора */}
+      {tab === "compatibility" && (
+        <div style={{ padding: "32px 50px 48px" }}>
+          <CompatibilityTab />
         </div>
       )}
     </div>

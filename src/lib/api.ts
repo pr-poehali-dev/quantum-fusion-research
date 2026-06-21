@@ -190,6 +190,9 @@ export const api = {
     recalcSupplyExpense: () => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "recalc_supply_expense" }) }).then(r => r.json()),
     getSettings: () => fetch(`${URLS.warehouse}?action=settings`).then(r => r.json()),
     setSettings: (settings: Record<string, string | number>) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "settings_set", settings }) }).then(r => r.json()),
+    specsList: () => fetch(`${URLS.warehouse}?action=specs_list`).then(r => r.json()),
+    specsGet: (productId: number) => fetch(`${URLS.warehouse}?action=specs_get&product_id=${productId}`).then(r => r.json()),
+    specsUpdate: (productId: number, specs: Record<string, unknown>) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "specs_update", product_id: productId, specs }) }).then(r => r.json()),
   },
   snArchive: {
     list: (params?: Record<string, string>) => {
