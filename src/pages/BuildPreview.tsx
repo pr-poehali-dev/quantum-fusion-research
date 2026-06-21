@@ -159,9 +159,15 @@ export default function BuildPreview() {
     if (isTokenMode || !id) return
     api.builds.getById(Number(id)).then(async (data) => {
       if (data.error || !data.id) { setError("Сборка не найдена"); setLoading(false); return }
+      // Корень сборки (если открыли вариант — берём родителя), затем подтягиваем все варианты
+      const root = data.parent_id ? (await api.builds.getById(data.parent_id).catch(() => data)) : data
+      const rootBuild: Build = (root && root.id) ? root : data
+      const variantsRaw = await api.builds.getVariants(rootBuild.id).catch(() => [])
+      const children: Build[] = Array.isArray(variantsRaw) ? variantsRaw : []
+      const list = [rootBuild, ...children]
       // Витринные сборки (status=catalog) показывают актуальные цены каталога
-      const comps = await enrichComponents(data.components || [], data.status === "catalog")
-      setVariants([data])
+      const comps = await enrichComponents(rootBuild.components || [], rootBuild.status === "catalog")
+      setVariants(list)
       setComponents(comps)
       setLoading(false)
     }).catch(() => { setError("Не удалось загрузить сборку"); setLoading(false) })
