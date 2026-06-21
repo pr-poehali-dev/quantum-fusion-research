@@ -55,6 +55,11 @@
 ### products
 Управление товарами/компонентами конфигуратора.
 CRUD товаров, слоты конфигуратора, отслеживание остатков.
+КАСКАДНЫЙ ПЕРЕСЧЁТ СБОРОК (v3.98): при PUT (изменение цены товара) функция
+_recalc_builds_for_product обновляет цены всех ПРОДАЖНЫХ сборок с этим товаром
+(components[].price, parts_total, total_price; +22% НДС если sell_with_vat).
+НЕ трогает наличие (in_stock=TRUE) и архив (status='archive').
+_apply_vat — общая формула цены с НДС (ceil(base*1.22/250)*250).
 
 ### builds
 Сборки ПК: создание, редактирование, статусы, фото, цены, теги.
@@ -74,6 +79,9 @@ POST action delete_wip — удаление WIP-сборки. Используе
 warehouse_core.release_order_reserves(only_new_negative=True) — та же логика что в builds:
 снимает резервы, бережёт заказанное (ORDERED), уменьшает корзину, архивирует заказ и сборку.
 Файл backend/warehouse/warehouse_core.py — копия ядра.
+КАСКАДНЫЙ ПЕРЕСЧЁТ СБОРОК (v3.98): group_update с price_retail синхронизирует
+products.price И вызывает warehouse_core.recalc_builds_for_product — пересчёт
+цен продажных сборок (как в products PUT). Наличие/архив не трогаются.
 Таблицы: warehouse_groups, warehouse_supplies, warehouse_stores,
 warehouse_movements, warehouse_reserves, warehouse_purchase_basket,
 warehouse_stock_log, warehouse_backorders.

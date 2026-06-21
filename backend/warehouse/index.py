@@ -447,6 +447,12 @@ def handler(event: dict, context) -> dict:
                     f"INSERT INTO {SCHEMA}.warehouse_price_history (group_id, price_retail, avg_cost) "
                     f"VALUES ({gid}, {body['price_retail']}, {avg_cost})"
                 )
+                # каскадный пересчёт продажных сборок с этим товаром (наличие не трогаем)
+                cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid}")
+                _pid_row = cur.fetchone()
+                if _pid_row and _pid_row[0]:
+                    import warehouse_core as wc
+                    wc.recalc_builds_for_product(cur, int(_pid_row[0]), float(body["price_retail"]))
 
             log_movement(cur, gid, None, None, None, "group_updated", 0, note="Обновлена карточка группы")
             conn.commit()

@@ -27,6 +27,47 @@ def _movement(cur, group_id, supply_id, order_id, mtype, qty_delta, note=None):
     )
 
 
+def _apply_vat(base, vat):
+    """Цена продажи с НДС: +22% и округление вверх до 250 ₽ (как на фронте)."""
+    import math
+    if vat:
+        return math.ceil(base * 1.22 / 250.0) * 250
+    return base
+
+
+def recalc_builds_for_product(cur, product_id, new_price):
+    """Пересчёт цен ПРОДАЖНЫХ сборок, где есть данный товар (catalog/source_id).
+    Обновляет components[].price, parts_total, total_price (+НДС если sell_with_vat).
+    НЕ трогает сборки из наличия (in_stock=TRUE) и архивные (status='archive').
+    Возвращает кол-во обновлённых сборок."""
+    cur.execute(
+        f"SELECT id, components, assembly_fee, sell_with_vat FROM {SCHEMA}.pc_builds "
+        f"WHERE COALESCE(in_stock, FALSE) = FALSE AND COALESCE(status, '') <> 'archive' "
+        f"AND components::text LIKE %s",
+        ('%"source_id": ' + str(int(product_id)) + '%',)
+    )
+    rows = cur.fetchall()
+    updated = 0
+    for build_id, components, assembly_fee, sell_with_vat in rows:
+        comps = components if isinstance(components, list) else json.loads(components or "[]")
+        changed = False
+        for c in comps:
+            if c.get("source") == "catalog" and int(c.get("source_id") or 0) == int(product_id):
+                if float(c.get("price") or 0) != float(new_price):
+                    c["price"] = float(new_price)
+                    changed = True
+        if not changed:
+            continue
+        parts_total = sum(float(c.get("price") or 0) * int(c.get("qty") or 1) for c in comps)
+        total_price = _apply_vat(parts_total + float(assembly_fee or 0), bool(sell_with_vat))
+        cur.execute(
+            f"UPDATE {SCHEMA}.pc_builds SET components=%s, parts_total=%s, total_price=%s WHERE id=%s",
+            (json.dumps(comps), parts_total, total_price, build_id)
+        )
+        updated += 1
+    return updated
+
+
 def basket_reduce(cur, group_id, qty):
     if qty <= 0:
         return

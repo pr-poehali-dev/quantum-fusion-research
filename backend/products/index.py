@@ -23,6 +23,53 @@ def _validate_required(body: dict):
     return None
 
 
+def _apply_vat(base: float, vat: bool) -> float:
+    """Цена продажи с НДС: +22% и округление вверх до 250 ₽ (как на фронте)."""
+    import math
+    if vat:
+        return math.ceil(base * 1.22 / 250.0) * 250
+    return base
+
+
+def _recalc_builds_for_product(cur, product_id: int, new_price: float) -> int:
+    """Пересчитывает цены ПРОДАЖНЫХ сборок, в которых есть данный товар.
+    Обновляет components[].price (для всех позиций slot=catalog с source_id=product_id),
+    parts_total и total_price (= железо + сборка, +НДС если sell_with_vat).
+
+    НЕ трогаем сборки из наличия (in_stock=TRUE) и архивные (status='archive').
+    Возвращает количество обновлённых сборок.
+    """
+    cur.execute(
+        """SELECT id, components, assembly_fee, sell_with_vat
+           FROM pc_builds
+           WHERE COALESCE(in_stock, FALSE) = FALSE
+             AND COALESCE(status, '') <> 'archive'
+             AND components::text LIKE %s""",
+        ('%"source_id": ' + str(int(product_id)) + '%',)
+    )
+    rows = cur.fetchall()
+    updated = 0
+    for build_id, components, assembly_fee, sell_with_vat in rows:
+        comps = components if isinstance(components, list) else json.loads(components or "[]")
+        changed = False
+        for c in comps:
+            if c.get("source") == "catalog" and int(c.get("source_id") or 0) == int(product_id):
+                if float(c.get("price") or 0) != float(new_price):
+                    c["price"] = float(new_price)
+                    changed = True
+        if not changed:
+            continue
+        parts_total = sum(float(c.get("price") or 0) * int(c.get("qty") or 1) for c in comps)
+        fee = float(assembly_fee or 0)
+        total_price = _apply_vat(parts_total + fee, bool(sell_with_vat))
+        cur.execute(
+            "UPDATE pc_builds SET components=%s, parts_total=%s, total_price=%s WHERE id=%s",
+            (json.dumps(comps), parts_total, total_price, build_id)
+        )
+        updated += 1
+    return updated
+
+
 def handler(event: dict, context) -> dict:
     """
     Товары и компоненты конфигуратора.
@@ -253,8 +300,10 @@ def handler(event: dict, context) -> dict:
                 "UPDATE warehouse_groups SET price_retail=%s, name=%s, warranty_months=%s, updated_at=NOW() WHERE product_id=%s",
                 (body["price"], body["name"], warranty, body["id"])
             )
+            # Каскадный пересчёт продажных сборок с этим товаром (наличие не трогаем)
+            recalc_builds = _recalc_builds_for_product(cur, int(body["id"]), float(body["price"]))
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "recalc_builds": recalc_builds})}
 
         elif method == "PATCH":
             body = json.loads(event.get("body") or "{}")
