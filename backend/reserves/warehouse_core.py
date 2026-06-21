@@ -676,18 +676,50 @@ def mark_overdue_delays(cur):
         )
         if cur.rowcount:
             name_field = _SLOT_NAME_FIELD.get(slot, "extra")
+            # Тянем номер заказа из orders (display_number — надёжный «PC00001»),
+            # компонент — из колонки слота wip_builds.
             cur.execute(
-                f"SELECT order_number, order_id, {name_field} FROM {SCHEMA}.wip_builds WHERE id=%s",
+                f"SELECT wb.order_number, wb.order_id, wb.{name_field}, "
+                f"       o.display_number, wb.build_id "
+                f"FROM {SCHEMA}.wip_builds wb "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = wb.order_id "
+                f"WHERE wb.id=%s",
                 (wip_id,),
             )
             wr = cur.fetchone()
+            display_number = wr[3] if wr else None
+            order_number = wr[0] if wr else None
+            component_name = (wr[2] if wr else None)
+            build_id = wr[4] if wr else None
+            # Если в колонке слота пусто — пробуем достать название из components сборки
+            if (not component_name) and build_id:
+                try:
+                    cur.execute(
+                        f"SELECT components FROM {SCHEMA}.pc_builds WHERE id=%s",
+                        (build_id,),
+                    )
+                    pr = cur.fetchone()
+                    comps = pr[0] if pr and pr[0] else []
+                    if isinstance(comps, str):
+                        import json as _json
+                        comps = _json.loads(comps)
+                    canon = "extra" if slot == "fan" else slot
+                    for c in (comps or []):
+                        cs = c.get("slot")
+                        cs = "extra" if cs == "fan" else cs
+                        if cs == canon and c.get("name"):
+                            component_name = c["name"]
+                            break
+                except Exception as _ce:
+                    print(f"DELAY comp lookup: {_ce}")
             newly_delayed.append({
                 "wip_id": wip_id,
                 "slot": slot,
                 "slot_label": _SLOT_RU.get(slot, slot),
                 "eta_date": eta_date.isoformat() if eta_date else None,
-                "order_number": wr[0] if wr else None,
+                # Приоритет: красивый display_number → order_number → id
+                "order_number": display_number or order_number,
                 "order_id": wr[1] if wr else None,
-                "component_name": (wr[2] if wr else None) or "—",
+                "component_name": component_name or "—",
             })
     return newly_delayed
