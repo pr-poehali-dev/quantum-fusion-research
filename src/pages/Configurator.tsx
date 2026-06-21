@@ -551,8 +551,10 @@ export default function Configurator() {
                 return (
                   <div key={slot} className={`rounded-xl border bg-card transition-all duration-200 ${current ? "border-primary/40" : "border-border"}`}>
 
-                    {/* Slot header row */}
-                    <div className="flex items-center gap-3 p-4">
+                    {/* Slot header row — вся строка кликабельна для открытия выбора */}
+                    <div className="flex items-center gap-3 p-4 cursor-pointer rounded-xl hover:bg-muted/20 transition-colors"
+                      onClick={() => setOpenSlot(isOpen ? null : slot)}
+                    >
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${current ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
                         <Icon name={meta.icon as "Cpu"} size={16} />
                       </div>
@@ -562,17 +564,15 @@ export default function Configurator() {
                       </div>
                       <div className="flex items-center gap-2">
                         {current && (
-                          <button onClick={() => setSelected(s => ({ ...s, [slot]: null }))} className="text-foreground/25 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
+                          <button onClick={e => { e.stopPropagation(); setSelected(s => ({ ...s, [slot]: null })) }} className="text-foreground/25 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
                             <Icon name="X" size={14} />
                           </button>
                         )}
-                        <button
-                          onClick={() => setOpenSlot(isOpen ? null : slot)}
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${current ? "border-primary/30 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
-                          style={{ cursor: "pointer" }}
+                        <span
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${current ? "border-primary/30 text-primary" : "border-border text-foreground/60"}`}
                         >
                           {current ? "Заменить" : "Выбрать"}
-                        </button>
+                        </span>
                       </div>
                     </div>
 
