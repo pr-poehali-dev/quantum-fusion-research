@@ -1880,6 +1880,8 @@ def handler(event: dict, context) -> dict:
             pids = [r[0] for r in prod_rows]
             # значения характеристик всех этих товаров одним запросом
             vals_by_pid = {}
+            # себестоимость (средневзвешенная по партиям склада) для маржи
+            cost_by_pid = {}
             if pids:
                 ids_sql = ",".join(str(p) for p in pids)
                 cur.execute(
@@ -1888,13 +1890,26 @@ def handler(event: dict, context) -> dict:
                 )
                 for pid, aid, value, vjson in cur.fetchall():
                     vals_by_pid.setdefault(pid, {})[str(aid)] = vjson if vjson is not None else value
+                cur.execute(
+                    f"SELECT wg.product_id, "
+                    f"COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) AS avg_cost "
+                    f"FROM {SCHEMA}.warehouse_groups wg "
+                    f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = wg.id AND s.qty > 0 "
+                    f"WHERE wg.product_id IN ({ids_sql}) GROUP BY wg.product_id"
+                )
+                for pid, avg_cost in cur.fetchall():
+                    cost_by_pid[pid] = float(avg_cost) if avg_cost else 0
             products = []
             for r in prod_rows:
                 pid = r[0]
+                price = float(r[2]) if r[2] is not None else 0
+                cost = cost_by_pid.get(pid, 0)
+                # margin — внутреннее поле для скрытой сортировки по маржинальности
                 products.append({
-                    "id": pid, "name": r[1], "price": float(r[2]) if r[2] is not None else 0,
+                    "id": pid, "name": r[1], "price": price,
                     "image_url": r[3], "image_urls": r[4] or [],
                     "in_stock": r[5], "stock_qty": r[6], "description": r[7],
+                    "margin": round(price - cost, 2) if cost > 0 else 0,
                     "values": vals_by_pid.get(pid, {}),
                 })
             return {"statusCode": 200, "headers": cors, "body": json.dumps(

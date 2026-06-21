@@ -23,6 +23,7 @@ interface SlotProduct {
   in_stock?: boolean
   stock_qty?: number
   description?: string
+  margin?: number
   values: Record<string, string | string[]>
 }
 interface SpecLink {
@@ -86,7 +87,8 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   // Состояние фильтров
   const [search, setSearch] = useState("")
   const [onlyCompatible, setOnlyCompatible] = useState(true)
-  const [onlyStock, setOnlyStock] = useState(false)
+  const [onlyStock, setOnlyStock] = useState(true)        // «В наличии» прожата по умолчанию
+  const [recommended, setRecommended] = useState(false)   // «Рекомендуемые» — выкл по умолчанию
   const [priceMin, setPriceMin] = useState("")
   const [priceMax, setPriceMax] = useState("")
   const [attrFilters, setAttrFilters] = useState<Record<number, Set<string>>>({})
@@ -172,6 +174,13 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   }
 
   // Применяем все фильтры
+  // Порог «рекомендуемых» — медиана маржи по товарам слота
+  const marginThreshold = useMemo(() => {
+    const margins = products.map(p => p.margin || 0).filter(m => m > 0).sort((a, b) => a - b)
+    if (margins.length === 0) return 0
+    return margins[Math.floor(margins.length / 2)]
+  }, [products])
+
   const filtered = useMemo(() => {
     const pmin = priceMin ? parseFloat(priceMin) : null
     const pmax = priceMax ? parseFloat(priceMax) : null
@@ -180,6 +189,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
       .filter(({ p }) => {
         if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
         if (onlyStock && !p.in_stock) return false
+        if (recommended && (p.margin || 0) < marginThreshold) return false
         if (pmin !== null && p.price < pmin) return false
         if (pmax !== null && p.price > pmax) return false
         for (const [aid, set] of Object.entries(attrFilters)) {
@@ -191,11 +201,13 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         return true
       })
       .sort((a, b) => {
-        // совместимые сверху, дальше по цене
+        // совместимые сверху, дальше — скрытая сортировка по марже (макс → мин)
         if (!!a.reason !== !!b.reason) return a.reason ? 1 : -1
+        const dm = (b.p.margin || 0) - (a.p.margin || 0)
+        if (dm !== 0) return dm
         return a.p.price - b.p.price
       })
-  }, [products, search, onlyStock, priceMin, priceMax, attrFilters, links, selectedSpec, attributes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, attrFilters, links, selectedSpec, attributes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = onlyCompatible ? filtered.filter(f => !f.reason) : filtered
   const compatCount = filtered.filter(f => !f.reason).length
@@ -210,7 +222,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
     })
   }
   const resetFilters = () => {
-    setSearch(""); setOnlyStock(false); setPriceMin(""); setPriceMax(""); setAttrFilters({})
+    setSearch(""); setOnlyStock(true); setRecommended(false); setPriceMin(""); setPriceMax(""); setAttrFilters({})
   }
 
   const hasSelection = Object.keys(selectedSpec).length > 0
@@ -255,6 +267,12 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                 Совместимые товары ({compatCount})
               </button>
             )}
+            <button onClick={() => setRecommended(v => !v)}
+              className={`mb-2 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${recommended ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name={recommended ? "CheckSquare" : "Square"} size={15} />
+              Рекомендуемые
+            </button>
             <button onClick={() => setOnlyStock(v => !v)}
               className={`mb-3 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${onlyStock ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70"}`}
               style={{ cursor: "pointer" }}>
@@ -351,6 +369,19 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                     </div>
                   </div>
                 ))}
+
+                {/* Домотал до конца со включённым «В наличии» — предложить отжать */}
+                {onlyStock && (
+                  <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-4 text-center">
+                    <p className="text-sm text-foreground/60">Это всё, что есть в наличии прямо сейчас.</p>
+                    <button onClick={() => setOnlyStock(false)}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name="Eye" size={14} />
+                      Показать варианты под заказ
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </main>
