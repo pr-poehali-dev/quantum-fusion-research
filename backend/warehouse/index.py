@@ -31,6 +31,55 @@ def notify_finance_supply_expense(store_id=None, exp_date=None):
         pass  # приёмку не блокируем, расход можно пересчитать кнопкой
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
+
+# Категория товара -> тип компонента конфигуратора (для product_specs).
+# Ключ — по slug или по нижнему регистру названия категории.
+CATEGORY_TO_COMPONENT = {
+    "cpu": "cpu", "процессоры": "cpu",
+    "motherboard": "motherboard", "материнские платы": "motherboard",
+    "ram": "ram", "оперативная память": "ram",
+    "gpu": "gpu", "видеокарты": "gpu",
+    "psu": "psu", "блоки питания": "psu",
+    "case": "case", "корпуса": "case",
+    "cooling": "cooling", "система охлаждения процессора": "cooling",
+    "storage": "storage", "накопители": "storage",
+    "fan": "fan", "вентилятор": "fan",
+    "accessories": "other", "аксессуары": "other",
+}
+
+
+def detect_component_type(cur, product_id, category_name=""):
+    """Определяет тип компонента по категории товара для product_specs."""
+    ct = CATEGORY_TO_COMPONENT.get((category_name or "").strip().lower())
+    if ct:
+        return ct
+    cur.execute(
+        f"SELECT c.slug, c.name FROM {SCHEMA}.products p "
+        f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+        f"WHERE p.id = {product_id}"
+    )
+    row = cur.fetchone()
+    if row:
+        slug = (row[0] or "").lower()
+        name = (row[1] or "").lower()
+        return CATEGORY_TO_COMPONENT.get(slug) or CATEGORY_TO_COMPONENT.get(name) or "other"
+    return "other"
+
+
+def ensure_product_specs(cur, product_id, category_name=""):
+    """Создаёт пустую строку характеристик совместимости для товара.
+    Если строка уже есть — только обновляет component_type."""
+    if not product_id:
+        return
+    ct = detect_component_type(cur, product_id, category_name)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.product_specs (product_id, component_type) "
+        f"VALUES ({product_id}, {esc(ct)}) "
+        f"ON CONFLICT (product_id) DO UPDATE SET "
+        f"component_type = COALESCE({SCHEMA}.product_specs.component_type, EXCLUDED.component_type)"
+    )
+
+
 cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -412,6 +461,9 @@ def handler(event: dict, context) -> dict:
             # Синхронизируем цену
             if price_retail:
                 cur.execute(f"UPDATE {SCHEMA}.products SET price = {price_retail} WHERE id = {product_id}")
+
+            # Автосоздаём строку характеристик совместимости для конфигуратора
+            ensure_product_specs(cur, product_id, category)
 
             log_movement(cur, new_id, None, None, None, "group_created", 0, note=f"Создана группа: {name}")
             conn.commit()

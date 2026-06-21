@@ -3,6 +3,26 @@
 
 ---
 
+## v4.29 | 2026-06-21 | Таблица характеристик совместимости (база конфигуратора)
+
+### База данных
+- Новая таблица product_specs (V0140): 1 строка на товар (product_id UNIQUE).
+  Поля совместимости по типам компонентов: socket, mem_type, form_factor,
+  chipset, mem_slots, m2_slots, ram_* , gpu_length_mm, gpu_power_connector,
+  psu_watt/form/connectors, case_form_factors/max_gpu_length/max_cooler_height/
+  radiator_support, cooler_* , storage_interface, tdp_watt, has_igpu, extra(jsonb).
+  Индексы по product_id, component_type, socket, mem_type.
+
+### Backend
+- warehouse (group_create): при создании складской группы и автокарточки товара
+  теперь автоматически создаётся пустая строка product_specs с заполненным
+  component_type (определяется по категории через CATEGORY_TO_COMPONENT).
+  Хелперы detect_component_type() и ensure_product_specs() (ON CONFLICT — без дублей).
+
+### Логика
+- Характеристики заполняются позже (раздел редактирования совместимости — TODO).
+- Совместимость на старте: только жёсткие блокировки (socket / mem_type / form_factor).
+
 ## v4.28 | 2026-06-21 | Покупка «под заказ» (товары не в наличии)
 
 ### Frontend
