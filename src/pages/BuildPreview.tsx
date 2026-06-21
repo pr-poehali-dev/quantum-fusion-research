@@ -212,20 +212,25 @@ export default function BuildPreview() {
   const build = variants[activeVariant] ?? null
   const hasMultipleVariants = variants.length > 1
 
-  // Слоты, которые ОТЛИЧАЮТСЯ между вариантами (по названию компонента).
-  // Такие комплектующие подсвечиваем цветом — они и есть разница вариантов.
+  // Слоты, которые ОТЛИЧАЮТСЯ между вариантами — по самой железке (название)
+  // ИЛИ по количеству (qty), ИЛИ если в каком-то варианте этой железки нет.
+  // Такие комплектующие подсвечиваем зелёным — это и есть разница вариантов.
   const variantDiffSlots = useMemo(() => {
     const diff = new Set<string>()
     if (variants.length <= 1) return diff
-    const bySlot: Record<string, Set<string>> = {}
-    for (const v of variants) {
+    const allSlots = new Set<string>()
+    const perVariant = variants.map(v => {
+      const map: Record<string, string> = {}
       for (const c of (v.components || [])) {
-        if (!bySlot[c.slot]) bySlot[c.slot] = new Set()
-        bySlot[c.slot].add((c.name || "").trim())
+        allSlots.add(c.slot)
+        // ключ железки: название + количество
+        map[c.slot] = `${(c.name || "").trim()}__x${c.qty || 1}`
       }
-    }
-    for (const slot in bySlot) {
-      if (bySlot[slot].size > 1) diff.add(slot)
+      return map
+    })
+    for (const slot of allSlots) {
+      const keys = new Set(perVariant.map(m => m[slot] ?? "__absent__"))
+      if (keys.size > 1) diff.add(slot)
     }
     return diff
   }, [variants])
@@ -548,18 +553,18 @@ export default function BuildPreview() {
                     const statusKey = wipField ? wipInfo?.[`${wipField}_status` as keyof WipInfo] as string | undefined : undefined
                     const statusInfo = statusKey ? COMPONENT_STATUS_LABELS[statusKey] : null
                     const qty = c.qty && c.qty > 1 ? c.qty : null
-                    const isDiff = variantDiffSlots.has(c.slot)
+                    const isDiff = activeVariant > 0 && variantDiffSlots.has(c.slot)
                     return (
-                      <div key={i} className={`flex items-start justify-between gap-3 ${isDiff ? "-mx-2 rounded-lg bg-primary/5 px-2 py-1 ring-1 ring-primary/30" : ""}`}>
+                      <div key={i} className={`flex items-start justify-between gap-3 ${isDiff ? "-mx-2 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/40" : ""}`}>
                         <div className="flex items-start gap-2 min-w-0 flex-1">
-                          <span className="w-5 h-5 mt-0.5 shrink-0 rounded flex items-center justify-center bg-primary/10 text-primary">
+                          <span className={`w-5 h-5 mt-0.5 shrink-0 rounded flex items-center justify-center ${isDiff ? "bg-emerald-500/15 text-emerald-500" : "bg-primary/10 text-primary"}`}>
                             <ComponentIcon slot={c.slot} />
                           </span>
                           <div className="min-w-0">
                             <p className="text-xs text-muted-foreground leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
-                            <p className={`text-sm leading-snug break-words ${isDiff ? "font-semibold text-primary" : "text-foreground"}`}>
+                            <p className={`text-sm leading-snug break-words ${isDiff ? "font-semibold text-emerald-500" : "text-foreground"}`}>
                               {c.name}
-                              {qty ? <span className="ml-1.5 inline-block rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-bold text-primary align-middle">×{qty}</span> : null}
+                              {qty ? <span className={`ml-1.5 inline-block rounded-md px-1.5 py-0.5 text-xs font-bold align-middle ${isDiff ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/15 text-primary"}`}>×{qty}</span> : null}
                             </p>
                             {statusInfo && (
                               <span className={`inline-block mt-0.5 rounded-full px-2 py-px text-[10px] font-medium ${statusInfo.cls}`}>
@@ -568,7 +573,7 @@ export default function BuildPreview() {
                             )}
                           </div>
                         </div>
-                        <span className={`shrink-0 text-sm font-medium text-right ${isDiff ? "text-primary" : "text-foreground"}`}>{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
+                        <span className={`shrink-0 text-sm font-medium text-right ${isDiff ? "text-emerald-500" : "text-foreground"}`}>{fmt((c.current_price ?? c.price) * (c.qty || 1))}</span>
                       </div>
                     )
                   })}
