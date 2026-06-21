@@ -193,6 +193,20 @@ export const api = {
     specsList: () => fetch(`${URLS.warehouse}?action=specs_list`).then(r => r.json()),
     specsGet: (productId: number) => fetch(`${URLS.warehouse}?action=specs_get&product_id=${productId}`).then(r => r.json()),
     specsUpdate: (productId: number, specs: Record<string, unknown>) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "specs_update", product_id: productId, specs }) }).then(r => r.json()),
+    // Конструктор характеристик совместимости (data-driven)
+    specSchema: () => fetch(`${URLS.warehouse}?action=spec_schema`).then(r => r.json()),
+    specCatCreate: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_cat_create", ...data as object }) }).then(r => r.json()),
+    specCatUpdate: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_cat_update", ...data as object }) }).then(r => r.json()),
+    specCatDelete: (id: number) => fetch(`${URLS.warehouse}?action=spec_cat_delete&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    specAttrCreate: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_attr_create", ...data as object }) }).then(r => r.json()),
+    specAttrUpdate: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_attr_update", ...data as object }) }).then(r => r.json()),
+    specAttrDelete: (id: number) => fetch(`${URLS.warehouse}?action=spec_attr_delete&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    specLinkCreate: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_link_create", ...data as object }) }).then(r => r.json()),
+    specLinkUpdate: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_link_update", ...data as object }) }).then(r => r.json()),
+    specLinkDelete: (id: number) => fetch(`${URLS.warehouse}?action=spec_link_delete&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    specProducts: () => fetch(`${URLS.warehouse}?action=spec_products`).then(r => r.json()),
+    specValuesGet: (productId: number) => fetch(`${URLS.warehouse}?action=spec_values_get&product_id=${productId}`).then(r => r.json()),
+    specValuesSave: (productId: number, values: Record<string, unknown>) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_values_save", product_id: productId, values }) }).then(r => r.json()),
   },
   snArchive: {
     list: (params?: Record<string, string>) => {

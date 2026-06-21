@@ -1638,6 +1638,243 @@ def handler(event: dict, context) -> dict:
                 "ok": True, "ready": compute_specs_ready(ctype, spec), "specs": spec,
             }, default=str)}
 
+        # ════════════════════════════════════════════════════════════════════
+        # DATA-DRIVEN КОНСТРУКТОР ХАРАКТЕРИСТИК СОВМЕСТИМОСТИ
+        #   spec_categories — типы железа, spec_attributes — поля,
+        #   product_spec_values — значения у товаров, spec_links — карта связей.
+        # ════════════════════════════════════════════════════════════════════
+
+        # ── СХЕМА: всё разом (категории + их атрибуты + связи) ───────────────
+        if action == "spec_schema" and method == "GET":
+            cur.execute(
+                f"SELECT id, code, name, icon, color, product_category_slug, sort_order "
+                f"FROM {SCHEMA}.spec_categories ORDER BY sort_order, id"
+            )
+            cats = [{"id": r[0], "code": r[1], "name": r[2], "icon": r[3], "color": r[4],
+                     "product_category_slug": r[5], "sort_order": r[6]} for r in cur.fetchall()]
+            cur.execute(
+                f"SELECT id, category_id, code, name, field_type, options, unit, "
+                f"affects_compat, is_required, sort_order "
+                f"FROM {SCHEMA}.spec_attributes ORDER BY category_id, sort_order, id"
+            )
+            attrs = []
+            for r in cur.fetchall():
+                attrs.append({"id": r[0], "category_id": r[1], "code": r[2], "name": r[3],
+                              "field_type": r[4], "options": r[5] or [], "unit": r[6],
+                              "affects_compat": r[7], "is_required": r[8], "sort_order": r[9]})
+            cur.execute(
+                f"SELECT id, name, from_attribute_id, to_attribute_id, rule, note, is_active "
+                f"FROM {SCHEMA}.spec_links ORDER BY id"
+            )
+            links = [{"id": r[0], "name": r[1], "from_attribute_id": r[2], "to_attribute_id": r[3],
+                      "rule": r[4], "note": r[5], "is_active": r[6]} for r in cur.fetchall()]
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(
+                {"categories": cats, "attributes": attrs, "links": links}, default=str)}
+
+        # ── КАТЕГОРИИ КОМПОНЕНТОВ ────────────────────────────────────────────
+        if action == "spec_cat_create" and method == "POST":
+            code = body.get("code", "").strip()
+            name = body.get("name", "").strip()
+            if not code or not name:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "code и name обязательны"})}
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.spec_categories (code, name, icon, color, product_category_slug, sort_order) "
+                f"VALUES ({esc(code)}, {esc(name)}, {esc(body.get('icon') or 'Package')}, "
+                f"{esc(body.get('color') or '#64748b')}, {esc(body.get('product_category_slug')) if body.get('product_category_slug') else 'NULL'}, "
+                f"{int(body.get('sort_order') or 0)}) ON CONFLICT (code) DO NOTHING RETURNING id"
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": row[0] if row else None})}
+
+        if action == "spec_cat_update" and method == "PUT":
+            cid = int(body.get("id") or 0)
+            sets = []
+            for f in ["name", "icon", "color", "product_category_slug"]:
+                if f in body:
+                    sets.append(f"{f} = {esc(body[f]) if body[f] not in (None, '') else 'NULL'}")
+            if "sort_order" in body:
+                sets.append(f"sort_order = {int(body['sort_order'])}")
+            if sets:
+                cur.execute(f"UPDATE {SCHEMA}.spec_categories SET {', '.join(sets)} WHERE id = {cid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "spec_cat_delete" and method == "DELETE":
+            cid = int(params.get("id") or 0)
+            cur.execute(f"SELECT id FROM {SCHEMA}.spec_attributes WHERE category_id = {cid}")
+            attr_ids = [r[0] for r in cur.fetchall()]
+            if attr_ids:
+                ids_sql = ",".join(str(a) for a in attr_ids)
+                cur.execute(f"DELETE FROM {SCHEMA}.spec_links WHERE from_attribute_id IN ({ids_sql}) OR to_attribute_id IN ({ids_sql})")
+                cur.execute(f"DELETE FROM {SCHEMA}.product_spec_values WHERE attribute_id IN ({ids_sql})")
+                cur.execute(f"DELETE FROM {SCHEMA}.spec_attributes WHERE category_id = {cid}")
+            cur.execute(f"DELETE FROM {SCHEMA}.spec_categories WHERE id = {cid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        # ── ХАРАКТЕРИСТИКИ (поля) ────────────────────────────────────────────
+        if action == "spec_attr_create" and method == "POST":
+            cid = int(body.get("category_id") or 0)
+            code = body.get("code", "").strip()
+            name = body.get("name", "").strip()
+            if not cid or not code or not name:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "category_id, code, name обязательны"})}
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.spec_attributes "
+                f"(category_id, code, name, field_type, options, unit, affects_compat, is_required, sort_order) "
+                f"VALUES ({cid}, {esc(code)}, {esc(name)}, {esc(body.get('field_type') or 'text')}, "
+                f"{esc(json.dumps(body.get('options') or []))}::jsonb, "
+                f"{esc(body.get('unit')) if body.get('unit') else 'NULL'}, "
+                f"{'TRUE' if body.get('affects_compat') else 'FALSE'}, "
+                f"{'TRUE' if body.get('is_required') else 'FALSE'}, "
+                f"{int(body.get('sort_order') or 0)}) "
+                f"ON CONFLICT (category_id, code) DO NOTHING RETURNING id"
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": row[0] if row else None})}
+
+        if action == "spec_attr_update" and method == "PUT":
+            aid = int(body.get("id") or 0)
+            sets = []
+            for f in ["name", "field_type", "unit"]:
+                if f in body:
+                    sets.append(f"{f} = {esc(body[f]) if body[f] not in (None, '') else 'NULL'}")
+            if "options" in body:
+                sets.append(f"options = {esc(json.dumps(body['options'] or []))}::jsonb")
+            for f in ["affects_compat", "is_required"]:
+                if f in body:
+                    sets.append(f"{f} = {'TRUE' if body[f] else 'FALSE'}")
+            if "sort_order" in body:
+                sets.append(f"sort_order = {int(body['sort_order'])}")
+            if sets:
+                cur.execute(f"UPDATE {SCHEMA}.spec_attributes SET {', '.join(sets)} WHERE id = {aid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "spec_attr_delete" and method == "DELETE":
+            aid = int(params.get("id") or 0)
+            cur.execute(f"DELETE FROM {SCHEMA}.spec_links WHERE from_attribute_id = {aid} OR to_attribute_id = {aid}")
+            cur.execute(f"DELETE FROM {SCHEMA}.product_spec_values WHERE attribute_id = {aid}")
+            cur.execute(f"DELETE FROM {SCHEMA}.spec_attributes WHERE id = {aid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        # ── СВЯЗИ (карта совместимости) ──────────────────────────────────────
+        if action == "spec_link_create" and method == "POST":
+            fa = int(body.get("from_attribute_id") or 0)
+            ta = int(body.get("to_attribute_id") or 0)
+            if not fa or not ta:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "from/to attribute обязательны"})}
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.spec_links (name, from_attribute_id, to_attribute_id, rule, note, is_active) "
+                f"VALUES ({esc(body.get('name')) if body.get('name') else 'NULL'}, {fa}, {ta}, "
+                f"{esc(body.get('rule') or 'eq')}, {esc(body.get('note')) if body.get('note') else 'NULL'}, TRUE) RETURNING id"
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": row[0]})}
+
+        if action == "spec_link_update" and method == "PUT":
+            lid = int(body.get("id") or 0)
+            sets = []
+            for f in ["name", "rule", "note"]:
+                if f in body:
+                    sets.append(f"{f} = {esc(body[f]) if body[f] not in (None, '') else 'NULL'}")
+            for f in ["from_attribute_id", "to_attribute_id"]:
+                if f in body:
+                    sets.append(f"{f} = {int(body[f])}")
+            if "is_active" in body:
+                sets.append(f"is_active = {'TRUE' if body['is_active'] else 'FALSE'}")
+            if sets:
+                cur.execute(f"UPDATE {SCHEMA}.spec_links SET {', '.join(sets)} WHERE id = {lid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "spec_link_delete" and method == "DELETE":
+            lid = int(params.get("id") or 0)
+            cur.execute(f"DELETE FROM {SCHEMA}.spec_links WHERE id = {lid}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        # ── ЖЕЛЕЗКИ (товары + статус новый/готов на базе spec_attributes) ────
+        if action == "spec_products" and method == "GET":
+            # Считаем готовность: заполнены все is_required атрибуты категории товара
+            cur.execute(
+                f"SELECT p.id, p.name, c.name AS cat_name, c.slug AS cat_slug, p.image_url, "
+                f"sc.id AS spec_cat_id, sc.code AS spec_cat_code, sc.name AS spec_cat_name "
+                f"FROM {SCHEMA}.products p "
+                f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+                f"LEFT JOIN {SCHEMA}.spec_categories sc ON sc.product_category_slug = c.slug "
+                f"WHERE p.is_archived = FALSE "
+                f"ORDER BY c.sort_order, p.name"
+            )
+            prods = cur.fetchall()
+            # требуемые атрибуты по категории компонента
+            cur.execute(
+                f"SELECT category_id, id FROM {SCHEMA}.spec_attributes WHERE is_required = TRUE"
+            )
+            req_by_cat = {}
+            for cat_id, attr_id in cur.fetchall():
+                req_by_cat.setdefault(cat_id, []).append(attr_id)
+            # заполненные значения по товарам
+            cur.execute(
+                f"SELECT product_id, attribute_id FROM {SCHEMA}.product_spec_values "
+                f"WHERE (value IS NOT NULL AND value <> '') OR (value_json IS NOT NULL AND value_json::text NOT IN ('[]','null'))"
+            )
+            filled = {}
+            for pid, aid in cur.fetchall():
+                filled.setdefault(pid, set()).add(aid)
+            items = []
+            for r in prods:
+                pid, pname, cat_name, cat_slug, image_url, spec_cat_id, spec_cat_code, spec_cat_name = r
+                req = req_by_cat.get(spec_cat_id, [])
+                have = filled.get(pid, set())
+                req_done = sum(1 for a in req if a in have)
+                ready = spec_cat_id is not None and req_done == len(req)
+                items.append({
+                    "product_id": pid, "name": pname,
+                    "category": cat_name, "category_slug": cat_slug, "image_url": image_url,
+                    "spec_category_id": spec_cat_id, "spec_category_code": spec_cat_code,
+                    "spec_category_name": spec_cat_name,
+                    "required_total": len(req), "required_done": req_done,
+                    "ready": ready,
+                })
+            return {"statusCode": 200, "headers": cors, "body": json.dumps(items, default=str)}
+
+        # ── ЗНАЧЕНИЯ ХАРАКТЕРИСТИК ОДНОГО ТОВАРА ─────────────────────────────
+        if action == "spec_values_get" and method == "GET":
+            pid = int(params.get("product_id") or 0)
+            cur.execute(
+                f"SELECT attribute_id, value, value_json FROM {SCHEMA}.product_spec_values WHERE product_id = {pid}"
+            )
+            vals = {}
+            for aid, value, vjson in cur.fetchall():
+                vals[str(aid)] = vjson if vjson is not None else value
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"product_id": pid, "values": vals}, default=str)}
+
+        if action == "spec_values_save" and method == "PUT":
+            pid = int(body.get("product_id") or 0)
+            values = body.get("values") or {}   # {attribute_id: value | [..]}
+            for aid_str, val in values.items():
+                aid = int(aid_str)
+                if isinstance(val, list):
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.product_spec_values (product_id, attribute_id, value, value_json, updated_at) "
+                        f"VALUES ({pid}, {aid}, NULL, {esc(json.dumps(val))}::jsonb, NOW()) "
+                        f"ON CONFLICT (product_id, attribute_id) DO UPDATE SET value = NULL, value_json = EXCLUDED.value_json, updated_at = NOW()"
+                    )
+                else:
+                    sval = "" if val is None else str(val)
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.product_spec_values (product_id, attribute_id, value, value_json, updated_at) "
+                        f"VALUES ({pid}, {aid}, {esc(sval)}, NULL, NOW()) "
+                        f"ON CONFLICT (product_id, attribute_id) DO UPDATE SET value = EXCLUDED.value, value_json = NULL, updated_at = NOW()"
+                    )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": f"Неизвестное действие: {action}"})}
 
     finally:

@@ -3,6 +3,35 @@
 
 ---
 
+## v4.31 | 2026-06-21 | Конструктор характеристик (data-driven) + карта связей
+
+### База данных (V0141–V0143)
+- spec_categories — расширяемый справочник типов железа (иконка, цвет, привязка
+  к категории товаров). Засеяно 9 категорий.
+- spec_attributes — конструктор полей: тип (выбор/мультивыбор/число/да-нет/текст),
+  варианты, единица, флаги «влияет на совместимость» и «обязательная». Засеяны
+  стартовые поля для всех категорий.
+- product_spec_values — значения характеристик товара (отдельная таблица,
+  value/value_json). UNIQUE(product_id, attribute_id).
+- spec_links — карта связей между характеристиками (правила eq/lte/gte/contains).
+  Засеяно 8 базовых правил совместимости.
+
+### Backend (warehouse)
+- Новые actions: spec_schema, spec_cat_create/update/delete,
+  spec_attr_create/update/delete, spec_link_create/update/delete,
+  spec_products (статус новый/готов), spec_values_get/save.
+
+### Frontend
+- api.ts: warehouse.specSchema/specCat*/specAttr*/specLink*/specProducts/specValues*.
+- CompatibilityTab переработан в контейнер с 3 подвкладками.
+- Новые компоненты в src/components/admin/compatibility/:
+  • types.ts — типы и константы.
+  • ProductsValues — «Железки»: таблица + фильтры + динамический редактор значений.
+  • AttributesBuilder — «Характеристики»: конструктор категорий и полей (модалки).
+  • LinksMap — «Карта связей»: SVG-граф + список правил + редактор связей.
+- Характеристики теперь добавляются/меняются без правок кода. Поля «для
+  ознакомления» (affects_compat=false) не участвуют в совместимости.
+
 ## v4.30 | 2026-06-21 | Вкладка «Совместимость» — управление характеристиками
 
 ### Backend (warehouse)

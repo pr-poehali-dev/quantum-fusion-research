@@ -97,22 +97,44 @@ products.price И вызывает warehouse_core.recalc_builds_for_product — 
 warehouse_movements, warehouse_reserves, warehouse_purchase_basket,
 warehouse_stock_log, warehouse_backorders.
 
-### Совместимость комплектующих / конфигуратор (v4.30)
-Цель: база характеристик железа, по которой конфигуратор подбирает совместимое.
-- Таблица product_specs (V0140): 1 строка на товар (product_id UNIQUE).
-  Поля: component_type + socket/mem_type/tdp_watt/has_igpu/chipset/form_factor/
-  mem_slots/m2_slots/ram_*/gpu_length_mm/gpu_power_connector/psu_*/case_*/cooler_*/
-  storage_interface/radiator_support/extra(jsonb).
-- warehouse group_create: автосоздаёт пустую строку product_specs с component_type
-  по категории (CATEGORY_TO_COMPONENT). Хелперы ensure_product_specs,
-  detect_component_type, compute_specs_ready, SPECS_REQUIRED (обязательные поля
-  по типу — определяют статус «новый»/«готов»).
-- warehouse actions: specs_list (все железки + статус ready), specs_get,
-  specs_update (PUT). api.warehouse.specsList/specsGet/specsUpdate.
-- Frontend: вкладка /admin/compatibility (CompatibilityTab) — справа от «Товары».
-  Таблица всех железок с фильтрами (категория, статус новый/готов, поиск),
-  модальный редактор полей по типу компонента. Товар «новый» пока не заполнены
-  все обязательные поля, затем «готов». Строгость: только жёсткие блокировки.
+### Совместимость комплектующих / конфигуратор (v4.30 → v4.31 DATA-DRIVEN)
+Цель: гибкий конструктор характеристик железа, расширяемый без правок кода.
+Конфигуратор по этим данным подбирает совместимое (переработка конфигуратора — позже).
+
+DATA-DRIVEN модель (V0141–V0143), 4 таблицы:
+- spec_categories — типы железа (code/name/icon/color/product_category_slug/sort).
+  product_category_slug привязывает к categories.slug — авто-определение типа товара.
+- spec_attributes — поля категории (code/name/field_type[select|multiselect|number|
+  bool|text]/options(jsonb)/unit/affects_compat/is_required/sort). affects_compat —
+  можно использовать в связях; иначе «для ознакомления». is_required — для статуса.
+- product_spec_values — значения у товара (product_id, attribute_id, value/value_json).
+  UNIQUE(product_id, attribute_id). value_json — для multiselect.
+- spec_links — карта связей: from_attribute_id, to_attribute_id, rule
+  (eq|lte|gte|contains), is_active. Стартовые правила: сокет CPU=плата, тип памяти
+  RAM=плата=CPU, длина GPU<=корпус, высота кулера<=корпус, сокет CPU∈кулер,
+  форм-фактор платы∈корпус, форм-фактор БП=корпус.
+
+warehouse actions (DATA-DRIVEN):
+- spec_schema (GET) — категории+атрибуты+связи разом.
+- spec_cat_create/update/delete, spec_attr_create/update/delete,
+  spec_link_create/update/delete (CRUD конструктора).
+- spec_products (GET) — все железки + статус новый/готов (по is_required атрибутам
+  категории, привязанной через product_category_slug).
+- spec_values_get/spec_values_save — значения характеристик товара.
+api.warehouse.specSchema/specCat*/specAttr*/specLink*/specProducts/specValues*.
+
+СТАРАЯ модель (product_specs, V0140) — оставлена, но фронт переведён на новую.
+warehouse group_create по-прежнему вызывает ensure_product_specs (product_specs).
+
+Frontend: вкладка /admin/compatibility (CompatibilityTab) справа от «Товары».
+3 подвкладки (src/components/admin/compatibility/):
+- ProductsValues («Железки») — таблица товаров, фильтры (категория/статус/поиск),
+  динамический редактор значений по схеме категории, статус новый/готов.
+- AttributesBuilder («Характеристики») — конструктор: слева категории компонентов,
+  справа их поля. Модалки категории (иконка/цвет/привязка к категории товаров) и
+  характеристики (тип поля/варианты/единица/влияет на совместимость/обязательная).
+- LinksMap («Карта связей») — SVG-граф категорий по кругу + список правил,
+  модалка создания правила (выбор 2 характеристик с affects_compat + тип правила).
 
 ### НДС / скидка / предоплата (v3.13)
 - warehouse.supply_create: обязательный has_vat (да/нет); менеджер вводит
