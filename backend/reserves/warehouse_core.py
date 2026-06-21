@@ -635,26 +635,59 @@ def recompute_wip_received_at(cur, wip_id):
     return max_eta.isoformat() if max_eta else None
 
 
+_SLOT_NAME_FIELD = {
+    "cpu": "cpu", "motherboard": "motherboard", "ram": "ram", "gpu": "gpu",
+    "storage": "storage", "psu": "psu", "case": "case_name",
+    "cooling": "cooling", "extra": "extra", "fan": "extra",
+}
+_SLOT_RU = {
+    "cpu": "Процессор", "motherboard": "Материнская плата", "ram": "Память",
+    "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
+    "case": "Корпус", "cooling": "Охлаждение", "extra": "Доп.", "fan": "Доп.",
+}
+
+
 def mark_overdue_delays(cur):
     """
     Помечает железки как "ordered_delay" (Задержка), если их ETA прошла,
     а товар ещё не приехал (статус не ready). Вызывается при загрузке корзины.
     Обновляет wip_builds.{slot}_status по данным wip_component_eta.
-    Возвращает кол-во помеченных позиций.
+    Возвращает СПИСОК позиций, ТОЛЬКО ЧТО перешедших в задержку (для уведомлений
+    и дублирования в календарь). Повторный вызов их уже не вернёт — статус
+    станет 'ordered_delay' и условие перехода не сработает.
     """
     cur.execute(
-        f"SELECT wip_id, slot FROM {SCHEMA}.wip_component_eta "
+        f"SELECT wip_id, slot, eta_date FROM {SCHEMA}.wip_component_eta "
         f"WHERE eta_date IS NOT NULL AND eta_date < CURRENT_DATE"
     )
     rows = cur.fetchall()
-    marked = 0
-    for wip_id, slot in rows:
+    newly_delayed = []
+    for wip_id, slot, eta_date in rows:
         field = "case_status" if slot == "case" else slot + "_status"
+        if field not in (
+            "cpu_status", "motherboard_status", "ram_status", "gpu_status",
+            "storage_status", "psu_status", "case_status", "cooling_status", "extra_status",
+        ):
+            continue
         cur.execute(
             f"UPDATE {SCHEMA}.wip_builds SET {field}='ordered_delay', updated_at=NOW() "
             f"WHERE id=%s AND {field}='ordered_transit'",
             (wip_id,),
         )
         if cur.rowcount:
-            marked += 1
-    return marked
+            name_field = _SLOT_NAME_FIELD.get(slot, "extra")
+            cur.execute(
+                f"SELECT order_number, order_id, {name_field} FROM {SCHEMA}.wip_builds WHERE id=%s",
+                (wip_id,),
+            )
+            wr = cur.fetchone()
+            newly_delayed.append({
+                "wip_id": wip_id,
+                "slot": slot,
+                "slot_label": _SLOT_RU.get(slot, slot),
+                "eta_date": eta_date.isoformat() if eta_date else None,
+                "order_number": wr[0] if wr else None,
+                "order_id": wr[1] if wr else None,
+                "component_name": (wr[2] if wr else None) or "—",
+            })
+    return newly_delayed

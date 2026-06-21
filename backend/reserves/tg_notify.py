@@ -1,7 +1,8 @@
-"""Отправка уведомлений менеджерам в общий Telegram-чат.
+"""Отправка уведомлений менеджерам в Telegram.
 
-Берёт TELEGRAM_BOT_TOKEN и TELEGRAM_MANAGER_CHAT_ID из окружения.
-Никогда не роняет основной поток: при ошибке просто логирует и возвращает False.
+Берёт TELEGRAM_BOT_TOKEN, TELEGRAM_MANAGER_CHAT_ID и TELEGRAM_TASKS_CHAT_ID
+из окружения. Никогда не роняет основной поток: при ошибке логирует и
+возвращает False.
 """
 import os
 import urllib.request

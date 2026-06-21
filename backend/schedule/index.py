@@ -83,6 +83,20 @@ def _carry_over_tasks(cur):
             f"SELECT {new_id}, employee_id FROM {SCHEMA}.calendar_event_employees "
             f"WHERE event_id = {int(eid)} ON CONFLICT DO NOTHING"
         )
+        # Стираем прошлые «хвосты» цепочки (x2/x3/x4 и исходную) — оставляем
+        # только сегодняшнюю копию. origin_id/origin_date уже сохранены в ней,
+        # поэтому счётчик дней простоя не теряется.
+        cur.execute(
+            f"DELETE FROM {SCHEMA}.calendar_event_employees "
+            f"WHERE event_id IN (SELECT id FROM {SCHEMA}.calendar_events "
+            f"  WHERE kind='task' AND COALESCE(origin_id, id) = {int(origin_id)} "
+            f"  AND event_date < CURRENT_DATE)"
+        )
+        cur.execute(
+            f"DELETE FROM {SCHEMA}.calendar_events "
+            f"WHERE kind='task' AND COALESCE(origin_id, id) = {int(origin_id)} "
+            f"AND event_date < CURRENT_DATE"
+        )
 
 
 def handler(event: dict, context) -> dict:
@@ -131,7 +145,7 @@ def handler(event: dict, context) -> dict:
         if action == "morning_ping":
             if require_admin(cur, session_id, admin_key) is None:
                 return err("Нет доступа", 403)
-            from tg_notify import notify_managers
+            from tg_notify import notify_managers, notify_tasks
 
             def fmt_resp(emp_rows):
                 """emp_rows: список (name, tag). Возвращает '@tag1, @tag2' либо имена."""
@@ -184,7 +198,7 @@ def handler(event: dict, context) -> dict:
                     if resp:
                         block += f"\nОтветственные: {resp}"
                     blocks.append(block)
-                notify_managers("\n".join(blocks))
+                notify_tasks("\n".join(blocks))
                 sent.append("tasks")
 
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": sent})}
@@ -433,16 +447,19 @@ def handler(event: dict, context) -> dict:
             conn.commit()
 
             try:
-                from tg_notify import notify_managers
-                _emp_names = []
+                from tg_notify import notify_tasks
+                _emp_parts = []
                 if employee_ids:
                     ids_csv = ",".join(str(int(e)) for e in employee_ids)
-                    cur.execute(f"SELECT name FROM {SCHEMA}.employees WHERE id IN ({ids_csv})")
-                    _emp_names = [r[0] for r in cur.fetchall()]
+                    cur.execute(f"SELECT name, telegram_tag FROM {SCHEMA}.employees WHERE id IN ({ids_csv})")
+                    for nm, tg in cur.fetchall():
+                        # Тегаем сотрудника, если задан telegram_tag, иначе пишем имя
+                        _emp_parts.append(f"@{tg}" if tg else (nm or ""))
+                _emp_parts = [p for p in _emp_parts if p]
                 _kind_label = "Задача" if kind == "task" else "Событие"
-                _resp = ("\nОтветственные: " + ", ".join(_emp_names)) if _emp_names else ""
+                _resp = ("\nОтветственные: " + ", ".join(_emp_parts)) if _emp_parts else ""
                 _descr = ("\n" + description) if description else ""
-                notify_managers(
+                notify_tasks(
                     f"📅 <b>{_kind_label} в календаре</b>\n"
                     f"{title}\n"
                     f"Дата: {event_date}"

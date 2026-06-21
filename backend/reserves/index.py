@@ -508,8 +508,40 @@ def handler(event: dict, context) -> dict:
 
         # ── Корзина закупки, сгруппированная по сборкам ─────────────────────
         if action == "basket_by_wip" and method == "GET":
-            # Сначала помечаем просроченные ETA как «Задержка» (ordered_delay)
-            core.mark_overdue_delays(cur)
+            # Сначала помечаем просроченные ETA как «Задержка» (ordered_delay).
+            # Возвращает только что задержавшиеся позиции — уведомляем и дублируем
+            # в календарь (однократно, т.к. повторно статус уже ordered_delay).
+            newly_delayed = core.mark_overdue_delays(cur)
+            for d in (newly_delayed or []):
+                ordn = d.get("order_number") or (str(d.get("order_id")) if d.get("order_id") else "—")
+                title = f"⚠️ Задержка: {d.get('slot_label')} (заказ #{ordn})"
+                descr = (
+                    f"Компонент: {d.get('component_name')}\n"
+                    f"Слот: {d.get('slot_label')}\n"
+                    f"Заказ: #{ordn}\n"
+                    f"Ожидался: {d.get('eta_date') or '—'}"
+                )
+                # Событие в календаре (на сегодня, как задача)
+                try:
+                    cur.execute(
+                        f"INSERT INTO {SCHEMA}.calendar_events "
+                        f"(event_date, title, description, kind, status, origin_date) "
+                        f"VALUES (CURRENT_DATE, %s, %s, 'task', 'new', CURRENT_DATE)",
+                        (title, descr),
+                    )
+                except Exception as _ce:
+                    print(f"DELAY calendar: {_ce}")
+                # Уведомление в беседу задач
+                try:
+                    from tg_notify import notify_tasks
+                    notify_tasks(
+                        f"⚠️ <b>Задержка железа</b>\n"
+                        f"Заказ: #{ordn}\n"
+                        f"Компонент: {d.get('component_name')} ({d.get('slot_label')})\n"
+                        f"Ожидался: {d.get('eta_date') or '—'}"
+                    )
+                except Exception as _te:
+                    print(f"DELAY notify: {_te}")
             cur.execute(
                 f"""
                 SELECT
