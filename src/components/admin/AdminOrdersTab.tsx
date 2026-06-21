@@ -4,7 +4,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import {
   Order, AdminTab,
-  STATUS_LABELS, PC_STATUS_LABELS, ACTIVE_STATUSES, ARCHIVE_STATUSES,
+  STATUS_LABELS, PC_STATUS_LABELS, ACTIVE_STATUSES,
 } from "@/pages/admin/types"
 
 interface Props {
@@ -52,8 +52,19 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, status: "cancelled" } : ord))
   }
 
+  // Сборка-заказ считается активной, пока WIP-стадия не «Забрали»/«Отменён»/«Архив»
+  // (даже на «Готов, можно забрать» её ещё надо выдать). Для остальных — по статусу.
+  const WIP_DONE_STAGES = ["Забрали", "Отменён", "Архив"]
+  const isOrderActive = (o: Order) => {
+    if (o.order_type === "pc_build") {
+      if (o.status === "cancelled") return false
+      if (o.wip_stage) return !WIP_DONE_STAGES.includes(o.wip_stage)
+      return ACTIVE_STATUSES.includes(o.status)
+    }
+    return ACTIVE_STATUSES.includes(o.status)
+  }
   const filtered = orders
-    .filter(o => isArchive ? ARCHIVE_STATUSES.includes(o.status) : ACTIVE_STATUSES.includes(o.status))
+    .filter(o => isArchive ? !isOrderActive(o) : isOrderActive(o))
     .filter(o => orderTypeFilter === "all" || o.order_type === orderTypeFilter)
 
   const updateStatus = async (id: number, status: string) => {
