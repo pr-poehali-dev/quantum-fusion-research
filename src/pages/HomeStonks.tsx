@@ -34,6 +34,7 @@ interface CatalogBuild {
   components?: Array<{ price?: number }>
   created_at?: string
   in_stock?: boolean
+  reserved?: boolean
 }
 
 const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
@@ -259,7 +260,14 @@ export default function HomeStonks() {
                               <Icon name="Monitor" size={28} className="text-foreground/30" />
                             </div>
                           )}
-                          {b.in_stock && (
+                          {b.reserved ? (
+                            <div
+                              className="absolute top-3 right-3 z-10 flex items-center gap-1 rounded-full bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg cursor-help"
+                              title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
+                              <Icon name="Clock" size={10} />
+                              В резерве
+                            </div>
+                          ) : b.in_stock && (
                             <div className="absolute top-3 right-3 z-10 flex items-center gap-1 rounded-full bg-green-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
                               <Icon name="CheckCircle" size={10} />
                               В наличии

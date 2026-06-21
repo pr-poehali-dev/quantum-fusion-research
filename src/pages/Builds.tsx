@@ -29,6 +29,7 @@ interface Build {
   status: string
   is_featured: boolean
   in_stock: boolean
+  reserved?: boolean
   parent_id: number | null
   client_token: string | null
   sell_with_vat?: boolean
@@ -111,7 +112,14 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
 
       {/* Бейджи — справа сверху */}
       <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1.5">
-        {b.in_stock && (
+        {b.reserved ? (
+          <div
+            className="flex items-center gap-1 rounded-full bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg cursor-help"
+            title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
+            <Icon name="Clock" size={10} />
+            В резерве
+          </div>
+        ) : b.in_stock && (
           <div className="flex items-center gap-1 rounded-full bg-green-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
             <Icon name="CheckCircle" size={10} />
             В наличии
@@ -127,7 +135,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
 
       {/* Стрелки карусели */}
       {images.length > 1 && (
-        <div className={`absolute z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${(b.in_stock || b.is_featured) ? "top-16 right-3" : "top-3 right-3"}`}>
+        <div className={`absolute z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${(b.in_stock || b.is_featured || b.reserved) ? "top-16 right-3" : "top-3 right-3"}`}>
           <button onClick={(e) => goImg(e, -1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="ChevronLeft" size={12} />
           </button>
@@ -172,13 +180,21 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
         </h3>
         <div className="flex items-center justify-between gap-3">
           <p className="text-2xl font-bold text-white">{fmt(calcTotal)}</p>
-          <button
-            onClick={e => { e.stopPropagation(); onOrder() }}
-            className="shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            Заказать
-          </button>
+          {b.reserved ? (
+            <span
+              className="shrink-0 rounded-xl bg-orange-500/20 border border-orange-400/40 px-4 py-2 text-xs font-semibold text-orange-300 cursor-help"
+              title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
+              В резерве
+            </span>
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); onOrder() }}
+              className="shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              style={{ cursor: "pointer" }}
+            >
+              Заказать
+            </button>
+          )}
         </div>
       </div>
     </div>

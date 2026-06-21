@@ -160,6 +160,7 @@ export interface Order {
   remaining_amount?: number
   prepayment_confirmed?: boolean
   remaining_paid?: boolean
+  for_sale?: boolean
 }
 
 export interface Product {

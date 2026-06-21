@@ -43,6 +43,15 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     }
   }
 
+  // Очистить резерв сборки из свободной продажи: снять резерв, очистить данные
+  // клиента, отвязать заказ от сборки, вернуть сборку в наличие, отменить заказ.
+  const clearReservation = async (orderId: number) => {
+    if (!confirm("Очистить резерв этого заказа?\nСборка вернётся в наличие, данные клиента сотрутся, заказ будет отменён.")) return
+    const res = await api.orders.updateItem({ id: orderId, action: "clear_reservation" })
+    if (res.error) { alert(res.error); return }
+    setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, status: "cancelled" } : ord))
+  }
+
   const filtered = orders
     .filter(o => isArchive ? ARCHIVE_STATUSES.includes(o.status) : ACTIVE_STATUSES.includes(o.status))
     .filter(o => orderTypeFilter === "all" || o.order_type === orderTypeFilter)
@@ -152,6 +161,8 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
             const statusInfo = order.order_type === "pc_build"
               ? (PC_STATUS_LABELS[order.wip_stage || order.status] || STATUS_LABELS[order.status])
               : STATUS_LABELS[order.status]
+            // Сборка из свободной продажи, занятая заказом, но не выданная = «в резерве»
+            const isReserved = !!order.for_sale && order.status !== "cancelled" && order.wip_stage !== "Забрали"
             return (
               <div key={order.id} className="rounded-xl border border-border bg-card p-5">
                 <div className="flex flex-wrap items-start gap-4">
@@ -162,7 +173,11 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       {order.order_type === "pc_build" && (
                         <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">ПК-сборка</span>
                       )}
-                      {order.status !== "cancelled" && (
+                      {isReserved && (
+                        <span className="rounded-full bg-orange-400/15 px-2.5 py-0.5 text-xs font-medium text-orange-400" title="Готовый ПК из наличия зарезервирован под этого клиента">В резерве</span>
+                      )}
+                      {/* Предоплата неактуальна для сборок свободной продажи */}
+                      {order.status !== "cancelled" && !order.for_sale && (
                         order.prepayment_confirmed ? (
                           <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата внесена</span>
                         ) : (
@@ -216,6 +231,16 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                         title="Выбить компоненты со склада, создать резервы">
                         <Icon name={syncingId === order.id ? "Loader" : syncResultId === order.id ? "Check" : "RefreshCw"} size={12} className={syncingId === order.id ? "animate-spin" : ""} />
                         {syncResultId === order.id ? "Готово" : "Синхронизировать"}
+                      </button>
+                    )}
+                    {isReserved && (
+                      <button
+                        onClick={() => clearReservation(order.id)}
+                        className="flex items-center gap-1.5 rounded-lg border border-orange-400/40 bg-orange-400/5 px-3 py-1.5 text-xs font-medium text-orange-400 hover:bg-orange-400/10 transition-colors"
+                        style={{ cursor: "pointer" }}
+                        title="Снять резерв: вернуть сборку в наличие, стереть данные клиента, отменить заказ">
+                        <Icon name="Eraser" size={12} />
+                        Очистить резерв
                       </button>
                     )}
                     <button

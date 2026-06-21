@@ -58,7 +58,7 @@ def _sync_wip_from_build(cur, build_id, components):
              extra_val, r[0])
         )
 
-def fmt_build(row, tags=None):
+def fmt_build(row, tags=None, reserved=False):
     return {
         "id": row[0], "name": row[1], "description": row[2],
         "image_urls": row[3] or [],
@@ -77,8 +77,24 @@ def fmt_build(row, tags=None):
         "in_stock": row[16] if len(row) > 16 else False,
         "sell_with_vat": row[17] if len(row) > 17 else False,
         "short_code": row[18] if len(row) > 18 else None,
+        "reserved": bool(reserved),
         "tags": tags or [],
     }
+
+
+def get_reserved_build_ids(cur, build_ids):
+    """Возвращает множество build_id, которые «в резерве»: готовая сборка
+    свободной продажи привязана к незавершённому заказу (for_sale=TRUE,
+    order_id IS NOT NULL, stage != 'Забрали')."""
+    if not build_ids:
+        return set()
+    ids_str = ",".join(str(int(i)) for i in build_ids)
+    cur.execute(
+        f"SELECT DISTINCT build_id FROM {SCHEMA}.wip_builds "
+        f"WHERE build_id IN ({ids_str}) AND for_sale = TRUE "
+        f"AND order_id IS NOT NULL AND stage <> 'Забрали'"
+    )
+    return {r[0] for r in cur.fetchall()}
 
 
 def gen_short_code(cur):
@@ -152,7 +168,8 @@ def handler(event: dict, context) -> dict:
                 if not row:
                     return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
-                return resp(200, fmt_build(row, tags_map.get(row[0], [])))
+                reserved_ids = get_reserved_build_ids(cur, [row[0]])
+                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
 
             if client_token:
                 cur.execute(base + " WHERE client_token = %s", (client_token,))
@@ -160,7 +177,8 @@ def handler(event: dict, context) -> dict:
                 if not row:
                     return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
-                return resp(200, fmt_build(row, tags_map.get(row[0], [])))
+                reserved_ids = get_reserved_build_ids(cur, [row[0]])
+                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
 
             if short_code:
                 cur.execute(base + " WHERE short_code = %s", (short_code,))
@@ -168,7 +186,8 @@ def handler(event: dict, context) -> dict:
                 if not row:
                     return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
-                return resp(200, fmt_build(row, tags_map.get(row[0], [])))
+                reserved_ids = get_reserved_build_ids(cur, [row[0]])
+                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
 
             if parent_id:
                 cur.execute(base + " WHERE parent_id = %s ORDER BY id", (parent_id,))
@@ -186,8 +205,10 @@ def handler(event: dict, context) -> dict:
             args = [status] if status else []
             cur.execute(base + f" {where} ORDER BY sort_order ASC NULLS LAST, id DESC", args)
             rows = cur.fetchall()
-            tags_map = get_tags_for_builds(cur, [r[0] for r in rows])
-            return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], [])) for r in rows]})
+            ids = [r[0] for r in rows]
+            tags_map = get_tags_for_builds(cur, ids)
+            reserved_ids = get_reserved_build_ids(cur, ids)
+            return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], []), r[0] in reserved_ids) for r in rows]})
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
