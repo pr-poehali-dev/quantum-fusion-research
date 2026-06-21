@@ -1,0 +1,1 @@
+UPDATE t_p72635010_quantum_fusion_resea.orders SET status = 'cancelled', updated_at = NOW() WHERE id = 350;

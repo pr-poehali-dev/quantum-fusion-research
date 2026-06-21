@@ -231,9 +231,10 @@ def handler(event: dict, context) -> dict:
                         "UPDATE wip_builds SET order_id=%s, contact=%s, updated_at=NOW() WHERE id=%s",
                         (order_id, _contact[:128], wip_id_stock)
                     )
-                    # Снимаем галочку «В наличии» (сборка ушла под клиента)
+                    # Снимаем галочку «В наличии» (сборка ушла под клиента).
+                    # ВНИМАНИЕ: в pc_builds НЕТ колонки updated_at — не добавлять её сюда!
                     cur.execute(
-                        "UPDATE pc_builds SET in_stock=FALSE, updated_at=NOW() WHERE id=%s",
+                        "UPDATE pc_builds SET in_stock=FALSE WHERE id=%s",
                         (build_id_stock,)
                     )
                     try:
