@@ -1001,9 +1001,6 @@ export default function WarehouseTab() {
         <Badge variant="outline">{total} {showArchived ? "в архиве" : "позиций"}</Badge>
         <div className="flex-1" />
 
-        <Button variant="outline" size="sm" onClick={() => { window.location.href = "/admin/sn_archive" }}>
-          <Icon name="ScanBarcode" size={14} className="mr-1.5" />Архив SN
-        </Button>
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
           <Icon name="Store" size={14} className="mr-1.5" />Магазины
         </Button>
