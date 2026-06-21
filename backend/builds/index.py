@@ -170,6 +170,26 @@ def handler(event: dict, context) -> dict:
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
+                # Защита от прямого доступа к внутренним сборкам по числовому id.
+                # Публично (без сессии) по голому id доступны ТОЛЬКО витринные сборки
+                # каталога (status='catalog') и их варианты (корень = catalog).
+                # Внутренние/клиентские/черновики открываются по client_token / short_code
+                # или авторизованному админу (X-Session-Id). Иначе — 404.
+                row_status = row[9]
+                row_parent = row[15]
+                if row_status != "catalog":
+                    allowed = False
+                    # вариант витринной сборки — проверяем статус корня
+                    if row_parent:
+                        cur.execute("SELECT status FROM pc_builds WHERE id = %s", (row_parent,))
+                        pr = cur.fetchone()
+                        if pr and pr[0] == "catalog":
+                            allowed = True
+                    # авторизованный сотрудник видит любую сборку
+                    if not allowed and get_user_by_session(cur, session_id):
+                        allowed = True
+                    if not allowed:
+                        return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
                 reserved_ids = get_reserved_build_ids(cur, [row[0]])
                 return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
