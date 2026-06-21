@@ -656,9 +656,15 @@ def mark_overdue_delays(cur):
     и дублирования в календарь). Повторный вызов их уже не вернёт — статус
     станет 'ordered_delay' и условие перехода не сработает.
     """
+    # ВАЖНО: берём ETA ТОЛЬКО для существующих сборок в активных стадиях.
+    # Иначе «осиротевшие» ETA (сборка удалена) и архивные/выданные заказы
+    # шлют ложные пинги «Задержка железа» с пустым заказом и компонентом.
     cur.execute(
-        f"SELECT wip_id, slot, eta_date FROM {SCHEMA}.wip_component_eta "
-        f"WHERE eta_date IS NOT NULL AND eta_date < CURRENT_DATE"
+        f"SELECT eta.wip_id, eta.slot, eta.eta_date "
+        f"FROM {SCHEMA}.wip_component_eta eta "
+        f"JOIN {SCHEMA}.wip_builds wb ON wb.id = eta.wip_id "
+        f"WHERE eta.eta_date IS NOT NULL AND eta.eta_date < CURRENT_DATE "
+        f"AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён', 'Готов, можно забрать', 'Отнести в сдэк')"
     )
     rows = cur.fetchall()
     newly_delayed = []
