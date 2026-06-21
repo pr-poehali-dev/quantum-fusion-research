@@ -99,32 +99,62 @@ function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => v
   )
 }
 
-function ExtrasSection() {
+function ExtrasSection({ extraItems, onAddCustom, onRemoveExtra }: {
+  extraItems: { key: string; item: SelectedComp }[]
+  onAddCustom: () => void
+  onRemoveExtra: (key: string) => void
+}) {
   const { items, removeItem } = useCart()
   const navigate = useNavigate()
 
   const cableItems = items.filter((i: CartItem) => i.type === "config" && i.name.startsWith("Кастомные кабели"))
+  const fmtP = (n: number) => n.toLocaleString("ru-RU") + " ₽"
+  const hasAny = cableItems.length > 0 || extraItems.length > 0
 
   return (
-    <div className={`rounded-xl border bg-card transition-all duration-200 ${cableItems.length > 0 ? "border-primary/40" : "border-border"}`}>
+    <div className={`rounded-xl border bg-card transition-all duration-200 ${hasAny ? "border-primary/40" : "border-border"}`}>
       <div className="flex items-center gap-3 p-4">
-        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${cableItems.length > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
-          <Icon name="Cable" size={16} />
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${hasAny ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
+          <Icon name="Package" size={16} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Прочее</p>
-          {cableItems.length === 0 && <p className="text-xs text-foreground/30">Кастомные кабели и другие аксессуары</p>}
+          {!hasAny && <p className="text-xs text-foreground/30">Кабели, аксессуары и свои позиции</p>}
         </div>
-        <button onClick={() => navigate("/cables")}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
-          style={{ cursor: "pointer" }}>
-          <Icon name="Plus" size={13} />
-          Добавить кабели
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onAddCustom}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Plus" size={13} />
+            Своя позиция
+          </button>
+          <button onClick={() => navigate("/cables")}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Cable" size={13} />
+            Кабели
+          </button>
+        </div>
       </div>
 
-      {cableItems.length > 0 && (
+      {hasAny && (
         <div className="border-t border-border px-4 pb-4 pt-3 space-y-2">
+          {extraItems.map(({ key, item }) => (
+            <div key={key} className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 px-3 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Icon name="Box" size={14} className="text-primary shrink-0" />
+                <p className="text-sm text-foreground truncate">{item.name}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-medium text-foreground/60">{fmtP(item.price)}</span>
+                <button onClick={() => onRemoveExtra(key)}
+                  className="text-foreground/30 hover:text-red-400 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="X" size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
           {cableItems.map((item: CartItem) => (
             <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 px-3 py-2">
               <div className="flex items-center gap-2 min-w-0">
@@ -155,8 +185,7 @@ export default function Configurator() {
   const [selected, setSelected] = useState<Record<string, SelectedComp | null>>(draft0.selected || {})
   const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>>(draft0.customInputs || {})
   const [mode, setMode] = useState<"catalog" | "custom">("catalog")
-  const [slotMode, setSlotMode] = useState<Record<string, "catalog" | "custom">>({})
-  const [openSlot, setOpenSlot] = useState<string | null>(null)
+
   // НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип)
   const [pickerSlot, setPickerSlot] = useState<string | null>(null)
   // Значения характеристик уже выбранных деталей (для расчёта совместимости)
@@ -279,11 +308,6 @@ export default function Configurator() {
     navigate("/cart")
   }
 
-  const selectFromCatalog = (slot: string, comp: CatalogComp) => {
-    setSelected(s => ({ ...s, [slot]: { slot, name: comp.name, price: comp.price, qty: 1, source: "catalog", source_id: comp.id } }))
-    setOpenSlot(null)
-  }
-
   // Выбор из НОВОГО окна (с фильтрами совместимости).
   // p — товар слота с values характеристик, specCatId — id spec-категории.
   const pickFromPicker = (slot: string) => (
@@ -299,13 +323,21 @@ export default function Configurator() {
     setPickerSlot(null)
   }
 
-  const applyCustom = (slot: string) => {
-    const inp = customInputs[slot]
-    if (!inp?.name || !inp?.price) return
-    setSelected(s => ({ ...s, [slot]: { slot, name: inp.name, price: parseFloat(inp.price) || 0, qty: 1, link: inp.link || undefined, source: "custom" } }))
-    setSlotExtras(e => ({ ...e, [slot]: { description: inp.description || "", image_urls: inp.image_urls || [] } }))
-    setOpenSlot(null)
+  // Ручной ввод своей позиции из нового окна
+  const addCustomFromPicker = (slot: string) => (item: { name: string; price: number; link?: string }) => {
+    // «Прочее» (extra) — добавляем как отдельную позицию с уникальным ключом,
+    // чтобы можно было добавить несколько. Остальные слоты — заменяем содержимое.
+    const key = slot === "extra" ? `extra:${Date.now()}` : slot
+    setSelected(s => ({ ...s, [key]: { slot: key, name: item.name, price: item.price, qty: 1, link: item.link, source: "custom" } }))
+    setPickerSlot(null)
   }
+
+  const removeExtra = (key: string) => setSelected(s => { const n = { ...s }; delete n[key]; return n })
+
+  // Позиции «Прочее» (свои), добавленные вручную
+  const extraItems = Object.entries(selected)
+    .filter(([k, v]) => k.startsWith("extra:") && v)
+    .map(([k, v]) => ({ key: k, item: v! }))
 
   const updateQty = (slot: string, qty: number) => {
     setSelected(s => s[slot] ? { ...s, [slot]: { ...s[slot]!, qty } } : s)
@@ -401,13 +433,6 @@ export default function Configurator() {
           {!buildAuthor && (
             <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
           )}
-          {/* ТЕСТ: новое окно выбора с фильтрами совместимости */}
-          <button onClick={() => setPickerSlot("motherboard")}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-            style={{ cursor: "pointer" }}>
-            <Icon name="SlidersHorizontal" size={15} />
-            Тест: выбрать материнскую плату (новые фильтры)
-          </button>
         </div>
 
         {/* Mode toggle */}
@@ -569,8 +594,6 @@ export default function Configurator() {
                   !slotSearch || o.name.toLowerCase().includes(slotSearch.toLowerCase())
                 )
                 const current = selected[slot]
-                const isOpen = openSlot === slot || (!!slotSearch && options.length > 0)
-                const ci = customInputs[slot] || { name: "", price: "", link: "", description: "", image_urls: [] }
 
                 // Скрываем слот если поиск активен и нет совпадений (и ничего не выбрано)
                 if (slotSearch && options.length === 0 && !current) return null
@@ -578,9 +601,9 @@ export default function Configurator() {
                 return (
                   <div key={slot} className={`rounded-xl border bg-card transition-all duration-200 ${current ? "border-primary/40" : "border-border"}`}>
 
-                    {/* Slot header row — вся строка кликабельна для открытия выбора */}
+                    {/* Slot header row — вся строка кликабельна, открывает окно выбора */}
                     <div className="flex items-center gap-3 p-4 cursor-pointer rounded-xl hover:bg-muted/20 transition-colors"
-                      onClick={() => setOpenSlot(isOpen ? null : slot)}
+                      onClick={() => setPickerSlot(slot)}
                     >
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${current ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/40"}`}>
                         <Icon name={meta.icon as "Cpu"} size={16} />
@@ -654,108 +677,13 @@ export default function Configurator() {
                       </div>
                     )}
 
-                    {/* Picker panel */}
-                    {isOpen && (() => {
-                      const effMode = slotMode[slot] ?? mode
-                      return (
-                      <div className="border-t border-border p-4">
-                        {/* Локальный переключатель: каталог / своё железо для этого слота */}
-                        <div className="mb-3 flex overflow-hidden rounded-lg border border-border text-xs">
-                          <button onClick={() => setSlotMode(m => ({ ...m, [slot]: "catalog" }))}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors ${effMode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/60 hover:text-foreground"}`}
-                            style={{ cursor: "pointer" }}>
-                            <Icon name="ShoppingBag" size={13} />Каталог
-                          </button>
-                          <button onClick={() => setSlotMode(m => ({ ...m, [slot]: "custom" }))}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors ${effMode === "custom" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/60 hover:text-foreground"}`}
-                            style={{ cursor: "pointer" }}>
-                            <Icon name="PenLine" size={13} />Своё железо
-                          </button>
-                        </div>
-                        {effMode === "catalog" ? (
-                          options.length === 0
-                            ? <p className="py-3 text-center text-xs text-foreground/40">Нет компонентов в каталоге</p>
-                            : (
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                {options.map(opt => (
-                                  <button key={opt.id} onClick={() => selectFromCatalog(slot, opt)}
-                                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left hover:border-primary transition-colors"
-                                    style={{ cursor: "pointer" }}
-                                  >
-                                    <div className="min-w-0 mr-2">
-                                      <p className="text-xs font-medium text-foreground truncate">{opt.name}</p>
-                                      {opt.brand && <p className="text-xs text-foreground/40">{opt.brand}</p>}
-                                      {Object.keys(opt.specs).length > 0 && (
-                                        <div className="mt-1 flex flex-wrap gap-1">
-                                          {Object.values(opt.specs).slice(0, 2).map((v, i) => (
-                                            <span key={i} className="rounded bg-muted px-1 py-px text-xs text-foreground/50">{v}</span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <p className="shrink-0 text-xs font-bold text-accent">{fmt(opt.price)}</p>
-                                  </button>
-                                ))}
-                              </div>
-                            )
-                        ) : (
-                          /* Custom input */
-                          <div className="space-y-2">
-                            <div className="flex gap-2">
-                              <input type="text" placeholder="Название компонента"
-                                value={ci.name}
-                                onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, name: e.target.value } }))}
-                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                                style={{ cursor: "text" }}
-                              />
-                              <input type="number" placeholder="Цена ₽"
-                                value={ci.price}
-                                onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, price: e.target.value } }))}
-                                className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                                style={{ cursor: "text" }}
-                              />
-                            </div>
-                            <input type="url" placeholder="Ссылка на товар (необязательно)"
-                              value={ci.link}
-                              onChange={e => setCustomInputs(c => ({ ...c, [slot]: { ...ci, link: e.target.value } }))}
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none"
-                              style={{ cursor: "text" }}
-                            />
-                            <div>
-                              <p className="mb-1.5 text-xs text-foreground/40">Фото (до 3 шт., необязательно)</p>
-                              <ImageUploader
-                                images={ci.image_urls}
-                                onChange={urls => setCustomInputs(c => ({ ...c, [slot]: { ...ci, image_urls: urls } }))}
-                                folder="builds"
-                                maxImages={3}
-                              />
-                            </div>
-                            <div>
-                              <p className="mb-1.5 text-xs text-foreground/40">Описание (необязательно)</p>
-                              <RichTextEditor
-                                value={ci.description}
-                                onChange={val => setCustomInputs(c => ({ ...c, [slot]: { ...ci, description: val } }))}
-                                placeholder="Описание компонента..."
-                              />
-                            </div>
-                            <button onClick={() => applyCustom(slot)}
-                              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                              style={{ cursor: "pointer" }}
-                            >
-                              Применить
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      )
-                    })()}
                   </div>
                 )
               })
             }
 
-            {/* ── Прочее: кастомные кабели ── */}
-            <ExtrasSection />
+            {/* ── Прочее: свои позиции + кастомные кабели ── */}
+            <ExtrasSection extraItems={extraItems} onRemoveExtra={removeExtra} onAddCustom={() => setPickerSlot("extra")} />
             </>
             )}
           </div>
@@ -1021,15 +949,17 @@ export default function Configurator() {
         </div>
       </div>
 
-      {/* НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип) */}
+      {/* Окно выбора с фильтрами совместимости */}
       {pickerSlot && (
         <SlotPickerModal
           slotCode={pickerSlot}
-          slotLabel={SLOT_LABELS[pickerSlot]?.label || pickerSlot}
+          slotLabel={pickerSlot === "extra" ? "Своя позиция" : (SLOT_LABELS[pickerSlot]?.label || pickerSlot)}
           selectedSpec={selectedSpec}
           onPick={pickFromPicker(pickerSlot)}
           onClose={() => setPickerSlot(null)}
-          onCustom={() => { setPickerSlot(null); setMode("custom"); setOpenSlot(pickerSlot) }}
+          onCustomAdd={addCustomFromPicker(pickerSlot)}
+          startCustom={pickerSlot === "extra"}
+          hideCatalogToggle={pickerSlot === "extra"}
         />
       )}
     </div>

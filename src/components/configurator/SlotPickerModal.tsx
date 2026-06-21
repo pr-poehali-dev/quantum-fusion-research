@@ -43,13 +43,21 @@ export interface SelectedSpecValues {
   [specCategoryId: number]: Record<string, string | string[]>
 }
 
+export interface CustomItemInput {
+  name: string
+  price: number
+  link?: string
+}
+
 interface Props {
   slotCode: string          // код spec-категории, напр. "motherboard"
   slotLabel: string         // "Материнская плата"
   selectedSpec: SelectedSpecValues  // значения уже выбранных деталей (для совместимости)
   onPick: (p: SlotProduct, specCategoryId: number) => void
   onClose: () => void
-  onCustom?: () => void     // «Моё железо» — ручной ввод
+  onCustomAdd?: (item: CustomItemInput) => void  // «Моё железо» — ручной ввод
+  startCustom?: boolean       // сразу открыть форму ручного ввода (для «Прочее»)
+  hideCatalogToggle?: boolean // скрыть переключение к каталогу (только ручной ввод)
 }
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
@@ -76,7 +84,7 @@ function ruleHolds(rule: string, fromVal: unknown, toVal: unknown): boolean {
   }
 }
 
-export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onPick, onClose, onCustom }: Props) {
+export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onPick, onClose, onCustomAdd, startCustom, hideCatalogToggle }: Props) {
   const [attributes, setAttributes] = useState<SpecAttr[]>([])
   const [products, setProducts] = useState<SlotProduct[]>([])
   const [specCategoryId, setSpecCategoryId] = useState<number>(0)
@@ -93,6 +101,16 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   const [priceMax, setPriceMax] = useState("")
   const [attrFilters, setAttrFilters] = useState<Record<number, Set<string>>>({})
   const [openAttr, setOpenAttr] = useState<Record<number, boolean>>({})
+
+  // Режим ручного ввода («Моё железо»)
+  const [customMode, setCustomMode] = useState(!!startCustom)
+  const [cName, setCName] = useState("")
+  const [cPrice, setCPrice] = useState("")
+  const [cLink, setCLink] = useState("")
+  const submitCustom = () => {
+    if (!cName.trim() || !cPrice) return
+    onCustomAdd?.({ name: cName.trim(), price: parseFloat(cPrice) || 0, link: cLink.trim() || undefined })
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -252,15 +270,17 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-foreground">Выбор: {slotLabel}</h3>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{visible.length}</span>
+            <h3 className="text-base font-bold text-foreground">
+              {customMode ? "Своя позиция" : `Выбор: ${slotLabel}`}
+            </h3>
+            {!customMode && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{visible.length}</span>}
           </div>
           <div className="flex items-center gap-2">
-            {onCustom && (
-              <button onClick={onCustom}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-primary transition-colors"
+            {onCustomAdd && !hideCatalogToggle && (
+              <button onClick={() => setCustomMode(v => !v)}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${customMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary hover:text-primary"}`}
                 style={{ cursor: "pointer" }} title="Совместимость не гарантируется — менеджер уточнит перед заказом">
-                <Icon name="Wrench" size={13} /> Моё железо
+                <Icon name={customMode ? "ArrowLeft" : "Wrench"} size={13} /> {customMode ? "К каталогу" : "Моё железо"}
               </button>
             )}
             <button onClick={onClose} className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
@@ -269,6 +289,38 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
           </div>
         </div>
 
+        {customMode ? (
+          /* ── Ручной ввод своей позиции ── */
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="mx-auto max-w-md space-y-4">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                <Icon name="Info" size={15} className="mt-0.5 shrink-0" />
+                <span>Совместимость своей позиции мы не гарантируем — менеджер уточнит её перед заказом.</span>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground/80">Название</label>
+                <input value={cName} onChange={e => setCName(e.target.value)}
+                  placeholder="Напр. ASUS ROG STRIX B650-A"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground/80">Цена, ₽</label>
+                <input value={cPrice} onChange={e => setCPrice(e.target.value)} inputMode="numeric" placeholder="0"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground/80">Ссылка на товар (необязательно)</label>
+                <input value={cLink} onChange={e => setCLink(e.target.value)} placeholder="https://..."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
+              </div>
+              <button onClick={submitCustom} disabled={!cName.trim() || !cPrice}
+                className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                style={{ cursor: cName.trim() && cPrice ? "pointer" : "not-allowed" }}>
+                Добавить позицию
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="flex min-h-0 flex-1">
           {/* Фильтры слева */}
           <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-border p-4 sm:block">
@@ -399,6 +451,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
             )}
           </main>
         </div>
+        )}
       </div>
     </div>
   )
