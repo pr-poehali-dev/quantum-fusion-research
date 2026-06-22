@@ -33,9 +33,11 @@ export default function Admin() {
     setTabState(t)
   }, [tabParam])
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const setTab = (t: AdminTab) => {
     setTabState(t)
     navigate(`/admin/${t}`, { replace: true })
+    setMobileMenuOpen(false)
   }
 
   // ── Shared state ──────────────────────────────────────────────────────────
@@ -169,6 +171,16 @@ export default function Admin() {
     { key: "articles", label: "Статьи", icon: "BookOpen" },
   ]
 
+  // Группы для мобильного выпадающего меню
+  const menuGroups = [
+    { title: "Сборки", items: topTabs },
+    { title: "Заявки и склад", items: bottomTabs },
+    { title: "Операции", items: extraTabs },
+    { title: "Сайт", items: quickTabs },
+  ]
+  const allTabs = [...topTabs, ...bottomTabs, ...extraTabs, ...quickTabs]
+  const currentTabMeta = allTabs.find(t => t.key === tab)
+
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
   const isCatalogTab = CATALOG_TABS.includes(tab)
 
@@ -190,7 +202,8 @@ export default function Admin() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6 border-b border-border">
+        {/* Десктоп: строки табов */}
+        <div className="mb-6 hidden border-b border-border md:block">
           {[topTabs, bottomTabs, extraTabs, quickTabs].map((row, ri) => (
             <div key={ri} className="flex items-center justify-center gap-0 overflow-x-auto">
               {row.map(t => t.key.startsWith("DIVIDER") ? (
@@ -205,6 +218,39 @@ export default function Admin() {
               ))}
             </div>
           ))}
+        </div>
+
+        {/* Мобильный: выпадающее меню с группировкой */}
+        <div className="relative mb-6 md:hidden">
+          <button onClick={() => setMobileMenuOpen(v => !v)}
+            className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium"
+            style={{ cursor: "pointer" }}>
+            <span className="flex items-center gap-2 text-foreground">
+              <Icon name={(currentTabMeta?.icon || "LayoutGrid") as "Package"} size={16} className="text-primary" />
+              {currentTabMeta?.label || "Меню"}
+            </span>
+            <Icon name={mobileMenuOpen ? "ChevronUp" : "ChevronDown"} size={16} className="text-foreground/40" />
+          </button>
+          {mobileMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setMobileMenuOpen(false)} />
+              <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-2xl">
+                {menuGroups.map(group => (
+                  <div key={group.title} className="mb-2 last:mb-0">
+                    <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/40">{group.title}</p>
+                    {group.items.map(t => (
+                      <button key={t.key} onClick={() => setTab(t.key as AdminTab)}
+                        className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${tab === t.key ? "bg-primary/10 font-medium text-primary" : "text-foreground/70 hover:bg-muted"}`}
+                        style={{ cursor: "pointer" }}>
+                        <Icon name={(t.icon || "Package") as "Package"} size={16} className="shrink-0" />
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* ORDERS */}
