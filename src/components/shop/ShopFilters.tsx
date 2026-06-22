@@ -92,6 +92,14 @@ export default function ShopFilters({ attributes, products, state, setState, ope
     return m
   }, [filterableAttrs, products])
 
+  // Атрибут «Тип» — выносим над брендами и открываем по умолчанию
+  const typeAttr = useMemo(
+    () => filterableAttrs.find(a => a.name.trim().toLowerCase() === "тип") || null,
+    [filterableAttrs])
+  const restAttrs = useMemo(
+    () => filterableAttrs.filter(a => a.id !== typeAttr?.id),
+    [filterableAttrs, typeAttr])
+
   const brandList = useMemo(() => {
     const s = new Set<string>()
     products.forEach(p => { if (p.brand) s.add(p.brand) })
@@ -113,6 +121,31 @@ export default function ShopFilters({ attributes, products, state, setState, ope
   const hasActive = state.onlyStock || state.priceMin || state.priceMax || state.brands.size > 0
     || Object.values(state.attrs).some(s => s.size > 0)
 
+  // Рендер одного блока-характеристики. defaultOpen — раскрыт, пока пользователь
+  // явно не свернул (когда openAttr[id] ещё undefined).
+  const renderAttr = (a: ShopAttr, defaultOpen = false) => {
+    const isOpen = openAttr[a.id] === undefined ? defaultOpen : openAttr[a.id]
+    return (
+      <div key={a.id} className="border-t border-border py-2">
+        <button onClick={() => setOpenAttr(o => ({ ...o, [a.id]: !(o[a.id] === undefined ? defaultOpen : o[a.id]) }))}
+          className="flex w-full items-center justify-between text-sm font-medium text-foreground/80" style={{ cursor: "pointer" }}>
+          <span>{a.name}{state.attrs[a.id]?.size ? ` (${state.attrs[a.id].size})` : ""}</span>
+          <Icon name={isOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
+        </button>
+        {isOpen && (
+          <div className="mt-2 space-y-1">
+            {attrValues[a.id]?.map(val => (
+              <label key={val} className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
+                <input type="checkbox" checked={state.attrs[a.id]?.has(val) || false} onChange={() => toggleAttr(a.id, val)} style={{ cursor: "pointer" }} />
+                {val}{a.unit ? ` ${a.unit}` : ""}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <aside className="w-full shrink-0 sm:w-60">
       <div className="rounded-xl border border-border bg-card p-4">
@@ -132,6 +165,8 @@ export default function ShopFilters({ attributes, products, state, setState, ope
               className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
           </div>
         </div>
+
+        {typeAttr && renderAttr(typeAttr, true)}
 
         {brandList.length > 0 && (
           <div className="border-t border-border py-2">
@@ -153,25 +188,7 @@ export default function ShopFilters({ attributes, products, state, setState, ope
           </div>
         )}
 
-        {filterableAttrs.map(a => (
-          <div key={a.id} className="border-t border-border py-2">
-            <button onClick={() => setOpenAttr(o => ({ ...o, [a.id]: !o[a.id] }))}
-              className="flex w-full items-center justify-between text-sm font-medium text-foreground/80" style={{ cursor: "pointer" }}>
-              <span>{a.name}{state.attrs[a.id]?.size ? ` (${state.attrs[a.id].size})` : ""}</span>
-              <Icon name={openAttr[a.id] ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
-            </button>
-            {openAttr[a.id] && (
-              <div className="mt-2 space-y-1">
-                {attrValues[a.id]?.map(val => (
-                  <label key={val} className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
-                    <input type="checkbox" checked={state.attrs[a.id]?.has(val) || false} onChange={() => toggleAttr(a.id, val)} style={{ cursor: "pointer" }} />
-                    {val}{a.unit ? ` ${a.unit}` : ""}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+        {restAttrs.map(a => renderAttr(a))}
 
         {hasActive && (
           <button onClick={reset}
