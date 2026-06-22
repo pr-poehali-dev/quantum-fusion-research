@@ -236,19 +236,19 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Гарантия (мес.) *</label>
-            <Input type="number" value={form.warranty_months} onChange={fNum("warranty_months")} />
+            <Input type="number" value={form.warranty_months || ""} onChange={fNum("warranty_months")} />
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Цена продажи *</label>
-            <Input type="number" value={form.price_retail} onChange={fNum("price_retail")} />
+            <Input type="number" value={form.price_retail || ""} onChange={fNum("price_retail")} />
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Опт 1</label>
-            <Input type="number" value={form.price_opt1} onChange={fNum("price_opt1")} />
+            <Input type="number" value={form.price_opt1 || ""} onChange={fNum("price_opt1")} />
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Опт 2</label>
-            <Input type="number" value={form.price_opt2} onChange={fNum("price_opt2")} />
+            <Input type="number" value={form.price_opt2 || ""} onChange={fNum("price_opt2")} />
           </div>
           <div className="col-span-2">
             <label className="mb-1 block text-xs text-foreground/50">Ссылка на сайте</label>
