@@ -10,6 +10,7 @@ import { ImageUploader } from "@/components/image-uploader"
 import CommentSection from "@/components/CommentSection"
 import NotificationBell from "@/components/NotificationBell"
 import SlotPickerModal, { SelectedSpecValues } from "@/components/configurator/SlotPickerModal"
+import { findCompatIssues, SpecLinkRule, SchemaAttribute } from "@/components/configurator/compatCheck"
 
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
@@ -200,6 +201,9 @@ export default function Configurator() {
   const [selectedSpec, setSelectedSpec] = useState<SelectedSpecValues>({})
   // Соответствие spec-категория → слот (чтобы знать кол-во выбранных деталей)
   const [specSlotMap, setSpecSlotMap] = useState<Record<number, string>>({})
+  // Схема совместимости (правила + атрибуты) для предупреждений прямо в конфигураторе
+  const [compatLinks, setCompatLinks] = useState<SpecLinkRule[]>([])
+  const [compatAttrs, setCompatAttrs] = useState<SchemaAttribute[]>([])
   const [loading, setLoading] = useState(true)
   const [wantAssembly, setWantAssembly] = useState(draft0.wantAssembly ?? true)
 
@@ -236,6 +240,12 @@ export default function Configurator() {
       setSlots(data.slots || {})
       setLoading(false)
     })
+
+    // Схема совместимости — для предупреждений прямо в конфигураторе
+    api.warehouse.specSchema().then(schema => {
+      setCompatLinks((schema.links || []).filter((l: SpecLinkRule) => l.is_active))
+      setCompatAttrs(schema.attributes || [])
+    }).catch(() => {})
 
     // Загрузка готовой сборки, переданной из BuildPreview (компоненты на руках)
     const navState = window.history.state?.usr as { initialComponents?: SelectedComp[]; buildName?: string } | undefined
@@ -455,6 +465,23 @@ export default function Configurator() {
     const recommended = NOMINALS.find(n => n >= needed) || Math.ceil(needed / 100) * 100
     return { watt: psuWatt, recommended, totalTdp }
   }, [selected, selectedSpec, specSlotMap])
+
+  // ── Предупреждения о несовместимости (сокет, тип памяти и т.п.) по слотам ──
+  // Те же правила spec_links, что в окне выбора, но показываем прямо у строк.
+  const compatWarningsBySlot = useMemo(() => {
+    const issues = findCompatIssues(compatLinks, compatAttrs, selectedSpec)
+    const bySlot: Record<string, string[]> = {}
+    for (const iss of issues) {
+      // Привязываем нарушение к обоим слотам участвующих деталей
+      for (const cat of [iss.fromCat, iss.toCat]) {
+        const slot = specSlotMap[cat]
+        if (!slot) continue
+        if (!bySlot[slot]) bySlot[slot] = []
+        if (!bySlot[slot].includes(iss.message)) bySlot[slot].push(iss.message)
+      }
+    }
+    return bySlot
+  }, [compatLinks, compatAttrs, selectedSpec, specSlotMap])
 
   const saveBuild = async () => {
     if (!isAuthed() || !sessionId) { navigate("/auth"); return }
@@ -792,6 +819,18 @@ export default function Configurator() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Предупреждения о несовместимости (сокет, тип памяти, габариты и т.п.) */}
+                        {(compatWarningsBySlot[slot] || []).length > 0 && (
+                          <div className="mt-2 space-y-1.5">
+                            {compatWarningsBySlot[slot].map((msg, i) => (
+                              <div key={i} className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                                <Icon name="TriangleAlert" size={13} className="mt-px shrink-0" />
+                                <span>{msg}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
