@@ -8,6 +8,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, emptyFilterState, applyShopFilters } from "@/components/shop/ShopFilters"
 
 interface Product {
   id: number
@@ -104,6 +105,12 @@ export default function Shop() {
   )
   const [search, setSearch] = useState("")
   const [usedOnly, setUsedOnly] = useState(false)
+  // Фильтры по характеристикам/бренду для выбранной категории
+  const [specAttrs, setSpecAttrs] = useState<ShopAttr[]>([])
+  const [specProducts, setSpecProducts] = useState<ShopSpecProduct[]>([])
+  const [specLoading, setSpecLoading] = useState(false)
+  const [filterState, setFilterState] = useState<ShopFilterState>(emptyFilterState)
+  const [openAttr, setOpenAttr] = useState<Record<number | string, boolean>>({ brand: true })
   const [allTags, setAllTags] = useState<BuildTag[]>([])
   const [activeTagIds, setActiveTagIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
@@ -158,6 +165,21 @@ export default function Shop() {
       setLoading(false)
     })
   }, [activeCategory, search])
+
+  // При выборе конкретной категории — подтягиваем её характеристики и товары
+  // со значениями (для фильтров). Для «Все» / Б/У — не нужно.
+  useEffect(() => {
+    setFilterState(emptyFilterState())
+    if (activeCategory === "all" || usedOnly) {
+      setSpecAttrs([]); setSpecProducts([]); return
+    }
+    setSpecLoading(true)
+    api.warehouse.specSlotProducts(activeCategory).then(d => {
+      setSpecAttrs(d.attributes || [])
+      setSpecProducts(d.products || [])
+      setSpecLoading(false)
+    }).catch(() => { setSpecAttrs([]); setSpecProducts([]); setSpecLoading(false) })
+  }, [activeCategory, usedOnly])
 
   useEffect(() => {
     api.tags.getAll().then(d => setAllTags(d.tags || []))
@@ -406,7 +428,71 @@ export default function Shop() {
               </div>
             )}
 
-            {loading ? (
+            {/* Категорийный режим: sidebar с фильтрами по характеристикам/бренду */}
+            {activeCategory !== "all" && !usedOnly ? (
+              specLoading ? (
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {[...Array(8)].map((_, i) => <div key={i} className="h-72 rounded-xl bg-card animate-pulse" />)}
+                </div>
+              ) : (() => {
+                const hasPhoto = (p: ShopSpecProduct) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
+                // Поиск по названию + фильтры панели
+                const bySearch = search
+                  ? specProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+                  : specProducts
+                const filtered = applyShopFilters(bySearch, filterState)
+                  .filter(hasPhoto)
+                  .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+                // Карточки рендерим по полному Product из allProducts (там old_price, is_used и т.д.)
+                const byId = new Map(allProducts.map(p => [p.id, p]))
+                return (
+                  <div className="flex flex-col gap-6 sm:flex-row">
+                    <ShopFilters
+                      attributes={specAttrs}
+                      products={specProducts}
+                      state={filterState}
+                      setState={setFilterState}
+                      openAttr={openAttr}
+                      setOpenAttr={setOpenAttr}
+                    />
+                    <div className="min-w-0 flex-1">
+                      {filtered.length === 0 ? (
+                        <div className="py-24 text-center text-foreground/50">
+                          <Icon name="PackageSearch" size={48} className="mx-auto mb-4 opacity-30" />
+                          <p>Ничего не найдено по выбранным фильтрам</p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="mb-3 text-xs text-foreground/40">Найдено: {filtered.length}</p>
+                          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                            {filtered.map(sp => {
+                              const p = byId.get(sp.id) || ({
+                                id: sp.id, name: sp.name, description: sp.description || "", price: sp.price,
+                                old_price: null, image_url: sp.image_url || null, image_urls: sp.image_urls,
+                                specs: {}, in_stock: !!sp.in_stock, is_featured: false, avg_cost: 0, category: null,
+                              } as Product)
+                              return (
+                                <ProductCard
+                                  key={p.id}
+                                  product={p}
+                                  onOpen={() => setSelectedProduct(p)}
+                                  onAddCart={() => handleAddToCart(p)}
+                                  onPreorder={() => handleAddToCart(p, true)}
+                                  onUpdateQty={(qty) => updateQty(p.id, qty)}
+                                  cartQty={getItemQty(p.id, "product")}
+                                  fmt={fmt}
+                                  onNavigate={() => navigate(`/product/${p.id}`)}
+                                />
+                              )
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()
+            ) : loading ? (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {[...Array(8)].map((_, i) => <div key={i} className="h-72 rounded-xl bg-card animate-pulse" />)}
               </div>
