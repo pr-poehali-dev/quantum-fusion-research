@@ -145,6 +145,7 @@ export default function Shop() {
   )
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
+  const [searchFocused, setSearchFocused] = useState(false)
   const [usedOnly, setUsedOnly] = useState(false)
   // Фильтры по характеристикам/бренду для выбранной категории
   const [specAttrs, setSpecAttrs] = useState<ShopAttr[]>([])
@@ -391,6 +392,8 @@ export default function Shop() {
                   placeholder="Поиск товаров или категории (Enter)..."
                   value={searchInput}
                   onChange={e => setSearchInput(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                   onKeyDown={e => {
                     if (e.key === "Enter") {
                       const q = searchInput.trim()
@@ -420,6 +423,51 @@ export default function Shop() {
                     <Icon name="X" size={15} />
                   </button>
                 )}
+                {/* Выпадающая подсказка при наборе — НЕ трогает фон, чисто предпросмотр */}
+                {searchFocused && searchInput.trim().length >= 2 && (() => {
+                  const q = searchInput.trim().toLowerCase()
+                  const matchedCat = matchCategory(searchInput, categories)
+                  const hasPhoto = (p: Product) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
+                  const found = allProducts
+                    .filter(p => hasPhoto(p) && p.name.toLowerCase().includes(q))
+                    .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+                    .slice(0, 5)
+                  if (!matchedCat && found.length === 0) return null
+                  return (
+                    <div className="absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+                      {matchedCat && matchedCat.slug !== activeCategory && (
+                        <button
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => { setActiveCategory(matchedCat.slug); setSearch(""); setSearchInput(""); setSearchFocused(false) }}
+                          className="flex w-full items-center gap-2 border-b border-border bg-primary/5 px-4 py-2.5 text-left text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <Icon name="FolderOpen" size={15} />
+                          Перейти в категорию «{matchedCat.name}»
+                        </button>
+                      )}
+                      {found.map(p => (
+                        <button
+                          key={p.id}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => navigate(`/product/${p.id}`)}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted transition-colors"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-muted">
+                            {(p.image_url || p.image_urls?.[0]) && (
+                              <img src={p.image_url || p.image_urls?.[0]} alt="" className="h-full w-full object-cover" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-foreground">{p.name}</p>
+                            <p className="text-xs text-foreground/40">{fmt(p.price)}{!p.in_stock && " · под заказ"}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
 
               <button
