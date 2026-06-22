@@ -124,18 +124,24 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  // Быстрый поиск по существующим товарам каталога (для подстановки названия)
-  const [catalogProducts, setCatalogProducts] = useState<{ id: number; name: string; category?: { name: string } | null }[]>([])
+  // Выбор бренда — подставляется в начало наименования
+  const [brands, setBrands] = useState<{ id: number; name: string }[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerSearch, setPickerSearch] = useState("")
   useEffect(() => {
-    api.products.getAll({}).then(d => setCatalogProducts(d.products || [])).catch(() => {})
+    api.brands.getAll().then(d => setBrands(d.brands || [])).catch(() => {})
   }, [])
-  const pickerResults = pickerSearch.trim()
-    ? catalogProducts.filter(p => p.name.toLowerCase().includes(pickerSearch.trim().toLowerCase())).slice(0, 20)
-    : catalogProducts.slice(0, 20)
-  const pickProduct = (p: { name: string; category?: { name: string } | null }) => {
-    setForm(prev => ({ ...prev, name: p.name, category: p.category?.name || prev.category }))
+  const brandResults = pickerSearch.trim()
+    ? brands.filter(b => b.name.toLowerCase().includes(pickerSearch.trim().toLowerCase())).slice(0, 30)
+    : brands.slice(0, 30)
+  // Подставляем бренд в начало названия (если его там ещё нет)
+  const pickBrand = (b: { name: string }) => {
+    setForm(prev => {
+      const rest = prev.name.trim()
+      const already = rest.toLowerCase().startsWith(b.name.toLowerCase())
+      const name = already ? rest : (rest ? `${b.name} ${rest}` : `${b.name} `)
+      return { ...prev, name }
+    })
     setPickerOpen(false)
     setPickerSearch("")
   }
@@ -174,36 +180,35 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
           <div className="col-span-2">
             <label className="mb-1 block text-xs text-foreground/50">Наименование *</label>
             <div className="flex gap-2">
-              {/* Слева — быстрый выбор существующего товара */}
+              {/* Слева — выбор бренда (подставляется в начало названия) */}
               <div className="relative w-1/2">
                 <button type="button" onClick={() => setPickerOpen(v => !v)}
                   className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm text-foreground/70 hover:border-primary transition-colors"
                   style={{ cursor: "pointer" }}>
                   <span className="flex items-center gap-1.5 truncate">
-                    <Icon name="Search" size={13} className="shrink-0 text-foreground/40" />
-                    Выбрать из каталога
+                    <Icon name="Tag" size={13} className="shrink-0 text-foreground/40" />
+                    Выбрать бренд
                   </span>
                   <Icon name={pickerOpen ? "ChevronUp" : "ChevronDown"} size={14} className="shrink-0 text-foreground/40" />
                 </button>
                 {pickerOpen && (
                   <div className="absolute left-0 top-full z-20 mt-1 w-[140%] rounded-lg border border-border bg-card p-2 shadow-2xl">
-                    <Input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} placeholder="Поиск товара..." className="mb-2 h-8" />
+                    <Input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} placeholder="Поиск бренда..." className="mb-2 h-8" />
                     <div className="max-h-60 overflow-y-auto">
-                      {pickerResults.length === 0 ? (
+                      {brandResults.length === 0 ? (
                         <p className="px-2 py-3 text-center text-xs text-foreground/40">Ничего не найдено</p>
-                      ) : pickerResults.map(p => (
-                        <button key={p.id} type="button" onClick={() => pickProduct(p)}
-                          className="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
-                          <span className="text-sm text-foreground line-clamp-1">{p.name}</span>
-                          {p.category?.name && <span className="text-[11px] text-foreground/40">{p.category.name}</span>}
+                      ) : brandResults.map(b => (
+                        <button key={b.id} type="button" onClick={() => pickBrand(b)}
+                          className="flex w-full items-center rounded-md px-2 py-1.5 text-left hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
+                          <span className="text-sm text-foreground line-clamp-1">{b.name}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
-              {/* Справа — ручной ввод названия (как раньше) */}
-              <Input value={form.name} onChange={f("name")} placeholder="Intel Core i9-14900K" className="w-1/2" />
+              {/* Справа — ручной ввод названия (бренд + модель) */}
+              <Input value={form.name} onChange={f("name")} placeholder="1stPlayer NGDP 1000W Platinum White" className="w-1/2" />
             </div>
           </div>
           <div>
