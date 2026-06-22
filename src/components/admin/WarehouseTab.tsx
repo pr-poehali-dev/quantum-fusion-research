@@ -124,8 +124,9 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  // Выбор бренда — подставляется в начало наименования
+  // Выбор бренда — добавляется в начало названия при сохранении товара
   const [brands, setBrands] = useState<{ id: number; name: string }[]>([])
+  const [selectedBrand, setSelectedBrand] = useState("")
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerSearch, setPickerSearch] = useState("")
   useEffect(() => {
@@ -134,14 +135,9 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
   const brandResults = pickerSearch.trim()
     ? brands.filter(b => b.name.toLowerCase().includes(pickerSearch.trim().toLowerCase())).slice(0, 30)
     : brands.slice(0, 30)
-  // Подставляем бренд в начало названия (если его там ещё нет)
+  // Только запоминаем выбранный бренд — в название добавим при сохранении
   const pickBrand = (b: { name: string }) => {
-    setForm(prev => {
-      const rest = prev.name.trim()
-      const already = rest.toLowerCase().startsWith(b.name.toLowerCase())
-      const name = already ? rest : (rest ? `${b.name} ${rest}` : `${b.name} `)
-      return { ...prev, name }
-    })
+    setSelectedBrand(b.name)
     setPickerOpen(false)
     setPickerSearch("")
   }
@@ -153,10 +149,16 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
     if (form.warranty_months === null || form.warranty_months === undefined || Number.isNaN(form.warranty_months)) {
       setError("Укажите гарантию (можно 0)"); return
     }
+    // Добавляем бренд в начало названия (если он выбран и его там ещё нет)
+    const baseName = form.name.trim()
+    const fullName = selectedBrand && !baseName.toLowerCase().startsWith(selectedBrand.toLowerCase())
+      ? `${selectedBrand} ${baseName}`
+      : baseName
+    const payload = { ...form, name: fullName }
     setLoading(true)
     const data = isNew
-      ? await api.warehouse.createGroup({ ...form })
-      : await api.warehouse.updateGroup({ id: group!.id, ...form })
+      ? await api.warehouse.createGroup(payload)
+      : await api.warehouse.updateGroup({ id: group!.id, ...payload })
     setLoading(false)
     if (data.error) { setError(data.error); return }
     onSaved()
@@ -187,7 +189,7 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
                   style={{ cursor: "pointer" }}>
                   <span className="flex items-center gap-1.5 truncate">
                     <Icon name="Tag" size={13} className="shrink-0 text-foreground/40" />
-                    Выбрать бренд
+                    {selectedBrand || "Выбрать бренд"}
                   </span>
                   <Icon name={pickerOpen ? "ChevronUp" : "ChevronDown"} size={14} className="shrink-0 text-foreground/40" />
                 </button>
