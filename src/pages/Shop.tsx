@@ -84,6 +84,46 @@ function getTagClass(color: string) {
   return TAG_COLOR_MAP[color] || TAG_COLOR_MAP.primary
 }
 
+// Расстояние Левенштейна — для «плюс-минус» распознавания категории с ошибками
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length
+  if (!m) return n
+  if (!n) return m
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)])
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    }
+  }
+  return dp[m][n]
+}
+
+// Подбирает наиболее похожую категорию по введённому тексту (с опечатками).
+// Возвращает категорию или null, если уверенного совпадения нет.
+function matchCategory<T extends { name: string; slug: string }>(query: string, categories: T[]): T | null {
+  const q = query.trim().toLowerCase()
+  if (q.length < 2) return null
+  let best: T | null = null
+  let bestScore = Infinity
+  for (const c of categories) {
+    const name = c.name.toLowerCase()
+    const slug = c.slug.toLowerCase()
+    // Прямое вхождение — мгновенно
+    if (name.includes(q) || slug.includes(q) || q.includes(name) || q.includes(slug)) return c
+    // Похожесть по словам названия
+    const candidates = [name, slug, ...name.split(/\s+/)]
+    for (const cand of candidates) {
+      const d = levenshtein(q, cand)
+      const maxLen = Math.max(q.length, cand.length)
+      const ratio = d / maxLen
+      if (ratio < 0.45 && d < bestScore) { bestScore = d; best = c }
+    }
+  }
+  return best
+}
+
 const SLOT_NAMES: Record<string, string> = {
   cpu: "Процессор", gpu: "Видеокарта", ram: "Оперативная память",
   storage: "Накопитель", psu: "Блок питания", case: "Корпус", motherboard: "Материнская плата",
@@ -104,6 +144,7 @@ export default function Shop() {
     () => new URLSearchParams(window.location.search).get("category") || "all"
   )
   const [search, setSearch] = useState("")
+  const [searchFocused, setSearchFocused] = useState(false)
   const [usedOnly, setUsedOnly] = useState(false)
   // Фильтры по характеристикам/бренду для выбранной категории
   const [specAttrs, setSpecAttrs] = useState<ShopAttr[]>([])
@@ -347,12 +388,67 @@ export default function Shop() {
                 <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
                 <input
                   type="text"
-                  placeholder="Поиск товаров..."
+                  placeholder="Поиск товаров или категории..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      // Enter — сбросить категорию и показать что написал пользователь
+                      setActiveCategory("all")
+                      setSearchFocused(false)
+                      e.currentTarget.blur()
+                    }
+                  }}
                   className="w-full rounded-lg border border-border bg-card pl-9 pr-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:border-primary focus:outline-none"
                   style={{ cursor: "text" }}
                 />
+                {/* Живой выпадающий список под поиском */}
+                {searchFocused && search.trim().length >= 2 && (() => {
+                  const q = search.trim().toLowerCase()
+                  const matchedCat = matchCategory(search, categories)
+                  const hasPhoto = (p: Product) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
+                  const found = allProducts
+                    .filter(p => hasPhoto(p) && p.name.toLowerCase().includes(q))
+                    .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+                    .slice(0, 6)
+                  if (!matchedCat && found.length === 0) return null
+                  return (
+                    <div className="absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+                      {matchedCat && matchedCat.slug !== activeCategory && (
+                        <button
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => { setActiveCategory(matchedCat.slug); setSearch(""); setSearchFocused(false) }}
+                          className="flex w-full items-center gap-2 border-b border-border bg-primary/5 px-4 py-2.5 text-left text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <Icon name="FolderOpen" size={15} />
+                          Перейти в категорию «{matchedCat.name}»
+                        </button>
+                      )}
+                      {found.map(p => (
+                        <button
+                          key={p.id}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => navigate(`/product/${p.id}`)}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted transition-colors"
+                          style={{ cursor: "pointer" }}
+                        >
+                          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-muted">
+                            {(p.image_url || p.image_urls?.[0]) && (
+                              <img src={p.image_url || p.image_urls?.[0]} alt="" className="h-full w-full object-cover" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-foreground">{p.name}</p>
+                            <p className="text-xs text-foreground/40">{fmt(p.price)}{!p.in_stock && " · под заказ"}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
 
               <button
