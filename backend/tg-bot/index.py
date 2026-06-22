@@ -28,15 +28,13 @@ TG_API = "https://api.telegram.org/bot{token}/{method}"
 SELF_URL = "https://functions.poehali.dev/6cf7e69d-a5f1-45db-b94e-43f37dd16961"
 PAGE_SIZE = 10
 
-# Постоянная reply-клавиатура (кнопки у поля ввода)
-MAIN_KB = {
-    "keyboard": [
-        [{"text": "📂 Категории"}, {"text": "🔍 Поиск"}],
-        [{"text": "🛒 Корзина"}, {"text": "🏠 Меню"}],
-    ],
-    "resize_keyboard": True,
-    "is_persistent": True,
-}
+# Главное меню — теперь inline-кнопки (внутри сообщений), а не reply-клавиатура.
+MAIN_INLINE = [
+    [{"text": "📂 Категории", "callback_data": "menu:categories"},
+     {"text": "🔍 Поиск", "callback_data": "menu:search"}],
+    [{"text": "🛒 Корзина", "callback_data": "menu:cart"},
+     {"text": "🏠 Меню", "callback_data": "menu:home"}],
+]
 
 
 def get_conn():
@@ -71,14 +69,26 @@ def tg_call(method: str, payload: dict):
 
 
 def send(chat_id, text, reply_kb=True, inline=None):
-    """Отправить НОВОЕ сообщение. По умолчанию с главной reply-клавиатурой."""
+    """Отправить НОВОЕ сообщение.
+    По умолчанию прикрепляем inline главное меню (Категории/Поиск/Корзина/Меню).
+    Если передан свой inline — используем его. reply_kb=False — без кнопок вообще.
+    Параметр reply_kb оставлен для обратной совместимости вызовов."""
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML",
                "disable_web_page_preview": True}
     if inline is not None:
         payload["reply_markup"] = {"inline_keyboard": inline}
     elif reply_kb:
-        payload["reply_markup"] = MAIN_KB
+        payload["reply_markup"] = {"inline_keyboard": MAIN_INLINE}
     return tg_call("sendMessage", payload)
+
+
+def remove_reply_kb(chat_id):
+    """Одноразово убрать старую залипшую reply-клавиатуру у поля ввода."""
+    tg_call("sendMessage", {
+        "chat_id": chat_id,
+        "text": "Меню переехало в кнопки под сообщениями 👇",
+        "reply_markup": {"remove_keyboard": True},
+    })
 
 
 # ─────────────────────────── СОСТОЯНИЕ / КОРЗИНА ───────────────────────────
@@ -449,24 +459,24 @@ def render_categories(cur, chat_id):
     lines.append("")
     lines.append("👇 Выбери раздел кнопкой ниже.")
 
-    # reply-клавиатура из категорий + назад к главному меню
-    kb_rows = []
-    row = []
-    for cat, _ in cats:
-        row.append({"text": f"{_cat_icon(cat)} {cat}"})
+    # inline-кнопки из категорий (по 2 в ряд) + строка главного меню.
+    # Названия категорий храним в state по индексу, т.к. callback_data ≤ 64 байт.
+    cat_index = {}
+    kb_rows, row = [], []
+    for i, (cat, _) in enumerate(cats):
+        cat_index[str(i)] = cat
+        row.append({"text": f"{_cat_icon(cat)} {cat}", "callback_data": f"cat:{i}"})
         if len(row) == 2:
             kb_rows.append(row); row = []
     if row:
         kb_rows.append(row)
-    kb_rows.append([{"text": "🏠 Меню"}])
-    payload = {"chat_id": chat_id, "text": "\n".join(lines), "parse_mode": "HTML",
-               "reply_markup": {"keyboard": kb_rows, "resize_keyboard": True, "is_persistent": True}}
-    tg_call("sendMessage", payload)
+    kb_rows += MAIN_INLINE
+    send(chat_id, "\n".join(lines), inline=kb_rows)
 
-    # запомним точные названия категорий, чтобы распознать нажатие reply-кнопки
+    # запомним соответствие индекс → название категории для callback'а
     c = load_cart(cur, chat_id)
     sd = c["state_data"]
-    sd["cat_buttons"] = {f"{_cat_icon(cat)} {cat}": cat for cat, _ in cats}
+    sd["cat_index"] = cat_index
     save_cart(cur, chat_id, state="idle", state_data=sd)
 
 
@@ -540,7 +550,7 @@ def menu(cur, chat_id, greeting=False):
              "📂 Категории — наличие по разделам\n"
              "🔍 Поиск — найти железо по названию\n"
              "🛒 Корзина — оформить заказ\n\n"
-             "Пользуйся кнопками ниже 👇")
+             "Пользуйся кнопками под сообщением 👇")
     send(chat_id, text)
 
 
@@ -633,6 +643,8 @@ def handle_message(cur, msg):
     # Команды и кнопки главного меню — работают всегда
     if text in ("/start", "/menu", "🏠 Меню"):
         save_cart(cur, chat_id, state="idle", state_data={})
+        # Разово убираем старую залипшую reply-клавиатуру у поля ввода
+        remove_reply_kb(chat_id)
         menu(cur, chat_id, greeting=(text == "/start"))
         return
 
@@ -700,6 +712,34 @@ def handle_callback(cur, cb):
     if chat_type != "private":
         return
     tg_call("answerCallbackQuery", {"callback_query_id": cb["id"]})
+
+    # ── Главное меню (inline) ──
+    if data == "menu:home":
+        save_cart(cur, chat_id, state="idle", state_data={})
+        menu(cur, chat_id)
+        return
+    if data == "menu:categories":
+        render_categories(cur, chat_id)
+        return
+    if data == "menu:search":
+        save_cart(cur, chat_id, state="await_search")
+        send(chat_id, "🔍 Напиши, что ищешь:\nнапример <i>RTX 4070</i>, <i>проц 7600</i>, <i>видяха</i>")
+        return
+    if data == "menu:cart":
+        render_cart(cur, chat_id)
+        return
+
+    # ── Выбор категории по индексу ──
+    if data.startswith("cat:"):
+        idx = data.split(":", 1)[1]
+        c = load_cart(cur, chat_id)
+        cat_index = c["state_data"].get("cat_index") or {}
+        cat = cat_index.get(idx)
+        if cat:
+            do_category(cur, chat_id, cat, 0)
+        else:
+            render_categories(cur, chat_id)
+        return
 
     if data.startswith("more:"):
         offset = int(data.split(":", 1)[1])
