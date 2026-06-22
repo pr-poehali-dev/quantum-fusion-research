@@ -171,8 +171,8 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
     setForm(p => ({ ...p, [field]: parseFloat(e.target.value) || 0 }))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onDoubleClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl" onDoubleClick={e => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{isNew ? "Новая группа товара" : "Редактировать группу"}</h2>
           <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
