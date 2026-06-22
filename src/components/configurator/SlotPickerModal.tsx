@@ -245,16 +245,16 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
     [attributes]
   )
 
-  // Проверка совместимости + достаточности мощности для слота БП
-  const reasonFor = (p: SlotProduct): string | null => {
-    const base = incompatReason(p)
-    if (base) return base
-    if (psuAdvice && psuWattAttrId !== null) {
-      const raw = p.values[String(psuWattAttrId)]
-      const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
-      if (!Number.isNaN(w) && w > 0 && w < psuAdvice.needed) {
-        return `Слабоват: ${w} Вт < нужных ${psuAdvice.needed} Вт`
-      }
+  // Мягкое предупреждение по БП (НЕ влияет на совместимость) — если мощность
+  // ниже рекомендуемой с запасом. Просто дружелюбный совет жёлтым.
+  const psuWarn = (p: SlotProduct): string | null => {
+    if (slotCode !== "psu" || !psuAdvice || psuWattAttrId === null) return null
+    const raw = p.values[String(psuWattAttrId)]
+    const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
+    if (Number.isNaN(w) || w <= 0) return null
+    // Ниже минимально нужного (TDP+запас) — мягкий совет
+    if (w < psuAdvice.needed) {
+      return `${w} Вт — почти без запаса. Подойдёт, но под нагрузкой может быть чуть шумнее. Комфортнее от ${psuAdvice.recommended} Вт.`
     }
     return null
   }
@@ -271,7 +271,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
     const pmin = priceMin ? parseFloat(priceMin) : null
     const pmax = priceMax ? parseFloat(priceMax) : null
     return products
-      .map(p => ({ p, reason: reasonFor(p) }))
+      .map(p => ({ p, reason: incompatReason(p), warn: psuWarn(p) }))
       .filter(({ p }) => {
         if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
         if (onlyStock && !p.in_stock) return false
@@ -529,9 +529,9 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
               </div>
             ) : (
               <div className="space-y-2">
-                {visible.map(({ p, reason }) => (
+                {visible.map(({ p, reason, warn }) => (
                   <div key={p.id}
-                    className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-all ${reason ? "border-border opacity-50" : "border-border hover:border-primary/50"}`}>
+                    className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-all ${reason ? "border-border opacity-50" : warn ? "border-amber-400/50 hover:border-amber-400" : "border-border hover:border-primary/50"}`}>
                     <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                       {(p.image_url || p.image_urls?.[0]) ? (
                         <img src={p.image_url || p.image_urls?.[0]} alt={p.name} className="h-full w-full object-contain" />
@@ -557,6 +557,11 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                           </span>
                         )}
                       </div>
+                      {!reason && warn && (
+                        <p className="mt-1 flex items-start gap-1 text-xs leading-tight text-amber-500">
+                          <Icon name="Lightbulb" size={11} className="mt-0.5 shrink-0" /> {warn}
+                        </p>
+                      )}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
                       <span className="text-sm font-bold text-foreground">{fmt(p.price)}</span>
