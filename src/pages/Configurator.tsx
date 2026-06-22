@@ -812,6 +812,16 @@ export default function Configurator() {
                                 </span>
                               </div>
                             )}
+                            {(compatWarningsBySlot[slot] || []).length > 0 && (
+                              <div className="flex max-w-[240px] flex-col gap-1.5">
+                                {compatWarningsBySlot[slot].map((msg, i) => (
+                                  <div key={i} className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                                    <Icon name="TriangleAlert" size={13} className="shrink-0" />
+                                    <span>{msg}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
                             <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
                             <span className="w-24 text-right text-sm font-bold text-primary">
@@ -819,18 +829,6 @@ export default function Configurator() {
                             </span>
                           </div>
                         </div>
-
-                        {/* Предупреждения о несовместимости (сокет, тип памяти, габариты и т.п.) */}
-                        {(compatWarningsBySlot[slot] || []).length > 0 && (
-                          <div className="mt-2 space-y-1.5">
-                            {compatWarningsBySlot[slot].map((msg, i) => (
-                              <div key={i} className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                                <Icon name="TriangleAlert" size={13} className="mt-px shrink-0" />
-                                <span>{msg}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     )}
 
