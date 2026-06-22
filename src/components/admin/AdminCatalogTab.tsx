@@ -120,11 +120,18 @@ export function AdminCatalogTab({
     setProducts(ps => ps.filter(p => p.id !== id))
   }
   const editProduct = (p: Product) => {
+    // Отрезаем префикс бренда от имени, чтобы поле «Название» было без бренда
+    // (в БД имя хранится цельным: "{Бренд} {Название}").
+    const brandName = p.brand_id ? (brands.find(b => b.id === p.brand_id)?.name || p.brand || "") : ""
+    let nameNoBrand = p.name
+    if (brandName && p.name.toLowerCase().startsWith(brandName.toLowerCase() + " ")) {
+      nameNoBrand = p.name.slice(brandName.length).trimStart()
+    }
     setProductForm({
       id: p.id,
       category_id: p.category ? String(categories.find(c => c.name === p.category?.name)?.id || "") : "",
       brand_id: p.brand_id ? String(p.brand_id) : "",
-      name: p.name, description: p.description || "",
+      name: nameNoBrand, description: p.description || "",
       price: String(p.price), old_price: p.old_price ? String(p.old_price) : "",
       warranty_months: String(p.warranty_months ?? 0),
       image_urls: p.image_urls?.length ? p.image_urls : (p.image_url ? [p.image_url] : []),
@@ -139,11 +146,18 @@ export function AdminCatalogTab({
     if (!productForm.category_id) { alert("Выберите категорию"); return }
     let specs = {}
     try { specs = JSON.parse(productForm.specs || "{}") } catch { specs = {} }
+    // Склеиваем имя как "{Бренд} {Название}" — в БД хранится цельным текстом,
+    // а brand_id держим отдельно. Не дублируем бренд, если уже введён в начале.
+    const brandName = productForm.brand_id ? (brands.find(b => String(b.id) === productForm.brand_id)?.name || "") : ""
+    const rawName = productForm.name.trim()
+    const fullName = (brandName && !rawName.toLowerCase().startsWith(brandName.toLowerCase()))
+      ? `${brandName} ${rawName}`.trim()
+      : rawName
     const payload = {
       id: productForm.id,
       category_id: productForm.category_id ? Number(productForm.category_id) : null,
       brand_id: productForm.brand_id ? Number(productForm.brand_id) : null,
-      name: productForm.name, description: productForm.description,
+      name: fullName, description: productForm.description,
       price: Number(productForm.price), old_price: productForm.old_price ? Number(productForm.old_price) : null,
       warranty_months: Number(productForm.warranty_months) || 0,
       image_url: productForm.image_urls[0] || null, image_urls: productForm.image_urls, specs,
@@ -558,9 +572,19 @@ export function AdminCatalogTab({
       <form onSubmit={submitProduct} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-foreground/60">Название *</label>
-            <input required value={productForm.name} onChange={e => setProductForm(f => ({ ...f, name: e.target.value }))}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="NVIDIA RTX 4090" style={{ cursor: "text" }} />
+            <label className="mb-1 block text-xs text-foreground/60">Бренд</label>
+            <div className="flex gap-2">
+              <select value={productForm.brand_id} onChange={e => setProductForm(f => ({ ...f, brand_id: e.target.value }))}
+                className="flex-1 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                <option value="">— Без бренда —</option>
+                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              <button type="button" onClick={() => setShowBrandsManager(true)}
+                className="shrink-0 rounded-lg border border-border px-3 text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}
+                title="Управление брендами">
+                <Icon name="Settings2" size={16} />
+              </button>
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/60">Категория *</label>
@@ -572,19 +596,15 @@ export function AdminCatalogTab({
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-foreground/60">Бренд</label>
-          <div className="flex gap-2">
-            <select value={productForm.brand_id} onChange={e => setProductForm(f => ({ ...f, brand_id: e.target.value }))}
-              className="flex-1 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-              <option value="">— Без бренда —</option>
-              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-            <button type="button" onClick={() => setShowBrandsManager(true)}
-              className="shrink-0 rounded-lg border border-border px-3 text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}
-              title="Управление брендами">
-              <Icon name="Settings2" size={16} />
-            </button>
-          </div>
+          <label className="mb-1 block text-xs text-foreground/60">Название * <span className="text-foreground/30">(без бренда — он подставится в начало)</span></label>
+          <input required value={productForm.name} onChange={e => setProductForm(f => ({ ...f, name: e.target.value }))}
+            className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="RTX 4090 Gaming OC" style={{ cursor: "text" }} />
+          {productForm.brand_id && productForm.name.trim() && (() => {
+            const bn = brands.find(b => String(b.id) === productForm.brand_id)?.name || ""
+            const rn = productForm.name.trim()
+            const full = (bn && !rn.toLowerCase().startsWith(bn.toLowerCase())) ? `${bn} ${rn}` : rn
+            return <p className="mt-1 text-[11px] text-foreground/40">Итоговое название: <span className="text-foreground/70">{full}</span></p>
+          })()}
         </div>
         {showBrandsManager && <BrandsManager onClose={() => setShowBrandsManager(false)} onChanged={loadBrands} />}
         <div>

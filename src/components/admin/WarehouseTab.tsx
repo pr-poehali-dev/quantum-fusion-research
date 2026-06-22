@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { playScanOk, playScanError } from "@/lib/scanSound"
+import BrandsManager from "./BrandsManager"
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -972,6 +973,7 @@ export default function WarehouseTab() {
 
   const [groupModal, setGroupModal] = useState<Partial<Group> | null | false>(false)
   const [storesModal, setStoresModal] = useState(false)
+  const [brandsModal, setBrandsModal] = useState(false)
   const [quickSupplyModal, setQuickSupplyModal] = useState(false)
   const [inventoryModal, setInventoryModal] = useState(false)
   const [discountModal, setDiscountModal] = useState(false)
@@ -1100,6 +1102,9 @@ export default function WarehouseTab() {
 
         <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
           <Icon name="Store" size={14} className="mr-1.5" />Магазины
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setBrandsModal(true)}>
+          <Icon name="Award" size={14} className="mr-1.5" />Бренды
         </Button>
         <Button variant="outline" size="sm" onClick={() => setCatModal(true)}>
           <Icon name="Tag" size={14} className="mr-1.5" />Категории
@@ -1351,6 +1356,9 @@ export default function WarehouseTab() {
           onClose={() => setStoresModal(false)}
           onSaved={load}
         />
+      )}
+      {brandsModal && (
+        <BrandsManager onClose={() => setBrandsModal(false)} />
       )}
       {quickSupplyModal && (
         <QuickSupplyModal
