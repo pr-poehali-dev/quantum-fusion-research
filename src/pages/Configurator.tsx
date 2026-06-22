@@ -68,6 +68,14 @@ function clearDraft() {
   try { localStorage.removeItem(DRAFT_KEY) } catch { /* noop */ }
 }
 
+// Русское склонение числительных: plural(2, "слот","слота","слотов") → "слота"
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10, mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return one
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few
+  return many
+}
+
 // Компонент счётчика qty
 function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => void }) {
   return (
@@ -356,6 +364,54 @@ export default function Configurator() {
     setSelected(s => s[slot] ? { ...s, [slot]: { ...s[slot]!, qty } } : s)
   }
 
+  // Полная очистка конфигурации
+  const clearAll = () => {
+    setSelected({})
+    setSelectedSpec({})
+    setSpecSlotMap({})
+    setCustomInputs({})
+    setSlotExtras({})
+    clearDraft()
+  }
+
+  // ── Проверка: число накопителей M.2 vs слотов M.2 на материнской плате ──
+  // attribute_id из спек-схемы (стабильные seed-значения):
+  //   11 — «Слотов M.2» у материнской платы (spec-категория motherboard)
+  //   31 — «Интерфейс» у накопителя (spec-категория storage)
+  const ssdSlotWarning = useMemo(() => {
+    const ATTR_MB_M2_SLOTS = 11
+    const ATTR_STORAGE_INTERFACE = 31
+
+    const storage = selected.storage
+    if (!storage || storage.source !== "catalog") return null
+
+    // spec-категория накопителя (по карте specCat → slot)
+    const storageCatEntry = Object.entries(specSlotMap).find(([, sl]) => sl === "storage")
+    if (!storageCatEntry) return null
+    const storageVals = selectedSpec[Number(storageCatEntry[0])]
+    if (!storageVals) return null
+
+    // Накопитель считается M.2, если его интерфейс содержит "M.2" или "NVMe"
+    const rawIface = storageVals[String(ATTR_STORAGE_INTERFACE)]
+    const ifaceText = (Array.isArray(rawIface) ? rawIface.join(" ") : String(rawIface ?? "")).toLowerCase()
+    const isM2 = ifaceText.includes("m.2") || ifaceText.includes("m2") || ifaceText.includes("nvme")
+    if (!isM2) return null
+
+    // Кол-во слотов M.2 у выбранной материнской платы
+    const mbCatEntry = Object.entries(specSlotMap).find(([, sl]) => sl === "motherboard")
+    if (!mbCatEntry) return null
+    const mbVals = selectedSpec[Number(mbCatEntry[0])]
+    if (!mbVals) return null
+    const rawSlots = mbVals[String(ATTR_MB_M2_SLOTS)]
+    const slotsCount = parseInt(String(Array.isArray(rawSlots) ? rawSlots[0] : rawSlots), 10)
+    if (!Number.isFinite(slotsCount) || slotsCount <= 0) return null
+
+    const qty = storage.qty || 1
+    if (qty <= slotsCount) return null
+
+    return { slots: slotsCount, qty, over: qty - slotsCount }
+  }, [selected, selectedSpec, specSlotMap])
+
   const saveBuild = async () => {
     if (!isAuthed() || !sessionId) { navigate("/auth"); return }
     setSaving(true)
@@ -441,10 +497,20 @@ export default function Configurator() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6">
-          <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
-          {!buildAuthor && (
-            <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
+            {!buildAuthor && (
+              <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
+            )}
+          </div>
+          {!(buildToken && isReadOnly) && hasComponents && (
+            <button onClick={clearAll}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground/60 hover:border-red-400 hover:text-red-400 transition-colors"
+              style={{ cursor: "pointer" }}>
+              <Icon name="Trash2" size={14} />
+              Очистить список
+            </button>
           )}
         </div>
 
@@ -659,6 +725,14 @@ export default function Configurator() {
 
                           {/* Price → qty controls → line total */}
                           <div className="flex shrink-0 items-center gap-3">
+                            {slot === "storage" && ssdSlotWarning && (
+                              <div className="flex max-w-[220px] items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                                <Icon name="TriangleAlert" size={13} className="shrink-0" />
+                                <span>
+                                  На материнской плате {ssdSlotWarning.slots} {plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили {ssdSlotWarning.qty}. Уменьшите на {ssdSlotWarning.over}.
+                                </span>
+                              </div>
+                            )}
                             <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
                             <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
                             <span className="w-24 text-right text-sm font-bold text-primary">
