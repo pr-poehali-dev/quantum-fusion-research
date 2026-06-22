@@ -1815,7 +1815,7 @@ def handler(event: dict, context) -> dict:
         if action == "spec_products" and method == "GET":
             # Считаем готовность: заполнены все is_required атрибуты категории товара
             cur.execute(
-                f"SELECT p.id, p.name, c.name AS cat_name, c.slug AS cat_slug, p.image_url, "
+                f"SELECT p.id, COALESCE(NULLIF(wg.name, ''), p.name) AS name, c.name AS cat_name, c.slug AS cat_slug, p.image_url, "
                 f"sc.id AS spec_cat_id, sc.code AS spec_cat_code, sc.name AS spec_cat_name "
                 f"FROM {SCHEMA}.products p "
                 f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
