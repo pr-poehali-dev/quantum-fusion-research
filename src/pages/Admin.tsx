@@ -153,16 +153,19 @@ export default function Admin() {
     { key: "orders", label: "Заказы", icon: "ClipboardList" },
     { key: "warehouse", label: "Склад", icon: "Warehouse" },
     { key: "sn_archive", label: "Архив SN", icon: "ScanBarcode" },
-    { key: "products", label: "Товары", icon: "Package" },
-    { key: "compatibility", label: "Совместимость", icon: "Puzzle" },
     { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
   ]
   // Группа 3 — Прочее
   const extraTabs = [
-    { key: "users", label: "Пользователи", icon: "Users" },
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
+  ]
+  // Группа 4 — Быстрый доступ
+  const quickTabs = [
+    { key: "products", label: "Товары", icon: "Package" },
+    { key: "compatibility", label: "Совместимость", icon: "Puzzle" },
+    { key: "users", label: "Пользователи", icon: "Users" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
   ]
 
@@ -188,7 +191,7 @@ export default function Admin() {
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6 border-b border-border">
-          {[topTabs, bottomTabs, extraTabs].map((row, ri) => (
+          {[topTabs, bottomTabs, extraTabs, quickTabs].map((row, ri) => (
             <div key={ri} className="flex items-center justify-center gap-0 overflow-x-auto">
               {row.map(t => t.key.startsWith("DIVIDER") ? (
                 <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
