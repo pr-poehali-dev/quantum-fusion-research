@@ -66,6 +66,10 @@ generate-warranty подставляет магазин по SN из sn_archive 
 ### products
 Управление товарами/компонентами конфигуратора.
 CRUD товаров, слоты конфигуратора, отслеживание остатков.
+БРЕНДЫ (v4.40): таблица brands + products.brand_id (nullable). resource=brands —
+CRUD справочника (GET/POST/PUT/DELETE; DELETE отвязывает товары brand_id=NULL).
+Товары и слоты отдают brand_id + brand (имя). Слоты конфигуратора берут НАСТОЯЩИЙ
+бренд из brands (раньше ошибочно подставлялась категория).
 КАСКАДНЫЙ ПЕРЕСЧЁТ СБОРОК (v3.98): при PUT (изменение цены товара) функция
 _recalc_builds_for_product обновляет цены всех ПРОДАЖНЫХ сборок с этим товаром
 (components[].price, parts_total, total_price; +22% НДС если sell_with_vat).

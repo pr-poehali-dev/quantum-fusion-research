@@ -1,5 +1,7 @@
 import json
 import os
+import re
+import time
 import psycopg2
 
 def get_conn():
@@ -100,6 +102,7 @@ def handler(event: dict, context) -> dict:
     params = event.get("queryStringParameters") or {}
     # is_slots определяется через query-параметр (путь /slots не поддерживается функциями)
     is_slots = params.get("resource") == "slots"
+    is_brands = params.get("resource") == "brands"
     product_id = params.get("id")
 
     conn = get_conn()
@@ -131,6 +134,8 @@ def handler(event: dict, context) -> dict:
             "is_archived": bool(row[18]) if len(row) > 18 else False,
             "is_used": bool(row[19]) if len(row) > 19 else False,
             "warranty_months": int(row[20]) if len(row) > 20 and row[20] is not None else 0,
+            "brand_id": row[21] if len(row) > 21 else None,
+            "brand": row[22] if len(row) > 22 else None,
         }
 
     try:
@@ -140,9 +145,10 @@ def handler(event: dict, context) -> dict:
                 schema = "t_p72635010_quantum_fusion_resea"
                 # Берём товары из products, используя category.slug как слот
                 cur.execute(
-                    f"""SELECT p.id, c.slug, p.name, c.name, p.price, p.specs, p.stock_qty, p.sort_order
+                    f"""SELECT p.id, c.slug, p.name, b.name, p.price, p.specs, p.stock_qty, p.sort_order, p.brand_id
                        FROM {schema}.products p
                        JOIN {schema}.categories c ON p.category_id = c.id
+                       LEFT JOIN {schema}.brands b ON b.id = p.brand_id
                        WHERE c.slug IN ('cpu','gpu','ram','storage','psu','case','motherboard','cooling','fan')
                          AND p.is_archived = FALSE
                        ORDER BY p.in_stock DESC, c.slug ASC, p.sort_order ASC, p.id ASC"""
@@ -160,6 +166,7 @@ def handler(event: dict, context) -> dict:
                         "in_stock": stock_qty > 0,
                         "stock_qty": stock_qty,
                         "sort_order": row[7],
+                        "brand_id": row[8],
                     })
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"slots": slots})}
 
@@ -199,6 +206,69 @@ def handler(event: dict, context) -> dict:
                 conn.commit()
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        # ── BRANDS (справочник производителей) ──
+        elif is_brands:
+            schema = "t_p72635010_quantum_fusion_resea"
+
+            def _slugify(s, fallback):
+                s2 = (s or "").strip().lower()
+                s2 = re.sub(r"[^a-z0-9]+", "-", s2).strip("-")
+                return s2 or f"brand-{fallback}"
+
+            if method == "GET":
+                # список брендов + сколько товаров привязано
+                cur.execute(
+                    f"""SELECT b.id, b.name, b.slug, b.logo_url, b.sort_order,
+                               COALESCE((SELECT COUNT(*) FROM {schema}.products p
+                                         WHERE p.brand_id = b.id AND p.is_archived = FALSE), 0) as cnt
+                        FROM {schema}.brands b
+                        ORDER BY b.name ASC"""
+                )
+                brands = [{"id": r[0], "name": r[1], "slug": r[2], "logo_url": r[3],
+                           "sort_order": r[4], "product_count": r[5]} for r in cur.fetchall()]
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"brands": brands})}
+
+            elif method == "POST":
+                body = json.loads(event.get("body") or "{}")
+                name = (body.get("name") or "").strip()
+                if not name:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Укажите название бренда"})}
+                slug = _slugify(body.get("slug") or name, 0)
+                # уникальность слага
+                cur.execute(f"SELECT 1 FROM {schema}.brands WHERE slug=%s", (slug,))
+                if cur.fetchone():
+                    slug = f"{slug}-{int(time.time())}"
+                cur.execute(
+                    f"INSERT INTO {schema}.brands (name, slug, logo_url, sort_order) VALUES (%s,%s,%s,%s) RETURNING id",
+                    (name, slug, body.get("logo_url") or None, int(body.get("sort_order") or 0))
+                )
+                new_id = cur.fetchone()[0]
+                conn.commit()
+                return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "ok": True})}
+
+            elif method == "PUT":
+                body = json.loads(event.get("body") or "{}")
+                bid = int(body.get("id") or 0)
+                name = (body.get("name") or "").strip()
+                if not bid or not name:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "id и название обязательны"})}
+                cur.execute(
+                    f"UPDATE {schema}.brands SET name=%s, logo_url=%s, sort_order=%s WHERE id=%s",
+                    (name, body.get("logo_url") or None, int(body.get("sort_order") or 0), bid)
+                )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+            elif method == "DELETE":
+                bid = int(params.get("id") or 0)
+                if not bid:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "id required"})}
+                # Сначала отвязываем товары (brand_id = NULL), затем удаляем бренд.
+                cur.execute(f"UPDATE {schema}.products SET brand_id = NULL WHERE brand_id = %s", (bid,))
+                cur.execute(f"DELETE FROM {schema}.brands WHERE id = %s", (bid,))
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
         # ── PRODUCTS ──
         elif method == "GET":
             sel = """SELECT p.id, p.name, p.description,
@@ -216,10 +286,12 @@ def handler(event: dict, context) -> dict:
                                       JOIN warehouse_groups g ON g.id = s.group_id
                                       WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost,
                             p.is_archived, p.is_used,
-                            COALESCE(wg.warranty_months, p.warranty_months) as warranty_months
+                            COALESCE(wg.warranty_months, p.warranty_months) as warranty_months,
+                            p.brand_id, b.name as brand_name
                      FROM products p
                      LEFT JOIN categories c ON p.category_id = c.id
-                     LEFT JOIN warehouse_groups wg ON wg.id = p.warehouse_group_id"""
+                     LEFT JOIN warehouse_groups wg ON wg.id = p.warehouse_group_id
+                     LEFT JOIN brands b ON b.id = p.brand_id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
                 row = cur.fetchone()
@@ -263,17 +335,18 @@ def handler(event: dict, context) -> dict:
             image_url = image_urls[0] if image_urls else body.get("image_url")
             in_stock = body.get("in_stock", True)
             warranty = int(body.get("warranty_months") or 0)
+            brand_id = body.get("brand_id") or None
             cur.execute(
                 """INSERT INTO products (category_id, name, description, price, old_price, image_url, image_urls, specs,
-                   in_stock, stock_qty, is_featured, sort_order, is_used, warranty_months, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
+                   in_stock, stock_qty, is_featured, sort_order, is_used, warranty_months, brand_id, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) RETURNING id""",
                 (body.get("category_id"), body["name"], body.get("description"),
                  body["price"], body.get("old_price"), image_url,
                  json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0),
-                 body.get("is_used", False), warranty)
+                 body.get("is_used", False), warranty, brand_id)
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -288,17 +361,18 @@ def handler(event: dict, context) -> dict:
             image_url = image_urls[0] if image_urls else body.get("image_url")
             in_stock = body.get("in_stock", True)
             warranty = int(body.get("warranty_months") or 0)
+            brand_id = body.get("brand_id") or None
             cur.execute(
                 """UPDATE products SET category_id=%s, name=%s, description=%s, price=%s,
                    old_price=%s, image_url=%s, image_urls=%s, specs=%s, in_stock=%s, stock_qty=%s,
-                   is_featured=%s, sort_order=%s, is_used=%s, warranty_months=%s WHERE id=%s""",
+                   is_featured=%s, sort_order=%s, is_used=%s, warranty_months=%s, brand_id=%s WHERE id=%s""",
                 (body.get("category_id"), body["name"], body.get("description"),
                  body["price"], body.get("old_price"), image_url,
                  json.dumps(image_urls),
                  json.dumps(body.get("specs", {})),
                  in_stock, 1 if in_stock else 0,
                  body.get("is_featured", False), body.get("sort_order", 0),
-                 body.get("is_used", False), warranty, body["id"])
+                 body.get("is_used", False), warranty, brand_id, body["id"])
             )
             # синхронизируем цену, название и гарантию в warehouse_group
             cur.execute(

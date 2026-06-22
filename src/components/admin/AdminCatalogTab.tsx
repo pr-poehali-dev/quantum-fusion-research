@@ -9,6 +9,7 @@ import {
   BUILD_STATUS, TAG_COLORS, TAG_COLOR_CLASSES, TagBadge,
 } from "@/pages/admin/types"
 import { BuildRow, BuildsList } from "./BuildsList"
+import BrandsManager from "./BrandsManager"
 
 interface Props {
   tab: AdminTab
@@ -102,11 +103,16 @@ export function AdminCatalogTab({
   }
   const [productForm, setProductForm] = useState({
     id: null as number | null,
-    category_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0",
+    category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0",
     image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0",
   })
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
+  // Справочник брендов (для выпадающего списка в форме товара)
+  const [brands, setBrands] = useState<{ id: number; name: string }[]>([])
+  const [showBrandsManager, setShowBrandsManager] = useState(false)
+  const loadBrands = () => api.brands.getAll().then(d => setBrands(d.brands || [])).catch(() => {})
+  useEffect(() => { loadBrands() }, [])
 
   const deleteProduct = async (id: number) => {
     if (!confirm("Архивировать товар? Он скроется из каталога, но данные сохранятся.")) return
@@ -117,6 +123,7 @@ export function AdminCatalogTab({
     setProductForm({
       id: p.id,
       category_id: p.category ? String(categories.find(c => c.name === p.category?.name)?.id || "") : "",
+      brand_id: p.brand_id ? String(p.brand_id) : "",
       name: p.name, description: p.description || "",
       price: String(p.price), old_price: p.old_price ? String(p.old_price) : "",
       warranty_months: String(p.warranty_months ?? 0),
@@ -135,6 +142,7 @@ export function AdminCatalogTab({
     const payload = {
       id: productForm.id,
       category_id: productForm.category_id ? Number(productForm.category_id) : null,
+      brand_id: productForm.brand_id ? Number(productForm.brand_id) : null,
       name: productForm.name, description: productForm.description,
       price: Number(productForm.price), old_price: productForm.old_price ? Number(productForm.old_price) : null,
       warranty_months: Number(productForm.warranty_months) || 0,
@@ -145,7 +153,7 @@ export function AdminCatalogTab({
     if (productForm.id) await api.products.update(payload)
     else await api.products.create(payload)
     setTab("products")
-    setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
+    setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
   }
   const handleExportExcel = async () => {
     setExportLoading(true)
@@ -564,6 +572,22 @@ export function AdminCatalogTab({
           </div>
         </div>
         <div>
+          <label className="mb-1 block text-xs text-foreground/60">Бренд</label>
+          <div className="flex gap-2">
+            <select value={productForm.brand_id} onChange={e => setProductForm(f => ({ ...f, brand_id: e.target.value }))}
+              className="flex-1 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+              <option value="">— Без бренда —</option>
+              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <button type="button" onClick={() => setShowBrandsManager(true)}
+              className="shrink-0 rounded-lg border border-border px-3 text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}
+              title="Управление брендами">
+              <Icon name="Settings2" size={16} />
+            </button>
+          </div>
+        </div>
+        {showBrandsManager && <BrandsManager onClose={() => setShowBrandsManager(false)} onChanged={loadBrands} />}
+        <div>
           <label className="mb-1 block text-xs text-foreground/60">Описание</label>
           <RichTextEditor value={productForm.description} onChange={v => setProductForm(f => ({ ...f, description: v }))} placeholder="Описание..." />
         </div>
@@ -607,7 +631,7 @@ export function AdminCatalogTab({
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {productForm.id ? "Сохранить" : "Добавить"}
           </button>
-          <button type="button" onClick={() => { setTab("products"); setProductForm({ id: null, category_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }) }}
+          <button type="button" onClick={() => { setTab("products"); setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }) }}
             className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>

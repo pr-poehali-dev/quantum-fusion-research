@@ -1883,11 +1883,12 @@ def handler(event: dict, context) -> dict:
             # товары, чья товарная категория привязана к этой spec-категории
             cur.execute(
                 f"SELECT p.id, p.name, p.price, p.image_url, p.image_urls, p.in_stock, "
-                f"p.stock_qty, p.description "
+                f"p.stock_qty, p.description, br.name AS brand "
                 f"FROM {SCHEMA}.products p "
                 f"JOIN {SCHEMA}.categories c ON c.id = p.category_id "
                 f"JOIN {SCHEMA}.spec_categories sc ON sc.product_category_slug = c.slug "
                 f"LEFT JOIN {SCHEMA}.warehouse_groups wg ON wg.id = p.warehouse_group_id "
+                f"LEFT JOIN {SCHEMA}.brands br ON br.id = p.brand_id "
                 f"WHERE sc.id = {spec_cat_id} AND p.is_archived = FALSE "
                 f"AND COALESCE(wg.is_archived, FALSE) = FALSE "
                 f"ORDER BY p.in_stock DESC NULLS LAST, p.sort_order NULLS LAST, p.name"
@@ -1925,6 +1926,7 @@ def handler(event: dict, context) -> dict:
                     "id": pid, "name": r[1], "price": price,
                     "image_url": r[3], "image_urls": r[4] or [],
                     "in_stock": r[5], "stock_qty": r[6], "description": r[7],
+                    "brand": r[8],
                     "margin": round(price - cost, 2) if cost > 0 else 0,
                     "values": vals_by_pid.get(pid, {}),
                 })

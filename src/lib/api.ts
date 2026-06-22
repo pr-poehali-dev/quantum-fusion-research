@@ -46,6 +46,12 @@ export const api = {
     update: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
+  brands: {
+    getAll: () => fetch(`${URLS.products}?resource=brands`).then(r => r.json()),
+    create: (data: { name: string; logo_url?: string; sort_order?: number }) => fetch(`${URLS.products}?resource=brands`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: { id: number; name: string; logo_url?: string; sort_order?: number }) => fetch(`${URLS.products}?resource=brands`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.products}?resource=brands&id=${id}`, { method: "DELETE" }).then(r => r.json()),
+  },
   orders: {
     create: (data: unknown) => fetch(URLS.orders, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     getAll: (params?: Record<string, string>) => {

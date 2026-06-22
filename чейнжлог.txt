@@ -3,6 +3,31 @@
 
 ---
 
+## v4.40 | 2026-06-22 | Бренды (справочник) + фильтр по бренду
+
+### DB (миграции V0145–V0147)
+- Таблица brands (id, name, slug, logo_url, sort_order). products.brand_id (nullable).
+- Автопарсинг брендов из названий товаров: создано 26 брендов, привязано
+  98/100 товаров (дубли написания схлопнуты: ASrock/ASRock/Asrock→ASRock и т.п.).
+- RTX PRO 6000 → NVIDIA вручную.
+
+### Backend
+- products: SELECT/POST/PUT отдаёт и сохраняет brand_id + brand (имя).
+  Слоты конфигуратора (resource=slots) теперь дают настоящий бренд (а не категорию).
+  Новый resource=brands — CRUD справочника (GET/POST/PUT/DELETE), при удалении
+  бренда товары отвязываются (brand_id=NULL).
+- warehouse spec_slot_products отдаёт brand для фильтра в окне выбора.
+
+### Frontend
+- api.ts: api.brands (getAll/create/update/delete).
+- AdminCatalogTab: в форме товара — выпадающий выбор бренда + кнопка управления.
+- BrandsManager.tsx — модал справочника брендов (добавить/переименовать/удалить).
+- SlotPickerModal: фильтр по бренду (чекбоксы), бренд показан в карточке товара.
+- types.ts: Product.brand_id / Product.brand.
+
+### Архитектура
+- brand_id — отдельное nullable-поле, склад и совместимость не затронуты.
+
 ## v4.39 | 2026-06-22 | Фикс: архивный товар со склада виден в совместимости/каталоге
 
 ### Backend (warehouse)

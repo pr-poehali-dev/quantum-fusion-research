@@ -24,6 +24,7 @@ interface SlotProduct {
   stock_qty?: number
   description?: string
   margin?: number
+  brand?: string | null
   values: Record<string, string | string[]>
 }
 interface SpecLink {
@@ -99,6 +100,8 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   const [recommended, setRecommended] = useState(false)   // «Рекомендуемые» — выкл по умолчанию
   const [priceMin, setPriceMin] = useState("")
   const [priceMax, setPriceMax] = useState("")
+  const [brandFilter, setBrandFilter] = useState<Set<string>>(new Set())
+  const [brandOpen, setBrandOpen] = useState(false)
   const [attrFilters, setAttrFilters] = useState<Record<number, Set<string>>>({})
   const [openAttr, setOpenAttr] = useState<Record<number, boolean>>({})
 
@@ -210,6 +213,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         if (recommended && (p.margin || 0) < marginThreshold) return false
         if (pmin !== null && p.price < pmin) return false
         if (pmax !== null && p.price > pmax) return false
+        if (brandFilter.size > 0 && !(p.brand && brandFilter.has(p.brand))) return false
         for (const [aid, set] of Object.entries(attrFilters)) {
           if (set.size === 0) continue
           const v = p.values[String(aid)]
@@ -228,10 +232,25 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         if (dm !== 0) return dm
         return a.p.price - b.p.price
       })
-  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, attrFilters, links, selectedSpec, attributes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, brandFilter, attrFilters, links, selectedSpec, attributes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = onlyCompatible ? filtered.filter(f => !f.reason) : filtered
   const compatCount = filtered.filter(f => !f.reason).length
+
+  // Список брендов, встречающихся среди товаров слота
+  const availableBrands = useMemo(() => {
+    const s = new Set<string>()
+    products.forEach(p => { if (p.brand) s.add(p.brand) })
+    return Array.from(s).sort()
+  }, [products])
+
+  const toggleBrand = (b: string) => {
+    setBrandFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(b)) next.delete(b); else next.add(b)
+      return next
+    })
+  }
 
   const toggleAttrFilter = (aid: number, val: string) => {
     setAttrFilters(prev => {
@@ -243,7 +262,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
     })
   }
   const resetFilters = () => {
-    setSearch(""); setOnlyStock(false); setRecommended(false); setPriceMin(""); setPriceMax(""); setAttrFilters({})
+    setSearch(""); setOnlyStock(false); setRecommended(false); setPriceMin(""); setPriceMax(""); setBrandFilter(new Set()); setAttrFilters({})
   }
 
   const hasSelection = Object.keys(selectedSpec).length > 0
@@ -361,6 +380,26 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
               </div>
             </div>
 
+            {availableBrands.length > 0 && (
+              <div className="border-t border-border py-2">
+                <button onClick={() => setBrandOpen(o => !o)}
+                  className="flex w-full items-center justify-between text-sm font-medium text-foreground/80" style={{ cursor: "pointer" }}>
+                  <span>Бренд{brandFilter.size > 0 ? ` (${brandFilter.size})` : ""}</span>
+                  <Icon name={brandOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
+                </button>
+                {brandOpen && (
+                  <div className="mt-2 space-y-1">
+                    {availableBrands.map(b => (
+                      <label key={b} className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
+                        <input type="checkbox" checked={brandFilter.has(b)} onChange={() => toggleBrand(b)} style={{ cursor: "pointer" }} />
+                        {b}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {filterableAttrs.map(a => (
               <div key={a.id} className="border-t border-border py-2">
                 <button onClick={() => setOpenAttr(o => ({ ...o, [a.id]: !o[a.id] }))}
@@ -418,6 +457,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
                       ) : <Icon name="Image" size={32} className="text-foreground/20" />}
                     </div>
                     <div className="min-w-0 flex-1">
+                      {p.brand && <p className="text-xs font-semibold uppercase tracking-wide text-primary/70">{p.brand}</p>}
                       <p className="text-sm font-medium text-foreground line-clamp-2">{p.name}</p>
                       {keySpecs(p).length > 0 && (
                         <div className="mt-1 space-y-0.5">

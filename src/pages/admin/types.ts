@@ -180,6 +180,8 @@ export interface Product {
   warranty_months?: number
   image_url: string | null
   image_urls: string[]
+  brand_id?: number | null
+  brand?: string | null
 }
 
 export interface Category {
