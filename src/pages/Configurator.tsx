@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useCart, CartItem } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
@@ -190,6 +190,8 @@ export default function Configurator() {
   const [pickerSlot, setPickerSlot] = useState<string | null>(null)
   // Значения характеристик уже выбранных деталей (для расчёта совместимости)
   const [selectedSpec, setSelectedSpec] = useState<SelectedSpecValues>({})
+  // Соответствие spec-категория → слот (чтобы знать кол-во выбранных деталей)
+  const [specSlotMap, setSpecSlotMap] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
   const [wantAssembly, setWantAssembly] = useState(draft0.wantAssembly ?? true)
 
@@ -320,8 +322,19 @@ export default function Configurator() {
     } }))
     // запоминаем характеристики выбранной детали для совместимости остальных слотов
     setSelectedSpec(prev => ({ ...prev, [specCatId]: p.values }))
+    setSpecSlotMap(prev => ({ ...prev, [specCatId]: slot }))
     setPickerSlot(null)
   }
+
+  // Кол-во выбранных деталей по spec-категориям (для расчёта мощности БП с учётом
+  // нескольких видеокарт и т.п.)
+  const selectedQty = useMemo(() => {
+    const m: Record<number, number> = {}
+    for (const [catId, slot] of Object.entries(specSlotMap)) {
+      m[Number(catId)] = selected[slot]?.qty || 1
+    }
+    return m
+  }, [specSlotMap, selected])
 
   // Ручной ввод своей позиции из нового окна
   const addCustomFromPicker = (slot: string) => (item: { name: string; price: number; link?: string }) => {
@@ -955,6 +968,7 @@ export default function Configurator() {
           slotCode={pickerSlot}
           slotLabel={pickerSlot === "extra" ? "Своя позиция" : (SLOT_LABELS[pickerSlot]?.label || pickerSlot)}
           selectedSpec={selectedSpec}
+          selectedQty={selectedQty}
           onPick={pickFromPicker(pickerSlot)}
           onClose={() => setPickerSlot(null)}
           onCustomAdd={addCustomFromPicker(pickerSlot)}

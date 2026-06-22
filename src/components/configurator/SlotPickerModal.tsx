@@ -54,6 +54,7 @@ interface Props {
   slotCode: string          // код spec-категории, напр. "motherboard"
   slotLabel: string         // "Материнская плата"
   selectedSpec: SelectedSpecValues  // значения уже выбранных деталей (для совместимости)
+  selectedQty?: Record<number, number>  // кол-во выбранных деталей по spec-категориям (для расчёта БП)
   onPick: (p: SlotProduct, specCategoryId: number) => void
   onClose: () => void
   onCustomAdd?: (item: CustomItemInput) => void  // «Моё железо» — ручной ввод
@@ -85,7 +86,7 @@ function ruleHolds(rule: string, fromVal: unknown, toVal: unknown): boolean {
   }
 }
 
-export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onPick, onClose, onCustomAdd, startCustom, hideCatalogToggle }: Props) {
+export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, selectedQty, onPick, onClose, onCustomAdd, startCustom, hideCatalogToggle }: Props) {
   const [attributes, setAttributes] = useState<SpecAttr[]>([])
   const [products, setProducts] = useState<SlotProduct[]>([])
   const [specCategoryId, setSpecCategoryId] = useState<number>(0)
@@ -218,7 +219,8 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   const psuAdvice = useMemo(() => {
     if (slotCode !== "psu") return null
     const tdpAttrs = schemaAttrs.filter(a => a.code === "tdp_watt")
-    const parts: { catCode: string; watt: number }[] = []
+    // watt — потребление одной детали, total — с учётом её количества (qty)
+    const parts: { catCode: string; watt: number; qty: number; total: number }[] = []
     tdpAttrs.forEach(a => {
       const vals = selectedSpec[a.category_id]
       if (!vals) return
@@ -226,18 +228,23 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
       const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
       if (Number.isNaN(w) || w <= 0) return
       const catCode = specCategories.find(c => c.id === a.category_id)?.code || ""
-      parts.push({ catCode, watt: w })
+      const qty = Math.max(1, selectedQty?.[a.category_id] || 1)
+      parts.push({ catCode, watt: w, qty, total: w * qty })
     })
-    const totalTdp = parts.reduce((s, p) => s + p.watt, 0)
+    const totalTdp = parts.reduce((s, p) => s + p.total, 0)
     if (totalTdp <= 0) return null
-    const cpuW = parts.find(p => p.catCode === "cpu")?.watt || 0
-    const gpuW = parts.find(p => p.catCode === "gpu")?.watt || 0
+    const cpu = parts.find(p => p.catCode === "cpu")
+    const gpu = parts.find(p => p.catCode === "gpu")
     const RESERVE = 300
     const needed = totalTdp + RESERVE
     const NOMINALS = [450, 550, 650, 750, 850, 1000, 1200, 1300, 1500, 1600]
     const recommended = NOMINALS.find(n => n >= needed) || Math.ceil(needed / 100) * 100
-    return { totalTdp, cpuW, gpuW, reserve: RESERVE, needed, recommended }
-  }, [slotCode, schemaAttrs, selectedSpec, specCategories])
+    return {
+      totalTdp, reserve: RESERVE, needed, recommended,
+      cpuW: cpu?.watt || 0, cpuQty: cpu?.qty || 1,
+      gpuW: gpu?.watt || 0, gpuQty: gpu?.qty || 1,
+    }
+  }, [slotCode, schemaAttrs, selectedSpec, specCategories, selectedQty])
 
   // id атрибута мощности БП (watt) — для проверки достаточности
   const psuWattAttrId = useMemo(
@@ -379,7 +386,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
             <Icon name="Zap" size={16} className="mt-0.5 shrink-0 text-primary" />
             <div className="text-foreground/80">
               {psuAdvice.cpuW > 0 && psuAdvice.gpuW > 0 ? (
-                <>Процессор ({psuAdvice.cpuW} Вт) + видеокарта ({psuAdvice.gpuW} Вт) потребляют <b className="text-foreground">{psuAdvice.totalTdp} Вт</b>. </>
+                <>Процессор ({psuAdvice.cpuW} Вт) + {psuAdvice.gpuQty > 1 ? `${psuAdvice.gpuQty} видеокарты` : "видеокарта"} ({psuAdvice.gpuW} Вт{psuAdvice.gpuQty > 1 ? ` × ${psuAdvice.gpuQty}` : ""}) потребляют <b className="text-foreground">{psuAdvice.totalTdp} Вт</b>. </>
               ) : (
                 <>Выбранные компоненты потребляют <b className="text-foreground">{psuAdvice.totalTdp} Вт</b>. </>
               )}
