@@ -91,6 +91,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
   const [specCategoryId, setSpecCategoryId] = useState<number>(0)
   const [links, setLinks] = useState<SpecLink[]>([])
   const [schemaAttrs, setSchemaAttrs] = useState<SchemaAttr[]>([])
+  const [specCategories, setSpecCategories] = useState<{ id: number; code: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   // Состояние фильтров
@@ -124,6 +125,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         setSpecCategoryId(slotData.spec_category_id || 0)
         setLinks((schema.links || []).filter((l: SpecLink) => l.is_active))
         setSchemaAttrs(schema.attributes || [])
+        setSpecCategories(schema.categories || [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -181,7 +183,23 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
       const otherVals = selectedSpec[otherCat]
       if (otherVals === undefined) continue           // эта деталь ещё не выбрана
       const otherVal = otherVals[String(otherAttrId)]
-      if (myVal === undefined || otherVal === undefined) continue  // нет данных — не блокируем
+
+      const isEmpty = (v: unknown) => v === undefined || v === null
+        || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "")
+
+      // Для точных правил (eq/contains — сокет, тип памяти, форм-фактор):
+      // если у выбранной детали значение есть, а у кандидата нет — считаем
+      // НЕСОВМЕСТИМЫМ (нельзя гарантировать совпадение без данных).
+      if (link.rule === "eq" || link.rule === "contains") {
+        if (isEmpty(otherVal)) continue               // у выбранной детали нет данных — не блокируем
+        if (isEmpty(myVal)) {
+          const myAttr = attributes.find(a => a.id === myAttrId)
+          return `Не указана характеристика «${myAttr?.name || "?"}»`
+        }
+      } else {
+        // Числовые габаритные правила (lte/gte) — без данных не блокируем
+        if (isEmpty(myVal) || isEmpty(otherVal)) continue
+      }
 
       // ruleHolds ожидает (from, to) в порядке правила
       const fromVal = meIsFrom ? myVal : otherVal
@@ -189,6 +207,53 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
       if (!ruleHolds(link.rule, fromVal, toVal)) {
         const myAttr = attributes.find(a => a.id === myAttrId)
         return link.note || `Не подходит по «${myAttr?.name || "характеристике"}»`
+      }
+    }
+    return null
+  }
+
+  // ── Рекомендация мощности БП (только для слота psu) ──
+  // Считаем TDP процессора + видеокарты из уже выбранных деталей,
+  // накидываем фиксированный запас 300 Вт и округляем вверх до номинала.
+  const psuAdvice = useMemo(() => {
+    if (slotCode !== "psu") return null
+    const tdpAttrs = schemaAttrs.filter(a => a.code === "tdp_watt")
+    const parts: { catCode: string; watt: number }[] = []
+    tdpAttrs.forEach(a => {
+      const vals = selectedSpec[a.category_id]
+      if (!vals) return
+      const raw = vals[String(a.id)]
+      const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
+      if (Number.isNaN(w) || w <= 0) return
+      const catCode = specCategories.find(c => c.id === a.category_id)?.code || ""
+      parts.push({ catCode, watt: w })
+    })
+    const totalTdp = parts.reduce((s, p) => s + p.watt, 0)
+    if (totalTdp <= 0) return null
+    const cpuW = parts.find(p => p.catCode === "cpu")?.watt || 0
+    const gpuW = parts.find(p => p.catCode === "gpu")?.watt || 0
+    const RESERVE = 300
+    const needed = totalTdp + RESERVE
+    const NOMINALS = [450, 550, 650, 750, 850, 1000, 1200, 1300, 1500, 1600]
+    const recommended = NOMINALS.find(n => n >= needed) || Math.ceil(needed / 100) * 100
+    return { totalTdp, cpuW, gpuW, reserve: RESERVE, needed, recommended }
+  }, [slotCode, schemaAttrs, selectedSpec, specCategories])
+
+  // id атрибута мощности БП (watt) — для проверки достаточности
+  const psuWattAttrId = useMemo(
+    () => attributes.find(a => a.code === "watt")?.id ?? null,
+    [attributes]
+  )
+
+  // Проверка совместимости + достаточности мощности для слота БП
+  const reasonFor = (p: SlotProduct): string | null => {
+    const base = incompatReason(p)
+    if (base) return base
+    if (psuAdvice && psuWattAttrId !== null) {
+      const raw = p.values[String(psuWattAttrId)]
+      const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
+      if (!Number.isNaN(w) && w > 0 && w < psuAdvice.needed) {
+        return `Слабоват: ${w} Вт < нужных ${psuAdvice.needed} Вт`
       }
     }
     return null
@@ -206,7 +271,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
     const pmin = priceMin ? parseFloat(priceMin) : null
     const pmax = priceMax ? parseFloat(priceMax) : null
     return products
-      .map(p => ({ p, reason: incompatReason(p) }))
+      .map(p => ({ p, reason: reasonFor(p) }))
       .filter(({ p }) => {
         if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
         if (onlyStock && !p.in_stock) return false
@@ -232,7 +297,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
         if (dm !== 0) return dm
         return a.p.price - b.p.price
       })
-  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, brandFilter, attrFilters, links, selectedSpec, attributes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, brandFilter, attrFilters, links, selectedSpec, attributes, psuAdvice, psuWattAttrId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = onlyCompatible ? filtered.filter(f => !f.reason) : filtered
   const compatCount = filtered.filter(f => !f.reason).length
@@ -307,6 +372,22 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, onP
             </button>
           </div>
         </div>
+
+        {/* ── Подсказка по мощности БП ── */}
+        {!customMode && psuAdvice && (
+          <div className="flex items-start gap-2.5 border-b border-border bg-primary/5 px-5 py-3 text-sm">
+            <Icon name="Zap" size={16} className="mt-0.5 shrink-0 text-primary" />
+            <div className="text-foreground/80">
+              {psuAdvice.cpuW > 0 && psuAdvice.gpuW > 0 ? (
+                <>Процессор ({psuAdvice.cpuW} Вт) + видеокарта ({psuAdvice.gpuW} Вт) потребляют <b className="text-foreground">{psuAdvice.totalTdp} Вт</b>. </>
+              ) : (
+                <>Выбранные компоненты потребляют <b className="text-foreground">{psuAdvice.totalTdp} Вт</b>. </>
+              )}
+              Накидываем {psuAdvice.reserve} Вт запаса → нужен БП от <b className="text-foreground">{psuAdvice.needed} Вт</b>.{" "}
+              <span className="font-semibold text-primary">Рекомендуем {psuAdvice.recommended} Вт{psuAdvice.recommended >= 1000 ? ` (${(psuAdvice.recommended / 1000).toString().replace(".", ",")} кВт)` : ""}.</span>
+            </div>
+          </div>
+        )}
 
         {customMode ? (
           /* ── Ручной ввод своей позиции ── */
