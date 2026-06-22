@@ -412,6 +412,50 @@ export default function Configurator() {
     return { slots: slotsCount, qty, over: qty - slotsCount }
   }, [selected, selectedSpec, specSlotMap])
 
+  // ── Проверка: мощность БП vs суммарный TDP (процессор + видеокарта) ──
+  // attribute_id из спек-схемы (стабильные seed-значения):
+  //   3  — TDP процессора, 18 — TDP видеокарты, 20 — Мощность БП (Вт)
+  const psuWarning = useMemo(() => {
+    const ATTR_CPU_TDP = 3
+    const ATTR_GPU_TDP = 18
+    const ATTR_PSU_WATT = 20
+    const RESERVE = 300
+
+    const psu = selected.psu
+    if (!psu || psu.source !== "catalog") return null
+
+    // Мощность выбранного БП
+    const psuEntry = Object.entries(specSlotMap).find(([, sl]) => sl === "psu")
+    if (!psuEntry) return null
+    const psuVals = selectedSpec[Number(psuEntry[0])]
+    if (!psuVals) return null
+    const rawWatt = psuVals[String(ATTR_PSU_WATT)]
+    const psuWatt = parseFloat(String(Array.isArray(rawWatt) ? rawWatt[0] : rawWatt).replace(",", "."))
+    if (!Number.isFinite(psuWatt) || psuWatt <= 0) return null
+
+    // Суммарный TDP процессора и видеокарты с учётом их количества
+    const tdpFor = (slot: string, attrId: number): number => {
+      const entry = Object.entries(specSlotMap).find(([, sl]) => sl === slot)
+      if (!entry) return 0
+      const vals = selectedSpec[Number(entry[0])]
+      if (!vals) return 0
+      const raw = vals[String(attrId)]
+      const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
+      if (!Number.isFinite(w) || w <= 0) return 0
+      const qty = selected[slot]?.qty || 1
+      return w * qty
+    }
+    const totalTdp = tdpFor("cpu", ATTR_CPU_TDP) + tdpFor("gpu", ATTR_GPU_TDP)
+    if (totalTdp <= 0) return null
+
+    const needed = totalTdp + RESERVE
+    if (psuWatt >= needed) return null
+
+    const NOMINALS = [450, 550, 650, 750, 850, 1000, 1200, 1300, 1500, 1600]
+    const recommended = NOMINALS.find(n => n >= needed) || Math.ceil(needed / 100) * 100
+    return { watt: psuWatt, recommended, totalTdp }
+  }, [selected, selectedSpec, specSlotMap])
+
   const saveBuild = async () => {
     if (!isAuthed() || !sessionId) { navigate("/auth"); return }
     setSaving(true)
@@ -730,6 +774,14 @@ export default function Configurator() {
                                 <Icon name="TriangleAlert" size={13} className="shrink-0" />
                                 <span>
                                   На материнской плате {ssdSlotWarning.slots} {plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили {ssdSlotWarning.qty}. Уменьшите на {ssdSlotWarning.over}.
+                                </span>
+                              </div>
+                            )}
+                            {slot === "psu" && psuWarning && (
+                              <div className="flex max-w-[240px] items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                                <Icon name="TriangleAlert" size={13} className="shrink-0" />
+                                <span>
+                                  Маловато мощности: блок {psuWarning.watt} Вт при нагрузке сборки ~{psuWarning.totalTdp} Вт. Возьмите от {psuWarning.recommended} Вт.
                                 </span>
                               </div>
                             )}
