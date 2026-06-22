@@ -143,8 +143,8 @@ export default function Shop() {
   const [activeCategory, setActiveCategory] = useState<string>(
     () => new URLSearchParams(window.location.search).get("category") || "all"
   )
+  const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
-  const [searchFocused, setSearchFocused] = useState(false)
   const [usedOnly, setUsedOnly] = useState(false)
   // Фильтры по характеристикам/бренду для выбранной категории
   const [specAttrs, setSpecAttrs] = useState<ShopAttr[]>([])
@@ -388,71 +388,42 @@ export default function Shop() {
                 <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
                 <input
                   type="text"
-                  placeholder="Поиск товаров или категории..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                  placeholder="Поиск товаров или категории (Enter)..."
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === "Enter") {
-                      // Enter — сбросить категорию и показать что написал пользователь
-                      setActiveCategory("all")
-                      setSearchFocused(false)
+                      const q = searchInput.trim()
+                      // Если ввод похож на категорию — открываем её, иначе обычный поиск
+                      const matchedCat = q.length >= 2 ? matchCategory(q, categories) : null
+                      if (matchedCat) {
+                        setActiveCategory(matchedCat.slug)
+                        setSearch("")
+                        setSearchInput("")
+                      } else {
+                        setActiveCategory("all")
+                        setSearch(q)
+                      }
                       e.currentTarget.blur()
                     }
                   }}
-                  className="w-full rounded-lg border border-border bg-card pl-9 pr-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:border-primary focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-card pl-9 pr-9 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:border-primary focus:outline-none"
                   style={{ cursor: "text" }}
                 />
-                {/* Живой выпадающий список под поиском */}
-                {searchFocused && search.trim().length >= 2 && (() => {
-                  const q = search.trim().toLowerCase()
-                  const matchedCat = matchCategory(search, categories)
-                  const hasPhoto = (p: Product) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
-                  const found = allProducts
-                    .filter(p => hasPhoto(p) && p.name.toLowerCase().includes(q))
-                    .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
-                    .slice(0, 6)
-                  if (!matchedCat && found.length === 0) return null
-                  return (
-                    <div className="absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
-                      {matchedCat && matchedCat.slug !== activeCategory && (
-                        <button
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => { setActiveCategory(matchedCat.slug); setSearch(""); setSearchFocused(false) }}
-                          className="flex w-full items-center gap-2 border-b border-border bg-primary/5 px-4 py-2.5 text-left text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-                          style={{ cursor: "pointer" }}
-                        >
-                          <Icon name="FolderOpen" size={15} />
-                          Перейти в категорию «{matchedCat.name}»
-                        </button>
-                      )}
-                      {found.map(p => (
-                        <button
-                          key={p.id}
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => navigate(`/product/${p.id}`)}
-                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted transition-colors"
-                          style={{ cursor: "pointer" }}
-                        >
-                          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-muted">
-                            {(p.image_url || p.image_urls?.[0]) && (
-                              <img src={p.image_url || p.image_urls?.[0]} alt="" className="h-full w-full object-cover" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm text-foreground">{p.name}</p>
-                            <p className="text-xs text-foreground/40">{fmt(p.price)}{!p.in_stock && " · под заказ"}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )
-                })()}
+                {(searchInput || search) && (
+                  <button
+                    onClick={() => { setSearchInput(""); setSearch("") }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground"
+                    style={{ cursor: "pointer" }}
+                    title="Очистить поиск"
+                  >
+                    <Icon name="X" size={15} />
+                  </button>
+                )}
               </div>
 
               <button
-                onClick={() => { const next = !usedOnly; setUsedOnly(next); if (next) { setActiveCategory("all"); setSearch("") } }}
+                onClick={() => { const next = !usedOnly; setUsedOnly(next); if (next) { setActiveCategory("all"); setSearch(""); setSearchInput("") } }}
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${usedOnly ? "border-amber-500 bg-amber-500/10 text-amber-500" : "border-border bg-card text-foreground/70 hover:text-foreground hover:border-primary"}`}
                 style={{ cursor: "pointer" }}
                 title="Показать только бывшие в употреблении"
@@ -486,7 +457,7 @@ export default function Shop() {
                   <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-foreground/40">Категории</p>
                   <div className="flex flex-col gap-1">
                     <button
-                      onClick={() => { setActiveCategory("all"); setCatOpen(false) }}
+                      onClick={() => { setActiveCategory("all"); setSearch(""); setSearchInput(""); setCatOpen(false) }}
                       className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${activeCategory === "all" ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
                       style={{ cursor: "pointer" }}
                     >
@@ -497,7 +468,7 @@ export default function Shop() {
                     {categories.map(cat => (
                       <button
                         key={cat.slug}
-                        onClick={() => { setActiveCategory(cat.slug); setCatOpen(false) }}
+                        onClick={() => { setActiveCategory(cat.slug); setSearch(""); setSearchInput(""); setCatOpen(false) }}
                         className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${activeCategory === cat.slug ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
                         style={{ cursor: "pointer" }}
                       >
