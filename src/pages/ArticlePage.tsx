@@ -17,6 +17,31 @@ interface Article {
   html_attachment: string | null
   views: number
   created_at: string
+  toc?: TocItem[]
+}
+
+interface TocItem { title: string; anchor: string }
+
+// Превращает метки [[#anchor]] в тексте в невидимые якоря для оглавления.
+function injectAnchors(html: string): string {
+  return html.replace(/\[\[#([a-zA-Z0-9_-]+)\]\]/g,
+    (_, slug) => `<span id="toc-${slug}" class="toc-anchor"></span>`)
+}
+
+// Плавная прокрутка к якорю + двойная вспышка соседнего абзаца
+function goToAnchor(slug: string) {
+  const el = document.getElementById(`toc-${slug}`)
+  if (!el) return
+  el.scrollIntoView({ behavior: "smooth", block: "start" })
+  // Подсвечиваем ближайший значимый блок (следующий элемент или родителя)
+  const target = (el.nextElementSibling as HTMLElement)
+    || (el.parentElement as HTMLElement)
+    || el
+  target.classList.remove("toc-flash")
+  // reflow, чтобы анимация перезапустилась при повторном клике
+  void target.offsetWidth
+  target.classList.add("toc-flash")
+  window.setTimeout(() => target.classList.remove("toc-flash"), 1500)
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -25,6 +50,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   test: "Тест / Бенчмарк",
   guide: "Гайд",
   repair: "Ремонты",
+  tier_detail: "Подробный тир-лист",
 }
 
 function openHtmlInNewTab(html: string) {
@@ -240,7 +266,7 @@ function ArticleContent({ html }: { html: string }) {
       {blocks.map((block, i) =>
         block.type === "html" ? (
           <div key={i} className="rich-content text-foreground/80 leading-relaxed text-base"
-            dangerouslySetInnerHTML={{ __html: block.content }} />
+            dangerouslySetInnerHTML={{ __html: injectAnchors(block.content) }} />
         ) : (
           <div key={i} className="my-4">
             <ArticleCarousel images={block.images} onOpenLightbox={(images, idx) => setLightboxState({ images, idx })} />
@@ -251,6 +277,55 @@ function ArticleContent({ html }: { html: string }) {
         <Lightbox images={lightboxState.images} startIdx={lightboxState.idx} onClose={() => setLightboxState(null)} />
       )}
     </div>
+  )
+}
+
+// Оглавление статьи. На десктопе — липкий блок сбоку, на телефоне —
+// сворачиваемый блок сверху.
+function TableOfContents({ items, variant }: { items: TocItem[]; variant: "side" | "mobile" }) {
+  const [open, setOpen] = useState(variant === "side")
+  if (!items.length) return null
+
+  const list = (
+    <ol className="space-y-1">
+      {items.map((it, i) => (
+        <li key={it.anchor + i}>
+          <button
+            onClick={() => goToAnchor(it.anchor)}
+            className="group flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground/70 transition-colors hover:bg-primary/10 hover:text-primary"
+            style={{ cursor: "pointer" }}
+          >
+            <span className="mt-0.5 text-xs font-mono text-foreground/30 group-hover:text-primary">{String(i + 1).padStart(2, "0")}</span>
+            <span className="leading-snug">{it.title}</span>
+          </button>
+        </li>
+      ))}
+    </ol>
+  )
+
+  if (variant === "mobile") {
+    return (
+      <div className="mb-6 rounded-xl border border-border bg-card lg:hidden">
+        <button onClick={() => setOpen(o => !o)}
+          className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground"
+          style={{ cursor: "pointer" }}>
+          <span className="flex items-center gap-2"><Icon name="List" size={16} className="text-primary" /> Оглавление</span>
+          <Icon name={open ? "ChevronUp" : "ChevronDown"} size={16} className="text-foreground/40" />
+        </button>
+        {open && <div className="border-t border-border px-2 pb-2 pt-2">{list}</div>}
+      </div>
+    )
+  }
+
+  return (
+    <aside className="hidden lg:block">
+      <div className="sticky top-24">
+        <p className="mb-2 flex items-center gap-2 px-2.5 text-xs font-semibold uppercase tracking-widest text-foreground/40">
+          <Icon name="List" size={13} className="text-primary" /> Оглавление
+        </p>
+        {list}
+      </div>
+    </aside>
   )
 }
 
@@ -292,6 +367,8 @@ export default function ArticlePage() {
   )
 
   const images = article.image_urls?.length ? article.image_urls : article.image_url ? [article.image_url] : []
+  const toc = (article.toc || []).filter(t => t.title?.trim() && t.anchor?.trim())
+  const hasToc = toc.length > 0
 
   return (
     <>
@@ -309,7 +386,7 @@ export default function ArticlePage() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-4xl px-4 py-10 sm:py-16">
+        <main className={`mx-auto px-4 py-10 sm:py-16 ${hasToc ? "max-w-6xl" : "max-w-4xl"}`}>
           <div className="mb-6">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
@@ -323,34 +400,42 @@ export default function ArticlePage() {
             )}
           </div>
 
-          <ArticleCarousel images={images} standalone />
+          {hasToc && <TableOfContents items={toc} variant="mobile" />}
 
-          {article.content && <ArticleContent html={article.content} />}
+          <div className={hasToc ? "grid gap-8 lg:grid-cols-[1fr_260px]" : ""}>
+            <div className="min-w-0">
+              <ArticleCarousel images={images} standalone />
 
-          {article.html_attachment && (
-            <div className="mt-10">
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                  <Icon name="FileCode2" size={18} className="text-primary" />
+              {article.content && <ArticleContent html={article.content} />}
+
+              {article.html_attachment && (
+                <div className="mt-10">
+                  <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Icon name="FileCode2" size={18} className="text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">HTML-вложение</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Интерактивные результаты теста или бенчмарк</p>
+                    </div>
+                    <button
+                      onClick={() => openHtmlInNewTab(article.html_attachment!)}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Icon name="ExternalLink" size={13} />
+                      Посмотреть вложение
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">HTML-вложение</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Интерактивные результаты теста или бенчмарк</p>
-                </div>
-                <button
-                  onClick={() => openHtmlInNewTab(article.html_attachment!)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                  style={{ cursor: "pointer" }}
-                >
-                  <Icon name="ExternalLink" size={13} />
-                  Посмотреть вложение
-                </button>
+              )}
+
+              <div className="mt-12">
+                <CommentSection articleId={article.id} />
               </div>
             </div>
-          )}
 
-          <div className="mt-12">
-            <CommentSection articleId={article.id} />
+            {hasToc && <TableOfContents items={toc} variant="side" />}
           </div>
         </main>
       </div>

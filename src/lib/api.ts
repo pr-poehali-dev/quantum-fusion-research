@@ -97,7 +97,7 @@ export const api = {
       const qs = params ? "?" + new URLSearchParams(params).toString() : ""
       return fetch(URLS.articles + qs).then(r => r.json())
     },
-    getById: (id: number) => fetch(`${URLS.articles}?id=${id}`).then(r => r.json()),
+    getById: (id: number, noview?: boolean) => fetch(`${URLS.articles}?id=${id}${noview ? "&noview=1" : ""}`).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.articles, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.articles, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number) => fetch(`${URLS.articles}?id=${id}`, { method: "DELETE" }).then(r => r.json()),

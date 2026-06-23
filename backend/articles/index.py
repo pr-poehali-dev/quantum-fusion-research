@@ -57,10 +57,12 @@ def handler(event: dict, context) -> dict:
         if full:
             a["content"] = row[4]
             a["html_attachment"] = row[10] if len(row) > 10 else None
+            toc = row[13] if len(row) > 13 else None
+            a["toc"] = toc if isinstance(toc, list) else (json.loads(toc) if toc else [])
         return a
 
     COLS = ("id, title, slug, excerpt, content, cover_url, category, "
-            "is_published, sort_order, created_at, html_attachment, image_urls, views")
+            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc")
 
     if method == "GET":
         article_id = params.get("id")
@@ -106,13 +108,13 @@ def handler(event: dict, context) -> dict:
         image_urls = body.get("image_urls") or []
         cover_url = image_urls[0] if image_urls else body.get("image_url")
         cur.execute(
-            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              cover_url, body.get("category", "article"),
              body.get("is_published", False),
              body.get("html_attachment") or None,
-             image_urls)
+             image_urls, json.dumps(body.get("toc") or []))
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -125,12 +127,12 @@ def handler(event: dict, context) -> dict:
         cover_url = image_urls[0] if image_urls else body.get("image_url")
         cur.execute(
             """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, cover_url=%s,
-               category=%s, is_published=%s, html_attachment=%s, image_urls=%s WHERE id=%s""",
+               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s WHERE id=%s""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              cover_url, body.get("category", "article"),
              body.get("is_published", False),
              body.get("html_attachment") or None,
-             image_urls, body["id"])
+             image_urls, json.dumps(body.get("toc") or []), body["id"])
         )
         conn.commit()
         return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}

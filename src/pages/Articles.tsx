@@ -25,6 +25,7 @@ const CATEGORIES: { value: string; label: string }[] = [
   { value: "test", label: "Тест / Бенчмарк" },
   { value: "guide", label: "Гайд" },
   { value: "repair", label: "Ремонты" },
+  { value: "tier_detail", label: "Подробный тир-лист" },
 ]
 
 const SORTS: { value: string; label: string; icon: string }[] = [

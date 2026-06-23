@@ -205,6 +205,18 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   начисляет % сотрудника × total на employee_accounts + employee_account_tx.
 - changeStage: переход в «Забрали» переводит заказ в done (и начисляет).
 
+### articles
+Статьи/обзоры/тесты. Таблица articles (title, slug, excerpt, content,
+cover_url, category, is_published, image_urls, html_attachment, views, toc).
+- views (v4.63): GET ?id=N инкрементирует просмотры; ?noview=1 — без подсчёта
+  (предпросмотр/редактор в админке).
+- toc (v4.64): JSONB-массив пунктов оглавления [{title, anchor}]. Админ ставит
+  в тексте метку [[#anchor]], на ArticlePage она превращается в якорь, клик по
+  пункту оглавления — плавный скролл + двойная вспышка абзаца (CSS .toc-flash).
+Категории (фронт, хардкод в 4 местах): article/review/test/guide/repair/tier_detail
+(«Подробный тир-лист»). Frontend: /articles (список), /articles/:id (ArticlePage),
+форма в AdminCatalogTab (вкладка add_article).
+
 ### quiz
 Анкета подбора ПК (страница /quiz → src/pages/Quiz.tsx) + админ-вкладка
 «Входящие заявки» (/admin/quiz_requests → QuizRequestsTab.tsx).

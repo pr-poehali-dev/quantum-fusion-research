@@ -237,6 +237,9 @@ export interface Article {
   is_published: boolean
   views: number
   created_at: string
+  content?: string
+  html_attachment?: string | null
+  toc?: { title: string; anchor: string }[]
 }
 
 export interface WipBuild {
