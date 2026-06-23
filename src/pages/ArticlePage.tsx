@@ -64,7 +64,9 @@ function ArticleTierCardCell({ c, gi, isAdmin, dragOver, onActivate, onDragStart
   )
   const cls = "tier-card group relative block aspect-[16/9] w-32 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44 cursor-pointer"
   const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
-  const aid = `toc-tier-card-${gi}`
+  // id карточки в блоке тир-листа. ОТЛИЧАЕТСЯ от текстовой метки toc-tier-card-N,
+  // иначе getElementById находил бы карточку вместо метки в тексте.
+  const aid = `tierblock-card-${gi}`
   return (
     <div className="relative flex shrink-0 items-stretch">
       {/* Полоса-индикатор вставки (только для админа при перетаскивании) */}
@@ -96,10 +98,15 @@ function ArticleTierList({ cards, isAdmin, onReorder }: {
   const [dragOverGi, setDragOverGi] = useState<number | null>(null)
   if (!cards.length) return null
 
-  // Клик по карточке: ведём к её якорю в тексте (для всех). Если якоря нет и
-  // карточка из каталога — для гостя открываем товар.
+  // Клик по карточке: ведём к её якорю в тексте. Приоритет:
+  // 1) собственный anchor карточки; 2) метка [[#tier-card-N]] по индексу в тексте;
+  // 3) для гостя без меток и с товаром — открыть товар.
   const activate = (c: TierCard) => {
-    if (c.anchor) { goToAnchor(c.anchor); return }
+    const idx = cards.indexOf(c)
+    const ownAnchor = c.anchor && document.getElementById(`toc-${c.anchor}`)
+    if (ownAnchor) { goToAnchor(c.anchor!); return }
+    const byIndex = document.getElementById(`toc-tier-card-${idx}`)
+    if (byIndex) { goToAnchor(`tier-card-${idx}`); return }
     if (!isAdmin && c.product_id) window.location.href = `/product/${c.product_id}`
   }
 
@@ -219,6 +226,17 @@ function goToAnchor(slug: string) {
   void target.offsetWidth   // reflow — чтобы анимация перезапускалась при повторном клике
   target.classList.add(flashClass)
   window.setTimeout(() => target.classList.remove(flashClass), 1500)
+}
+
+// Прокрутка к карточке в блоке тир-листа (по её id tierblock-card-N) + подсветка
+function goToTierCard(idx: number) {
+  const el = document.getElementById(`tierblock-card-${idx}`)
+  if (!el) return
+  el.scrollIntoView({ behavior: "smooth", block: "center" })
+  el.classList.remove("toc-flash-card")
+  void el.offsetWidth
+  el.classList.add("toc-flash-card")
+  window.setTimeout(() => el.classList.remove("toc-flash-card"), 1500)
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -516,7 +534,7 @@ function TableOfContents({ items, variant, cards }: { items: TocItem[]; variant:
               <ol className="ml-3 mt-1 space-y-0.5 border-l border-border pl-2">
                 {cards.map((c, ci) => (
                   <li key={ci}>
-                    <button onClick={() => goToAnchor(c.anchor || `tier-card-${ci}`)}
+                    <button onClick={() => goToTierCard(ci)}
                       className="flex w-full items-start gap-2 rounded-lg px-2 py-1 text-left text-xs text-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary"
                       style={{ cursor: "pointer" }}>
                       {c.rank && <span className="mt-px font-mono text-foreground/30">{c.rank}</span>}
