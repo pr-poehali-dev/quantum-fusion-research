@@ -11,6 +11,9 @@ import {
 import { BuildRow, BuildsList } from "./BuildsList"
 import BrandsManager from "./BrandsManager"
 
+// Зарезервированный якорь оглавления для блока тир-листа статьи
+const TIER_ANCHOR = "__tierlist__"
+
 interface Props {
   tab: AdminTab
   setTab: (t: AdminTab) => void
@@ -376,6 +379,7 @@ export function AdminCatalogTab({
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
   const [tierProductSearch, setTierProductSearch] = useState("")  // поиск товара для карточки тир-листа
+  const [tocDragIdx, setTocDragIdx] = useState<number | null>(null)  // перетаскивание пункта оглавления
 
   const addTierCard = () => setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: "", image_url: "", rank: null }] }))
   const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null; product_id?: number }>) =>
@@ -395,10 +399,20 @@ export function AdminCatalogTab({
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
   const addTocItem = () => setArticleForm(f => ({ ...f, toc: [...f.toc, { title: "", anchor: `p${f.toc.length + 1}` }] }))
+  // Пункт-ссылка на блок тир-листа статьи (особый зарезервированный якорь)
+  const addTocTierItem = () => setArticleForm(f => ({ ...f, toc: [...f.toc, { title: "Тир-лист", anchor: TIER_ANCHOR }] }))
   const updateTocItem = (i: number, patch: Partial<{ title: string; anchor: string }>) =>
     setArticleForm(f => ({ ...f, toc: f.toc.map((t, idx) => idx === i ? { ...t, ...patch } : t) }))
   const removeTocItem = (i: number) =>
     setArticleForm(f => ({ ...f, toc: f.toc.filter((_, idx) => idx !== i) }))
+  // Перемещение пункта оглавления с позиции from на to (drag&drop)
+  const moveTocItem = (from: number, to: number) => setArticleForm(f => {
+    if (from === to || to < 0 || to >= f.toc.length) return f
+    const arr = [...f.toc]
+    const [m] = arr.splice(from, 1)
+    arr.splice(to, 0, m)
+    return { ...f, toc: arr }
+  })
   const copyAnchorTag = (anchor: string) => {
     navigator.clipboard.writeText(`[[#${anchor}]]`)
     setCopiedAnchor(anchor)
@@ -1158,42 +1172,71 @@ export function AdminCatalogTab({
                 По клику в статье будет плавная прокрутка к этому месту.
               </p>
             </div>
-            <button type="button" onClick={addTocItem}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="Plus" size={13} /> Пункт
-            </button>
+            <div className="flex shrink-0 gap-2">
+              {articleForm.category === "tier_detail" && !articleForm.toc.some(t => t.anchor === TIER_ANCHOR) && (
+                <button type="button" onClick={addTocTierItem}
+                  className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 transition-colors" style={{ cursor: "pointer" }}>
+                  <Icon name="Trophy" size={13} /> Пункт на тир-лист
+                </button>
+              )}
+              <button type="button" onClick={addTocItem}
+                className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={13} /> Пункт
+              </button>
+            </div>
           </div>
 
           {articleForm.toc.length === 0 ? (
             <p className="py-3 text-center text-xs text-foreground/40">Пунктов пока нет</p>
           ) : (
             <div className="space-y-2">
-              {articleForm.toc.map((t, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background/40 p-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-xs font-mono text-foreground/50">{i + 1}</span>
+              {articleForm.toc.map((t, i) => {
+                const isTier = t.anchor === TIER_ANCHOR
+                return (
+                <div key={i}
+                  draggable
+                  onDragStart={() => setTocDragIdx(i)}
+                  onDragOver={e => { if (tocDragIdx !== null && tocDragIdx !== i) e.preventDefault() }}
+                  onDrop={() => { if (tocDragIdx !== null) moveTocItem(tocDragIdx, i); setTocDragIdx(null) }}
+                  onDragEnd={() => setTocDragIdx(null)}
+                  className={`flex flex-wrap items-center gap-2 rounded-lg border bg-background/40 p-2 transition-colors ${tocDragIdx === i ? "border-primary opacity-60" : "border-border"}`}>
+                  <span className="flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded bg-muted text-foreground/40 active:cursor-grabbing" title="Перетащите для изменения порядка">
+                    <Icon name="GripVertical" size={13} />
+                  </span>
                   <input
                     value={t.title}
-                    onChange={e => updateTocItem(i, { title: e.target.value, anchor: t.anchor || anchorSlug(e.target.value) || `p${i + 1}` })}
+                    onChange={e => updateTocItem(i, isTier ? { title: e.target.value } : { title: e.target.value, anchor: t.anchor || anchorSlug(e.target.value) || `p${i + 1}` })}
                     placeholder="Название пункта (напр. «Итоги»)"
                     className="min-w-[140px] flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-                  <input
-                    value={t.anchor}
-                    onChange={e => updateTocItem(i, { anchor: anchorSlug(e.target.value) })}
-                    placeholder="метка"
-                    className="w-28 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-mono text-foreground/70 focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-                  <button type="button" onClick={() => copyAnchorTag(t.anchor)} title="Скопировать метку для вставки в текст"
-                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
-                    <Icon name={copiedAnchor === t.anchor ? "Check" : "Copy"} size={12} />
-                    {copiedAnchor === t.anchor ? "Скопировано" : `[[#${t.anchor}]]`}
-                  </button>
+                  {isTier ? (
+                    <span className="flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary">
+                      <Icon name="Trophy" size={12} /> блок тир-листа
+                    </span>
+                  ) : (
+                    <>
+                      <input
+                        value={t.anchor}
+                        onChange={e => updateTocItem(i, { anchor: anchorSlug(e.target.value) })}
+                        placeholder="метка"
+                        className="w-28 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-mono text-foreground/70 focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                      <button type="button" onClick={() => copyAnchorTag(t.anchor)} title="Скопировать метку для вставки в текст"
+                        className="flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name={copiedAnchor === t.anchor ? "Check" : "Copy"} size={12} />
+                        {copiedAnchor === t.anchor ? "Скопировано" : `[[#${t.anchor}]]`}
+                      </button>
+                    </>
+                  )}
                   <button type="button" onClick={() => removeTocItem(i)}
                     className="rounded-lg border border-border px-2 py-1.5 text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
                     <Icon name="Trash2" size={12} />
                   </button>
                 </div>
-              ))}
+                )
+              })}
               <p className="text-xs text-foreground/40">
-                Метку <span className="font-mono text-foreground/60">[[#метка]]</span> вставьте в текст там, куда должна вести прокрутка (в начало нужного абзаца).
+                Перетаскивайте пункты за <Icon name="GripVertical" size={11} className="inline" /> для изменения порядка.
+                Метку <span className="font-mono text-foreground/60">[[#метка]]</span> вставьте в текст там, куда должна вести прокрутка.
+                Пункт «тир-лист» ведёт к блоку тир-листа автоматически.
               </p>
             </div>
           )}

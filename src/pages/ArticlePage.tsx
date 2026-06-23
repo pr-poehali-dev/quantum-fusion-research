@@ -39,7 +39,8 @@ function ArticleTierList({ cards }: { cards: TierCard[] }) {
   const used = TIER_ROWS.filter(t => cards.some(c => c.rank === t.rank))
   if (!used.length) return null
   return (
-    <div className="my-8 overflow-hidden rounded-2xl border border-border">
+    // id-якорь, чтобы пункт оглавления «Тир-лист» вёл сюда (scroll-margin от шапки)
+    <div id="toc-__tierlist__" className="my-8 overflow-hidden rounded-2xl border border-border" style={{ scrollMarginTop: 90 }}>
       {used.map((t, idx) => (
         <div key={t.rank} className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""}`}>
           <div className="flex w-14 shrink-0 items-center justify-center sm:w-16" style={{ backgroundColor: t.color }}>
@@ -89,14 +90,18 @@ function goToAnchor(slug: string) {
   const el = document.getElementById(`toc-${slug}`)
   if (!el) return
 
-  // Поднимаемся до блока — прямого потомка контейнера .rich-content
   let target: HTMLElement = el
-  let node: HTMLElement | null = el
-  while (node && !node.parentElement?.classList.contains("rich-content")) {
-    node = node.parentElement
+  // Если якорь — пустой span-метка внутри текста, поднимаемся до блока
+  // верхнего уровня (.rich-content). Если это реальный блок (напр. тир-лист) —
+  // используем его напрямую.
+  if (el.classList.contains("toc-anchor")) {
+    let node: HTMLElement | null = el
+    while (node && !node.parentElement?.classList.contains("rich-content")) {
+      node = node.parentElement
+      if (node) target = node
+    }
     if (node) target = node
   }
-  if (node) target = node  // блок верхнего уровня
 
   // Скроллим именно к видимому блоку (отступ от липкой шапки)
   target.style.scrollMarginTop = "90px"
