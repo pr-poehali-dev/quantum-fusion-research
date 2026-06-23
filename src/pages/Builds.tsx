@@ -7,6 +7,7 @@ import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
+import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
 import { useRef } from "react"
 
@@ -276,32 +277,8 @@ export default function Builds() {
 
       <CartToast key={toastKey} show={toastShow} productName={toastName} />
 
-      {/* Табы — как в Shop */}
-      <div className="border-b border-border">
-        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch">
-          <button onClick={() => navigate("/shop")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Package" size={15} />
-            Каталог товаров
-          </button>
-          <button className="flex shrink-0 items-center gap-2 border-b-2 border-primary px-5 py-3 text-sm font-medium text-primary transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Monitor" size={15} />
-            Наши ПК
-          </button>
-          <div className="mx-3 my-3 w-px bg-border shrink-0" />
-          <button onClick={() => navigate("/configurator")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Cpu" size={15} />
-            Конфигуратор
-          </button>
-          <button onClick={() => navigate("/community-builds")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Users" size={15} />
-            Сборки сообщества
-          </button>
-          <button onClick={() => navigate("/tier-lists")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Trophy" size={15} />
-            Тир-листы
-          </button>
-        </div>
-      </div>
+      {/* Табы каталога */}
+      <CatalogTabs />
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">

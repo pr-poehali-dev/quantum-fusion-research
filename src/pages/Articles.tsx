@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
 
 interface Article {
@@ -94,6 +95,8 @@ export default function Articles() {
           </div>
         </div>
       </div>
+
+      <CatalogTabs />
 
       <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
         {/* Заголовок */}

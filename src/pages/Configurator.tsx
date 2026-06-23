@@ -11,6 +11,7 @@ import CommentSection from "@/components/CommentSection"
 import NotificationBell from "@/components/NotificationBell"
 import SlotPickerModal, { SelectedSpecValues } from "@/components/configurator/SlotPickerModal"
 import { findCompatIssues, SpecLinkRule, SchemaAttribute } from "@/components/configurator/compatCheck"
+import CatalogTabs from "@/components/CatalogTabs"
 
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
@@ -545,27 +546,7 @@ export default function Configurator() {
       </header>
 
       {/* Табы */}
-      <div className="border-b border-border">
-        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch">
-          <button onClick={() => navigate("/shop")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Package" size={15} />
-            Каталог товаров
-          </button>
-          <button onClick={() => navigate("/builds")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Monitor" size={15} />
-            Наши ПК
-          </button>
-          <div className="mx-3 my-3 w-px bg-border shrink-0" />
-          <button className="flex shrink-0 items-center gap-2 border-b-2 border-primary px-5 py-3 text-sm font-medium text-primary transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Cpu" size={15} />
-            Конфигуратор
-          </button>
-          <button onClick={() => navigate("/community-builds")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Users" size={15} />
-            Сборки сообщества
-          </button>
-        </div>
-      </div>
+      <CatalogTabs />
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6 flex items-start justify-between gap-4">

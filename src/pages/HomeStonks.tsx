@@ -6,6 +6,7 @@ import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
+import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
 
 interface CommunityBuild {
@@ -149,63 +150,8 @@ export default function HomeStonks() {
         </div>
       </header>
 
-      {/* Навигационные табы (как в Shop) */}
-      <div className="border-b border-border">
-        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch">
-          <button
-            onClick={() => navigate("/shop")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Package" size={15} />
-            Каталог товаров
-          </button>
-          <button
-            onClick={() => navigate("/builds")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Monitor" size={15} />
-            Наши ПК
-          </button>
-
-          {/* Разделитель */}
-          <div className="mx-3 my-3 w-px bg-border shrink-0" />
-
-          <button
-            onClick={() => navigate("/configurator")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Cpu" size={15} />
-            Конфигуратор
-          </button>
-          <button
-            onClick={() => navigate("/community-builds")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Users" size={15} />
-            Сборки сообщества
-          </button>
-          <button
-            onClick={() => navigate("/articles")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="BookOpen" size={15} />
-            Статьи
-          </button>
-          <button
-            onClick={() => navigate("/tier-lists")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Trophy" size={15} />
-            Тир-листы
-          </button>
-        </div>
-      </div>
+      {/* Навигационные табы */}
+      <CatalogTabs />
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* Три баннера */}

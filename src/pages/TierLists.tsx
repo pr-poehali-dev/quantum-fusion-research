@@ -5,6 +5,7 @@ import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
+import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
 
 interface TierItem {
@@ -162,6 +163,8 @@ export default function TierLists() {
           </div>
         </div>
       </header>
+
+      <CatalogTabs />
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">

@@ -14,12 +14,28 @@ const ACCENT_BG: Record<string, string> = {
 }
 
 export function ThemeSwitcher() {
-  const { mode, accentId, setMode, setAccent } = useTheme()
+  const { mode, accentId, everChanged, hintDismissed, setMode, setAccent, dismissThemeHint } = useTheme()
   const [open, setOpen] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
+  const [showHint, setShowHint] = useState(false)
+  const [hintExpanded, setHintExpanded] = useState(false)
   const pickerRef = useRef<HTMLInputElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const [popupPos, setPopupPos] = useState({ top: 0, right: 0 })
+
+  // Подсказка о смене темы: если пользователь ни разу не менял тему и не скрыл
+  // подсказку — показываем её через 30 секунд пребывания на странице.
+  useEffect(() => {
+    if (everChanged || hintDismissed) { setShowHint(false); return }
+    const t = setTimeout(() => setShowHint(true), 30000)
+    return () => clearTimeout(t)
+  }, [everChanged, hintDismissed])
+
+  // Любое открытие настроек или смена темы — прячем подсказку
+  useEffect(() => { if (open || everChanged) setShowHint(false) }, [open, everChanged])
+
+  const closeHintForever = () => { dismissThemeHint(); setShowHint(false) }
+  const closeHint = () => { setShowHint(false); setHintExpanded(false) }
 
   useEffect(() => {
     if (open && btnRef.current) {
@@ -80,7 +96,61 @@ export function ThemeSwitcher() {
           className="h-3 w-3 rounded-full ring-1 ring-border"
           style={{ backgroundColor: accentId.startsWith("custom:") ? currentCustomHex : currentDot }}
         />
+        {showHint && (
+          <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+          </span>
+        )}
       </button>
+
+      {/* Подсказка про смену темы */}
+      {showHint && (
+        <div
+          onMouseEnter={() => setHintExpanded(true)}
+          onMouseLeave={() => setHintExpanded(false)}
+          className="absolute right-0 top-full z-[60] mt-2 w-60 rounded-xl border border-border bg-card p-3 shadow-2xl"
+          style={{ cursor: "auto" }}
+        >
+          <div className="absolute -top-1.5 right-5 h-3 w-3 rotate-45 border-l border-t border-border bg-card" />
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+              <Icon name="Palette" size={14} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Можно сменить тему</p>
+              <p className="mt-0.5 text-xs leading-snug text-foreground/55">
+                Тёмная или светлая, плюс любой акцентный цвет — нажмите на кнопку рядом.
+              </p>
+            </div>
+          </div>
+          {hintExpanded && (
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => { closeHint(); setOpen(true) }}
+                className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}
+              >
+                Открыть
+              </button>
+              <button
+                onClick={closeHint}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}
+              >
+                Ок, спасибо
+              </button>
+            </div>
+          )}
+          <button
+            onClick={closeHintForever}
+            className="mt-2 w-full text-center text-[11px] text-foreground/40 hover:text-foreground/70 transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            Больше не показывать
+          </button>
+        </div>
+      )}
 
       {open && createPortal(
         <>

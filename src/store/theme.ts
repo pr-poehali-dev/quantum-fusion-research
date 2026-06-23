@@ -23,8 +23,11 @@ export const ACCENT_COLORS: AccentColor[] = [
 interface ThemeStore {
   mode: ThemeMode
   accentId: string
+  everChanged: boolean      // менял ли пользователь тему хоть раз
+  hintDismissed: boolean    // скрыл ли подсказку «больше не показывать»
   setMode: (mode: ThemeMode) => void
   setAccent: (id: string) => void
+  dismissThemeHint: () => void
   getAccent: () => AccentColor
   getShaderColors: () => { colorA: string; colorB: string; base: string; glow: string }
 }
@@ -64,8 +67,11 @@ export const useTheme = create<ThemeStore>()(
     (set, get) => ({
       mode: "dark",
       accentId: "red",
-      setMode: (mode) => set({ mode }),
-      setAccent: (accentId) => set({ accentId }),
+      everChanged: false,
+      hintDismissed: false,
+      setMode: (mode) => set({ mode, everChanged: true }),
+      setAccent: (accentId) => set({ accentId, everChanged: true }),
+      dismissThemeHint: () => set({ hintDismissed: true }),
 
       getAccent: () => {
         const id = get().accentId

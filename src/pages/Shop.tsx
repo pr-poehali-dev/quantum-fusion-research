@@ -7,6 +7,7 @@ import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
+import CatalogTabs from "@/components/CatalogTabs"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, emptyFilterState, applyShopFilters } from "@/components/shop/ShopFilters"
 
@@ -326,46 +327,7 @@ export default function Shop() {
       <CartToast key={toastKey} show={toastShow} productName={toastName} />
 
       {/* Tab selector */}
-      <div className="border-b border-border">
-        <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch">
-          <button
-            onClick={() => setShopTab("catalog")}
-            className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${shopTab === "catalog" ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Package" size={15} />
-            Каталог товаров
-          </button>
-          <button
-            onClick={() => navigate("/builds")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Monitor" size={15} />
-            Наши ПК
-          </button>
-
-          {/* Разделитель */}
-          <div className="mx-3 my-3 w-px bg-border shrink-0" />
-
-          <button
-            onClick={() => navigate("/configurator")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Cpu" size={15} />
-            Конфигуратор
-          </button>
-          <button
-            onClick={() => navigate("/community-builds")}
-            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-            style={{ cursor: "pointer" }}
-          >
-            <Icon name="Users" size={15} />
-            Сборки сообщества
-          </button>
-        </div>
-      </div>
+      <CatalogTabs />
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         {/* CATALOG TAB */}
