@@ -372,13 +372,29 @@ export function AdminCatalogTab({
   const [articleForm, setArticleForm] = useState({
     id: null as number | null,
     title: "", slug: "", excerpt: "", content: "",
-    image_url: "", image_urls: [] as string[], category: "article", is_published: false,
+    image_url: "", image_urls: [] as string[], categories: ["article"] as string[], is_published: false,
     html_attachment: "",
     toc: [] as { title: string; anchor: string }[],
     tier_cards: [] as { title: string; image_url: string; rank: string | null; product_id?: number }[],
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
   const [tierProductSearch, setTierProductSearch] = useState("")  // поиск товара для карточки тир-листа
+
+  // Доступные типы статей (можно выбрать несколько)
+  const ARTICLE_CATEGORIES: { value: string; label: string }[] = [
+    { value: "article", label: "Статья" },
+    { value: "review", label: "Обзор" },
+    { value: "test", label: "Тест / Бенчмарк" },
+    { value: "guide", label: "Гайд" },
+    { value: "repair", label: "Ремонты" },
+    { value: "tier_detail", label: "Подробный тир-лист" },
+  ]
+  const toggleArticleCategory = (val: string) => setArticleForm(f => {
+    const has = f.categories.includes(val)
+    let next = has ? f.categories.filter(c => c !== val) : [...f.categories, val]
+    if (next.length === 0) next = ["article"]  // хотя бы один тип
+    return { ...f, categories: next }
+  })
   const [tocDragIdx, setTocDragIdx] = useState<number | null>(null)  // перетаскивание пункта оглавления
 
   const addTierCard = () => setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: "", image_url: "", rank: null }] }))
@@ -427,14 +443,14 @@ export function AdminCatalogTab({
       excerpt: articleForm.excerpt || null, content: articleForm.content,
       image_url: articleForm.image_urls[0] || articleForm.image_url || null,
       image_urls: articleForm.image_urls,
-      category: articleForm.category, is_published: articleForm.is_published,
+      categories: articleForm.categories, is_published: articleForm.is_published,
       html_attachment: articleForm.html_attachment || null,
       toc: articleForm.toc.filter(t => t.title.trim() && t.anchor.trim()),
       tier_cards: articleForm.tier_cards.filter(c => c.title.trim() || c.image_url),
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
-    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "", toc: [], tier_cards: [] })
+    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] })
     setTab("articles")
   }
 
@@ -443,10 +459,11 @@ export function AdminCatalogTab({
       id: a.id, title: a.title, slug: a.slug,
       excerpt: a.excerpt || "", content: "",
       image_url: a.image_url || "", image_urls: a.image_urls || (a.image_url ? [a.image_url] : []),
-      category: a.category, is_published: a.is_published, html_attachment: "", toc: [], tier_cards: [],
+      categories: (a.categories && a.categories.length ? a.categories : [a.category || "article"]),
+      is_published: a.is_published, html_attachment: "", toc: [], tier_cards: [],
     })
     api.articles.getById(a.id, true).then(full => {
-      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [] }))
+      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [], categories: (full.categories && full.categories.length ? full.categories : f.categories) }))
     })
     setTab("add_article")
   }
@@ -1078,7 +1095,7 @@ export function AdminCatalogTab({
     <div>
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
-        <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
+        <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Plus" size={15} />Новая статья
         </button>
@@ -1098,9 +1115,11 @@ export function AdminCatalogTab({
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.is_published ? "bg-green-400/10 text-green-400" : "bg-muted text-foreground/40"}`}>
                     {a.is_published ? "Опубликована" : "Черновик"}
                   </span>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">
-                    {{ review: "Обзор", test: "Тест", guide: "Гайд", repair: "Ремонты", tier_detail: "Тир-лист", article: "Статья" }[a.category] || "Статья"}
-                  </span>
+                  {((a.categories && a.categories.length ? a.categories : [a.category]).map(cat =>
+                    <span key={cat} className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">
+                      {{ review: "Обзор", test: "Тест", guide: "Гайд", repair: "Ремонты", tier_detail: "Тир-лист", article: "Статья" }[cat || "article"] || "Статья"}
+                    </span>
+                  ))}
                 </div>
                 <p className="text-sm font-medium text-foreground truncate">{a.title}</p>
                 <p className="text-xs text-foreground/40">{new Date(a.created_at).toLocaleDateString("ru-RU")} · {a.views} просмотров</p>
@@ -1135,16 +1154,20 @@ export function AdminCatalogTab({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-foreground/60">Категория</label>
-            <select value={articleForm.category} onChange={e => setArticleForm(f => ({ ...f, category: e.target.value }))}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-              <option value="article">Статья</option>
-              <option value="review">Обзор</option>
-              <option value="test">Тест / Бенчмарк</option>
-              <option value="guide">Гайд</option>
-              <option value="repair">Ремонты</option>
-              <option value="tier_detail">Подробный тир-лист</option>
-            </select>
+            <label className="mb-1 block text-xs text-foreground/60">Типы (можно несколько)</label>
+            <div className="flex flex-wrap gap-2">
+              {ARTICLE_CATEGORIES.map(c => {
+                const on = articleForm.categories.includes(c.value)
+                return (
+                  <button key={c.value} type="button" onClick={() => toggleArticleCategory(c.value)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${on ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary/50"}`}
+                    style={{ cursor: "pointer" }}>
+                    <Icon name={on ? "CheckSquare" : "Square"} size={14} />
+                    {c.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div>
             <label className="mb-2 block text-xs text-foreground/60">Изображения статьи</label>
@@ -1173,7 +1196,7 @@ export function AdminCatalogTab({
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
-              {articleForm.category === "tier_detail" && !articleForm.toc.some(t => t.anchor === TIER_ANCHOR) && (
+              {articleForm.categories.includes("tier_detail") && !articleForm.toc.some(t => t.anchor === TIER_ANCHOR) && (
                 <button type="button" onClick={addTocTierItem}
                   className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 transition-colors" style={{ cursor: "pointer" }}>
                   <Icon name="Trophy" size={13} /> Пункт на тир-лист
@@ -1242,8 +1265,8 @@ export function AdminCatalogTab({
           )}
         </div>
 
-        {/* ── Карточки тир-листа (только для категории «Подробный тир-лист») ── */}
-        {articleForm.category === "tier_detail" && (
+        {/* ── Карточки тир-листа (только для типа «Подробный тир-лист») ── */}
+        {articleForm.categories.includes("tier_detail") && (
           <div className="rounded-xl border border-border bg-card/40 p-4">
             <div className="mb-2 flex items-center justify-between">
               <div>

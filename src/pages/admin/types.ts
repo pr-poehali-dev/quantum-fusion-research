@@ -234,6 +234,7 @@ export interface Article {
   image_url: string | null
   image_urls?: string[]
   category: string
+  categories?: string[]
   is_published: boolean
   views: number
   created_at: string

@@ -222,8 +222,10 @@ cover_url, category, is_published, image_urls, html_attachment, views, toc).
   ArticlePage рендерятся таблицей по рядам S/A/B/C/D/F (ArticleTierList).
 products resource=tier (v4.65): отдаёт price, in_stock, values, attributes —
 для фильтра-сайдбара ShopFilters на /tier-lists (бренд+характеристики+цена+наличие).
-Категории (фронт, хардкод в 4 местах): article/review/test/guide/repair/tier_detail
-(«Подробный тир-лист»). Frontend: /articles (список), /articles/:id (ArticlePage),
+Категории (фронт, хардкод): article/review/test/guide/repair/tier_detail
+(«Подробный тир-лист»). v4.71: у статьи НЕСКОЛЬКО типов — поле categories
+(JSONB-массив, миграция V0153); category = первый элемент (совместимость).
+GET ?category= фильтрует по вхождению в массив. В админке — мультивыбор чекбоксами. Frontend: /articles (список), /articles/:id (ArticlePage),
 форма в AdminCatalogTab (вкладка add_article).
 
 ### quiz

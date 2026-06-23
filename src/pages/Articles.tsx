@@ -12,11 +12,15 @@ interface Article {
   excerpt: string | null
   image_url: string | null
   category: string
+  categories?: string[]
   tags: string[]
   views: number
   comments_count?: number
   created_at: string
 }
+
+// Категории статьи (массив с фолбэком на старое одиночное поле)
+const articleCats = (a: Article): string[] => (a.categories && a.categories.length ? a.categories : [a.category])
 
 const CATEGORIES: { value: string; label: string }[] = [
   { value: "all", label: "Все" },
@@ -67,7 +71,7 @@ export default function Articles() {
   const filtered = useMemo(() => {
     let list = [...articles]
 
-    if (category !== "all") list = list.filter(a => a.category === category)
+    if (category !== "all") list = list.filter(a => articleCats(a).includes(category))
 
     if (query.trim()) {
       const q = query.toLowerCase()
@@ -186,9 +190,13 @@ export default function Articles() {
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                  <span className="absolute top-3 left-3 rounded-full bg-foreground/80 px-2 py-0.5 text-xs text-background backdrop-blur-sm">
-                    {CATEGORIES.find(c => c.value === a.category)?.label ?? a.category}
-                  </span>
+                  <div className="absolute top-3 left-3 flex flex-wrap gap-1">
+                    {articleCats(a).map(cat => (
+                      <span key={cat} className="rounded-full bg-foreground/80 px-2 py-0.5 text-xs text-background backdrop-blur-sm">
+                        {CATEGORIES.find(c => c.value === cat)?.label ?? cat}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Мета */}

@@ -13,6 +13,7 @@ interface Article {
   image_url: string | null
   image_urls?: string[]
   category: string
+  categories?: string[]
   content: string
   html_attachment: string | null
   views: number
@@ -458,9 +459,11 @@ export default function ArticlePage() {
         <main className={`mx-auto px-4 py-10 sm:py-16 ${hasToc ? "max-w-6xl" : "max-w-4xl"}`}>
           <div className="mb-6">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                {CATEGORY_LABELS[article.category] || article.category}
-              </span>
+              {(article.categories && article.categories.length ? article.categories : [article.category]).map(cat => (
+                <span key={cat} className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  {CATEGORY_LABELS[cat] || cat}
+                </span>
+              ))}
               <span className="text-xs text-muted-foreground">{fmt(article.created_at)}</span>
             </div>
             <h1 className="mb-4 text-3xl sm:text-4xl font-light leading-tight text-foreground">{article.title}</h1>

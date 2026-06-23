@@ -44,11 +44,18 @@ def handler(event: dict, context) -> dict:
         image_urls = list(row[11]) if len(row) > 11 and row[11] else []
         # cover_url берём из image_urls[0] если есть, иначе из cover_url
         cover = image_urls[0] if image_urls else row[5]
+        # categories — массив кодов; для совместимости category = первый элемент
+        cats_raw = row[15] if len(row) > 15 else None
+        cats = cats_raw if isinstance(cats_raw, list) else (json.loads(cats_raw) if cats_raw else [])
+        if not cats and row[6]:
+            cats = [row[6]]
         a = {
             "id": row[0], "title": row[1], "slug": row[2],
             "excerpt": row[3], "image_url": cover,
             "image_urls": image_urls,
-            "category": row[6], "tags": [],
+            "category": cats[0] if cats else row[6],
+            "categories": cats,
+            "tags": [],
             "is_published": row[7],
             "views": row[12] if len(row) > 12 and row[12] is not None else 0,
             "created_at": row[9].isoformat() if row[9] else None,
@@ -64,7 +71,7 @@ def handler(event: dict, context) -> dict:
         return a
 
     COLS = ("id, title, slug, excerpt, content, cover_url, category, "
-            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc, tier_cards")
+            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc, tier_cards, categories")
 
     if method == "GET":
         article_id = params.get("id")
@@ -90,7 +97,10 @@ def handler(event: dict, context) -> dict:
                 where.append("is_published = true")
             category = params.get("category")
             if category:
-                where.append("category = %s")
+                # Совпадение по массиву categories (JSONB contains) ИЛИ по старому
+                # одиночному полю category — для статей без заполненного массива.
+                where.append("(categories @> %s::jsonb OR category = %s)")
+                args.append(json.dumps([category]))
                 args.append(category)
             where_sql = ("WHERE " + " AND ".join(where)) if where else ""
             limit = int(params.get("limit", 20))
@@ -109,15 +119,19 @@ def handler(event: dict, context) -> dict:
         slug = body.get("slug") or slugify(body["title"]) or f"article-{os.urandom(4).hex()}"
         image_urls = body.get("image_urls") or []
         cover_url = image_urls[0] if image_urls else body.get("image_url")
+        # categories — массив; если пуст, берём одиночную category
+        cats = body.get("categories") or ([body["category"]] if body.get("category") else ["article"])
+        main_cat = cats[0] if cats else "article"
         cur.execute(
-            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc, tier_cards)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc, tier_cards, categories)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
-             cover_url, body.get("category", "article"),
+             cover_url, main_cat,
              body.get("is_published", False),
              body.get("html_attachment") or None,
              image_urls, json.dumps(body.get("toc") or []),
-             json.dumps(body.get("tier_cards") or []))
+             json.dumps(body.get("tier_cards") or []),
+             json.dumps(cats))
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -128,15 +142,18 @@ def handler(event: dict, context) -> dict:
         slug = body.get("slug") or slugify(body["title"])
         image_urls = body.get("image_urls") or []
         cover_url = image_urls[0] if image_urls else body.get("image_url")
+        cats = body.get("categories") or ([body["category"]] if body.get("category") else ["article"])
+        main_cat = cats[0] if cats else "article"
         cur.execute(
             """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, cover_url=%s,
-               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s, tier_cards=%s WHERE id=%s""",
+               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s, tier_cards=%s, categories=%s WHERE id=%s""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
-             cover_url, body.get("category", "article"),
+             cover_url, main_cat,
              body.get("is_published", False),
              body.get("html_attachment") or None,
              image_urls, json.dumps(body.get("toc") or []),
-             json.dumps(body.get("tier_cards") or []), body["id"])
+             json.dumps(body.get("tier_cards") or []),
+             json.dumps(cats), body["id"])
         )
         conn.commit()
         return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
