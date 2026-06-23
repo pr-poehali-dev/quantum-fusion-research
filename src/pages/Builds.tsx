@@ -79,7 +79,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
       className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left transition-colors hover:border-primary/50 cursor-pointer"
     >
       {/* ─── Фото сверху ─── */}
-      <div className="relative h-64 w-full overflow-hidden">
+      <div className="relative h-80 w-full overflow-hidden">
         {hasImage ? (
           images.map((url, i) => (
             <img key={i} src={url} alt={b.name}
@@ -174,21 +174,21 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
         </div>
       </div>
 
-      {/* ─── Плашка снизу: название + цена (как на главной) ─── */}
-      <div className="flex flex-1 flex-col p-3">
-        <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary transition-colors">{b.name}</p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-base font-bold">{fmt(calcTotal)}</p>
+      {/* ─── Плашка снизу: название + цена (как на главной, масштаб +25%) ─── */}
+      <div className="flex flex-1 flex-col p-4">
+        <p className="line-clamp-2 text-base font-medium leading-snug group-hover:text-primary transition-colors">{b.name}</p>
+        <div className="mt-2.5 flex items-center justify-between gap-3">
+          <p className="text-lg font-bold">{fmt(calcTotal)}</p>
           {b.reserved ? (
             <span
-              className="shrink-0 rounded-lg bg-orange-500/15 border border-orange-400/40 px-3 py-1.5 text-xs font-semibold text-orange-500 cursor-help"
+              className="shrink-0 rounded-lg bg-orange-500/15 border border-orange-400/40 px-4 py-2 text-sm font-semibold text-orange-500 cursor-help"
               title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
               В резерве
             </span>
           ) : (
             <button
               onClick={e => { e.stopPropagation(); onOrder() }}
-              className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
               style={{ cursor: "pointer" }}
             >
               Заказать
