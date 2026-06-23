@@ -148,23 +148,26 @@ export default function TierLists() {
         onDragStart={e => { setPickedId(null); setDragId(it.id); e.dataTransfer.effectAllowed = "move" }}
         onDragEnd={() => setDragId(null)}
         onClick={() => onCardClick(it)}
-        title={isAdmin ? "Нажмите, чтобы выбрать, затем нажмите на нужный ряд" : it.name}
-        className={`group relative aspect-[16/9] w-32 shrink-0 overflow-visible rounded-lg border bg-muted transition-transform hover:z-20 hover:scale-105 sm:w-44 ${picked ? "z-20 border-primary ring-2 ring-primary scale-105" : "border-border"} cursor-pointer active:cursor-grabbing`}
+        className={`group relative aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-lg border bg-muted transition-transform duration-200 ease-out hover:z-20 hover:scale-[1.03] sm:w-44 ${picked ? "z-20 border-primary ring-2 ring-primary scale-[1.03]" : "border-border"} cursor-pointer active:cursor-grabbing`}
       >
-        {/* Всплывающий бокс с названием — над верхней границей фото при наведении */}
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1.5 w-max max-w-[200px] -translate-x-1/2 scale-95 rounded-lg border border-border bg-card px-2.5 py-1.5 text-center opacity-0 shadow-xl transition-all duration-150 group-hover:scale-100 group-hover:opacity-100">
-          <p className="text-xs font-medium leading-snug text-foreground">{it.name}</p>
-          <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 border-b border-r border-border bg-card" />
-        </div>
+        {it.image_url
+          ? <img
+              src={it.image_url}
+              alt={it.name}
+              draggable={false}
+              loading="lazy"
+              className="h-full w-full object-cover"
+              style={{ imageRendering: "auto", backfaceVisibility: "hidden", transform: "translateZ(0)" }}
+            />
+          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
 
-        <div className="h-full w-full overflow-hidden rounded-lg">
-          {it.image_url
-            ? <img src={it.image_url} alt={it.name} draggable={false} className="h-full w-full object-cover" />
-            : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+        {/* Название — отдельное окно поверх превью на весь её размер при наведении */}
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/85 px-2 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+          <p className="text-xs font-semibold leading-snug text-foreground sm:text-sm">{it.name}</p>
         </div>
 
         {picked && (
-          <div className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+          <div className="absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
             <Icon name="Check" size={12} />
           </div>
         )}
