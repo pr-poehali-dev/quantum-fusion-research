@@ -342,3 +342,20 @@
     box-shadow: 0 0 0 0 hsl(var(--primary) / 0);
   }
 }
+
+/* Двойная вспышка карточки тир-листа — рамкой (фон перекрыт картинкой) */
+.toc-flash-card {
+  animation: tocFlashCard 1.4s ease-in-out;
+}
+@keyframes tocFlashCard {
+  0%,
+  35%,
+  75%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0);
+  }
+  15%,
+  55% {
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.9);
+  }
+}

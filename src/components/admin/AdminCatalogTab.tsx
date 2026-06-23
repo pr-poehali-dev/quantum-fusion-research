@@ -402,6 +402,7 @@ export function AdminCatalogTab({
     return { ...f, categories: next }
   })
   const [tocDragIdx, setTocDragIdx] = useState<number | null>(null)  // перетаскивание пункта оглавления
+  const [tierTocOpen, setTierTocOpen] = useState(false)  // раскрытие списка карточек тир-листа в оглавлении
 
   const addTierCard = () => setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: "", image_url: "", rank: null }] }))
   const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null; product_id?: number }>) =>
@@ -1222,7 +1223,8 @@ export function AdminCatalogTab({
               {articleForm.toc.map((t, i) => {
                 const isTier = t.anchor === TIER_ANCHOR
                 return (
-                <div key={i}
+                <React.Fragment key={i}>
+                <div
                   draggable
                   onDragStart={() => setTocDragIdx(i)}
                   onDragOver={e => { if (tocDragIdx !== null && tocDragIdx !== i) e.preventDefault() }}
@@ -1238,9 +1240,11 @@ export function AdminCatalogTab({
                     placeholder="Название пункта (напр. «Итоги»)"
                     className="min-w-[140px] flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
                   {isTier ? (
-                    <span className="flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary">
-                      <Icon name="Trophy" size={12} /> блок тир-листа
-                    </span>
+                    <button type="button" onClick={() => setTierTocOpen(o => !o)}
+                      className="flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Trophy" size={12} /> карточки ({articleForm.tier_cards.length})
+                      <Icon name={tierTocOpen ? "ChevronUp" : "ChevronDown"} size={12} />
+                    </button>
                   ) : (
                     <>
                       <input
@@ -1260,6 +1264,32 @@ export function AdminCatalogTab({
                     <Icon name="Trash2" size={12} />
                   </button>
                 </div>
+
+                {/* Раскрытый список карточек тир-листа: метка-якорь на каждую */}
+                {isTier && tierTocOpen && (
+                  <div className="ml-8 space-y-1.5 rounded-lg border border-dashed border-border bg-background/30 p-2">
+                    {articleForm.tier_cards.length === 0 ? (
+                      <p className="py-1 text-center text-xs text-foreground/40">Сначала добавьте карточки в блок «Тир-лист статьи»</p>
+                    ) : articleForm.tier_cards.map((card, ci) => {
+                      const cardAnchor = `tier-card-${ci}`
+                      return (
+                        <div key={ci} className="flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5">
+                          <div className="h-7 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                            {card.image_url ? <img src={card.image_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={12} className="text-foreground/30" /></div>}
+                          </div>
+                          <span className="flex-1 truncate text-sm text-foreground">{card.title || `Карточка ${ci + 1}`}{card.rank ? ` · ${card.rank}` : ""}</span>
+                          <button type="button" onClick={() => copyAnchorTag(cardAnchor)} title="Скопировать метку и вставить в текст"
+                            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                            <Icon name={copiedAnchor === cardAnchor ? "Check" : "Copy"} size={12} />
+                            {copiedAnchor === cardAnchor ? "Скопировано" : `[[#${cardAnchor}]]`}
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <p className="px-1 text-xs text-foreground/40">Скопируйте метку карточки и вставьте в текст — клик по ней прокрутит к этой карточке в тир-листе.</p>
+                  </div>
+                )}
+                </React.Fragment>
                 )
               })}
               <p className="text-xs text-foreground/40">

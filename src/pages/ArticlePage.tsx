@@ -48,7 +48,9 @@ function ArticleTierList({ cards }: { cards: TierCard[] }) {
             <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
           </div>
           <div className="flex min-h-[6rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-            {cards.filter(c => c.rank === t.rank).map((c, i) => {
+            {cards.filter(c => c.rank === t.rank).map((c) => {
+              // Глобальный индекс карточки (стабилен независимо от ряда) — для якоря
+              const gi = cards.indexOf(c)
               const inner = (
                 <>
                   {c.image_url
@@ -61,13 +63,15 @@ function ArticleTierList({ cards }: { cards: TierCard[] }) {
                   )}
                 </>
               )
-              const cls = "group relative block aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44"
-              const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)" }
+              const cls = "tier-card group relative block aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44"
+              const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
+              // id-якорь карточки — чтобы метка [[#tier-card-N]] вела сюда
+              const aid = `toc-tier-card-${gi}`
               // Карточка из каталога — кликабельна, ведёт на товар
               return c.product_id ? (
-                <a key={i} href={`/product/${c.product_id}`} className={cls + " cursor-pointer"} style={style}>{inner}</a>
+                <a key={gi} id={aid} href={`/product/${c.product_id}`} className={cls + " cursor-pointer"} style={style}>{inner}</a>
               ) : (
-                <div key={i} className={cls} style={style}>{inner}</div>
+                <div key={gi} id={aid} className={cls} style={style}>{inner}</div>
               )
             })}
           </div>
@@ -108,10 +112,13 @@ function goToAnchor(slug: string) {
   target.style.scrollMarginTop = "90px"
   target.scrollIntoView({ behavior: "smooth", block: "start" })
 
-  target.classList.remove("toc-flash")
+  // У карточек тир-листа фон перекрыт картинкой — подсвечиваем рамкой (ring),
+  // у обычных абзацев — фоновой вспышкой.
+  const flashClass = target.classList.contains("tier-card") ? "toc-flash-card" : "toc-flash"
+  target.classList.remove(flashClass)
   void target.offsetWidth   // reflow — чтобы анимация перезапускалась при повторном клике
-  target.classList.add("toc-flash")
-  window.setTimeout(() => target.classList.remove("toc-flash"), 1500)
+  target.classList.add(flashClass)
+  window.setTimeout(() => target.classList.remove(flashClass), 1500)
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
