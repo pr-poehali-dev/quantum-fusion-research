@@ -397,18 +397,28 @@ function ArticleCarousel({ images, onOpenLightbox, standalone = false }: { image
   )
 }
 
-// Разбивает HTML на блоки, заменяя data-carousel на интерактивную карусель
-function ArticleContent({ html }: { html: string }) {
+// Метка для вставки блока тир-листа прямо в текст: [[#tierlist]]
+const TIERLIST_MARK = "[[#tierlist]]"
+
+// Разбивает HTML на блоки, заменяя data-carousel на интерактивную карусель.
+// tierSlot — готовый блок тир-листа, вставляется на место метки [[#tierlist]].
+function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.ReactNode }) {
   const blocks = useMemo(() => {
+    // Убираем абзац-обёртку, если он содержит только метку тир-листа —
+    // чтобы при разрезе не оставалось «осиротевших» <p></p>.
+    const cleanHtml = tierSlot
+      ? html.replace(/<p>\s*\[\[#tierlist\]\]\s*<\/p>/gi, TIERLIST_MARK)
+      : html
     const parser = new DOMParser()
-    const doc = parser.parseFromString(html, "text/html")
-    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] }> = []
+    const doc = parser.parseFromString(cleanHtml, "text/html")
+    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] } | { type: "tierlist" }> = []
     let buf = ""
+    const flush = () => { if (buf) { result.push({ type: "html", content: buf }); buf = "" } }
     doc.body.childNodes.forEach(node => {
       if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element
         if (el.getAttribute("data-carousel") === "true") {
-          if (buf) { result.push({ type: "html", content: buf }); buf = "" }
+          flush()
           let images: string[] = []
           try { images = JSON.parse(el.getAttribute("data-images") || "[]") } catch { /* skip */ }
           if (!images.length) {
@@ -420,9 +430,22 @@ function ArticleContent({ html }: { html: string }) {
       }
       buf += (node as Element).outerHTML || node.textContent || ""
     })
-    if (buf) result.push({ type: "html", content: buf })
+    flush()
+    // Разрезаем html-блоки по метке тир-листа, вставляя плейсхолдер блока
+    if (tierSlot) {
+      const split: typeof result = []
+      result.forEach(b => {
+        if (b.type !== "html" || !b.content.includes(TIERLIST_MARK)) { split.push(b); return }
+        const parts = b.content.split(TIERLIST_MARK)
+        parts.forEach((part, pi) => {
+          if (part.trim()) split.push({ type: "html", content: part })
+          if (pi < parts.length - 1) split.push({ type: "tierlist" })
+        })
+      })
+      return split
+    }
     return result
-  }, [html])
+  }, [html, tierSlot])
 
   const [lightboxState, setLightboxState] = useState<{ images: string[]; idx: number } | null>(null)
 
@@ -432,6 +455,8 @@ function ArticleContent({ html }: { html: string }) {
         block.type === "html" ? (
           <div key={i} className="rich-content text-foreground/80 leading-relaxed text-base"
             dangerouslySetInnerHTML={{ __html: injectAnchors(block.content) }} />
+        ) : block.type === "tierlist" ? (
+          <div key={i}>{tierSlot}</div>
         ) : (
           <div key={i} className="my-4">
             <ArticleCarousel images={block.images} onOpenLightbox={(images, idx) => setLightboxState({ images, idx })} />
@@ -583,6 +608,14 @@ export default function ArticlePage() {
   const toc = (article.toc || []).filter(t => t.title?.trim() && t.anchor?.trim())
   const hasToc = toc.length > 0
 
+  // Тир-лист статьи. Если в тексте есть метка [[#tierlist]] — блок встанет на её
+  // место; иначе — сразу после фото (как раньше).
+  const hasTier = !!(article.tier_cards && article.tier_cards.length > 0)
+  const tierMarkInText = hasTier && !!article.content && article.content.includes("[[#tierlist]]")
+  const tierBlock = hasTier
+    ? <ArticleTierList cards={article.tier_cards!} isAdmin={isAdmin} onReorder={saveTierCards} />
+    : null
+
   return (
     <>
       <div className="min-h-screen bg-background text-foreground">
@@ -621,12 +654,10 @@ export default function ArticlePage() {
             <div className="min-w-0">
               <ArticleCarousel images={images} standalone />
 
-              {/* Тир-лист сразу после фото, перед текстом */}
-              {article.tier_cards && article.tier_cards.length > 0 && (
-                <ArticleTierList cards={article.tier_cards} isAdmin={isAdmin} onReorder={saveTierCards} />
-              )}
+              {/* Тир-лист после фото — только если в тексте нет метки [[#tierlist]] */}
+              {hasTier && !tierMarkInText && tierBlock}
 
-              {article.content && <ArticleContent html={article.content} />}
+              {article.content && <ArticleContent html={article.content} tierSlot={tierMarkInText ? tierBlock : undefined} />}
 
               {article.html_attachment && (
                 <div className="mt-10">
