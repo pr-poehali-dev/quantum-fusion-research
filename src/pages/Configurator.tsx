@@ -60,6 +60,10 @@ interface ConfigDraft {
   slotExtras: Record<string, SlotExtra>
   wantAssembly: boolean
   buildName: string
+  // Характеристики выбранных деталей и их привязка к слотам —
+  // нужны, чтобы предупреждения о совместимости не пропадали после перезахода.
+  selectedSpec: SelectedSpecValues
+  specSlotMap: Record<number, string>
 }
 function loadDraft(): Partial<ConfigDraft> {
   // Не восстанавливаем черновик, если открыта чужая/конкретная сборка по ссылке
@@ -198,10 +202,11 @@ export default function Configurator() {
 
   // НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип)
   const [pickerSlot, setPickerSlot] = useState<string | null>(null)
-  // Значения характеристик уже выбранных деталей (для расчёта совместимости)
-  const [selectedSpec, setSelectedSpec] = useState<SelectedSpecValues>({})
+  // Значения характеристик уже выбранных деталей (для расчёта совместимости).
+  // Восстанавливаем из черновика, иначе предупреждения слетают после перезахода.
+  const [selectedSpec, setSelectedSpec] = useState<SelectedSpecValues>(draft0.selectedSpec || {})
   // Соответствие spec-категория → слот (чтобы знать кол-во выбранных деталей)
-  const [specSlotMap, setSpecSlotMap] = useState<Record<number, string>>({})
+  const [specSlotMap, setSpecSlotMap] = useState<Record<number, string>>(draft0.specSlotMap || {})
   // Схема совместимости (правила + атрибуты) для предупреждений прямо в конфигураторе
   const [compatLinks, setCompatLinks] = useState<SpecLinkRule[]>([])
   const [compatAttrs, setCompatAttrs] = useState<SchemaAttribute[]>([])
@@ -300,9 +305,9 @@ export default function Configurator() {
   useEffect(() => {
     if (isReadOnly) return
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ selected, customInputs, slotExtras, wantAssembly, buildName }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ selected, customInputs, slotExtras, wantAssembly, buildName, selectedSpec, specSlotMap }))
     } catch { /* noop */ }
-  }, [selected, customInputs, slotExtras, wantAssembly, buildName, isReadOnly])
+  }, [selected, customInputs, slotExtras, wantAssembly, buildName, selectedSpec, specSlotMap, isReadOnly])
 
   const partsTotal = Object.values(selected).reduce((sum, c) => sum + (c ? c.price * c.qty : 0), 0)
   const assemblyFee = wantAssembly ? Math.round(partsTotal * 0.07) : 0
@@ -343,6 +348,23 @@ export default function Configurator() {
     setSelectedSpec(prev => ({ ...prev, [specCatId]: p.values }))
     setSpecSlotMap(prev => ({ ...prev, [specCatId]: slot }))
     setPickerSlot(null)
+  }
+
+  // Очистка слота: убираем деталь И её характеристики/привязку, чтобы не
+  // оставались «висячие» предупреждения по удалённой детали.
+  const clearSlot = (slot: string) => {
+    setSelected(s => ({ ...s, [slot]: null }))
+    setSpecSlotMap(prevMap => {
+      const nextMap = { ...prevMap }
+      setSelectedSpec(prevSpec => {
+        const nextSpec = { ...prevSpec }
+        for (const [catId, sl] of Object.entries(prevMap)) {
+          if (sl === slot) { delete nextSpec[Number(catId)]; delete nextMap[Number(catId)] }
+        }
+        return nextSpec
+      })
+      return nextMap
+    })
   }
 
   // Кол-во выбранных деталей по spec-категориям (для расчёта мощности БП с учётом
@@ -745,7 +767,7 @@ export default function Configurator() {
                       </div>
                       <div className="flex items-center gap-2">
                         {current && (
-                          <button onClick={e => { e.stopPropagation(); setSelected(s => ({ ...s, [slot]: null })) }} className="text-foreground/25 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
+                          <button onClick={e => { e.stopPropagation(); clearSlot(slot) }} className="text-foreground/25 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
                             <Icon name="X" size={14} />
                           </button>
                         )}
