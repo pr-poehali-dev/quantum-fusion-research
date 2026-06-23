@@ -51,8 +51,13 @@ function ArticleTierCardCell({ c, gi, isAdmin, dragOver, onActivate, onDragStart
         ? <img src={c.image_url} alt={c.title} draggable={false} className="h-full w-full rounded-xl object-cover" />
         : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
       {c.title && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
           <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
+          {c.anchor && (
+            <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+              <Icon name="ArrowDownToLine" size={11} /> Перейти к разбору
+            </span>
+          )}
         </div>
       )}
     </>

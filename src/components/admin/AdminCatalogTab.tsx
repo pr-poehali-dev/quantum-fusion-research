@@ -1313,11 +1313,17 @@ export function AdminCatalogTab({
                   Добавьте карточки (фото + название) и присвойте каждой ряд S/A/B/C/D/F.
                   Они покажутся таблицей в статье.
                 </p>
-                <button type="button" onClick={() => copyAnchorTag("tierlist")}
-                  className="mt-2 flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
-                  <Icon name={copiedAnchor === "tierlist" ? "Check" : "Copy"} size={12} />
-                  {copiedAnchor === "tierlist" ? "Скопировано" : "Вставить блок в текст: [[#tierlist]]"}
-                </button>
+                {articleForm.content.includes("[[#tierlist]]") ? (
+                  <span className="mt-2 flex w-fit items-center gap-1 rounded-lg border border-green-500/40 bg-green-500/10 px-2 py-1 text-xs font-medium text-green-500">
+                    <Icon name="Check" size={12} /> Блок уже в тексте
+                  </span>
+                ) : (
+                  <button type="button" onClick={() => copyAnchorTag("tierlist")}
+                    className="mt-2 flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name={copiedAnchor === "tierlist" ? "Check" : "Copy"} size={12} />
+                    {copiedAnchor === "tierlist" ? "Скопировано" : "Вставить блок в текст: [[#tierlist]]"}
+                  </button>
+                )}
               </div>
               <button type="button" onClick={addTierCard}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors" style={{ cursor: "pointer" }}>
