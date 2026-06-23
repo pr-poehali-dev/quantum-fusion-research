@@ -240,7 +240,7 @@ export interface Article {
   content?: string
   html_attachment?: string | null
   toc?: { title: string; anchor: string }[]
-  tier_cards?: { title: string; image_url: string; rank: string | null }[]
+  tier_cards?: { title: string; image_url: string; rank: string | null; product_id?: number }[]
 }
 
 export interface WipBuild {

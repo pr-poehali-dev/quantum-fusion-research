@@ -22,7 +22,7 @@ interface Article {
 }
 
 interface TocItem { title: string; anchor: string }
-interface TierCard { title: string; image_url: string; rank: string | null }
+interface TierCard { title: string; image_url: string; rank: string | null; product_id?: number }
 
 // Ряды тир-листа статьи (как на /tier-lists)
 const TIER_ROWS: Array<{ rank: string; color: string }> = [
@@ -46,19 +46,28 @@ function ArticleTierList({ cards }: { cards: TierCard[] }) {
             <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
           </div>
           <div className="flex min-h-[6rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-            {cards.filter(c => c.rank === t.rank).map((c, i) => (
-              <div key={i} className="group relative aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted sm:w-44"
-                style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}>
-                {c.image_url
-                  ? <img src={c.image_url} alt={c.title} className="h-full w-full rounded-xl object-cover" />
-                  : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
-                {c.title && (
-                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-                    <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
-                  </div>
-                )}
-              </div>
-            ))}
+            {cards.filter(c => c.rank === t.rank).map((c, i) => {
+              const inner = (
+                <>
+                  {c.image_url
+                    ? <img src={c.image_url} alt={c.title} className="h-full w-full rounded-xl object-cover" />
+                    : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+                  {c.title && (
+                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+                      <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
+                    </div>
+                  )}
+                </>
+              )
+              const cls = "group relative block aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44"
+              const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)" }
+              // Карточка из каталога — кликабельна, ведёт на товар
+              return c.product_id ? (
+                <a key={i} href={`/product/${c.product_id}`} className={cls + " cursor-pointer"} style={style}>{inner}</a>
+              ) : (
+                <div key={i} className={cls} style={style}>{inner}</div>
+              )
+            })}
           </div>
         </div>
       ))}

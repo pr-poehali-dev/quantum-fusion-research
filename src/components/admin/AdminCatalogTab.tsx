@@ -372,15 +372,22 @@ export function AdminCatalogTab({
     image_url: "", image_urls: [] as string[], category: "article", is_published: false,
     html_attachment: "",
     toc: [] as { title: string; anchor: string }[],
-    tier_cards: [] as { title: string; image_url: string; rank: string | null }[],
+    tier_cards: [] as { title: string; image_url: string; rank: string | null; product_id?: number }[],
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
+  const [tierProductSearch, setTierProductSearch] = useState("")  // поиск товара для карточки тир-листа
 
   const addTierCard = () => setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: "", image_url: "", rank: null }] }))
-  const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null }>) =>
+  const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null; product_id?: number }>) =>
     setArticleForm(f => ({ ...f, tier_cards: f.tier_cards.map((c, idx) => idx === i ? { ...c, ...patch } : c) }))
   const removeTierCard = (i: number) =>
     setArticleForm(f => ({ ...f, tier_cards: f.tier_cards.filter((_, idx) => idx !== i) }))
+  // Добавить карточку из существующего товара (фото + название подтянутся)
+  const addTierCardFromProduct = (p: Product) => {
+    const img = p.image_urls?.[0] || p.image_url || ""
+    setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: p.name, image_url: img, rank: null, product_id: p.id }] }))
+    setTierProductSearch("")
+  }
 
   // Превратить заголовок пункта в slug-якорь (латиницей)
   const anchorSlug = (s: string) => s.toLowerCase()
@@ -1207,8 +1214,47 @@ export function AdminCatalogTab({
               </div>
               <button type="button" onClick={addTierCard}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={13} /> Карточка
+                <Icon name="Plus" size={13} /> Пустая карточка
               </button>
+            </div>
+
+            {/* Добавление из каталога: поиск товара → карточка с его фото и названием */}
+            <div className="relative mb-3">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 focus-within:border-primary transition-colors">
+                <Icon name="Search" size={15} className="shrink-0 text-foreground/40" />
+                <input value={tierProductSearch} onChange={e => setTierProductSearch(e.target.value)}
+                  placeholder="Добавить из каталога — начните вводить название товара..."
+                  className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none" style={{ cursor: "text" }} />
+                {tierProductSearch && (
+                  <button type="button" onClick={() => setTierProductSearch("")} className="text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}>
+                    <Icon name="X" size={14} />
+                  </button>
+                )}
+              </div>
+              {tierProductSearch.trim().length >= 1 && (() => {
+                const q = tierProductSearch.trim().toLowerCase()
+                const found = products.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8)
+                if (found.length === 0) return (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-4 py-3 text-xs text-foreground/40 shadow-xl">Ничего не найдено</div>
+                )
+                return (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-card shadow-xl">
+                    {found.map(p => {
+                      const img = p.image_urls?.[0] || p.image_url || ""
+                      return (
+                        <button key={p.id} type="button" onClick={() => addTierCardFromProduct(p)}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
+                          <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-muted">
+                            {img ? <img src={img} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Icon name="Package" size={14} className="text-foreground/30" /></div>}
+                          </div>
+                          <span className="flex-1 truncate text-sm font-medium text-foreground">{p.name}</span>
+                          {p.category?.name && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground/50">{p.category.name}</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </div>
 
             {articleForm.tier_cards.length === 0 ? (
@@ -1220,11 +1266,18 @@ export function AdminCatalogTab({
                     <div className="w-28 shrink-0">
                       <ImageUploader images={c.image_url ? [c.image_url] : []} onChange={urls => updateTierCard(i, { image_url: urls[0] || "" })} folder="articles" maxImages={1} />
                     </div>
-                    <input
-                      value={c.title}
-                      onChange={e => updateTierCard(i, { title: e.target.value })}
-                      placeholder="Название (напр. «RTX 4090»)"
-                      className="min-w-[140px] flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                    <div className="flex min-w-[140px] flex-1 flex-col gap-1">
+                      {c.product_id && (
+                        <span className="inline-flex w-fit items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                          <Icon name="Link2" size={10} /> из каталога
+                        </span>
+                      )}
+                      <input
+                        value={c.title}
+                        onChange={e => updateTierCard(i, { title: e.target.value })}
+                        placeholder="Название (напр. «RTX 4090»)"
+                        className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                    </div>
                     <select value={c.rank || ""} onChange={e => updateTierCard(i, { rank: e.target.value || null })}
                       className="w-28 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
                       <option value="">Без ряда</option>
