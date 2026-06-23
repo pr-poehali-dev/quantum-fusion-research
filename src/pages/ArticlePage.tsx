@@ -358,25 +358,52 @@ function ArticleContent({ html }: { html: string }) {
 }
 
 // Оглавление статьи. На десктопе — липкий блок сбоку, на телефоне —
-// сворачиваемый блок сверху.
-function TableOfContents({ items, variant }: { items: TocItem[]; variant: "side" | "mobile" }) {
+// сворачиваемый блок сверху. Пункт «Тир-лист» (anchor __tierlist__) раскрывается
+// в подсписок карточек тир-листа (ссылка на каждую железку).
+function TableOfContents({ items, variant, cards }: { items: TocItem[]; variant: "side" | "mobile"; cards: TierCard[] }) {
   const [open, setOpen] = useState(variant === "side")
+  const [tierOpen, setTierOpen] = useState(false)
   if (!items.length) return null
 
   const list = (
     <ol className="space-y-1">
-      {items.map((it, i) => (
-        <li key={it.anchor + i}>
-          <button
-            onClick={() => goToAnchor(it.anchor)}
-            className="group flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground/70 transition-colors hover:bg-primary/10 hover:text-primary"
-            style={{ cursor: "pointer" }}
-          >
-            <span className="mt-0.5 text-xs font-mono text-foreground/30 group-hover:text-primary">{String(i + 1).padStart(2, "0")}</span>
-            <span className="leading-snug">{it.title}</span>
-          </button>
-        </li>
-      ))}
+      {items.map((it, i) => {
+        const isTier = it.anchor === "__tierlist__" && cards.length > 0
+        return (
+          <li key={it.anchor + i}>
+            <div className="flex items-stretch gap-1">
+              <button
+                onClick={() => goToAnchor(it.anchor)}
+                className="group flex flex-1 items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground/70 transition-colors hover:bg-primary/10 hover:text-primary"
+                style={{ cursor: "pointer" }}
+              >
+                <span className="mt-0.5 text-xs font-mono text-foreground/30 group-hover:text-primary">{String(i + 1).padStart(2, "0")}</span>
+                <span className="leading-snug">{it.title}</span>
+              </button>
+              {isTier && (
+                <button onClick={() => setTierOpen(o => !o)} title="Показать список"
+                  className="flex shrink-0 items-center rounded-lg px-1.5 text-foreground/40 transition-colors hover:bg-primary/10 hover:text-primary" style={{ cursor: "pointer" }}>
+                  <Icon name={tierOpen ? "ChevronUp" : "ChevronDown"} size={15} />
+                </button>
+              )}
+            </div>
+            {isTier && tierOpen && (
+              <ol className="ml-3 mt-1 space-y-0.5 border-l border-border pl-2">
+                {cards.map((c, ci) => (
+                  <li key={ci}>
+                    <button onClick={() => goToAnchor(`tier-card-${ci}`)}
+                      className="flex w-full items-start gap-2 rounded-lg px-2 py-1 text-left text-xs text-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary"
+                      style={{ cursor: "pointer" }}>
+                      {c.rank && <span className="mt-px font-mono text-foreground/30">{c.rank}</span>}
+                      <span className="leading-snug">{c.title || `Карточка ${ci + 1}`}</span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </li>
+        )
+      })}
     </ol>
   )
 
@@ -479,17 +506,18 @@ export default function ArticlePage() {
             )}
           </div>
 
-          {hasToc && <TableOfContents items={toc} variant="mobile" />}
+          {hasToc && <TableOfContents items={toc} variant="mobile" cards={article.tier_cards || []} />}
 
           <div className={hasToc ? "grid gap-8 lg:grid-cols-[1fr_260px]" : ""}>
             <div className="min-w-0">
               <ArticleCarousel images={images} standalone />
 
-              {article.content && <ArticleContent html={article.content} />}
-
+              {/* Тир-лист сразу после фото, перед текстом */}
               {article.tier_cards && article.tier_cards.length > 0 && (
                 <ArticleTierList cards={article.tier_cards} />
               )}
+
+              {article.content && <ArticleContent html={article.content} />}
 
               {article.html_attachment && (
                 <div className="mt-10">
@@ -518,7 +546,7 @@ export default function ArticlePage() {
               </div>
             </div>
 
-            {hasToc && <TableOfContents items={toc} variant="side" />}
+            {hasToc && <TableOfContents items={toc} variant="side" cards={article.tier_cards || []} />}
           </div>
         </main>
       </div>
