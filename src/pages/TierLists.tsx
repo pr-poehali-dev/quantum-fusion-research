@@ -48,6 +48,7 @@ export default function TierLists() {
   const [attributes, setAttributes] = useState<TierAttr[]>([])
   const [activeCat, setActiveCat] = useState<string | null>(null)
   const [catOpen, setCatOpen] = useState(false)  // выпадающий список категорий
+  const [filtersOpen, setFiltersOpen] = useState(false)  // сайдбар фильтров (свёрнут по умолчанию)
   const [filterState, setFilterState] = useState<ShopFilterState>(emptyFilterState())
   const [openAttr, setOpenAttr] = useState<Record<number | string, boolean>>({})
   const [loading, setLoading] = useState(true)
@@ -96,6 +97,10 @@ export default function TierLists() {
     const okIds = new Set(applyShopFilters(asShopProducts, filterState).map(p => p.id))
     return catItems.filter(i => okIds.has(i.id))
   }, [catItems, asShopProducts, filterState])
+
+  // Есть ли активные фильтры (для индикатора на кнопке «Фильтры»)
+  const hasActiveFilters = filterState.onlyStock || !!filterState.priceMin || !!filterState.priceMax
+    || filterState.brands.size > 0 || Object.values(filterState.attrs).some(s => s.size > 0)
 
   // Раскладка по рядам
   const byRank = useMemo(() => {
@@ -271,30 +276,42 @@ export default function TierLists() {
           <div className="py-20 text-center text-foreground/40">Нет товаров с фото для тир-листа.</div>
         ) : (
           <>
-            {/* Категория — выпадающий список (как в каталоге товаров) */}
-            <div className="relative mb-4 inline-block">
-              <button onClick={() => setCatOpen(o => !o)}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${catOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
+            {/* Категория (дропдаун) + кнопка раскрытия фильтров правее */}
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <div className="relative inline-block">
+                <button onClick={() => setCatOpen(o => !o)}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${catOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="AlignLeft" size={16} />
+                  <span>{categories.find(c => c.slug === activeCat)?.name || "Категория"}</span>
+                  <Icon name={catOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
+                </button>
+                {catOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setCatOpen(false)} style={{ cursor: "auto" }} />
+                    <div className="absolute left-0 top-full z-50 mt-2 max-h-80 w-64 overflow-y-auto rounded-2xl border border-border bg-card p-2 shadow-2xl">
+                      {categories.map(c => (
+                        <button key={c.id} onClick={() => { setActiveCat(c.slug); setCatOpen(false) }}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${activeCat === c.slug ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
+                          style={{ cursor: "pointer" }}>
+                          {c.name}
+                          {activeCat === c.slug && <Icon name="Check" size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Кнопка раскрытия фильтров — правее категории */}
+              <button onClick={() => setFiltersOpen(o => !o)}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${filtersOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
                 style={{ cursor: "pointer" }}>
-                <Icon name="AlignLeft" size={16} />
-                <span>{categories.find(c => c.slug === activeCat)?.name || "Категория"}</span>
-                <Icon name={catOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
+                <Icon name="SlidersHorizontal" size={16} />
+                <span>Фильтры</span>
+                {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-primary" />}
+                <Icon name={filtersOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
               </button>
-              {catOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setCatOpen(false)} style={{ cursor: "auto" }} />
-                  <div className="absolute left-0 top-full z-50 mt-2 max-h-80 w-64 overflow-y-auto rounded-2xl border border-border bg-card p-2 shadow-2xl">
-                    {categories.map(c => (
-                      <button key={c.id} onClick={() => { setActiveCat(c.slug); setCatOpen(false) }}
-                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${activeCat === c.slug ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
-                        style={{ cursor: "pointer" }}>
-                        {c.name}
-                        {activeCat === c.slug && <Icon name="Check" size={14} />}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
 
             {saving && (
@@ -303,16 +320,18 @@ export default function TierLists() {
               </div>
             )}
 
-            {/* Контент: фильтр слева + тир-лист справа (как в каталоге) */}
+            {/* Контент: фильтр слева (скрываемый) + тир-лист справа */}
             <div className="flex flex-col gap-6 sm:flex-row">
-              <ShopFilters
-                attributes={catAttrs}
-                products={asShopProducts}
-                state={filterState}
-                setState={setFilterState}
-                openAttr={openAttr}
-                setOpenAttr={setOpenAttr}
-              />
+              {filtersOpen && (
+                <ShopFilters
+                  attributes={catAttrs}
+                  products={asShopProducts}
+                  state={filterState}
+                  setState={setFilterState}
+                  openAttr={openAttr}
+                  setOpenAttr={setOpenAttr}
+                />
+              )}
 
               <div className="min-w-0 flex-1">
                 {/* Таблица рядов */}
