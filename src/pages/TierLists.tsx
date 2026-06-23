@@ -149,16 +149,22 @@ export default function TierLists() {
         onDragEnd={() => setDragId(null)}
         onClick={() => onCardClick(it)}
         title={isAdmin ? "Нажмите, чтобы выбрать, затем нажмите на нужный ряд" : it.name}
-        className={`group relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted transition-transform hover:scale-105 ${picked ? "border-primary ring-2 ring-primary scale-105" : "border-border"} ${isAdmin ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"}`}
+        className={`group relative aspect-[16/9] w-32 shrink-0 overflow-visible rounded-lg border bg-muted transition-transform hover:z-20 hover:scale-105 sm:w-44 ${picked ? "z-20 border-primary ring-2 ring-primary scale-105" : "border-border"} cursor-pointer active:cursor-grabbing`}
       >
-        {it.image_url
-          ? <img src={it.image_url} alt={it.name} draggable={false} className="h-full w-full object-cover" />
-          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={20} className="text-foreground/30" /></div>}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-3">
-          <p className="truncate text-[10px] font-medium text-white">{it.name}</p>
+        {/* Всплывающий бокс с названием — над верхней границей фото при наведении */}
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1.5 w-max max-w-[200px] -translate-x-1/2 scale-95 rounded-lg border border-border bg-card px-2.5 py-1.5 text-center opacity-0 shadow-xl transition-all duration-150 group-hover:scale-100 group-hover:opacity-100">
+          <p className="text-xs font-medium leading-snug text-foreground">{it.name}</p>
+          <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 border-b border-r border-border bg-card" />
         </div>
+
+        <div className="h-full w-full overflow-hidden rounded-lg">
+          {it.image_url
+            ? <img src={it.image_url} alt={it.name} draggable={false} className="h-full w-full object-cover" />
+            : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+        </div>
+
         {picked && (
-          <div className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+          <div className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
             <Icon name="Check" size={12} />
           </div>
         )}
