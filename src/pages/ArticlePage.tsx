@@ -24,6 +24,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   review: "Обзор",
   test: "Тест / Бенчмарк",
   guide: "Гайд",
+  repair: "Ремонты",
 }
 
 function openHtmlInNewTab(html: string) {

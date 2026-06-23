@@ -1051,7 +1051,7 @@ export function AdminCatalogTab({
                     {a.is_published ? "Опубликована" : "Черновик"}
                   </span>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">
-                    {a.category === "review" ? "Обзор" : a.category === "test" ? "Тест" : "Статья"}
+                    {{ review: "Обзор", test: "Тест", guide: "Гайд", repair: "Ремонты", article: "Статья" }[a.category] || "Статья"}
                   </span>
                 </div>
                 <p className="text-sm font-medium text-foreground truncate">{a.title}</p>
@@ -1094,6 +1094,7 @@ export function AdminCatalogTab({
               <option value="review">Обзор</option>
               <option value="test">Тест / Бенчмарк</option>
               <option value="guide">Гайд</option>
+              <option value="repair">Ремонты</option>
             </select>
           </div>
           <div>

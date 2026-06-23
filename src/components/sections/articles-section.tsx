@@ -87,7 +87,7 @@ export function ArticlesSection() {
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   <span className="absolute top-3 left-3 rounded-full bg-foreground/80 px-2 py-0.5 text-xs text-background backdrop-blur-sm">
-                    {a.category === "review" ? "Обзор" : a.category === "test" ? "Тест" : "Статья"}
+                    {{ review: "Обзор", test: "Тест", guide: "Гайд", repair: "Ремонты", article: "Статья" }[a.category] || "Статья"}
                   </span>
                 </div>
 

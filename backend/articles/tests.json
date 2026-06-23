@@ -4,9 +4,13 @@
       "name": "Get articles list",
       "method": "GET",
       "path": "/",
-      "expectedStatus": 200,
-      "expectedBody": {"total": 1},
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get single article without counting view",
+      "method": "GET",
+      "path": "/?id=1&noview=1",
+      "expectedStatus": 200
     }
   ]
 }

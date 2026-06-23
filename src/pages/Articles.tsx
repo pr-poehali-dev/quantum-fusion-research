@@ -24,6 +24,7 @@ const CATEGORIES: { value: string; label: string }[] = [
   { value: "review", label: "Обзор" },
   { value: "test", label: "Тест / Бенчмарк" },
   { value: "guide", label: "Гайд" },
+  { value: "repair", label: "Ремонты" },
 ]
 
 const SORTS: { value: string; label: string; icon: string }[] = [

@@ -39,7 +39,7 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
 
-    # Колонки: id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at, html_attachment, image_urls
+    # Колонки: id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at, html_attachment, image_urls, views
     def row_to_article(row, full=False):
         image_urls = list(row[11]) if len(row) > 11 and row[11] else []
         # cover_url берём из image_urls[0] если есть, иначе из cover_url
@@ -49,7 +49,8 @@ def handler(event: dict, context) -> dict:
             "excerpt": row[3], "image_url": cover,
             "image_urls": image_urls,
             "category": row[6], "tags": [],
-            "is_published": row[7], "views": 0,
+            "is_published": row[7],
+            "views": row[12] if len(row) > 12 and row[12] is not None else 0,
             "created_at": row[9].isoformat() if row[9] else None,
             "updated_at": None,
         }
@@ -58,11 +59,19 @@ def handler(event: dict, context) -> dict:
             a["html_attachment"] = row[10] if len(row) > 10 else None
         return a
 
+    COLS = ("id, title, slug, excerpt, content, cover_url, category, "
+            "is_published, sort_order, created_at, html_attachment, image_urls, views")
+
     if method == "GET":
         article_id = params.get("id")
         if article_id:
+            # Считаем просмотр при открытии статьи (если не передан noview=1 —
+            # например для предпросмотра в админке).
+            if params.get("noview") != "1":
+                cur.execute("UPDATE articles SET views = COALESCE(views, 0) + 1 WHERE id = %s", (article_id,))
+                conn.commit()
             cur.execute(
-                "SELECT id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at, html_attachment, image_urls FROM articles WHERE id = %s",
+                f"SELECT {COLS} FROM articles WHERE id = %s",
                 (article_id,)
             )
             row = cur.fetchone()
@@ -83,7 +92,7 @@ def handler(event: dict, context) -> dict:
             limit = int(params.get("limit", 20))
             offset = int(params.get("offset", 0))
             cur.execute(
-                f"SELECT id, title, slug, excerpt, content, cover_url, category, is_published, sort_order, created_at, html_attachment, image_urls FROM articles {where_sql} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                f"SELECT {COLS} FROM articles {where_sql} ORDER BY created_at DESC LIMIT %s OFFSET %s",
                 args + [limit, offset]
             )
             rows = cur.fetchall()
