@@ -3,6 +3,26 @@
 
 ---
 
+## v4.65 | 2026-06-23 | Тир-лист в статьях + фильтр-сайдбар на /tier-lists
+
+### Backend
+- БД: articles.tier_cards JSONB (миграция V0151) — карточки тир-листа статьи
+  [{title, image_url, rank}]. articles GET full / INSERT / UPDATE — чтение/запись.
+- products resource=tier (GET): теперь отдаёт price, in_stock, values (значения
+  характеристик из product_spec_values) и attributes (схема spec_attributes
+  выбранной категории) — для полноценного фильтра.
+
+### Frontend
+- /tier-lists: слева добавлен фильтр-сайдбар ShopFilters (как в каталоге) —
+  бренд + характеристики + цена + «в наличии». Фильтрация через applyShopFilters
+  внутри выбранной категории.
+- Статьи категории «Подробный тир-лист»: в редакторе (AdminCatalogTab) панель
+  «Тир-лист статьи» — добавление карточек (фото через ImageUploader + название),
+  выбор ряда S/A/B/C/D/F для каждой.
+- ArticlePage: рендер тир-листа статьи (ArticleTierList) таблицей по рядам;
+  название всплывает поверх карточки при наведении.
+- types.ts: Article.tier_cards.
+
 ## v4.64 | 2026-06-23 | Оглавление статей + категория «Подробный тир-лист»
 
 ### Backend (articles)

@@ -286,24 +286,76 @@ def handler(event: dict, context) -> dict:
                 cur.execute(
                     f"""SELECT p.id, p.name, p.image_url, p.image_urls,
                                c.id, c.name, c.slug,
-                               b.name, p.tier_rank, p.tier_pos
+                               b.name, p.tier_rank, p.tier_pos,
+                               CASE WHEN COALESCE(wg.price_retail, 0) > 0 THEN wg.price_retail ELSE p.price END as price,
+                               COALESCE((SELECT SUM(s.qty) FROM {schema}.warehouse_supplies s
+                                         JOIN {schema}.warehouse_groups g ON g.id = s.group_id
+                                         WHERE g.product_id = p.id), 0) as stock_qty
                         FROM {schema}.products p
                         LEFT JOIN {schema}.categories c ON p.category_id = c.id
                         LEFT JOIN {schema}.brands b ON b.id = p.brand_id
+                        LEFT JOIN {schema}.warehouse_groups wg ON wg.id = p.warehouse_group_id
                         {where_sql}
                         ORDER BY p.tier_pos ASC, p.id ASC""",
                     args
                 )
+                rows = cur.fetchall()
                 items = []
-                for r in cur.fetchall():
+                pid_list = []
+                for r in rows:
                     image_urls = r[3] if isinstance(r[3], list) else (r[3] or [])
                     image = (image_urls[0] if image_urls else None) or r[2]
+                    stock_qty = r[11] or 0
                     items.append({
                         "id": r[0], "name": r[1], "image_url": image,
                         "category": {"id": r[4], "name": r[5], "slug": r[6]} if r[4] else None,
                         "brand": r[7],
                         "tier_rank": r[8], "tier_pos": r[9] or 0,
+                        "price": float(r[10]) if r[10] else 0,
+                        "in_stock": stock_qty > 0,
+                        "values": {},
                     })
+                    pid_list.append(r[0])
+
+                # Значения характеристик товаров (для фильтра по характеристикам)
+                if pid_list:
+                    ids_sql = ",".join(str(int(x)) for x in pid_list)
+                    cur.execute(
+                        f"""SELECT product_id, attribute_id, value, value_json
+                            FROM {schema}.product_spec_values
+                            WHERE product_id IN ({ids_sql})"""
+                    )
+                    vals_by_pid = {}
+                    for pr in cur.fetchall():
+                        v = pr[3] if pr[3] is not None else pr[2]
+                        vals_by_pid.setdefault(pr[0], {})[str(pr[1])] = v
+                    for it in items:
+                        it["values"] = vals_by_pid.get(it["id"], {})
+
+                # Схема атрибутов (для фильтра); если задана категория — только её
+                attr_where = ""
+                attr_args = []
+                if category_slug:
+                    attr_where = ("WHERE sa.category_id = "
+                                  f"(SELECT id FROM {schema}.spec_categories WHERE product_category_slug = %s)")
+                    attr_args = [category_slug]
+                cur.execute(
+                    f"""SELECT sa.id, sa.code, sa.name, sa.field_type, sa.options, sa.unit,
+                               sa.affects_compat, sa.sort_order, sc.product_category_slug
+                        FROM {schema}.spec_attributes sa
+                        JOIN {schema}.spec_categories sc ON sc.id = sa.category_id
+                        {attr_where}
+                        ORDER BY sa.sort_order, sa.id""",
+                    attr_args
+                )
+                attributes = []
+                for r in cur.fetchall():
+                    attributes.append({
+                        "id": r[0], "code": r[1], "name": r[2], "field_type": r[3],
+                        "options": r[4] or [], "unit": r[5], "affects_compat": r[6],
+                        "sort_order": r[7] or 0, "category_slug": r[8],
+                    })
+
                 cur.execute(
                     f"""SELECT c.id, c.name, c.slug, c.sort_order
                         FROM {schema}.categories c
@@ -311,7 +363,7 @@ def handler(event: dict, context) -> dict:
                 )
                 cats = [{"id": r[0], "name": r[1], "slug": r[2], "sort_order": r[3]} for r in cur.fetchall()]
                 return {"statusCode": 200, "headers": cors,
-                        "body": json.dumps({"items": items, "categories": cats})}
+                        "body": json.dumps({"items": items, "categories": cats, "attributes": attributes})}
 
             elif method in ("POST", "PUT"):
                 # Сохранение расстановки: items = [{id, tier_rank, tier_pos}]

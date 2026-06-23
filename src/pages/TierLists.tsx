@@ -8,6 +8,7 @@ import NotificationBell from "@/components/NotificationBell"
 import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
 import { isAdminAuthed } from "@/components/admin/AdminGuard"
+import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, emptyFilterState, applyShopFilters } from "@/components/shop/ShopFilters"
 
 interface TierItem {
   id: number
@@ -17,8 +18,12 @@ interface TierItem {
   brand: string | null
   tier_rank: string | null
   tier_pos: number
+  price?: number
+  in_stock?: boolean
+  values?: Record<string, string | string[]>
 }
 interface TierCategory { id: number; name: string; slug: string; sort_order?: number }
+interface TierAttr extends ShopAttr { category_slug?: string }
 
 // Ряды тир-листа: буква + цвет фона ярлыка (как на классических тир-листах)
 const TIERS: Array<{ rank: string; color: string }> = [
@@ -40,8 +45,10 @@ export default function TierLists() {
 
   const [items, setItems] = useState<TierItem[]>([])
   const [categories, setCategories] = useState<TierCategory[]>([])
+  const [attributes, setAttributes] = useState<TierAttr[]>([])
   const [activeCat, setActiveCat] = useState<string | null>(null)
-  const [activeBrands, setActiveBrands] = useState<Set<string>>(new Set())
+  const [filterState, setFilterState] = useState<ShopFilterState>(emptyFilterState())
+  const [openAttr, setOpenAttr] = useState<Record<number | string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dragId, setDragId] = useState<number | null>(null)
@@ -51,6 +58,7 @@ export default function TierLists() {
   useEffect(() => {
     api.tier.getAll().then(d => {
       setItems(d.items || [])
+      setAttributes(d.attributes || [])
       // Категории — только те, у которых есть товары с фото
       const usedSlugs = new Set((d.items || []).map((i: TierItem) => i.category?.slug).filter(Boolean))
       const cats = (d.categories || []).filter((c: TierCategory) => usedSlugs.has(c.slug))
@@ -60,31 +68,33 @@ export default function TierLists() {
     })
   }, [])
 
-  // Сброс выбранных брендов при смене категории
-  useEffect(() => { setActiveBrands(new Set()) }, [activeCat])
+  // Сброс фильтров при смене категории
+  useEffect(() => { setFilterState(emptyFilterState()); setOpenAttr({}) }, [activeCat])
 
   // Товары текущей категории
   const catItems = useMemo(
     () => items.filter(i => i.category?.slug === activeCat),
     [items, activeCat])
 
-  // Список брендов категории
-  const brandList = useMemo(() => {
-    const s = new Set<string>()
-    catItems.forEach(i => { if (i.brand) s.add(i.brand) })
-    return Array.from(s).sort()
-  }, [catItems])
+  // Характеристики выбранной категории (для сайдбара фильтров)
+  const catAttrs = useMemo(
+    () => attributes.filter(a => a.category_slug === activeCat),
+    [attributes, activeCat])
 
-  const toggleBrand = (b: string) => setActiveBrands(prev => {
-    const next = new Set(prev)
-    if (next.has(b)) next.delete(b); else next.add(b)
-    return next
-  })
+  // Приводим к формату ShopSpecProduct для общего фильтра
+  const asShopProducts = useMemo<ShopSpecProduct[]>(
+    () => catItems.map(i => ({
+      id: i.id, name: i.name, price: i.price || 0,
+      image_url: i.image_url, in_stock: i.in_stock, brand: i.brand,
+      values: i.values || {},
+    })),
+    [catItems])
 
-  // Товары с учётом фильтра брендов
-  const filtered = useMemo(
-    () => activeBrands.size === 0 ? catItems : catItems.filter(i => i.brand && activeBrands.has(i.brand)),
-    [catItems, activeBrands])
+  // Применяем фильтр и оставляем только прошедшие id
+  const filtered = useMemo(() => {
+    const okIds = new Set(applyShopFilters(asShopProducts, filterState).map(p => p.id))
+    return catItems.filter(i => okIds.has(i.id))
+  }, [catItems, asShopProducts, filterState])
 
   // Раскладка по рядам
   const byRank = useMemo(() => {
@@ -234,69 +244,59 @@ export default function TierLists() {
               ))}
             </div>
 
-            {/* Фильтр брендов */}
-            {brandList.length > 0 && (
-              <div className="mb-6 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-foreground/40">Бренды:</span>
-                {brandList.map(b => {
-                  const on = activeBrands.has(b)
-                  return (
-                    <button key={b} onClick={() => toggleBrand(b)}
-                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${on ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary/50"}`}
-                      style={{ cursor: "pointer" }}>
-                      <Icon name={on ? "CheckSquare" : "Square"} size={14} />
-                      {b}
-                    </button>
-                  )
-                })}
-                {activeBrands.size > 0 && (
-                  <button onClick={() => setActiveBrands(new Set())}
-                    className="text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
-                    Сбросить
-                  </button>
-                )}
-              </div>
-            )}
-
             {saving && (
               <div className="mb-3 flex items-center gap-1.5 text-xs text-foreground/50">
                 <Icon name="Loader" size={12} className="animate-spin" /> Сохранение…
               </div>
             )}
 
-            {/* Таблица рядов */}
-            <div className="overflow-hidden rounded-2xl border border-border">
-              {TIERS.map((t, idx) => (
-                <div key={t.rank}
-                  onDragOver={e => { if (isAdmin) e.preventDefault() }}
-                  onDrop={() => dropToRank(t.rank)}
-                  onClick={() => { if (isAdmin && pickedId != null) dropToRank(t.rank) }}
-                  className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
-                  <div className="flex w-20 shrink-0 items-center justify-center" style={{ backgroundColor: t.color }}>
-                    <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
-                  </div>
-                  <div className="flex min-h-[7rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-                    {byRank.map[t.rank].map(it => <TierCard key={it.id} it={it} />)}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* Контент: фильтр слева + тир-лист справа (как в каталоге) */}
+            <div className="flex flex-col gap-6 sm:flex-row">
+              <ShopFilters
+                attributes={catAttrs}
+                products={asShopProducts}
+                state={filterState}
+                setState={setFilterState}
+                openAttr={openAttr}
+                setOpenAttr={setOpenAttr}
+              />
 
-            {/* Не распределённые товары */}
-            {byRank.unranked.length > 0 && (
-              <div className="mt-6">
-                <p className="mb-2 text-sm font-semibold text-foreground/70">
-                  {isAdmin ? "Без оценки — выберите карточку и кликните ряд (или перетащите)" : "Без оценки"}
-                </p>
-                <div
-                  onDragOver={e => { if (isAdmin) e.preventDefault() }}
-                  onDrop={() => dropToRank(null)}
-                  onClick={() => { if (isAdmin && pickedId != null) dropToRank(null) }}
-                  className={`flex flex-wrap gap-2 rounded-2xl border border-dashed border-border bg-card/30 p-3 ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
-                  {byRank.unranked.map(it => <TierCard key={it.id} it={it} />)}
+              <div className="min-w-0 flex-1">
+                {/* Таблица рядов */}
+                <div className="overflow-hidden rounded-2xl border border-border">
+                  {TIERS.map((t, idx) => (
+                    <div key={t.rank}
+                      onDragOver={e => { if (isAdmin) e.preventDefault() }}
+                      onDrop={() => dropToRank(t.rank)}
+                      onClick={() => { if (isAdmin && pickedId != null) dropToRank(t.rank) }}
+                      className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
+                      <div className="flex w-16 shrink-0 items-center justify-center sm:w-20" style={{ backgroundColor: t.color }}>
+                        <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
+                      </div>
+                      <div className="flex min-h-[7rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
+                        {byRank.map[t.rank].map(it => <TierCard key={it.id} it={it} />)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
+
+                {/* Не распределённые товары */}
+                {byRank.unranked.length > 0 && (
+                  <div className="mt-6">
+                    <p className="mb-2 text-sm font-semibold text-foreground/70">
+                      {isAdmin ? "Без оценки — выберите карточку и кликните ряд (или перетащите)" : "Без оценки"}
+                    </p>
+                    <div
+                      onDragOver={e => { if (isAdmin) e.preventDefault() }}
+                      onDrop={() => dropToRank(null)}
+                      onClick={() => { if (isAdmin && pickedId != null) dropToRank(null) }}
+                      className={`flex flex-wrap gap-2 rounded-2xl border border-dashed border-border bg-card/30 p-3 ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
+                      {byRank.unranked.map(it => <TierCard key={it.id} it={it} />)}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </>
         )}
       </div>

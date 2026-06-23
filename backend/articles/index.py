@@ -59,10 +59,12 @@ def handler(event: dict, context) -> dict:
             a["html_attachment"] = row[10] if len(row) > 10 else None
             toc = row[13] if len(row) > 13 else None
             a["toc"] = toc if isinstance(toc, list) else (json.loads(toc) if toc else [])
+            tc = row[14] if len(row) > 14 else None
+            a["tier_cards"] = tc if isinstance(tc, list) else (json.loads(tc) if tc else [])
         return a
 
     COLS = ("id, title, slug, excerpt, content, cover_url, category, "
-            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc")
+            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc, tier_cards")
 
     if method == "GET":
         article_id = params.get("id")
@@ -108,13 +110,14 @@ def handler(event: dict, context) -> dict:
         image_urls = body.get("image_urls") or []
         cover_url = image_urls[0] if image_urls else body.get("image_url")
         cur.execute(
-            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc, tier_cards)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              cover_url, body.get("category", "article"),
              body.get("is_published", False),
              body.get("html_attachment") or None,
-             image_urls, json.dumps(body.get("toc") or []))
+             image_urls, json.dumps(body.get("toc") or []),
+             json.dumps(body.get("tier_cards") or []))
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -127,12 +130,13 @@ def handler(event: dict, context) -> dict:
         cover_url = image_urls[0] if image_urls else body.get("image_url")
         cur.execute(
             """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, cover_url=%s,
-               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s WHERE id=%s""",
+               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s, tier_cards=%s WHERE id=%s""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              cover_url, body.get("category", "article"),
              body.get("is_published", False),
              body.get("html_attachment") or None,
-             image_urls, json.dumps(body.get("toc") or []), body["id"])
+             image_urls, json.dumps(body.get("toc") or []),
+             json.dumps(body.get("tier_cards") or []), body["id"])
         )
         conn.commit()
         return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}

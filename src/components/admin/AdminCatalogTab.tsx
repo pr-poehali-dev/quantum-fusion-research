@@ -372,8 +372,15 @@ export function AdminCatalogTab({
     image_url: "", image_urls: [] as string[], category: "article", is_published: false,
     html_attachment: "",
     toc: [] as { title: string; anchor: string }[],
+    tier_cards: [] as { title: string; image_url: string; rank: string | null }[],
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
+
+  const addTierCard = () => setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: "", image_url: "", rank: null }] }))
+  const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null }>) =>
+    setArticleForm(f => ({ ...f, tier_cards: f.tier_cards.map((c, idx) => idx === i ? { ...c, ...patch } : c) }))
+  const removeTierCard = (i: number) =>
+    setArticleForm(f => ({ ...f, tier_cards: f.tier_cards.filter((_, idx) => idx !== i) }))
 
   // Превратить заголовок пункта в slug-якорь (латиницей)
   const anchorSlug = (s: string) => s.toLowerCase()
@@ -402,10 +409,11 @@ export function AdminCatalogTab({
       category: articleForm.category, is_published: articleForm.is_published,
       html_attachment: articleForm.html_attachment || null,
       toc: articleForm.toc.filter(t => t.title.trim() && t.anchor.trim()),
+      tier_cards: articleForm.tier_cards.filter(c => c.title.trim() || c.image_url),
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
-    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "", toc: [] })
+    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "", toc: [], tier_cards: [] })
     setTab("articles")
   }
 
@@ -414,10 +422,10 @@ export function AdminCatalogTab({
       id: a.id, title: a.title, slug: a.slug,
       excerpt: a.excerpt || "", content: "",
       image_url: a.image_url || "", image_urls: a.image_urls || (a.image_url ? [a.image_url] : []),
-      category: a.category, is_published: a.is_published, html_attachment: "", toc: [],
+      category: a.category, is_published: a.is_published, html_attachment: "", toc: [], tier_cards: [],
     })
     api.articles.getById(a.id, true).then(full => {
-      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [] }))
+      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [] }))
     })
     setTab("add_article")
   }
@@ -1049,7 +1057,7 @@ export function AdminCatalogTab({
     <div>
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
-        <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "", toc: [] }); setTab("add_article") }}
+        <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], category: "article", is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Plus" size={15} />Новая статья
         </button>
@@ -1183,6 +1191,55 @@ export function AdminCatalogTab({
             </div>
           )}
         </div>
+
+        {/* ── Карточки тир-листа (только для категории «Подробный тир-лист») ── */}
+        {articleForm.category === "tier_detail" && (
+          <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Icon name="Trophy" size={15} className="text-primary" /> Тир-лист статьи
+                </label>
+                <p className="mt-0.5 text-xs text-foreground/50">
+                  Добавьте карточки (фото + название) и присвойте каждой ряд S/A/B/C/D/F.
+                  Они покажутся таблицей в статье.
+                </p>
+              </div>
+              <button type="button" onClick={addTierCard}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={13} /> Карточка
+              </button>
+            </div>
+
+            {articleForm.tier_cards.length === 0 ? (
+              <p className="py-3 text-center text-xs text-foreground/40">Карточек пока нет</p>
+            ) : (
+              <div className="space-y-2">
+                {articleForm.tier_cards.map((c, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background/40 p-2">
+                    <div className="w-28 shrink-0">
+                      <ImageUploader images={c.image_url ? [c.image_url] : []} onChange={urls => updateTierCard(i, { image_url: urls[0] || "" })} folder="articles" maxImages={1} />
+                    </div>
+                    <input
+                      value={c.title}
+                      onChange={e => updateTierCard(i, { title: e.target.value })}
+                      placeholder="Название (напр. «RTX 4090»)"
+                      className="min-w-[140px] flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                    <select value={c.rank || ""} onChange={e => updateTierCard(i, { rank: e.target.value || null })}
+                      className="w-28 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                      <option value="">Без ряда</option>
+                      {["S", "A", "B", "C", "D", "F"].map(r => <option key={r} value={r}>Ряд {r}</option>)}
+                    </select>
+                    <button type="button" onClick={() => removeTierCard(i)}
+                      className="rounded-lg border border-border px-2 py-1.5 text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="Trash2" size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <div className="mb-1 flex items-center justify-between">

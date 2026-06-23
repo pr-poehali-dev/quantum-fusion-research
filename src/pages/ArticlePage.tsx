@@ -18,9 +18,53 @@ interface Article {
   views: number
   created_at: string
   toc?: TocItem[]
+  tier_cards?: TierCard[]
 }
 
 interface TocItem { title: string; anchor: string }
+interface TierCard { title: string; image_url: string; rank: string | null }
+
+// Ряды тир-листа статьи (как на /tier-lists)
+const TIER_ROWS: Array<{ rank: string; color: string }> = [
+  { rank: "S", color: "#ef4444" },
+  { rank: "A", color: "#f97316" },
+  { rank: "B", color: "#eab308" },
+  { rank: "C", color: "#22c55e" },
+  { rank: "D", color: "#3b82f6" },
+  { rank: "F", color: "#a855f7" },
+]
+
+// Блок тир-листа внутри статьи
+function ArticleTierList({ cards }: { cards: TierCard[] }) {
+  const used = TIER_ROWS.filter(t => cards.some(c => c.rank === t.rank))
+  if (!used.length) return null
+  return (
+    <div className="my-8 overflow-hidden rounded-2xl border border-border">
+      {used.map((t, idx) => (
+        <div key={t.rank} className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""}`}>
+          <div className="flex w-14 shrink-0 items-center justify-center sm:w-16" style={{ backgroundColor: t.color }}>
+            <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
+          </div>
+          <div className="flex min-h-[6rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
+            {cards.filter(c => c.rank === t.rank).map((c, i) => (
+              <div key={i} className="group relative aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted sm:w-44"
+                style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}>
+                {c.image_url
+                  ? <img src={c.image_url} alt={c.title} className="h-full w-full rounded-xl object-cover" />
+                  : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+                {c.title && (
+                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+                    <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // Превращает метки [[#anchor]] в тексте в невидимые якоря для оглавления.
 function injectAnchors(html: string): string {
@@ -407,6 +451,10 @@ export default function ArticlePage() {
               <ArticleCarousel images={images} standalone />
 
               {article.content && <ArticleContent html={article.content} />}
+
+              {article.tier_cards && article.tier_cards.length > 0 && (
+                <ArticleTierList cards={article.tier_cards} />
+              )}
 
               {article.html_attachment && (
                 <div className="mt-10">

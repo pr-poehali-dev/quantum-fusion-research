@@ -213,6 +213,11 @@ cover_url, category, is_published, image_urls, html_attachment, views, toc).
 - toc (v4.64): JSONB-массив пунктов оглавления [{title, anchor}]. Админ ставит
   в тексте метку [[#anchor]], на ArticlePage она превращается в якорь, клик по
   пункту оглавления — плавный скролл + двойная вспышка абзаца (CSS .toc-flash).
+- tier_cards (v4.65): JSONB-карточки тир-листа статьи [{title, image_url, rank}].
+  Видны/редактируются в форме статьи только для категории tier_detail. На
+  ArticlePage рендерятся таблицей по рядам S/A/B/C/D/F (ArticleTierList).
+products resource=tier (v4.65): отдаёт price, in_stock, values, attributes —
+для фильтра-сайдбара ShopFilters на /tier-lists (бренд+характеристики+цена+наличие).
 Категории (фронт, хардкод в 4 местах): article/review/test/guide/repair/tier_detail
 («Подробный тир-лист»). Frontend: /articles (список), /articles/:id (ArticlePage),
 форма в AdminCatalogTab (вкладка add_article).
