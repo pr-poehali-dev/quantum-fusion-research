@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, memo } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
@@ -36,6 +36,62 @@ const TIERS: Array<{ rank: string; color: string }> = [
 ]
 const RANKS = TIERS.map(t => t.rank)
 
+// Карточка тир-листа. Вынесена наружу и мемоизирована, чтобы при ререндере
+// страницы (сохранение, перестановка) DOM-узлы не пересоздавались — иначе
+// сбивается drag&drop (захват) и страницу «дёргает».
+const TierCard = memo(function TierCard({
+  it, isAdmin, picked, dragOver,
+  onCardClick, onDragStartCard, onDragEndCard, onDragOverCard, onDropCard,
+}: {
+  it: TierItem
+  isAdmin: boolean
+  picked: boolean
+  dragOver: boolean
+  onCardClick: (it: TierItem) => void
+  onDragStartCard: (id: number) => void
+  onDragEndCard: () => void
+  onDragOverCard: (id: number) => void
+  onDropCard: (it: TierItem) => void
+}) {
+  return (
+    <div className="relative flex shrink-0 items-stretch">
+      {/* Полоса-индикатор места вставки (слева, при наведении перетаскиванием) */}
+      <div className={`mr-1 w-1 self-stretch rounded-full transition-all duration-150 ${dragOver ? "bg-primary" : "bg-transparent"}`} />
+      <div
+        draggable={isAdmin}
+        onDragStart={e => { onDragStartCard(it.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(it.id)) }}
+        onDragEnd={onDragEndCard}
+        onDragOver={e => { if (isAdmin) { e.preventDefault(); onDragOverCard(it.id) } }}
+        onDrop={e => { if (isAdmin) { e.preventDefault(); e.stopPropagation(); onDropCard(it) } }}
+        onClick={() => onCardClick(it)}
+        className={`group relative aspect-[16/9] w-40 overflow-hidden rounded-xl border bg-muted transition-[border-color] sm:w-56 ${picked ? "border-primary ring-2 ring-primary" : "border-border"} cursor-pointer active:cursor-grabbing`}
+        style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
+      >
+        {it.image_url
+          ? <img
+              src={it.image_url}
+              alt={it.name}
+              draggable={false}
+              loading="lazy"
+              className="h-full w-full rounded-xl object-cover"
+            />
+          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={26} className="text-foreground/30" /></div>}
+
+        {/* Название — отдельное окно поверх превью при наведении */}
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+          <p className="text-sm font-semibold leading-snug text-foreground">{it.name}</p>
+        </div>
+
+        {picked && (
+          <div className="absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+            <Icon name="Check" size={12} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
+
 export default function TierLists() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -54,6 +110,7 @@ export default function TierLists() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dragId, setDragId] = useState<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)  // карточка, перед которой будет вставка (для полосы)
   const [pickedId, setPickedId] = useState<number | null>(null)  // выбранная карточка (клик-режим)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -191,43 +248,20 @@ export default function TierLists() {
     setPickedId(prev => prev === it.id ? null : it.id)
   }
 
-  const TierCard = ({ it }: { it: TierItem }) => {
-    const picked = pickedId === it.id
-    return (
-      <div
-        draggable={isAdmin}
-        onDragStart={e => { setPickedId(null); setDragId(it.id); e.dataTransfer.effectAllowed = "move" }}
-        onDragEnd={() => setDragId(null)}
-        onDragOver={e => { if (isAdmin && dragId != null && dragId !== it.id) e.preventDefault() }}
-        onDrop={e => { if (isAdmin) { e.preventDefault(); e.stopPropagation(); dropOnCard(it) } }}
-        onClick={() => onCardClick(it)}
-        className={`group relative aspect-[16/9] w-40 shrink-0 overflow-hidden rounded-xl border bg-muted transition-transform duration-200 ease-out hover:z-20 hover:scale-[1.03] sm:w-56 ${picked ? "z-20 border-primary ring-2 ring-primary scale-[1.03]" : "border-border"} cursor-pointer active:cursor-grabbing`}
-        style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
-      >
-        {it.image_url
-          ? <img
-              src={it.image_url}
-              alt={it.name}
-              draggable={false}
-              loading="lazy"
-              className="h-full w-full rounded-xl object-cover"
-              style={{ imageRendering: "auto", backfaceVisibility: "hidden", transform: "translateZ(0)" }}
-            />
-          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={26} className="text-foreground/30" /></div>}
-
-        {/* Название — отдельное окно поверх превью на весь её размер при наведении */}
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-          <p className="text-sm font-semibold leading-snug text-foreground">{it.name}</p>
-        </div>
-
-        {picked && (
-          <div className="absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
-            <Icon name="Check" size={12} />
-          </div>
-        )}
-      </div>
-    )
-  }
+  const renderCard = (it: TierItem) => (
+    <TierCard
+      key={it.id}
+      it={it}
+      isAdmin={isAdmin}
+      picked={pickedId === it.id}
+      dragOver={dragOverId === it.id && dragId != null && dragId !== it.id}
+      onCardClick={onCardClick}
+      onDragStartCard={(id) => { setPickedId(null); setDragId(id) }}
+      onDragEndCard={() => { setDragId(null); setDragOverId(null) }}
+      onDragOverCard={(id) => { if (dragId != null && dragId !== id) setDragOverId(id) }}
+      onDropCard={(target) => { dropOnCard(target); setDragOverId(null) }}
+    />
+  )
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
@@ -354,7 +388,7 @@ export default function TierLists() {
                 <div className="overflow-hidden rounded-2xl border border-border">
                   {TIERS.map((t, idx) => (
                     <div key={t.rank}
-                      onDragOver={e => { if (isAdmin) e.preventDefault() }}
+                      onDragOver={e => { if (isAdmin) { e.preventDefault() } }}
                       onDrop={() => dropToRank(t.rank)}
                       onClick={() => { if (isAdmin && pickedId != null) dropToRank(t.rank) }}
                       className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
@@ -362,7 +396,7 @@ export default function TierLists() {
                         <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
                       </div>
                       <div className="flex min-h-[7rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-                        {byRank.map[t.rank].map(it => <TierCard key={it.id} it={it} />)}
+                        {byRank.map[t.rank].map(it => renderCard(it))}
                       </div>
                     </div>
                   ))}
@@ -379,7 +413,7 @@ export default function TierLists() {
                       onDrop={() => dropToRank(null)}
                       onClick={() => { if (isAdmin && pickedId != null) dropToRank(null) }}
                       className={`flex flex-wrap gap-2 rounded-2xl border border-dashed border-border bg-card/30 p-3 ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
-                      {byRank.unranked.map(it => <TierCard key={it.id} it={it} />)}
+                      {byRank.unranked.map(it => renderCard(it))}
                     </div>
                   </div>
                 )}
