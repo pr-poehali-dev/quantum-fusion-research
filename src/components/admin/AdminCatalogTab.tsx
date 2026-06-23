@@ -379,6 +379,12 @@ export function AdminCatalogTab({
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
   const [tierProductSearch, setTierProductSearch] = useState("")  // поиск товара для карточки тир-листа
+  // Полный список товаров для поиска карточек тир-листа (грузим отдельно — на
+  // вкладке статей общий products может быть пуст). Только не архивные.
+  const [tierAllProducts, setTierAllProducts] = useState<Product[]>([])
+  useEffect(() => {
+    api.products.getAll().then(d => setTierAllProducts((d.products || []).filter((p: Product & { is_archived?: boolean }) => !p.is_archived)))
+  }, [])
 
   // Доступные типы статей (можно выбрать несколько)
   const ARTICLE_CATEGORIES: { value: string; label: string }[] = [
@@ -1299,7 +1305,7 @@ export function AdminCatalogTab({
               </div>
               {tierProductSearch.trim().length >= 1 && (() => {
                 const q = tierProductSearch.trim().toLowerCase()
-                const found = products.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8)
+                const found = tierAllProducts.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8)
                 if (found.length === 0) return (
                   <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-4 py-3 text-xs text-foreground/40 shadow-xl">Ничего не найдено</div>
                 )
