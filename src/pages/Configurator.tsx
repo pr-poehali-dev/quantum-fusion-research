@@ -15,13 +15,13 @@ import { findCompatIssues, SpecLinkRule, SchemaAttribute } from "@/components/co
 
 const SLOT_LABELS: Record<string, { label: string; icon: string; required: boolean }> = {
   cpu:         { label: "Процессор",             icon: "Cpu",        required: true  },
-  motherboard: { label: "Материнская плата",     icon: "CircuitBoard",required: false },
-  gpu:         { label: "Видеокарта",            icon: "Monitor",    required: true  },
+  motherboard: { label: "Материнская плата",     icon: "CircuitBoard",required: true  },
+  gpu:         { label: "Видеокарта",            icon: "Monitor",    required: false },
   ram:         { label: "Оперативная память",    icon: "MemoryStick",required: true  },
-  storage:     { label: "Накопитель",            icon: "HardDrive",  required: true  },
-  cooling:     { label: "Система охлаждения",    icon: "Wind",       required: false },
+  storage:     { label: "Накопитель",            icon: "HardDrive",  required: false },
+  cooling:     { label: "Система охлаждения",    icon: "Wind",       required: true  },
   psu:         { label: "Блок питания",          icon: "Zap",        required: true  },
-  case:        { label: "Корпус",                icon: "Box",        required: false },
+  case:        { label: "Корпус",                icon: "Box",        required: true  },
   fan:         { label: "Вентилятор",            icon: "Fan",        required: false },
 }
 
