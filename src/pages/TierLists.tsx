@@ -121,32 +121,67 @@ export default function TierLists() {
     }, 400)
   }
 
-  // Перемещение товара в ряд (rank=null — снять оценку)
-  const moveTo = (id: number, rank: string | null) => {
+  // Перемещение товара в ряд с позицией.
+  // beforeId — id карточки, ПЕРЕД которой вставить (null — в конец ряда).
+  // Перенумеровываем весь целевой ряд (0,1,2…), чтобы позиция была стабильной.
+  const moveTo = (id: number, rank: string | null, beforeId: number | null = null) => {
     if (!isAdmin) return
     setItems(prev => {
       const moving = prev.find(i => i.id === id)
       if (!moving) return prev
-      const sameRow = prev.filter(i => i.category?.slug === moving.category?.slug && i.tier_rank === rank && i.id !== id)
-      const maxPos = sameRow.reduce((m, i) => Math.max(m, i.tier_pos), -1)
-      const next = prev.map(i => i.id === id ? { ...i, tier_rank: rank, tier_pos: maxPos + 1 } : i)
-      persist([{ ...moving, tier_rank: rank, tier_pos: maxPos + 1 }])
+      const slug = moving.category?.slug
+      // текущий порядок целевого ряда (без перемещаемой карточки)
+      const row = prev
+        .filter(i => i.category?.slug === slug && i.tier_rank === rank && i.id !== id)
+        .sort((a, b) => a.tier_pos - b.tier_pos)
+      // вставляем moving перед beforeId (или в конец)
+      const insertAt = beforeId != null ? row.findIndex(i => i.id === beforeId) : -1
+      const ordered = [...row]
+      if (insertAt >= 0) ordered.splice(insertAt, 0, moving)
+      else ordered.push(moving)
+      // новые позиции
+      const posById = new Map<number, number>()
+      ordered.forEach((i, idx) => posById.set(i.id, idx))
+      const changed: TierItem[] = []
+      const next = prev.map(i => {
+        if (i.id === id) {
+          const u = { ...i, tier_rank: rank, tier_pos: posById.get(i.id) ?? 0 }
+          changed.push(u); return u
+        }
+        if (posById.has(i.id) && i.tier_pos !== posById.get(i.id)) {
+          const u = { ...i, tier_pos: posById.get(i.id)! }
+          changed.push(u); return u
+        }
+        return i
+      })
+      persist(changed)
       return next
     })
   }
 
-  // Перемещение в ряд: и для drag&drop, и для клик-режима.
+  // Бросок/клик на ПУСТУЮ зону ряда — в конец.
   const dropToRank = (rank: string | null) => {
     if (!isAdmin) return
     const id = dragId ?? pickedId
-    if (id != null) moveTo(id, rank)
+    if (id != null) moveTo(id, rank, null)
     setDragId(null)
     setPickedId(null)
   }
 
-  // Клик по карточке: админ — выбирает/снимает выбор; гость — открывает товар.
+  // Бросок/клик на КОНКРЕТНУЮ карточку — вставка перед ней.
+  const dropOnCard = (target: TierItem) => {
+    if (!isAdmin) return
+    const id = dragId ?? pickedId
+    if (id != null && id !== target.id) moveTo(id, target.tier_rank, target.id)
+    setDragId(null)
+    setPickedId(null)
+  }
+
+  // Клик по карточке: админ — если выбрана другая карточка, вставляем её ПЕРЕД этой;
+  // иначе выбираем/снимаем выбор. Гость — открывает товар.
   const onCardClick = (it: TierItem) => {
     if (!isAdmin) { navigate(`/product/${it.id}`); return }
+    if (pickedId != null && pickedId !== it.id) { dropOnCard(it); return }
     setPickedId(prev => prev === it.id ? null : it.id)
   }
 
@@ -157,6 +192,8 @@ export default function TierLists() {
         draggable={isAdmin}
         onDragStart={e => { setPickedId(null); setDragId(it.id); e.dataTransfer.effectAllowed = "move" }}
         onDragEnd={() => setDragId(null)}
+        onDragOver={e => { if (isAdmin && dragId != null && dragId !== it.id) e.preventDefault() }}
+        onDrop={e => { if (isAdmin) { e.preventDefault(); e.stopPropagation(); dropOnCard(it) } }}
         onClick={() => onCardClick(it)}
         className={`group relative aspect-[16/9] w-40 shrink-0 overflow-hidden rounded-xl border bg-muted transition-transform duration-200 ease-out hover:z-20 hover:scale-[1.03] sm:w-56 ${picked ? "z-20 border-primary ring-2 ring-primary scale-[1.03]" : "border-border"} cursor-pointer active:cursor-grabbing`}
         style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}

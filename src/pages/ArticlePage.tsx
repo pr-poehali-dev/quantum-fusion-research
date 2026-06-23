@@ -72,18 +72,29 @@ function injectAnchors(html: string): string {
     (_, slug) => `<span id="toc-${slug}" class="toc-anchor"></span>`)
 }
 
-// Плавная прокрутка к якорю + двойная вспышка соседнего абзаца
+// Плавная прокрутка к якорю + двойная вспышка нужного абзаца.
+// Якорь [[#slug]] вставлен как <span> внутри абзаца. Подсвечиваем и скроллим
+// именно блок верхнего уровня (прямой ребёнок .rich-content), где стоит якорь —
+// иначе у средних пунктов подсвечивался случайный inline-элемент.
 function goToAnchor(slug: string) {
   const el = document.getElementById(`toc-${slug}`)
   if (!el) return
-  el.scrollIntoView({ behavior: "smooth", block: "start" })
-  // Подсвечиваем ближайший значимый блок (следующий элемент или родителя)
-  const target = (el.nextElementSibling as HTMLElement)
-    || (el.parentElement as HTMLElement)
-    || el
+
+  // Поднимаемся до блока — прямого потомка контейнера .rich-content
+  let target: HTMLElement = el
+  let node: HTMLElement | null = el
+  while (node && !node.parentElement?.classList.contains("rich-content")) {
+    node = node.parentElement
+    if (node) target = node
+  }
+  if (node) target = node  // блок верхнего уровня
+
+  // Скроллим именно к видимому блоку (отступ от липкой шапки)
+  target.style.scrollMarginTop = "90px"
+  target.scrollIntoView({ behavior: "smooth", block: "start" })
+
   target.classList.remove("toc-flash")
-  // reflow, чтобы анимация перезапустилась при повторном клике
-  void target.offsetWidth
+  void target.offsetWidth   // reflow — чтобы анимация перезапускалась при повторном клике
   target.classList.add("toc-flash")
   window.setTimeout(() => target.classList.remove("toc-flash"), 1500)
 }
