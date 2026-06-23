@@ -303,15 +303,42 @@ export default function TierLists() {
                 )}
               </div>
 
-              {/* Кнопка раскрытия фильтров — правее категории */}
-              <button onClick={() => setFiltersOpen(o => !o)}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${filtersOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
-                style={{ cursor: "pointer" }}>
-                <Icon name="SlidersHorizontal" size={16} />
-                <span>Фильтры</span>
-                {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-primary" />}
-                <Icon name={filtersOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
-              </button>
+              {/* Кнопка раскрытия фильтров — выпадающей плашкой, правее категории */}
+              <div className="relative inline-block">
+                <button onClick={() => setFiltersOpen(o => !o)}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${filtersOpen ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground/70 hover:border-primary hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="SlidersHorizontal" size={16} />
+                  <span>Фильтры</span>
+                  {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-primary" />}
+                  <Icon name={filtersOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
+                </button>
+                {filtersOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setFiltersOpen(false)} style={{ cursor: "auto" }} />
+                    <div className="absolute left-0 top-full z-50 mt-2 w-64 max-w-[calc(100vw-3rem)] rounded-2xl shadow-2xl">
+                      <ShopFilters
+                        attributes={catAttrs}
+                        products={asShopProducts}
+                        state={filterState}
+                        setState={setFilterState}
+                        openAttr={openAttr}
+                        setOpenAttr={setOpenAttr}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Сброс фильтров — рядом, когда фильтры скрыты и есть активные */}
+              {hasActiveFilters && !filtersOpen && (
+                <button onClick={() => setFilterState(emptyFilterState())}
+                  className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground/60 transition-colors hover:border-red-400 hover:text-red-400"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="X" size={15} />
+                  <span>Сбросить</span>
+                </button>
+              )}
             </div>
 
             {saving && (
@@ -320,19 +347,8 @@ export default function TierLists() {
               </div>
             )}
 
-            {/* Контент: фильтр слева (скрываемый) + тир-лист справа */}
-            <div className="flex flex-col gap-6 sm:flex-row">
-              {filtersOpen && (
-                <ShopFilters
-                  attributes={catAttrs}
-                  products={asShopProducts}
-                  state={filterState}
-                  setState={setFilterState}
-                  openAttr={openAttr}
-                  setOpenAttr={setOpenAttr}
-                />
-              )}
-
+            {/* Контент: тир-лист на всю ширину (фильтры теперь в дропдауне) */}
+            <div className="flex flex-col gap-6">
               <div className="min-w-0 flex-1">
                 {/* Таблица рядов */}
                 <div className="overflow-hidden rounded-2xl border border-border">
