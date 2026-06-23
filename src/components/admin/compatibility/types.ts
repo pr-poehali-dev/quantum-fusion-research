@@ -24,6 +24,7 @@ export interface SpecAttribute {
   affects_compat: boolean
   is_required: boolean
   sort_order: number
+  applies_to?: "all" | "air" | "liquid"
 }
 
 export interface SpecLink {

@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { SpecSchema, SpecProduct, SpecAttribute } from "./types"
 import { Modal, Field } from "./AttributesBuilder"
 import { buildCsv, parseCsv, downloadCsv } from "./specCsv"
+import { attrVisibleForKind, coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
 
 interface Props { schema: SpecSchema }
 
@@ -170,10 +171,19 @@ export default function ProductsValues({ schema }: Props) {
 // ── Динамический редактор значений товара ────────────────────────────────────
 function ValuesEditor({ row, schema, onClose, onSaved }:
   { row: SpecProduct; schema: SpecSchema; onClose: () => void; onSaved: () => void }) {
-  const attrs = schema.attributes.filter(a => a.category_id === row.spec_category_id).sort((a, b) => a.sort_order - b.sort_order)
+  const allAttrs = schema.attributes.filter(a => a.category_id === row.spec_category_id).sort((a, b) => a.sort_order - b.sort_order)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // Управляющий тип охлаждения: показываем поля только нужного подтипа (air/liquid)
+  const attrs = useMemo(() => {
+    const hasTyped = allAttrs.some(a => a.applies_to === "air" || a.applies_to === "liquid")
+    if (!hasTyped) return allAttrs
+    const typeAttr = allAttrs.find(a => a.code === COOLER_TYPE_CODE)
+    const kind = typeAttr ? coolerKindFromValue(values[typeAttr.id]) : null
+    return allAttrs.filter(a => attrVisibleForKind(a, kind))
+  }, [allAttrs, values])
 
   useEffect(() => {
     api.warehouse.specValuesGet(row.product_id).then(d => { setValues(d.values || {}); setLoading(false) })

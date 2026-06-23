@@ -341,7 +341,7 @@ def handler(event: dict, context) -> dict:
                     attr_args = [category_slug]
                 cur.execute(
                     f"""SELECT sa.id, sa.code, sa.name, sa.field_type, sa.options, sa.unit,
-                               sa.affects_compat, sa.sort_order, sc.product_category_slug
+                               sa.affects_compat, sa.sort_order, sc.product_category_slug, sa.applies_to
                         FROM {schema}.spec_attributes sa
                         JOIN {schema}.spec_categories sc ON sc.id = sa.category_id
                         {attr_where}
@@ -354,6 +354,7 @@ def handler(event: dict, context) -> dict:
                         "id": r[0], "code": r[1], "name": r[2], "field_type": r[3],
                         "options": r[4] or [], "unit": r[5], "affects_compat": r[6],
                         "sort_order": r[7] or 0, "category_slug": r[8],
+                        "applies_to": r[9] or "all",
                     })
 
                 cur.execute(

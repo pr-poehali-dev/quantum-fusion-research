@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import Icon from "@/components/ui/icon"
+import { attrVisibleForKind, coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
 
 // Характеристика категории (из spec_attributes)
 export interface ShopAttr {
@@ -11,6 +12,7 @@ export interface ShopAttr {
   unit?: string | null
   affects_compat?: boolean
   sort_order: number
+  applies_to?: string  // all | air | liquid (управляющий тип охлаждения)
 }
 
 // Товар с характеристиками и брендом (из specSlotProducts)
@@ -67,16 +69,28 @@ interface Props {
 }
 
 export default function ShopFilters({ attributes, products, state, setState, openAttr, setOpenAttr }: Props) {
+  // Выбранный в фильтре тип охлаждения (cooler_type) → подтип air/liquid.
+  // Если в фильтре отмечен ровно один тип — прячем характеристики чужого типа.
+  const coolingKind = useMemo(() => {
+    const typeA = attributes.find(a => a.code === COOLER_TYPE_CODE)
+    if (!typeA) return null
+    const sel = state.attrs[typeA.id]
+    if (!sel || sel.size !== 1) return null
+    return coolerKindFromValue(Array.from(sel)[0])
+  }, [attributes, state.attrs])
+
   // Фильтруемые характеристики — только select/multiselect, у которых есть заполненные значения
   const filterableAttrs = useMemo(() =>
     attributes
       .filter(a => (a.field_type === "select" || a.field_type === "multiselect"))
+      // скрываем характеристики чужого подтипа охлаждения, когда тип выбран
+      .filter(a => coolingKind === null ? true : attrVisibleForKind(a, coolingKind))
       .filter(a => products.some(p => {
         const v = p.values[String(a.id)]
         return v !== undefined && v !== null && (Array.isArray(v) ? v.length > 0 : String(v).length > 0)
       }))
       .sort((a, b) => a.sort_order - b.sort_order),
-  [attributes, products])
+  [attributes, products, coolingKind])
 
   const attrValues = useMemo(() => {
     const m: Record<number, string[]> = {}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import { coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
 
 // ── Типы данных из бэкенда ────────────────────────────────────────────────────
 interface SpecAttr {
@@ -13,6 +14,7 @@ interface SpecAttr {
   affects_compat: boolean
   is_required: boolean
   sort_order: number
+  applies_to?: string  // all | air | liquid
 }
 interface SlotProduct {
   id: number
@@ -140,15 +142,26 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
   }, [schemaAttrs])
 
   // Какие характеристики показывать как фильтры — те, что реально заполнены у товаров
+  // Выбранный в фильтре тип охлаждения → подтип (для скрытия чужих характеристик)
+  const coolingKind = useMemo(() => {
+    const typeA = attributes.find(a => a.code === COOLER_TYPE_CODE)
+    if (!typeA) return null
+    const sel = attrFilters[typeA.id]
+    if (!sel || sel.size !== 1) return null
+    return coolerKindFromValue(Array.from(sel)[0])
+  }, [attributes, attrFilters])
+
   const filterableAttrs = useMemo(() => {
     return attributes.filter(a => {
       if (a.field_type === "number" || a.field_type === "bool" || a.field_type === "text") return false
+      // скрываем характеристики чужого подтипа охлаждения, когда тип выбран
+      if (coolingKind !== null && (a.applies_to === "air" || a.applies_to === "liquid") && a.applies_to !== coolingKind) return false
       return products.some(p => {
         const v = p.values[String(a.id)]
         return v !== undefined && v !== null && (Array.isArray(v) ? v.length > 0 : String(v).length > 0)
       })
     })
-  }, [attributes, products])
+  }, [attributes, products, coolingKind])
 
   // Уникальные значения по каждому фильтр-атрибуту
   const attrValues = useMemo(() => {
@@ -179,6 +192,16 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
       const myAttrId = meIsFrom ? link.from_attribute_id : link.to_attribute_id
       const otherAttrId = meIsFrom ? link.to_attribute_id : link.from_attribute_id
       const otherCat = meIsFrom ? toCat : fromCat
+
+      // Если мой атрибут ограничен подтипом охлаждения (air/liquid), а кандидат
+      // другого типа — правило к нему не относится (напр. высота кулера у СЖО).
+      const myAttrDef = attributes.find(a => a.id === myAttrId)
+      const applies = myAttrDef?.applies_to
+      if (applies === "air" || applies === "liquid") {
+        const typeAttr = attributes.find(a => a.code === COOLER_TYPE_CODE)
+        const kind = typeAttr ? coolerKindFromValue(p.values[String(typeAttr.id)]) : null
+        if (kind && kind !== applies) continue
+      }
 
       const myVal = p.values[String(myAttrId)]
       const otherVals = selectedSpec[otherCat]

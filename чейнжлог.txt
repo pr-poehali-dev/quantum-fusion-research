@@ -3,6 +3,26 @@
 
 ---
 
+## v4.66 | 2026-06-23 | Охлаждение: разделение воздух/СЖО (управляющий тип)
+
+### Backend
+- БД: spec_attributes.applies_to (миграция V0152) — 'all'|'air'|'liquid'.
+  Проставлено охлаждению: height_mm→air; rad_size/pump_tier/pump_noise/screen→liquid;
+  остальное (sockets, cooler_type, tdp_rating, fan_tier, argb)→all.
+- warehouse: spec_schema, spec_slot_products, spec_attr_create/update — отдают и
+  принимают applies_to. products resource=tier — attributes с applies_to.
+
+### Frontend
+- Новый хелпер src/lib/coolingFilter.ts: тип по значению cooler_type
+  (Воздушное→air, СЖО→liquid) + видимость атрибута по подтипу.
+- Редактор характеристик товара (ProductsValues): поля показываются по выбранному
+  типу — у СЖО нет «высоты башни», у воздуха нет «размера радиатора» и т.п.
+- Форма атрибута (AttributesBuilder): выбор «Показывать для» (всегда/воздух/СЖО).
+- Фильтры (ShopFilters — каталог и /tier-lists, SlotPickerModal — конфигуратор):
+  при выбранном в фильтре типе скрываются характеристики чужого подтипа.
+- Совместимость (SlotPickerModal): правило, завязанное на типизированный атрибут,
+  не применяется к кандидату другого типа (нет ложных «не указана характеристика»).
+
 ## v4.65 | 2026-06-23 | Тир-лист в статьях + фильтр-сайдбар на /tier-lists
 
 ### Backend

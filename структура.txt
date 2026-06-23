@@ -113,8 +113,12 @@ DATA-DRIVEN модель (V0141–V0143), 4 таблицы:
 - spec_categories — типы железа (code/name/icon/color/product_category_slug/sort).
   product_category_slug привязывает к categories.slug — авто-определение типа товара.
 - spec_attributes — поля категории (code/name/field_type[select|multiselect|number|
-  bool|text]/options(jsonb)/unit/affects_compat/is_required/sort). affects_compat —
+  bool|text]/options(jsonb)/unit/affects_compat/is_required/sort/applies_to). affects_compat —
   можно использовать в связях; иначе «для ознакомления». is_required — для статуса.
+  applies_to (v4.66, 'all'|'air'|'liquid') — управляющий тип охлаждения: поле видно
+  только при выбранном cooler_type (Воздушное→air / СЖО→liquid). Фильтрация в
+  редакторе значений, фильтрах (ShopFilters/SlotPickerModal) и совместимости.
+  Хелпер фронта src/lib/coolingFilter.ts.
 - product_spec_values — значения у товара (product_id, attribute_id, value/value_json).
   UNIQUE(product_id, attribute_id). value_json — для multiselect.
 - spec_links — карта связей: from_attribute_id, to_attribute_id, rule

@@ -208,6 +208,7 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
   const [editText, setEditText] = useState("")
   const [affects, setAffects] = useState(attr?.affects_compat ?? false)
   const [required, setRequired] = useState(attr?.is_required ?? false)
+  const [appliesTo, setAppliesTo] = useState<"all" | "air" | "liquid">(attr?.applies_to || "all")
   const [saving, setSaving] = useState(false)
 
   const hasOptions = fieldType === "select" || fieldType === "multiselect"
@@ -230,7 +231,7 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
   const save = async () => {
     if (!name.trim() || (!attr && !code.trim())) return
     setSaving(true)
-    const payload = { name, field_type: fieldType, unit: unit || null, options: hasOptions ? options : [], affects_compat: affects, is_required: required }
+    const payload = { name, field_type: fieldType, unit: unit || null, options: hasOptions ? options : [], affects_compat: affects, is_required: required, applies_to: appliesTo }
     if (attr) await api.warehouse.specAttrUpdate({ id: attr.id, ...payload })
     else await api.warehouse.specAttrCreate({ category_id: categoryId, code: code.trim(), ...payload })
     setSaving(false)
@@ -289,6 +290,14 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
       {fieldType === "number" && (
         <Field label="Единица измерения"><input value={unit} onChange={e => setUnit(e.target.value)} className={inp} placeholder="мм / Вт / ГБ" /></Field>
       )}
+      <Field label="Показывать для (охлаждение)">
+        <select value={appliesTo} onChange={e => setAppliesTo(e.target.value as "all" | "air" | "liquid")} className={inp} style={{ cursor: "pointer" }}>
+          <option value="all">Всегда (любой тип)</option>
+          <option value="air">Только воздушное охлаждение</option>
+          <option value="liquid">Только жидкостное (СЖО)</option>
+        </select>
+        <p className="mt-1 text-xs text-foreground/40">Для категории охлаждения: поле появится только если у товара выбран этот тип. Для остальных категорий оставьте «Всегда».</p>
+      </Field>
       <div className="space-y-2 rounded-lg border border-border p-3">
         <Toggle on={affects} onClick={() => setAffects(v => !v)}
           label="Влияет на совместимость" hint="Можно использовать в правилах связей. Иначе — просто для ознакомления." />
