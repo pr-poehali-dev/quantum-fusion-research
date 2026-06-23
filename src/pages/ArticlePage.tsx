@@ -189,16 +189,23 @@ function goToAnchor(slug: string) {
   if (!el) return
 
   let target: HTMLElement = el
-  // Если якорь — пустой span-метка внутри текста, поднимаемся до блока
-  // верхнего уровня (.rich-content). Если это реальный блок (напр. тир-лист) —
-  // используем его напрямую.
+  // Если якорь — пустой span-метка внутри текста, ищем видимый блок для подсветки.
   if (el.classList.contains("toc-anchor")) {
+    // 1) поднимаемся до блока верхнего уровня (прямой ребёнок .rich-content)
     let node: HTMLElement | null = el
     while (node && !node.parentElement?.classList.contains("rich-content")) {
       node = node.parentElement
       if (node) target = node
     }
     if (node) target = node
+    // 2) если получившийся target — сам пустой span-якорь (метка стояла прямо
+    // в .rich-content), берём ближайший непустой соседний блок.
+    if (target.classList.contains("toc-anchor") || target.offsetHeight === 0) {
+      let sib = el.nextElementSibling as HTMLElement | null
+      while (sib && (sib as HTMLElement).offsetHeight === 0) sib = sib.nextElementSibling as HTMLElement | null
+      if (sib) target = sib
+      else if (el.parentElement) target = el.parentElement
+    }
   }
 
   // Скроллим именно к видимому блоку (отступ от липкой шапки)

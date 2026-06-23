@@ -323,7 +323,7 @@
 /* Двойная вспышка абзаца при переходе из оглавления (акцентный цвет темы) */
 .toc-flash {
   border-radius: 0.5rem;
-  animation: tocFlash 1.4s ease-in-out;
+  animation: tocFlash 1.5s ease-in-out;
 }
 @keyframes tocFlash {
   0%,
@@ -333,8 +333,8 @@
   }
   15%,
   55% {
-    background-color: hsl(var(--primary) / 0.18);
-    box-shadow: 0 0 0 6px hsl(var(--primary) / 0.12);
+    background-color: hsl(var(--primary) / 0.28);
+    box-shadow: 0 0 0 8px hsl(var(--primary) / 0.18);
   }
   35%,
   75% {
