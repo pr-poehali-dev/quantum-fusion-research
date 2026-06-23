@@ -5,6 +5,12 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200
+    },
+    {
+      "name": "Tier list returns 200",
+      "method": "GET",
+      "path": "/?resource=tier",
+      "expectedStatus": 200
     }
   ]
 }

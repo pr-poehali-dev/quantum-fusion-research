@@ -76,120 +76,119 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
       onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="group relative flex flex-col rounded-2xl border border-border overflow-hidden hover:border-primary/50 transition-all duration-300 cursor-pointer"
-      style={{ minHeight: 340 }}
+      className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left transition-colors hover:border-primary/50 cursor-pointer"
     >
-      {hasImage ? (
-        <div className="absolute inset-0">
-          {images.map((url, i) => (
+      {/* ─── Фото сверху ─── */}
+      <div className="relative h-64 w-full overflow-hidden">
+        {hasImage ? (
+          images.map((url, i) => (
             <img key={i} src={url} alt={b.name}
-              className="absolute inset-0 h-full w-full object-cover"
-              style={{ opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease" }}
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              style={{ opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease, transform 0.5s ease" }}
             />
+          ))
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted/80 to-card">
+            <Icon name="Monitor" size={28} className="text-foreground/30" />
+          </div>
+        )}
+
+        {/* Бейджи — слева сверху */}
+        <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
+          {!!b.variantsCount && (
+            <span className="flex items-center gap-1 rounded-full bg-black/70 backdrop-blur-sm border border-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/80">
+              <Icon name="Layers" size={10} />
+              {b.variantsCount + 1} варианта
+            </span>
+          )}
+          {previewTags.map(t => (
+            <span key={t.id}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm transition-all duration-300 ${hovered ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"} ${getTagClass(t.color)}`}
+            >
+              {t.name}
+            </span>
           ))}
         </div>
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-muted/80 to-card" />
-      )}
-      <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/50 via-black/15 to-transparent group-hover:h-full group-hover:from-black/95 group-hover:via-black/30 transition-all duration-300" />
 
-      {/* Бейджи — слева сверху */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
-        {!!b.variantsCount && (
-          <span className="flex items-center gap-1 rounded-full bg-black/70 backdrop-blur-sm border border-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/80">
-            <Icon name="Layers" size={10} />
-            {b.variantsCount + 1} варианта
-          </span>
-        )}
-        {previewTags.map(t => (
-          <span key={t.id}
-            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm transition-all duration-300 ${hovered ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"} ${getTagClass(t.color)}`}
-          >
-            {t.name}
-          </span>
-        ))}
-      </div>
-
-      {/* Бейджи — справа сверху */}
-      <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1.5">
-        {b.reserved ? (
-          <div
-            className="flex items-center gap-1 rounded-full bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg cursor-help"
-            title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
-            <Icon name="Clock" size={10} />
-            В резерве
-          </div>
-        ) : b.in_stock && (
-          <div className="flex items-center gap-1 rounded-full bg-green-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
-            <Icon name="CheckCircle" size={10} />
-            В наличии
-          </div>
-        )}
-        {b.is_featured && (
-          <div className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-lg">
-            <Icon name="Star" size={10} />
-            Рекомендуем
-          </div>
-        )}
-      </div>
-
-      {/* Стрелки карусели */}
-      {images.length > 1 && (
-        <div className={`absolute z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${(b.in_stock || b.is_featured || b.reserved) ? "top-16 right-3" : "top-3 right-3"}`}>
-          <button onClick={(e) => goImg(e, -1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="ChevronLeft" size={12} />
-          </button>
-          <span className="text-[10px] text-white/70 font-mono">{imgIdx + 1}/{images.length}</span>
-          <button onClick={(e) => goImg(e, 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="ChevronRight" size={12} />
-          </button>
+        {/* Бейджи — справа сверху */}
+        <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1.5">
+          {b.reserved ? (
+            <div
+              className="flex items-center gap-1 rounded-full bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg cursor-help"
+              title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
+              <Icon name="Clock" size={10} />
+              В резерве
+            </div>
+          ) : b.in_stock && (
+            <div className="flex items-center gap-1 rounded-full bg-green-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
+              <Icon name="CheckCircle" size={10} />
+              В наличии
+            </div>
+          )}
+          {b.is_featured && (
+            <div className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-lg">
+              <Icon name="Star" size={10} />
+              Рекомендуем
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Точки карусели */}
-      {images.length > 1 && (
-        <div className="absolute bottom-[88px] left-1/2 z-20 -translate-x-1/2 flex gap-1.5">
-          {images.map((_, i) => (
-            <button key={i} onClick={(e) => { e.stopPropagation(); setImgIdx(i) }}
-              className={`rounded-full transition-all duration-300 ${i === imgIdx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/40"}`}
-              style={{ cursor: "pointer" }} />
-          ))}
+        {/* Стрелки карусели */}
+        {images.length > 1 && (
+          <div className={`absolute z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${(b.in_stock || b.is_featured || b.reserved) ? "top-16 right-3" : "top-3 right-3"}`}>
+            <button onClick={(e) => goImg(e, -1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="ChevronLeft" size={12} />
+            </button>
+            <span className="text-[10px] text-white/70 font-mono">{imgIdx + 1}/{images.length}</span>
+            <button onClick={(e) => goImg(e, 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="ChevronRight" size={12} />
+            </button>
+          </div>
+        )}
+
+        {/* Точки карусели */}
+        {images.length > 1 && (
+          <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 flex gap-1.5">
+            {images.map((_, i) => (
+              <button key={i} onClick={(e) => { e.stopPropagation(); setImgIdx(i) }}
+                className={`rounded-full transition-all duration-300 ${i === imgIdx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/40"}`}
+                style={{ cursor: "pointer" }} />
+            ))}
+          </div>
+        )}
+
+        {/* Hover-виджет с железом: CPU + GPU поверх фото */}
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 px-6">
+          {cpu && (
+            <div className="flex items-center gap-2 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-4 py-2 w-full max-w-xs">
+              <Icon name="Cpu" size={14} className="text-primary shrink-0" />
+              <span className="text-xs text-white/90 truncate">{cpu.name}</span>
+            </div>
+          )}
+          {gpu && (
+            <div className="flex items-center gap-2 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-4 py-2 w-full max-w-xs">
+              <Icon name="Monitor" size={14} className="text-primary shrink-0" />
+              <span className="text-xs text-white/90 truncate">{gpu.name}</span>
+            </div>
+          )}
         </div>
-      )}
-
-      {/* Hover-оверлей CPU + GPU */}
-      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 px-6">
-        {cpu && (
-          <div className="flex items-center gap-2 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-4 py-2 w-full max-w-xs">
-            <Icon name="Cpu" size={14} className="text-primary shrink-0" />
-            <span className="text-xs text-white/90 truncate">{cpu.name}</span>
-          </div>
-        )}
-        {gpu && (
-          <div className="flex items-center gap-2 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-4 py-2 w-full max-w-xs">
-            <Icon name="Monitor" size={14} className="text-primary shrink-0" />
-            <span className="text-xs text-white/90 truncate">{gpu.name}</span>
-          </div>
-        )}
       </div>
 
-      {/* Контент внизу */}
-      <div className="relative z-10 mt-auto p-5">
-        <h3 className="mb-3 text-xl font-medium text-white leading-snug line-clamp-2 group-hover:text-primary transition-colors duration-300">
-          {b.name}
-        </h3>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-2xl font-bold text-white">{fmt(calcTotal)}</p>
+      {/* ─── Плашка снизу: название + цена (как на главной) ─── */}
+      <div className="flex flex-1 flex-col p-3">
+        <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary transition-colors">{b.name}</p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-base font-bold">{fmt(calcTotal)}</p>
           {b.reserved ? (
             <span
-              className="shrink-0 rounded-xl bg-orange-500/20 border border-orange-400/40 px-4 py-2 text-xs font-semibold text-orange-300 cursor-help"
+              className="shrink-0 rounded-lg bg-orange-500/15 border border-orange-400/40 px-3 py-1.5 text-xs font-semibold text-orange-500 cursor-help"
               title="Другой клиент оформляет покупку этого ПК. Напишите нашим менеджерам, если нужен именно он.">
               В резерве
             </span>
           ) : (
             <button
               onClick={e => { e.stopPropagation(); onOrder() }}
-              className="shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
               style={{ cursor: "pointer" }}
             >
               Заказать
@@ -296,6 +295,10 @@ export default function Builds() {
           <button onClick={() => navigate("/community-builds")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="Users" size={15} />
             Сборки сообщества
+          </button>
+          <button onClick={() => navigate("/tier-lists")} className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="Trophy" size={15} />
+            Тир-листы
           </button>
         </div>
       </div>

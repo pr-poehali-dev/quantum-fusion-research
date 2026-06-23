@@ -269,6 +269,68 @@ def handler(event: dict, context) -> dict:
                 conn.commit()
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+        # ── TIER-LIST (тир-листы железа по категориям) ──
+        elif params.get("resource") == "tier":
+            schema = "t_p72635010_quantum_fusion_resea"
+            if method == "GET":
+                # Все НЕархивные товары с фото — для построения тир-листа.
+                # Можно ограничить категорией (?category=slug).
+                category_slug = params.get("category")
+                where = ["p.is_archived = FALSE",
+                         "(p.image_url IS NOT NULL OR jsonb_array_length(COALESCE(p.image_urls,'[]'::jsonb)) > 0)"]
+                args = []
+                if category_slug:
+                    where.append("c.slug = %s")
+                    args.append(category_slug)
+                where_sql = "WHERE " + " AND ".join(where)
+                cur.execute(
+                    f"""SELECT p.id, p.name, p.image_url, p.image_urls,
+                               c.id, c.name, c.slug,
+                               b.name, p.tier_rank, p.tier_pos
+                        FROM {schema}.products p
+                        LEFT JOIN {schema}.categories c ON p.category_id = c.id
+                        LEFT JOIN {schema}.brands b ON b.id = p.brand_id
+                        {where_sql}
+                        ORDER BY p.tier_pos ASC, p.id ASC""",
+                    args
+                )
+                items = []
+                for r in cur.fetchall():
+                    image_urls = r[3] if isinstance(r[3], list) else (r[3] or [])
+                    image = (image_urls[0] if image_urls else None) or r[2]
+                    items.append({
+                        "id": r[0], "name": r[1], "image_url": image,
+                        "category": {"id": r[4], "name": r[5], "slug": r[6]} if r[4] else None,
+                        "brand": r[7],
+                        "tier_rank": r[8], "tier_pos": r[9] or 0,
+                    })
+                cur.execute(
+                    f"""SELECT c.id, c.name, c.slug, c.sort_order
+                        FROM {schema}.categories c
+                        ORDER BY c.sort_order ASC, c.id ASC"""
+                )
+                cats = [{"id": r[0], "name": r[1], "slug": r[2], "sort_order": r[3]} for r in cur.fetchall()]
+                return {"statusCode": 200, "headers": cors,
+                        "body": json.dumps({"items": items, "categories": cats})}
+
+            elif method in ("POST", "PUT"):
+                # Сохранение расстановки: items = [{id, tier_rank, tier_pos}]
+                body = json.loads(event.get("body") or "{}")
+                changes = body.get("items") or []
+                for ch in changes:
+                    pid = int(ch.get("id") or 0)
+                    if not pid:
+                        continue
+                    rank = ch.get("tier_rank")
+                    rank = str(rank).strip().upper()[:2] if rank else None
+                    pos = int(ch.get("tier_pos") or 0)
+                    cur.execute(
+                        f"UPDATE {schema}.products SET tier_rank=%s, tier_pos=%s WHERE id=%s",
+                        (rank, pos, pid)
+                    )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "updated": len(changes)})}
+
         # ── PRODUCTS ──
         elif method == "GET":
             sel = """SELECT p.id, p.name, p.description,

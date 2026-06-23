@@ -46,6 +46,11 @@ export const api = {
     update: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(`${URLS.products}?resource=slots`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
+  tier: {
+    getAll: (category?: string) => fetch(`${URLS.products}?resource=tier${category ? `&category=${encodeURIComponent(category)}` : ""}`).then(r => r.json()),
+    save: (items: Array<{ id: number; tier_rank: string | null; tier_pos: number }>) =>
+      fetch(`${URLS.products}?resource=tier`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }).then(r => r.json()),
+  },
   brands: {
     getAll: () => fetch(`${URLS.products}?resource=brands`).then(r => r.json()),
     create: (data: { name: string; logo_url?: string; sort_order?: number }) => fetch(`${URLS.products}?resource=brands`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),

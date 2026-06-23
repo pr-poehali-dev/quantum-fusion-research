@@ -34,6 +34,7 @@ const Quiz = lazy(() => import("./pages/Quiz"));
 const Service = lazy(() => import("./pages/Service"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contacts = lazy(() => import("./pages/Contacts"));
+const TierLists = lazy(() => import("./pages/TierLists"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="/product/:id" element={<ProductPage />} />
               <Route path="/cables" element={<CablePage />} />
               <Route path="/builds" element={<Builds />} />
+              <Route path="/tier-lists" element={<TierLists />} />
               <Route path="/community-builds" element={<CommunityBuilds />} />
               <Route path="/profile/:tag" element={<UserProfile />} />
               <Route path="/user-build/:token" element={<UserBuild />} />

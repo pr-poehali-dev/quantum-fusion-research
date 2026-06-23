@@ -75,6 +75,10 @@ _recalc_builds_for_product обновляет цены всех ПРОДАЖНЫ
 (components[].price, parts_total, total_price; +22% НДС если sell_with_vat).
 НЕ трогает наличие (in_stock=TRUE) и архив (status='archive').
 _apply_vat — общая формула цены с НДС (ceil(base*1.22/250)*250).
+ТИР-ЛИСТЫ (v4.60): resource=tier. GET — все НЕархивные товары с фото (можно ?category=slug),
+поля tier_rank (S/A/B/C/D/F или null) + tier_pos (порядок в ряду) + категории.
+POST/PUT — сохранение расстановки items=[{id,tier_rank,tier_pos}]. Поля в products
+(миграция V0148). Фронт: /tier-lists (src/pages/TierLists.tsx), drag&drop для админа.
 
 ### builds
 Сборки ПК: создание, редактирование, статусы, фото, цены, теги.

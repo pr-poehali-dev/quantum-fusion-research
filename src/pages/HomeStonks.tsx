@@ -196,6 +196,14 @@ export default function HomeStonks() {
             <Icon name="BookOpen" size={15} />
             Статьи
           </button>
+          <button
+            onClick={() => navigate("/tier-lists")}
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-5 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Trophy" size={15} />
+            Тир-листы
+          </button>
         </div>
       </div>
 
