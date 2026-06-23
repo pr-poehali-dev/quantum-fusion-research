@@ -7,6 +7,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
+import { isAdminAuthed } from "@/components/admin/AdminGuard"
 
 interface TierItem {
   id: number
@@ -33,7 +34,9 @@ const RANKS = TIERS.map(t => t.rank)
 export default function TierLists() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isAdmin = user?.role === "admin"
+  // Редактировать тир-лист может тот, кто вошёл в админку по паролю
+  // ИЛИ имеет роль admin в аккаунте.
+  const isAdmin = isAdminAuthed() || user?.role === "admin"
 
   const [items, setItems] = useState<TierItem[]>([])
   const [categories, setCategories] = useState<TierCategory[]>([])
@@ -42,6 +45,7 @@ export default function TierLists() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dragId, setDragId] = useState<number | null>(null)
+  const [pickedId, setPickedId] = useState<number | null>(null)  // выбранная карточка (клик-режим)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
@@ -121,28 +125,46 @@ export default function TierLists() {
     })
   }
 
-  const onDrop = (rank: string | null) => {
-    if (dragId != null) moveTo(dragId, rank)
+  // Перемещение в ряд: и для drag&drop, и для клик-режима.
+  const dropToRank = (rank: string | null) => {
+    if (!isAdmin) return
+    const id = dragId ?? pickedId
+    if (id != null) moveTo(id, rank)
     setDragId(null)
+    setPickedId(null)
   }
 
-  const TierCard = ({ it }: { it: TierItem }) => (
-    <div
-      draggable={isAdmin}
-      onDragStart={() => setDragId(it.id)}
-      onDragEnd={() => setDragId(null)}
-      onClick={() => navigate(`/product/${it.id}`)}
-      title={it.name}
-      className={`group relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-border bg-muted transition-transform hover:scale-105 ${isAdmin ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
-    >
-      {it.image_url
-        ? <img src={it.image_url} alt={it.name} className="h-full w-full object-cover" />
-        : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={20} className="text-foreground/30" /></div>}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-3">
-        <p className="truncate text-[10px] font-medium text-white">{it.name}</p>
+  // Клик по карточке: админ — выбирает/снимает выбор; гость — открывает товар.
+  const onCardClick = (it: TierItem) => {
+    if (!isAdmin) { navigate(`/product/${it.id}`); return }
+    setPickedId(prev => prev === it.id ? null : it.id)
+  }
+
+  const TierCard = ({ it }: { it: TierItem }) => {
+    const picked = pickedId === it.id
+    return (
+      <div
+        draggable={isAdmin}
+        onDragStart={e => { setPickedId(null); setDragId(it.id); e.dataTransfer.effectAllowed = "move" }}
+        onDragEnd={() => setDragId(null)}
+        onClick={() => onCardClick(it)}
+        title={isAdmin ? "Нажмите, чтобы выбрать, затем нажмите на нужный ряд" : it.name}
+        className={`group relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted transition-transform hover:scale-105 ${picked ? "border-primary ring-2 ring-primary scale-105" : "border-border"} ${isAdmin ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"}`}
+      >
+        {it.image_url
+          ? <img src={it.image_url} alt={it.name} draggable={false} className="h-full w-full object-cover" />
+          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={20} className="text-foreground/30" /></div>}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-3">
+          <p className="truncate text-[10px] font-medium text-white">{it.name}</p>
+        </div>
+        {picked && (
+          <div className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+            <Icon name="Check" size={12} />
+          </div>
+        )}
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
@@ -171,8 +193,18 @@ export default function TierLists() {
           <h1 className="text-3xl font-bold">Тир-листы железа</h1>
           <p className="mt-1 text-sm text-foreground/60">
             Рейтинг комплектующих по рядам — от лучших (S) до спорных (F).
-            {isAdmin && " Перетаскивайте карточки между рядами — расстановка сохраняется автоматически."}
           </p>
+          {isAdmin && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground/70">
+              <Icon name="Info" size={15} className="mt-0.5 shrink-0 text-primary" />
+              <span>
+                Режим редактирования: <b>нажмите на карточку</b> (она подсветится),
+                затем <b>нажмите на нужный ряд</b> — товар переместится. Можно и
+                перетаскивать мышью. Расстановка сохраняется автоматически.
+                {pickedId != null && <span className="ml-1 font-medium text-primary">Выбран товар — кликните по ряду.</span>}
+              </span>
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -227,8 +259,9 @@ export default function TierLists() {
               {TIERS.map((t, idx) => (
                 <div key={t.rank}
                   onDragOver={e => { if (isAdmin) e.preventDefault() }}
-                  onDrop={() => onDrop(t.rank)}
-                  className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""}`}>
+                  onDrop={() => dropToRank(t.rank)}
+                  onClick={() => { if (isAdmin && pickedId != null) dropToRank(t.rank) }}
+                  className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
                   <div className="flex w-20 shrink-0 items-center justify-center" style={{ backgroundColor: t.color }}>
                     <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
                   </div>
@@ -243,12 +276,13 @@ export default function TierLists() {
             {byRank.unranked.length > 0 && (
               <div className="mt-6">
                 <p className="mb-2 text-sm font-semibold text-foreground/70">
-                  {isAdmin ? "Без оценки — перетащите в нужный ряд" : "Без оценки"}
+                  {isAdmin ? "Без оценки — выберите карточку и кликните ряд (или перетащите)" : "Без оценки"}
                 </p>
                 <div
                   onDragOver={e => { if (isAdmin) e.preventDefault() }}
-                  onDrop={() => onDrop(null)}
-                  className="flex flex-wrap gap-2 rounded-2xl border border-dashed border-border bg-card/30 p-3">
+                  onDrop={() => dropToRank(null)}
+                  onClick={() => { if (isAdmin && pickedId != null) dropToRank(null) }}
+                  className={`flex flex-wrap gap-2 rounded-2xl border border-dashed border-border bg-card/30 p-3 ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
                   {byRank.unranked.map(it => <TierCard key={it.id} it={it} />)}
                 </div>
               </div>
