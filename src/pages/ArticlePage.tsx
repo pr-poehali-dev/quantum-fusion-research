@@ -39,7 +39,8 @@ const TIER_ROWS: Array<{ rank: string; color: string }> = [
 // для карточек без ряда (как на отдельной странице /tier-lists).
 function ArticleTierList({ cards }: { cards: TierCard[] }) {
   if (!cards.length) return null
-  const used = TIER_ROWS.filter(t => cards.some(c => c.rank === t.rank))
+  // Показываем ВСЕ ряды S/A/B/C/D/F (даже пустые) — полноценный тир-лист
+  const used = TIER_ROWS
   const unranked = cards.filter(c => !c.rank || !TIER_ROWS.some(t => t.rank === c.rank))
   return (
     // id-якорь, чтобы пункт оглавления «Тир-лист» вёл сюда (scroll-margin от шапки)
