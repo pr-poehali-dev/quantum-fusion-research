@@ -148,7 +148,8 @@ export default function TierLists() {
         onDragStart={e => { setPickedId(null); setDragId(it.id); e.dataTransfer.effectAllowed = "move" }}
         onDragEnd={() => setDragId(null)}
         onClick={() => onCardClick(it)}
-        className={`group relative aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-lg border bg-muted transition-transform duration-200 ease-out hover:z-20 hover:scale-[1.03] sm:w-44 ${picked ? "z-20 border-primary ring-2 ring-primary scale-[1.03]" : "border-border"} cursor-pointer active:cursor-grabbing`}
+        className={`group relative aspect-[16/9] w-40 shrink-0 overflow-hidden rounded-xl border bg-muted transition-transform duration-200 ease-out hover:z-20 hover:scale-[1.03] sm:w-56 ${picked ? "z-20 border-primary ring-2 ring-primary scale-[1.03]" : "border-border"} cursor-pointer active:cursor-grabbing`}
+        style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
       >
         {it.image_url
           ? <img
@@ -156,14 +157,14 @@ export default function TierLists() {
               alt={it.name}
               draggable={false}
               loading="lazy"
-              className="h-full w-full object-cover"
+              className="h-full w-full rounded-xl object-cover"
               style={{ imageRendering: "auto", backfaceVisibility: "hidden", transform: "translateZ(0)" }}
             />
-          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={26} className="text-foreground/30" /></div>}
 
         {/* Название — отдельное окно поверх превью на весь её размер при наведении */}
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/85 px-2 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-          <p className="text-xs font-semibold leading-snug text-foreground sm:text-sm">{it.name}</p>
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+          <p className="text-sm font-semibold leading-snug text-foreground">{it.name}</p>
         </div>
 
         {picked && (
