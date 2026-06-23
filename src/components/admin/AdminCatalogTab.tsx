@@ -375,7 +375,7 @@ export function AdminCatalogTab({
     image_url: "", image_urls: [] as string[], categories: ["article"] as string[], is_published: false,
     html_attachment: "",
     toc: [] as { title: string; anchor: string }[],
-    tier_cards: [] as { title: string; image_url: string; rank: string | null; product_id?: number }[],
+    tier_cards: [] as { title: string; image_url: string; rank: string | null; product_id?: number; anchor?: string }[],
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
   const [tierProductSearch, setTierProductSearch] = useState("")  // поиск товара для карточки тир-листа
@@ -405,7 +405,7 @@ export function AdminCatalogTab({
   const [tierTocOpen, setTierTocOpen] = useState(false)  // раскрытие списка карточек тир-листа в оглавлении
 
   const addTierCard = () => setArticleForm(f => ({ ...f, tier_cards: [...f.tier_cards, { title: "", image_url: "", rank: null }] }))
-  const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null; product_id?: number }>) =>
+  const updateTierCard = (i: number, patch: Partial<{ title: string; image_url: string; rank: string | null; product_id?: number; anchor?: string }>) =>
     setArticleForm(f => ({ ...f, tier_cards: f.tier_cards.map((c, idx) => idx === i ? { ...c, ...patch } : c) }))
   const removeTierCard = (i: number) =>
     setArticleForm(f => ({ ...f, tier_cards: f.tier_cards.filter((_, idx) => idx !== i) }))
@@ -1381,10 +1381,24 @@ export function AdminCatalogTab({
                         className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
                     </div>
                     <select value={c.rank || ""} onChange={e => updateTierCard(i, { rank: e.target.value || null })}
-                      className="w-28 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                      className="w-24 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
                       <option value="">Без ряда</option>
                       {["S", "A", "B", "C", "D", "F"].map(r => <option key={r} value={r}>Ряд {r}</option>)}
                     </select>
+                    {/* Якорь карточки — куда вести по клику; метку вставляешь в текст */}
+                    <input
+                      value={c.anchor || ""}
+                      onChange={e => updateTierCard(i, { anchor: anchorSlug(e.target.value) })}
+                      placeholder="якорь"
+                      title="Метка карточки — вставь её в текст; клик по карточке прокрутит сюда"
+                      className="w-24 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-mono text-foreground/70 focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                    {c.anchor && (
+                      <button type="button" onClick={() => copyAnchorTag(c.anchor!)} title="Скопировать метку для вставки в текст"
+                        className="flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name={copiedAnchor === c.anchor ? "Check" : "Copy"} size={12} />
+                        {copiedAnchor === c.anchor ? "Скопировано" : `[[#${c.anchor}]]`}
+                      </button>
+                    )}
                     <button type="button" onClick={() => removeTierCard(i)}
                       className="rounded-lg border border-border px-2 py-1.5 text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
                       <Icon name="Trash2" size={12} />

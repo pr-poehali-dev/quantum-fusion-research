@@ -4,6 +4,8 @@ import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import CommentSection from "@/components/CommentSection"
+import { useAuth } from "@/store/auth"
+import { isAdminAuthed } from "@/components/admin/AdminGuard"
 
 interface Article {
   id: number
@@ -16,6 +18,7 @@ interface Article {
   categories?: string[]
   content: string
   html_attachment: string | null
+  is_published?: boolean
   views: number
   created_at: string
   toc?: TocItem[]
@@ -23,7 +26,7 @@ interface Article {
 }
 
 interface TocItem { title: string; anchor: string }
-interface TierCard { title: string; image_url: string; rank: string | null; product_id?: number }
+interface TierCard { title: string; image_url: string; rank: string | null; product_id?: number; anchor?: string }
 
 // Ряды тир-листа статьи (как на /tier-lists)
 const TIER_ROWS: Array<{ rank: string; color: string }> = [
@@ -35,80 +38,130 @@ const TIER_ROWS: Array<{ rank: string; color: string }> = [
   { rank: "F", color: "#a855f7" },
 ]
 
-// Блок тир-листа внутри статьи. Ряды S/A/B/C/D/F + ряд «Без оценки»
-// для карточек без ряда (как на отдельной странице /tier-lists).
-function ArticleTierList({ cards }: { cards: TierCard[] }) {
-  if (!cards.length) return null
-  // Показываем ВСЕ ряды S/A/B/C/D/F (даже пустые) — полноценный тир-лист
-  const used = TIER_ROWS
-  const unranked = cards.filter(c => !c.rank || !TIER_ROWS.some(t => t.rank === c.rank))
+// Одна карточка тир-листа в статье
+function ArticleTierCardCell({ c, gi, isAdmin, dragOver, onActivate, onDragStart, onDragEnd, onDragOver, onDrop }: {
+  c: TierCard; gi: number; isAdmin: boolean; dragOver: boolean
+  onActivate: (c: TierCard) => void
+  onDragStart: (gi: number) => void; onDragEnd: () => void
+  onDragOver: (gi: number) => void; onDrop: (gi: number) => void
+}) {
+  const inner = (
+    <>
+      {c.image_url
+        ? <img src={c.image_url} alt={c.title} draggable={false} className="h-full w-full rounded-xl object-cover" />
+        : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+      {c.title && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+          <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
+        </div>
+      )}
+    </>
+  )
+  const cls = "tier-card group relative block aspect-[16/9] w-32 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44 cursor-pointer"
+  const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
+  const aid = `toc-tier-card-${gi}`
   return (
-    // id-якорь, чтобы пункт оглавления «Тир-лист» вёл сюда (scroll-margin от шапки)
+    <div className="relative flex shrink-0 items-stretch">
+      {/* Полоса-индикатор вставки (только для админа при перетаскивании) */}
+      {isAdmin && <div className={`mr-1 w-1 self-stretch rounded-full transition-all ${dragOver ? "bg-primary" : "bg-transparent"}`} />}
+      <div
+        id={aid}
+        draggable={isAdmin}
+        onDragStart={e => { if (isAdmin) { onDragStart(gi); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(gi)) } }}
+        onDragEnd={onDragEnd}
+        onDragOver={e => { if (isAdmin) { e.preventDefault(); onDragOver(gi) } }}
+        onDrop={e => { if (isAdmin) { e.preventDefault(); e.stopPropagation(); onDrop(gi) } }}
+        onClick={() => onActivate(c)}
+        className={cls + (isAdmin ? " active:cursor-grabbing" : "")}
+        style={style}
+      >
+        {inner}
+      </div>
+    </div>
+  )
+}
+
+// Блок тир-листа внутри статьи. Все ряды S/A/B/C/D/F + «Без оценки».
+// Для админа — drag&drop карточек по рядам с сохранением. Клик по карточке
+// (для всех) ведёт к её якорю в тексте, если он задан.
+function ArticleTierList({ cards, isAdmin, onReorder }: {
+  cards: TierCard[]; isAdmin: boolean; onReorder: (next: TierCard[]) => void
+}) {
+  const [dragGi, setDragGi] = useState<number | null>(null)
+  const [dragOverGi, setDragOverGi] = useState<number | null>(null)
+  if (!cards.length) return null
+
+  // Клик по карточке: ведём к её якорю в тексте (для всех). Если якоря нет и
+  // карточка из каталога — для гостя открываем товар.
+  const activate = (c: TierCard) => {
+    if (c.anchor) { goToAnchor(c.anchor); return }
+    if (!isAdmin && c.product_id) window.location.href = `/product/${c.product_id}`
+  }
+
+  // Переместить карточку gi в ряд rank, перед карточкой beforeGi (или в конец).
+  // Работаем по индексам исходного массива cards.
+  const moveToRank = (gi: number, rank: string | null, beforeGi: number | null) => {
+    const moving = { ...cards[gi], rank }
+    // массив без перемещаемой карточки (с сохранением индексов через объекты)
+    const rest = cards.filter((_, i) => i !== gi)
+    let insertAt = rest.length
+    if (beforeGi != null && beforeGi !== gi) {
+      const beforeCard = cards[beforeGi]
+      const idx = rest.indexOf(beforeCard)
+      if (idx >= 0) insertAt = idx
+    }
+    rest.splice(insertAt, 0, moving)
+    onReorder(rest)
+    setDragGi(null); setDragOverGi(null)
+  }
+
+  const onDropRow = (rank: string | null) => {
+    if (dragGi != null) moveToRank(dragGi, rank, null)
+  }
+  const onDropCard = (overGi: number) => {
+    if (dragGi != null && dragGi !== overGi) moveToRank(dragGi, cards[overGi].rank, overGi)
+  }
+
+  const cellProps = (c: TierCard) => ({
+    c, gi: cards.indexOf(c), isAdmin,
+    dragOver: dragOverGi === cards.indexOf(c) && dragGi != null && dragGi !== cards.indexOf(c),
+    onActivate: activate,
+    onDragStart: setDragGi, onDragEnd: () => { setDragGi(null); setDragOverGi(null) },
+    onDragOver: setDragOverGi, onDrop: onDropCard,
+  })
+
+  const unranked = cards.filter(c => !c.rank || !TIER_ROWS.some(t => t.rank === c.rank))
+
+  return (
     <div id="toc-__tierlist__" className="my-8 overflow-hidden rounded-2xl border border-border" style={{ scrollMarginTop: 90 }}>
-      {used.map((t, idx) => (
-        <div key={t.rank} className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""}`}>
+      {isAdmin && (
+        <div className="flex items-center gap-1.5 border-b border-border bg-primary/5 px-3 py-1.5 text-xs text-primary">
+          <Icon name="Info" size={12} /> Режим редактирования: перетаскивайте карточки между рядами — расстановка сохранится автоматически.
+        </div>
+      )}
+      {TIER_ROWS.map((t, idx) => (
+        <div key={t.rank}
+          onDragOver={e => { if (isAdmin) e.preventDefault() }}
+          onDrop={() => { if (isAdmin) onDropRow(t.rank) }}
+          className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""}`}>
           <div className="flex w-14 shrink-0 items-center justify-center sm:w-16" style={{ backgroundColor: t.color }}>
             <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
           </div>
           <div className="flex min-h-[6rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-            {cards.filter(c => c.rank === t.rank).map((c) => {
-              // Глобальный индекс карточки (стабилен независимо от ряда) — для якоря
-              const gi = cards.indexOf(c)
-              const inner = (
-                <>
-                  {c.image_url
-                    ? <img src={c.image_url} alt={c.title} className="h-full w-full rounded-xl object-cover" />
-                    : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
-                  {c.title && (
-                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-                      <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
-                    </div>
-                  )}
-                </>
-              )
-              const cls = "tier-card group relative block aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44"
-              const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
-              // id-якорь карточки — чтобы метка [[#tier-card-N]] вела сюда
-              const aid = `toc-tier-card-${gi}`
-              // Карточка из каталога — кликабельна, ведёт на товар
-              return c.product_id ? (
-                <a key={gi} id={aid} href={`/product/${c.product_id}`} className={cls + " cursor-pointer"} style={style}>{inner}</a>
-              ) : (
-                <div key={gi} id={aid} className={cls} style={style}>{inner}</div>
-              )
-            })}
+            {cards.filter(c => c.rank === t.rank).map(c => <ArticleTierCardCell key={cards.indexOf(c)} {...cellProps(c)} />)}
           </div>
         </div>
       ))}
-      {unranked.length > 0 && (
-        <div className={`flex items-stretch ${used.length > 0 ? "border-t border-border" : ""}`}>
+      {(unranked.length > 0 || isAdmin) && (
+        <div
+          onDragOver={e => { if (isAdmin) e.preventDefault() }}
+          onDrop={() => { if (isAdmin) onDropRow(null) }}
+          className="flex items-stretch border-t border-border">
           <div className="flex w-14 shrink-0 items-center justify-center bg-muted px-1 text-center sm:w-16">
             <span className="text-[10px] font-semibold uppercase leading-tight text-foreground/50">Без оценки</span>
           </div>
           <div className="flex min-h-[6rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-            {unranked.map((c) => {
-              const gi = cards.indexOf(c)
-              const inner = (
-                <>
-                  {c.image_url
-                    ? <img src={c.image_url} alt={c.title} className="h-full w-full rounded-xl object-cover" />
-                    : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
-                  {c.title && (
-                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-                      <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
-                    </div>
-                  )}
-                </>
-              )
-              const cls = "tier-card group relative block aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44"
-              const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
-              const aid = `toc-tier-card-${gi}`
-              return c.product_id ? (
-                <a key={gi} id={aid} href={`/product/${c.product_id}`} className={cls + " cursor-pointer"} style={style}>{inner}</a>
-              ) : (
-                <div key={gi} id={aid} className={cls} style={style}>{inner}</div>
-              )
-            })}
+            {unranked.map(c => <ArticleTierCardCell key={cards.indexOf(c)} {...cellProps(c)} />)}
           </div>
         </div>
       )}
@@ -426,7 +479,7 @@ function TableOfContents({ items, variant, cards }: { items: TocItem[]; variant:
               <ol className="ml-3 mt-1 space-y-0.5 border-l border-border pl-2">
                 {cards.map((c, ci) => (
                   <li key={ci}>
-                    <button onClick={() => goToAnchor(`tier-card-${ci}`)}
+                    <button onClick={() => goToAnchor(c.anchor || `tier-card-${ci}`)}
                       className="flex w-full items-start gap-2 rounded-lg px-2 py-1 text-left text-xs text-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary"
                       style={{ cursor: "pointer" }}>
                       {c.rank && <span className="mt-px font-mono text-foreground/30">{c.rank}</span>}
@@ -471,6 +524,8 @@ function TableOfContents({ items, variant, cards }: { items: TocItem[]; variant:
 export default function ArticlePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = isAdminAuthed() || user?.role === "admin"
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -485,6 +540,25 @@ export default function ArticlePage() {
       })
       .catch(() => { setError("Не удалось загрузить статью"); setLoading(false) })
   }, [id])
+
+  // Сохранение новой расстановки карточек тир-листа (для админа, прямо в статье)
+  const saveTierCards = (next: TierCard[]) => {
+    if (!article) return
+    setArticle({ ...article, tier_cards: next })  // оптимистично
+    api.articles.update({
+      id: article.id,
+      title: article.title,
+      slug: article.slug,
+      excerpt: article.excerpt,
+      content: article.content,
+      image_urls: article.image_urls || [],
+      categories: article.categories,
+      is_published: article.is_published !== false,
+      html_attachment: article.html_attachment,
+      toc: article.toc || [],
+      tier_cards: next,
+    })
+  }
 
   const fmt = (date: string) =>
     new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
@@ -549,7 +623,7 @@ export default function ArticlePage() {
 
               {/* Тир-лист сразу после фото, перед текстом */}
               {article.tier_cards && article.tier_cards.length > 0 && (
-                <ArticleTierList cards={article.tier_cards} />
+                <ArticleTierList cards={article.tier_cards} isAdmin={isAdmin} onReorder={saveTierCards} />
               )}
 
               {article.content && <ArticleContent html={article.content} />}
