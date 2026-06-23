@@ -35,10 +35,12 @@ const TIER_ROWS: Array<{ rank: string; color: string }> = [
   { rank: "F", color: "#a855f7" },
 ]
 
-// Блок тир-листа внутри статьи
+// Блок тир-листа внутри статьи. Ряды S/A/B/C/D/F + ряд «Без оценки»
+// для карточек без ряда (как на отдельной странице /tier-lists).
 function ArticleTierList({ cards }: { cards: TierCard[] }) {
+  if (!cards.length) return null
   const used = TIER_ROWS.filter(t => cards.some(c => c.rank === t.rank))
-  if (!used.length) return null
+  const unranked = cards.filter(c => !c.rank || !TIER_ROWS.some(t => t.rank === c.rank))
   return (
     // id-якорь, чтобы пункт оглавления «Тир-лист» вёл сюда (scroll-margin от шапки)
     <div id="toc-__tierlist__" className="my-8 overflow-hidden rounded-2xl border border-border" style={{ scrollMarginTop: 90 }}>
@@ -77,6 +79,38 @@ function ArticleTierList({ cards }: { cards: TierCard[] }) {
           </div>
         </div>
       ))}
+      {unranked.length > 0 && (
+        <div className={`flex items-stretch ${used.length > 0 ? "border-t border-border" : ""}`}>
+          <div className="flex w-14 shrink-0 items-center justify-center bg-muted px-1 text-center sm:w-16">
+            <span className="text-[10px] font-semibold uppercase leading-tight text-foreground/50">Без оценки</span>
+          </div>
+          <div className="flex min-h-[6rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
+            {unranked.map((c) => {
+              const gi = cards.indexOf(c)
+              const inner = (
+                <>
+                  {c.image_url
+                    ? <img src={c.image_url} alt={c.title} className="h-full w-full rounded-xl object-cover" />
+                    : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+                  {c.title && (
+                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+                      <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
+                    </div>
+                  )}
+                </>
+              )
+              const cls = "tier-card group relative block aspect-[16/9] w-32 shrink-0 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44"
+              const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
+              const aid = `toc-tier-card-${gi}`
+              return c.product_id ? (
+                <a key={gi} id={aid} href={`/product/${c.product_id}`} className={cls + " cursor-pointer"} style={style}>{inner}</a>
+              ) : (
+                <div key={gi} id={aid} className={cls} style={style}>{inner}</div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
