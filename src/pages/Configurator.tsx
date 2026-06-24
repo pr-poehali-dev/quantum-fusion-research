@@ -659,11 +659,11 @@ export default function Configurator() {
 
         {/* Mode toggle */}
         {!(buildToken && isReadOnly) && (
-        <div className="mb-6 flex overflow-hidden rounded-xl border border-border">
-          <button onClick={() => setMode("catalog")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <button onClick={() => setMode("catalog")} className={`flex w-full max-w-xs items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
             <Icon name="ShoppingBag" size={16} />Из нашего каталога
           </button>
-          <button onClick={() => setMode("custom")} className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${mode === "custom" ? "bg-primary text-primary-foreground" : "bg-card text-foreground/70 hover:text-foreground"}`} style={{ cursor: "pointer" }}>
+          <button onClick={() => setMode("custom")} className={`flex w-full max-w-xs items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${mode === "custom" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
             <Icon name="PenLine" size={16} />Своё железо
           </button>
         </div>
