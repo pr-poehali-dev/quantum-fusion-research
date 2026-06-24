@@ -152,6 +152,7 @@ export default function ProductPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [product, setProduct] = useState<Product | null>(null)
+  const [specRows, setSpecRows] = useState<{ name: string; value: string; sort: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [imgIdx, setImgIdx] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -164,6 +165,30 @@ export default function ProductPage() {
     api.products.getById(Number(id))
       .then(data => { setProduct(data); setLoading(false) })
       .catch(() => setLoading(false))
+  }, [id])
+
+  // Характеристики из админки (data-driven): значения товара + схема атрибутов (названия/единицы)
+  useEffect(() => {
+    if (!id) return
+    Promise.all([
+      api.warehouse.specValuesGet(Number(id)),
+      api.warehouse.specSchema(),
+    ]).then(([valsRes, schema]) => {
+      const values: Record<string, unknown> = valsRes?.values || {}
+      const attrs: { id: number; name: string; unit?: string | null; sort_order?: number }[] = schema?.attributes || []
+      const byId = new Map(attrs.map(a => [a.id, a]))
+      const rows = Object.entries(values)
+        .map(([aid, raw]) => {
+          const a = byId.get(Number(aid))
+          if (!a) return null
+          const text = Array.isArray(raw) ? raw.join(", ") : String(raw ?? "")
+          if (!text.trim() || text === "null") return null
+          return { name: a.name, value: `${text}${a.unit ? ` ${a.unit}` : ""}`, sort: a.sort_order ?? 0 }
+        })
+        .filter((x): x is { name: string; value: string; sort: number } => !!x)
+        .sort((a, b) => a.sort - b.sort)
+      setSpecRows(rows)
+    }).catch(() => setSpecRows([]))
   }, [id])
 
   if (loading) return (
@@ -352,11 +377,17 @@ export default function ProductPage() {
               </button>
             </div>
 
-            {/* Краткие характеристики */}
-            {Object.keys(product.specs).length > 0 && (
+            {/* Характеристики: data-driven (из админки) + старые текстовые specs */}
+            {(specRows.length > 0 || Object.keys(product.specs).length > 0) && (
               <div className="rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-xs font-mono text-foreground/40 uppercase tracking-wider">Характеристики</h3>
                 <div className="space-y-2">
+                  {specRows.map((row, i) => (
+                    <div key={`a${i}`} className="flex items-center justify-between gap-4 border-b border-border/40 pb-2 last:border-0 last:pb-0">
+                      <span className="text-sm text-foreground/50">{row.name}</span>
+                      <span className="text-sm font-medium text-foreground text-right">{row.value}</span>
+                    </div>
+                  ))}
                   {Object.entries(product.specs).map(([k, v]) => (
                     <div key={k} className="flex items-center justify-between gap-4 border-b border-border/40 pb-2 last:border-0 last:pb-0">
                       <span className="text-sm text-foreground/50 capitalize">{k}</span>
