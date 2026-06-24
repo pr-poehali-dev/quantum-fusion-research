@@ -113,29 +113,35 @@ function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => v
   )
 }
 
-// Предупреждение о несовместимости/проблеме компонента.
-// Десктоп: показывает полный текст (как раньше).
-// Мобильный: компактный значок «Проблема» + иконка-пояснялка «?»,
-// по тапу на которую раскрывается полный текст пояснения.
-function CompatWarning({ text }: { text: string }) {
+// Предупреждение о проблеме компонента.
+// severity: "critical" — критичная несовместимость (рыжий), "advice" — мягкий совет (жёлтый).
+// Десктоп: показывает полный текст. Мобильный: компактный значок + пояснялка,
+// по тапу на которую раскрывается полный текст.
+function CompatWarning({ text, severity = "critical" }: { text: string; severity?: "critical" | "advice" }) {
   const [open, setOpen] = useState(false)
+  const crit = severity === "critical"
+  const box = crit
+    ? "border-orange-500/40 bg-orange-500/10 text-orange-600 dark:text-orange-400"
+    : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+  const icon = crit ? "TriangleAlert" : "Lightbulb"
+  const label = crit ? "Проблема" : "Совет"
   return (
     <>
       {/* Десктоп — полный текст */}
-      <div className="hidden max-w-[240px] items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400 sm:flex">
-        <Icon name="TriangleAlert" size={13} className="shrink-0" />
+      <div className={`hidden max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug sm:flex ${box}`}>
+        <Icon name={icon} size={13} className="shrink-0" />
         <span>{text}</span>
       </div>
-      {/* Мобильный — компактный значок «Проблема» + пояснялка */}
+      {/* Мобильный — компактный значок + пояснялка */}
       <div className="flex flex-col items-end gap-1 sm:hidden">
         <button onClick={() => setOpen(o => !o)} style={{ cursor: "pointer" }}
-          className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium leading-snug text-amber-600 dark:text-amber-400">
-          <Icon name="TriangleAlert" size={13} className="shrink-0" />
-          <span>Проблема</span>
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium leading-snug ${box}`}>
+          <Icon name={icon} size={13} className="shrink-0" />
+          <span>{label}</span>
           <Icon name="CircleHelp" size={13} className="shrink-0 opacity-70" />
         </button>
         {open && (
-          <div className="max-w-[220px] rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-right text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+          <div className={`max-w-[220px] rounded-lg border px-2.5 py-1.5 text-right text-[11px] leading-snug ${box}`}>
             {text}
           </div>
         )}
@@ -839,7 +845,7 @@ export default function Configurator() {
                                 <CompatWarning text={`На материнской плате ${ssdSlotWarning.slots} ${plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили ${ssdSlotWarning.qty}. Уменьшите на ${ssdSlotWarning.over}.`} />
                               )}
                               {slot === "psu" && psuWarning && (
-                                <CompatWarning text={`Маловато мощности: блок ${psuWarning.watt} Вт при нагрузке сборки ~${psuWarning.totalTdp} Вт. Возьмите от ${psuWarning.recommended} Вт.`} />
+                                <CompatWarning severity="advice" text={`Маловато мощности: блок ${psuWarning.watt} Вт при нагрузке сборки ~${psuWarning.totalTdp} Вт. Возьмите от ${psuWarning.recommended} Вт.`} />
                               )}
                               {(compatWarningsBySlot[slot] || []).map((msg, i) => (
                                 <CompatWarning key={i} text={msg} />
