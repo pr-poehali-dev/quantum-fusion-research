@@ -22,12 +22,15 @@ if errorlevel 1 goto BUILDFAIL
 
 if not exist "%~dp0publish\StressRunner.exe" goto BUILDFAIL
 
-REM --- Build a clean portable folder: only exe + StressTests + Others ---
-set "REL=%~dp0StressRunner_App"
-if exist "%REL%" rmdir /s /q "%REL%"
-mkdir "%REL%"
-mkdir "%REL%\StressTests"
-mkdir "%REL%\Others"
+REM --- Clean portable folder ONE LEVEL UP (next to the source folder) ---
+REM   desktop\StressRunner\        <- source code (this folder)
+REM   desktop\StressRunner_App\    <- clean release (exe + StressTests + Others)
+pushd "%~dp0.."
+set "REL=%CD%\StressRunner_App"
+popd
+if not exist "%REL%" mkdir "%REL%"
+if not exist "%REL%\StressTests" mkdir "%REL%\StressTests"
+if not exist "%REL%\Others" mkdir "%REL%\Others"
 copy /y "%~dp0publish\StressRunner.exe" "%REL%\StressRunner.exe" >nul
 
 echo.

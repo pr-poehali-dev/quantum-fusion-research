@@ -44,19 +44,21 @@ dotnet publish -c Release -o publish
 
 ## Портативная структура (всё ездит на флешке)
 
-После `Собрать_EXE.bat` рядом появится **чистая папка `StressRunner_App`** —
-её и носи на флешке:
+После `Собрать_EXE.bat` **на уровень выше** (рядом с папкой с кодом) появится
+чистая папка `StressRunner_App` — её и носи на флешке:
 
 ```
-StressRunner_App\
-├── StressRunner.exe        ← запускаешь это
-├── StressTests\            ← сюда кладёшь сами утилиты:
-│   ├── OCCT\OCCT.exe
-│   ├── FurMark\furmark.exe
-│   ├── Cinebench\Cinebench.exe
-│   ├── prime95\prime95.exe
-│   └── Superposition\bin\superposition_cli.exe
-└── Others\                 ← settings.json, profiles.json, база (создаётся авто)
+desktop\
+├── StressRunner\           ← код (.cs/.xaml) — не трогаешь
+└── StressRunner_App\       ← ЧИСТАЯ папка приложения:
+    ├── StressRunner.exe        ← запускаешь это
+    ├── StressTests\            ← сюда кладёшь сами утилиты:
+    │   ├── OCCT\OCCT.exe
+    │   ├── FurMark\furmark.exe
+    │   ├── Cinebench\Cinebench.exe
+    │   ├── prime95\prime95.exe
+    │   └── Superposition\bin\superposition_cli.exe
+    └── Others\                 ← settings.json, profiles.json, база (авто)
 ```
 
 ## Авторизация (подключение к сайту в один клик)
