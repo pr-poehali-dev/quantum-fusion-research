@@ -87,13 +87,13 @@ export function ThemeSwitcher() {
       <button
         ref={btnRef}
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors"
         style={{ cursor: "pointer" }}
         title="Настройки темы"
       >
         <Icon
           name={mode === "dark" ? "Moon" : "Sun"}
-          size={15}
+          size={16}
           className="text-primary"
           style={{ filter: "drop-shadow(0 0 5px hsl(var(--primary)))" }}
         />
