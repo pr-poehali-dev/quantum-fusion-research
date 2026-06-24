@@ -96,11 +96,11 @@ const PRESETS: Preset[] = [
   {
     key: "superposition",
     label: "Superposition (открыть)",
-    hint: "Открывает окно Superposition — выбери пресет (8K) и нажми RUN. Путь поправь под свою папку, напр. «Superposition Benchmark\\bin\\superposition.exe».",
+    hint: "Открывает окно Superposition — выбери пресет (8K) и нажми RUN. Путь: StressTests\\Superposition Benchmark\\Superposition.exe.",
     make: () => ({
       ...emptyTest(),
       name: "Superposition — ручной старт",
-      program: "StressTests\\Superposition Benchmark\\bin\\superposition.exe",
+      program: "StressTests\\Superposition Benchmark\\Superposition.exe",
       args: "",
       duration_sec: 600, timeout_is_success: true, success_exit_code: -1, min_run_sec: 0,
       report_files: [],

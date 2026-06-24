@@ -70,12 +70,14 @@ public class HwInfoReader
                 return;
             }
 
-            // ВАЖНО: бесплатная HWiNFO НЕ поддерживает ключи командной строки
-            // (это только в Pro). Поэтому запускаем БЕЗ аргументов. Настройки
-            // (Shared Memory) берутся из его собственного INI — их нужно один раз
-            // включить галкой в HWiNFO, дальше он их запоминает.
             string dir = Path.GetDirectoryName(exe) ?? "";
 
+            // Применяем сохранённые настройки HWiNFO из .reg (Shared Memory и пр.),
+            // если файл лежит рядом. Тогда не нужно настраивать вручную.
+            ImportReg(dir, log);
+
+            // Бесплатная HWiNFO НЕ поддерживает ключи командной строки (только Pro),
+            // поэтому запускаем БЕЗ аргументов.
             Process.Start(new ProcessStartInfo
             {
                 FileName = exe,
@@ -87,6 +89,33 @@ public class HwInfoReader
         catch (Exception ex)
         {
             log?.Invoke($"Не смог запустить HWiNFO: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Импортировать HWiNFO64_settings.reg (если лежит рядом с EXE) через reg.exe.
+    /// Это применяет заранее сохранённые настройки HWiNFO (Shared Memory и пр.).
+    /// </summary>
+    private static void ImportReg(string dir, Action<string>? log)
+    {
+        try
+        {
+            string reg = Path.Combine(dir, "HWiNFO64_settings.reg");
+            if (!File.Exists(reg)) return;
+
+            var p = Process.Start(new ProcessStartInfo
+            {
+                FileName = "reg.exe",
+                Arguments = $"import \"{reg}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            p?.WaitForExit(5000);
+            log?.Invoke("Настройки HWiNFO применены из HWiNFO64_settings.reg.");
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"Не смог применить .reg HWiNFO: {ex.Message}");
         }
     }
 

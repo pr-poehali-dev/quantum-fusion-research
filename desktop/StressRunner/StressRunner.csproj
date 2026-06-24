@@ -26,6 +26,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <!-- Чтение сенсоров HWiNFO из реестра -->
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
+    <!-- Кодировка Windows-1251 для меток HWiNFO -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

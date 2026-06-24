@@ -3,6 +3,26 @@
 
 ---
 
+## v5.34 | 2026-06-24 | StressRunner: фикс парсера Shared Memory + reg HWiNFO
+
+### Главный фикс
+- HwInfoSharedMem: парсер читал структуру со сдвигом (выравнивание double) →
+  метки-мусор и значения 9e+24, метрики не собирались. Теперь double-блок
+  читается по фактическому размеру элемента (sizeElem-32 из заголовка),
+  строки — в Windows-1251 (кириллица), мусорные значения фильтруются (|v|<1e9).
+- App: регистрация CodePagesEncodingProvider (для 1251). Пакет
+  System.Text.Encoding.CodePages.
+
+### desktop/StressRunner
+- HwInfoReader.ImportReg: перед запуском HWiNFO импортирует
+  StressTests\HWinfo\HWiNFO64_settings.reg (применяет сохранённые настройки).
+
+### Frontend
+- Пресет Superposition: путь без bin —
+  StressTests\Superposition Benchmark\Superposition.exe.
+
+---
+
 ## v5.33 | 2026-06-24 | StressRunner: метрики HWiNFO (Shared Memory) + дебаг + админка
 
 ### desktop/StressRunner

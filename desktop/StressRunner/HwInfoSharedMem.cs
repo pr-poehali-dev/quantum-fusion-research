@@ -69,11 +69,11 @@ public static class HwInfoSharedMem
             for (uint i = 0; i < hdr.NumReadingElements; i++)
             {
                 long off = readBase + (long)i * size;
-                var r = ParseReading(acc, off);
+                var r = ParseReading(acc, off, size);
                 if (r != null) list.Add(r);
             }
 
-            status = $"Shared Memory OK: {list.Count} сенсоров.";
+            status = $"Shared Memory OK: {list.Count} сенсоров (размер элемента {size} б).";
         }
         catch (Exception ex)
         {
@@ -94,25 +94,37 @@ public static class HwInfoSharedMem
         return null;
     }
 
-    // Структура SENSOR_READING: тип(4) + ID(4) + Index(4) + LabelOrig(128) +
-    // LabelUser(128) + Unit(16) + Value(8 double) + ValueMin(8) + ValueMax(8) + ValueAvg(8)
-    private static Reading? ParseReading(MemoryMappedViewAccessor acc, long off)
+    // Структура HWiNFO_SENSORS_READING_ELEMENT:
+    //   tReading(4) + dwSensorIndex(4) + dwReadingID(4)
+    //   + szLabelOrig[128] + szLabelUser[128] + szUnit[16]
+    //   + Value(double) + ValueMin(double) + ValueMax(double) + ValueAvg(double)
+    // ВАЖНО: из-за выравнивания double-блок (32 байта) находится В САМОМ КОНЦЕ
+    // элемента. Поэтому читаем его по фактическому размеру элемента (sizeElem)
+    // из заголовка, а не по ручному смещению — это убирает сдвиг/мусор.
+    private static Reading? ParseReading(MemoryMappedViewAccessor acc, long off, int sizeElem)
     {
         try
         {
             uint type = acc.ReadUInt32(off + 0);
-            // off+4 = ID, off+8 = Index — пропускаем
-            string labelOrig = ReadAnsi(acc, off + 12, 128);
-            string labelUser = ReadAnsi(acc, off + 12 + 128, 128);
-            string unit = ReadAnsi(acc, off + 12 + 256, 16);
-            long valOff = off + 12 + 256 + 16;
-            double value = acc.ReadDouble(valOff);
-            double vmin = acc.ReadDouble(valOff + 8);
-            double vmax = acc.ReadDouble(valOff + 16);
-            double vavg = acc.ReadDouble(valOff + 24);
+            string labelOrig = ReadStr(acc, off + 12, 128);
+            string labelUser = ReadStr(acc, off + 12 + 128, 128);
+            string unit = ReadStr(acc, off + 12 + 256, 16);
+
+            // 4 double в конце элемента.
+            long dblOff = off + sizeElem - 32;
+            double value = acc.ReadDouble(dblOff);
+            double vmin = acc.ReadDouble(dblOff + 8);
+            double vmax = acc.ReadDouble(dblOff + 16);
+            double vavg = acc.ReadDouble(dblOff + 24);
 
             string label = !string.IsNullOrWhiteSpace(labelUser) ? labelUser : labelOrig;
             if (string.IsNullOrWhiteSpace(label)) return null;
+
+            // Фильтр мусора: запредельные/NaN значения отбрасываем.
+            if (!IsSane(value)) value = 0;
+            if (!IsSane(vmin)) vmin = value;
+            if (!IsSane(vmax)) vmax = value;
+            if (!IsSane(vavg)) vavg = value;
 
             return new Reading
             {
@@ -124,12 +136,25 @@ public static class HwInfoSharedMem
         catch { return null; }
     }
 
-    private static string ReadAnsi(MemoryMappedViewAccessor acc, long off, int len)
+    private static bool IsSane(double v)
+        => !double.IsNaN(v) && !double.IsInfinity(v) && Math.Abs(v) < 1e9;
+
+    // HWiNFO пишет строки в кодировке Windows-1251 (кириллица) либо ANSI.
+    // Пробуем 1251, если не вышло — системную.
+    private static string ReadStr(MemoryMappedViewAccessor acc, long off, int len)
     {
         var buf = new byte[len];
         acc.ReadArray(off, buf, 0, len);
         int end = Array.IndexOf(buf, (byte)0);
         if (end < 0) end = len;
-        return Encoding.Default.GetString(buf, 0, end).Trim();
+        if (end == 0) return "";
+        try
+        {
+            return Encoding.GetEncoding(1251).GetString(buf, 0, end).Trim();
+        }
+        catch
+        {
+            return Encoding.Default.GetString(buf, 0, end).Trim();
+        }
     }
 }
