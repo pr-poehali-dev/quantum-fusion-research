@@ -2,7 +2,7 @@ namespace StressRunner;
 
 /// <summary>
 /// Копит показания датчиков во время прогона и считает min/max/avg по каждой
-/// величине. Источник — HWiNFO Shared Memory (или реестр через HwInfoReader).
+/// величине. Источник — LibreHardwareMonitor (HardwareMonitor), без HWiNFO.
 ///
 /// Снимаем: температуры CPU/GPU, нагрузку CPU/GPU, обороты вентиляторов,
 /// частоты и потребление (ватты). Сэмплируем раз в секунду во время теста.
@@ -29,43 +29,49 @@ public class MetricsCollector
     private readonly Dictionary<string, Agg> _data = new();
     private readonly object _lock = new();
 
-    /// <summary>Снять один сэмпл из HWiNFO (вызывать раз в секунду во время теста).</summary>
+    /// <summary>Снять один сэмпл (вызывать раз в секунду во время теста).</summary>
     public void Sample()
     {
-        var readings = HwInfoSharedMem.ReadAll(out _);
-        if (readings.Count == 0) return;
+        var sensors = HardwareMonitor.Instance.ReadAll();
+        if (sensors.Count == 0) return;
 
         lock (_lock)
         {
-            int fanIdx = 0, clockIdx = 0, powerIdx = 0;
-            foreach (var r in readings)
+            foreach (var s in sensors)
             {
-                string l = r.Label.ToLowerInvariant();
-                switch (r.Type)
+                string hw = s.Hardware.ToLowerInvariant();
+                string nm = s.Name.ToLowerInvariant();
+                bool isGpu = hw.Contains("nvidia") || hw.Contains("geforce") || hw.Contains("radeon") || hw.Contains("gpu");
+                bool isCpu = hw.Contains("cpu") || hw.Contains("ryzen") || hw.Contains("intel") || hw.Contains("core i");
+
+                switch (s.Type)
                 {
-                    case HwInfoSharedMem.ReadingType.Temp:
-                        if (l.Contains("cpu") && (l.Contains("package") || l.Contains("tctl") || l.Contains("tdie") || l.Contains("ccd")))
-                            Put("cpu_temp", "CPU температура", "°C", r.Value);
-                        else if (l.Contains("gpu") && l.Contains("temp"))
-                            Put("gpu_temp", "GPU температура", "°C", r.Value);
+                    case "Temperature":
+                        if (isCpu && (nm.Contains("package") || nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("core (tctl") || nm == "core average"))
+                            Put("cpu_temp", "CPU температура", "°C", s.Value);
+                        else if (isGpu && (nm.Contains("core") || nm.Contains("gpu") || nm == "temperature" || nm == "hot spot"))
+                            Put("gpu_temp", "GPU температура", "°C", s.Value);
                         break;
-                    case HwInfoSharedMem.ReadingType.Usage:
-                        if (l.Contains("cpu") && (l.Contains("total") || l.Contains("usage")))
-                            Put("cpu_load", "Нагрузка CPU", "%", r.Value);
-                        else if (l.Contains("gpu") && !l.Contains("mem"))
-                            Put("gpu_load", "Нагрузка GPU", "%", r.Value);
+                    case "Load":
+                        if (isCpu && (nm.Contains("cpu total") || nm == "total"))
+                            Put("cpu_load", "Нагрузка CPU", "%", s.Value);
+                        else if (isGpu && (nm.Contains("core") || nm.Contains("d3d") || nm == "gpu"))
+                            Put("gpu_load", "Нагрузка GPU", "%", s.Value);
                         break;
-                    case HwInfoSharedMem.ReadingType.Fan:
-                        Put($"fan_{fanIdx++}", r.Label, "RPM", r.Value);
+                    case "Fan":
+                        Put($"fan::{s.Hardware}::{s.Name}", $"{s.Name} ({s.Hardware})", "RPM", s.Value);
                         break;
-                    case HwInfoSharedMem.ReadingType.Clock:
-                        // только значимые частоты CPU/GPU, чтобы не плодить десятки
-                        if (l.Contains("gpu") || l.Contains("core") || l.Contains("cpu"))
-                            Put($"clock_{clockIdx++}", r.Label, "MHz", r.Value);
+                    case "Clock":
+                        if (isCpu && nm.Contains("core") && !nm.Contains("bus"))
+                            Put("cpu_clock", "Частота CPU", "MHz", s.Value);
+                        else if (isGpu && nm.Contains("core"))
+                            Put("gpu_clock", "Частота GPU", "MHz", s.Value);
                         break;
-                    case HwInfoSharedMem.ReadingType.Power:
-                        if (l.Contains("cpu") || l.Contains("gpu") || l.Contains("package"))
-                            Put($"power_{powerIdx++}", r.Label, "W", r.Value);
+                    case "Power":
+                        if (isCpu && (nm.Contains("package") || nm.Contains("cpu")))
+                            Put("cpu_power", "Потребление CPU", "W", s.Value);
+                        else if (isGpu && (nm.Contains("gpu") || nm.Contains("total") || nm.Contains("power")))
+                            Put("gpu_power", "Потребление GPU", "W", s.Value);
                         break;
                 }
             }
@@ -74,6 +80,8 @@ public class MetricsCollector
 
     private void Put(string key, string label, string unit, double v)
     {
+        // Нули в температурах/оборотах/частотах — обычно «нет данных», пропускаем.
+        if (v <= 0 && (unit == "°C" || unit == "RPM" || unit == "MHz")) return;
         if (!_data.TryGetValue(key, out var a))
         {
             a = new Agg { Label = label, Unit = unit };

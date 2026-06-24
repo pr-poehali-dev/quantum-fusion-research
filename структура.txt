@@ -93,12 +93,12 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
     авто-перезапуск. Бейдж «✓ Админ-режим включён · ПК: …».
   ТЕМЫ (как на сайте): ThemeManager + ThemeWindow (кнопка 🎨) — тёмная/светлая +
     6 акцентов. Theme.xaml на DynamicResource (смена на лету). Кастомный ComboBox.
-  HWiNFO автозапуск: HwInfoReader.EnsureRunning из StressTests\HWinfo\HWiNFO64.EXE
-    (без ключей — бесплатная версия CLI не поддерживает).
-  МЕТРИКИ HWiNFO: HwInfoSharedMem (общая память SM2) + реестр Gadget (fallback).
-    MetricsCollector сэмплит раз/сек за прогон → min/max/avg по темп/нагрузке/
-    оборотам/частотам/ваттам. Отправка в payload (RunPayload.Metrics).
-    DebugWindow (кнопка «🔍 Датчики (отладка)») — статус канала + список сенсоров.
+  ДАТЧИКИ: LibreHardwareMonitor (HardwareMonitor.cs) — НАПРЯМУЮ, без HWiNFO.
+    ReadAll() → {Hardware,Name,Type,Unit,Value}. HwInfoReader — обёртка
+    (Read/IsAvailable/Debug). MetricsCollector сэмплит раз/сек за прогон →
+    min/max/avg по Temperature/Load/Fan/Clock/Power (RunPayload.Metrics).
+    DebugWindow (кнопка «🔍 Датчики (отладка)») — список датчиков.
+    Требуются права администратора (есть в манифесте).
   Таблица stress_metrics (V0157). backend: ingest сохраняет, get_run отдаёт.
     Админка: плитки min/сред/max в карточке прогона (StressTestsTab).
   АВТОНАЖАТИЕ КЛАВИШ: KeySender (Win32) — поле send_keys в тесте (FurMark «P»).

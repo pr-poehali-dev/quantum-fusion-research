@@ -41,9 +41,6 @@ public partial class MainWindow : Window
         OpenTestsBtn.Click += (_, _) => OpenTestsFolder();
         DebugBtn.Click += (_, _) => new DebugWindow { Owner = this }.ShowDialog();
 
-        // Запускаем HWiNFO в фоне (если он положен в StressTests\HWinfo).
-        HwInfoReader.EnsureRunning(_settings, msg => AppendLog(msg));
-
         UpdateAuthBadge();
 
         _sensorTimer.Interval = TimeSpan.FromMilliseconds(1000);
@@ -51,9 +48,9 @@ public partial class MainWindow : Window
         _sensorTimer.Start();
 
         if (!HwInfoReader.IsAvailable())
-            HwInfoHint.Text = "HWiNFO не найден. Запусти HWiNFO и включи «Shared Memory Support», чтобы видеть график.";
+            HwInfoHint.Text = "Датчики не читаются. Запусти приложение от имени администратора.";
         else
-            HwInfoHint.Text = "HWiNFO подключён. График показывает реальную загрузку.";
+            HwInfoHint.Text = "Датчики читаются напрямую (без HWiNFO). График показывает реальную загрузку.";
 
         Loaded += async (_, _) => await ReloadProfiles();
     }

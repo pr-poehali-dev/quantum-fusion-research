@@ -4,8 +4,8 @@ using System.Windows;
 namespace StressRunner;
 
 /// <summary>
-/// Окно отладки датчиков: показывает, какой канал HWiNFO доступен (Shared
-/// Memory / реестр / ничего) и полный список сенсоров с типом/значением.
+/// Окно отладки датчиков: статус источника (LibreHardwareMonitor) и полный
+/// список датчиков с железом/типом/значением.
 /// </summary>
 public partial class DebugWindow : Window
 {
@@ -21,20 +21,20 @@ public partial class DebugWindow : Window
 
     private void Load()
     {
-        var (status, readings) = HwInfoReader.Debug();
+        var (status, sensors) = HwInfoReader.Debug();
         StatusText.Text = status;
 
         _rows = new List<object>();
-        foreach (var r in readings)
+        foreach (var s in sensors)
         {
             _rows.Add(new
             {
-                Type = r.Type.ToString(),
-                r.Label,
-                Value = r.Value.ToString("0.0"),
-                Min = r.Min.ToString("0.0"),
-                Max = r.Max.ToString("0.0"),
-                r.Unit,
+                s.Type,
+                Label = $"{s.Hardware} · {s.Name}",
+                Value = s.Value.ToString("0.0"),
+                Min = "",
+                Max = "",
+                s.Unit,
             });
         }
         Grid.ItemsSource = _rows;
@@ -43,10 +43,10 @@ public partial class DebugWindow : Window
     private void Copy()
     {
         var sb = new StringBuilder();
-        var (status, readings) = HwInfoReader.Debug();
+        var (status, sensors) = HwInfoReader.Debug();
         sb.AppendLine(status);
-        foreach (var r in readings)
-            sb.AppendLine($"[{r.Type}] {r.Label} = {r.Value:0.0} {r.Unit} (min {r.Min:0.0}, max {r.Max:0.0})");
+        foreach (var s in sensors)
+            sb.AppendLine($"[{s.Type}] {s.Hardware} · {s.Name} = {s.Value:0.0} {s.Unit}");
         try { Clipboard.SetText(sb.ToString()); MessageBox.Show(this, "Скопировано в буфер обмена."); } catch { }
     }
 }

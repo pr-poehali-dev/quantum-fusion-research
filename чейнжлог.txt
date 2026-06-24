@@ -3,6 +3,24 @@
 
 ---
 
+## v5.36 | 2026-06-24 | StressRunner: датчики через LibreHardwareMonitor (без HWiNFO)
+
+### Суть
+- Отказ от HWiNFO Shared Memory (форматы памяти «съезжали» между версиями).
+  Датчики читаются НАПРЯМУЮ через LibreHardwareMonitorLib — метка и значение
+  всегда из одного объекта-сенсора, ничего не разъезжается. HWiNFO не нужен.
+
+### desktop/StressRunner
+- HardwareMonitor.cs: обёртка над LibreHardwareMonitor (CPU/GPU/MB/RAM),
+  ReadAll() → список {Hardware, Name, Type, Unit, Value}.
+- HwInfoReader переписан на HardwareMonitor (Read/IsAvailable/Debug),
+  EnsureRunning больше ничего не запускает.
+- MetricsCollector: сбор min/max/avg по типам Temperature/Load/Fan/Clock/Power.
+- DebugWindow: список датчиков железо·имя/тип/значение/ед.
+- Удалён HwInfoSharedMem.cs. Пакет LibreHardwareMonitorLib 0.9.4.
+
+---
+
 ## v5.35 | 2026-06-24 | StressRunner: парсер SM2 — эвристика меток (размер элемента 448)
 
 ### desktop/StressRunner

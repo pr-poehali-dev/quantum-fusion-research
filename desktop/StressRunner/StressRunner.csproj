@@ -26,8 +26,10 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <!-- Чтение сенсоров HWiNFO из реестра -->
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
-    <!-- Кодировка Windows-1251 для меток HWiNFO -->
+    <!-- Кодировка Windows-1251 (на всякий случай) -->
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <!-- Чтение датчиков напрямую (без HWiNFO) -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
   </ItemGroup>
 
 </Project>
