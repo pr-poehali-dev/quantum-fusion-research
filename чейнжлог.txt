@@ -3,6 +3,17 @@
 
 ---
 
+## v5.26 | 2026-06-24 | StressRunner: фиксы сборки (.NET 8) + global.json
+
+### desktop/StressRunner
+- Добавлены using System.IO в Program.cs и Runner.cs (на .NET 10 SDK
+  ImplicitUsings не подтягивал System.IO — были ошибки File/Path/Directory).
+- Runner.cs: исправлена область видимости переменной в catch (pattern→rawPattern).
+- global.json: rollForward=latestMajor — собирается на любом установленном SDK
+  (8/9/10), целевая платформа остаётся net8.0-windows. Сборка стабильна.
+
+---
+
 ## v5.25 | 2026-06-24 | StressRunner: батник сборки в один клик
 
 ### desktop/StressRunner
