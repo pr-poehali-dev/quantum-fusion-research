@@ -872,7 +872,7 @@ export default function Configurator() {
                                 return <CompatWarning texts={problems} />
                               })()}
                               {slot === "psu" && psuWarning && (
-                                <CompatWarning severity="advice" texts={[`Маловато мощности: блок ${psuWarning.watt} Вт при нагрузке сборки ~${psuWarning.totalTdp} Вт. Возьмите от ${psuWarning.recommended} Вт.`]} />
+                                <CompatWarning severity="advice" texts={[`Блок питания на ${psuWarning.watt} Вт справится: ваша сборка под нагрузкой потребляет около ${psuWarning.totalTdp} Вт. Но запас небольшой — для тихой работы и апгрейда в будущем советуем взять блок питания от ${psuWarning.recommended} Вт.`]} />
                               )}
                             </div>
                             {/* Цена / кол-во / итог */}
