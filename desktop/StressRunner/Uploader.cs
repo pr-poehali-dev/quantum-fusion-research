@@ -49,6 +49,30 @@ public class Uploader
         JsonSerializer.Serialize(run, new JsonSerializerOptions { WriteIndented = false });
 
     /// <summary>
+    /// Послать уведомление в Telegram через сайт (action=notify).
+    /// payload — объект события (event/machine/profile/...). Не роняет прогон.
+    /// </summary>
+    public async Task NotifyAsync(object payload)
+    {
+        try
+        {
+            var url = _settings.IngestUrl;
+            url += (url.Contains('?') ? "&" : "?") + "action=notify";
+            string json = JsonSerializer.Serialize(payload);
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("X-Stress-Token", _settings.Token);
+            req.Content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var resp = await Http.SendAsync(req);
+            await resp.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"    Уведомление не отправлено: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Проверить токен на сайте (action=verify_token). Возвращает true, если
     /// сайт ответил 200 (токен правильный). url/token можно передать явно —
     /// чтобы проверять ДО сохранения в settings.

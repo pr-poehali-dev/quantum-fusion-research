@@ -74,6 +74,9 @@ Frontend: вкладка /admin/stress (StressTestsTab) в группе «Про
   переключатель «Результаты / Профили тестов» (StressProfilesTab — редактор кнопками).
 API: api.stress.list/get/deleteRun/profilesList/profileSave/profileDelete (src/lib/api.ts).
 Секрет STRESS_INGEST_TOKEN — токен приложения для приёма данных.
+УВЕДОМЛЕНИЯ: action=notify (по токену) → tg_notify.notify_stress в Telegram
+  (секрет STRESS_TG_CHAT_ID). События: test_failed (при ошибке теста сразу,
+  прогон не падает) и run_finished (всегда). Шлёт Uploader.NotifyAsync из Runner.
 Desktop-приложение (НЕ часть веб-сборки): desktop/StressRunner — собирается в .exe
 через `dotnet publish` на ПК (инструкция в README.md). Локальная БД SQLite на ПК.
   Тип: WPF-окно (net8.0-windows, тёмная тема как на сайте), стиль OCCT.

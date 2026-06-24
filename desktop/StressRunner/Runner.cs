@@ -18,9 +18,19 @@ public class Runner
     /// <summary>Результат теста готов: (успех, имя теста). Для UI.</summary>
     public Action<bool, string>? OnTestDone;
 
+    private readonly Uploader _uploader;
+
     public Runner(AppSettings settings)
     {
         _settings = settings;
+        _uploader = new Uploader(settings);
+    }
+
+    private void Notify(object payload)
+    {
+        if (string.IsNullOrWhiteSpace(_settings.Token)) return;
+        // В фоне, не блокируя прогон.
+        _ = _uploader.NotifyAsync(payload);
     }
 
     private void Log(string msg)
@@ -69,6 +79,20 @@ public class Runner
                 ? $"    OK (код {res.ExitCode?.ToString() ?? "—"}, {res.DurationSec:F0} сек{(res.TimedOut ? ", по таймауту" : "")})"
                 : $"    ОШИБКА (код {res.ExitCode?.ToString() ?? "—"}, {res.DurationSec:F0} сек)");
             OnTestDone?.Invoke(res.Success, test.Name);
+
+            // Уведомление в Telegram СРАЗУ при ошибке теста (прогон продолжается).
+            if (!res.Success)
+            {
+                Notify(new
+                {
+                    @event = "test_failed",
+                    machine = run.MachineName,
+                    profile = profile.Name,
+                    test_name = test.Name,
+                    exit_code = res.ExitCode,
+                    duration_sec = res.DurationSec,
+                });
+            }
         }
 
         // Останавливаем сэмплер и собираем итог.
@@ -82,7 +106,19 @@ public class Runner
 
         run.FinishedAt = DateTime.UtcNow.ToString("o");
         int failed = run.Results.Count(r => !r.Success);
+        int passed = run.Results.Count - failed;
         run.Status = failed == 0 ? "completed" : "partial";
+
+        // Уведомление в Telegram о завершении прогона (всегда).
+        Notify(new
+        {
+            @event = "run_finished",
+            machine = run.MachineName,
+            profile = profile.Name,
+            passed,
+            total = run.Results.Count,
+        });
+
         return run;
     }
 

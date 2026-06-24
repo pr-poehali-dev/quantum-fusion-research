@@ -3,6 +3,21 @@
 
 ---
 
+## v5.48 | 2026-06-25 | Стресс-тесты: Telegram-уведомления (ошибки + завершение)
+
+### backend/stress
+- tg_notify.py (notify_stress) — отправка в Telegram через STRESS_TG_CHAT_ID.
+- action=notify (по X-Stress-Token): события test_failed и run_finished →
+  красивое сообщение в чат + ссылка на /admin/stress.
+- Секрет STRESS_TG_CHAT_ID (отдельный чат для стресс-тестов).
+
+### desktop/StressRunner
+- Uploader.NotifyAsync — шлёт событие на сайт (в фоне, прогон не роняет).
+- Runner: при ошибке теста — уведомление СРАЗУ (прогон продолжается),
+  при завершении прогона — уведомление ВСЕГДА (итог passed/total).
+
+---
+
 ## v5.47 | 2026-06-25 | StressRunner: универсальное распознавание датчиков GPU
 
 ### Проблема (RTX 5080 + встройка AMD)

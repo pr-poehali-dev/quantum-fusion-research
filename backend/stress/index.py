@@ -5,6 +5,7 @@ import uuid
 import psycopg2
 import boto3
 from botocore.client import Config
+from tg_notify import notify_stress
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -102,7 +103,7 @@ def handler(event, context):
     cur = conn.cursor()
     try:
         # ── Контур EXE: приём результатов / выдача профилей по токену ────────
-        if action in ("ingest", "profiles_pull", "verify_token"):
+        if action in ("ingest", "profiles_pull", "verify_token", "notify"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
             if not token or token != os.environ.get("STRESS_INGEST_TOKEN"):
                 return err("forbidden", 403)
@@ -112,6 +113,8 @@ def handler(event, context):
                 return ingest(cur, conn, body)
             if action == "profiles_pull" and method == "GET":
                 return profiles_pull(cur)
+            if action == "notify" and method == "POST":
+                return notify(body)
             return err("bad request", 400)
 
         # ── Контур АДМИНА ───────────────────────────────────────────────────
@@ -154,6 +157,47 @@ def handler(event, context):
     finally:
         cur.close()
         conn.close()
+
+
+def notify(body):
+    """Уведомление в Telegram о событии стресс-теста.
+    body: {event: 'test_failed'|'run_finished', machine, profile, ...}"""
+    event = body.get("event", "")
+    machine = body.get("machine") or "—"
+    profile = body.get("profile") or "—"
+    site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
+    link = f"\n🔗 {site}/admin/stress" if site else ""
+
+    if event == "test_failed":
+        test_name = body.get("test_name") or "—"
+        exit_code = body.get("exit_code")
+        code_s = "—" if exit_code is None else str(exit_code)
+        dur = body.get("duration_sec")
+        dur_s = f"{float(dur):.0f} сек" if dur is not None else "—"
+        text = (
+            f"🔴 <b>Ошибка стресс-теста</b>\n"
+            f"💻 ПК: <b>{machine}</b>\n"
+            f"📋 Профиль: {profile}\n"
+            f"❌ Тест: <b>{test_name}</b>\n"
+            f"   код выхода: {code_s}, длительность: {dur_s}{link}"
+        )
+    elif event == "run_finished":
+        passed = body.get("passed", 0)
+        total = body.get("total", 0)
+        failed = total - passed
+        status_emoji = "✅" if failed == 0 else "⚠️"
+        text = (
+            f"{status_emoji} <b>Прогон завершён</b>\n"
+            f"💻 ПК: <b>{machine}</b>\n"
+            f"📋 Профиль: {profile}\n"
+            f"📊 Итог: <b>{passed}/{total}</b> успешно"
+            + (f", ошибок: {failed}" if failed else "") + link
+        )
+    else:
+        return err("unknown event")
+
+    notify_stress(text)
+    return ok({"ok": True})
 
 
 def ingest(cur, conn, body):

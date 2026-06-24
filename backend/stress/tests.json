@@ -48,6 +48,13 @@
       "method": "GET",
       "path": "/?action=presets_list",
       "expectedStatus": 403
+    },
+    {
+      "name": "Notify without token forbidden",
+      "method": "POST",
+      "path": "/?action=notify",
+      "body": {"event": "run_finished"},
+      "expectedStatus": 403
     }
   ]
 }
