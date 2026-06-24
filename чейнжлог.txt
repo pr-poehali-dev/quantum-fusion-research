@@ -3,6 +3,23 @@
 
 ---
 
+## v5.44 | 2026-06-25 | StressRunner: обход блокировки DNS (DNS-over-HTTPS)
+
+### Проблема
+- У тестировщика (UA) системный DNS не резолвит functions.poehali.dev
+  («No such host is known») — блокировка на уровне провайдерского DNS.
+
+### desktop/StressRunner
+- DohResolver.cs: резолвинг хоста через DNS-over-HTTPS (Cloudflare 1.1.1.1,
+  Google 8.8.8.8) в обход провайдера. Кэш 5 мин.
+- HttpFactory.cs: единый HttpClient с SocketsHttpHandler.ConnectCallback —
+  сначала системный DNS, если не вышло → DoH IP, коннект напрямую по IP.
+  + системный прокси. Uploader и NetDiag используют его.
+- NetDiag: шаг [1b] DNS-over-HTTPS, TCP-проверка по полученному IP.
+- README: про свой ingest_url и обход блокировки.
+
+---
+
 ## v5.43 | 2026-06-24 | StressRunner: запоминание размера окна
 
 ### desktop/StressRunner

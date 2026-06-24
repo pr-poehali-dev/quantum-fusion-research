@@ -22,13 +22,8 @@ public static class NetDiag
         public void Line(string s) => Log.AppendLine(s);
     }
 
-    private static readonly HttpClient Http = new(new HttpClientHandler
-    {
-        // Разрешаем системный прокси (часто в корп-сетях/у тестировщиков).
-        UseProxy = true,
-        Proxy = WebRequest.GetSystemWebProxy(),
-    })
-    { Timeout = TimeSpan.FromSeconds(15) };
+    // С DoH-обходом блокировки DNS и системным прокси.
+    private static readonly HttpClient Http = HttpFactory.Create(TimeSpan.FromSeconds(15));
 
     public static async Task<Result> RunAsync(AppSettings settings)
     {
@@ -50,34 +45,48 @@ public static class NetDiag
         r.Line($"    Хост: {host}");
         r.Line("");
 
-        // 1) DNS
+        // 1) Системный DNS
         IPAddress[]? ips = null;
         try
         {
             var sw = Stopwatch.StartNew();
             ips = await Dns.GetHostAddressesAsync(host);
             sw.Stop();
-            r.Line($"[1] DNS: OK за {sw.ElapsedMilliseconds} мс → {string.Join(", ", (object[])ips)}");
+            r.Line($"[1] Системный DNS: OK за {sw.ElapsedMilliseconds} мс → {string.Join(", ", (object[])ips)}");
         }
         catch (Exception ex)
         {
-            r.Line($"[1] DNS: ОШИБКА — {ex.Message}");
-            r.Line("    Похоже, DNS не резолвит хост (блокировка/нет интернета/DNS-фильтр).");
-            return r;
+            r.Line($"[1] Системный DNS: ОШИБКА — {ex.Message} (вероятно блокировка провайдера)");
         }
 
-        // 2) TCP :443
+        // 1b) DNS-over-HTTPS (обход блокировки)
+        if (ips == null || ips.Length == 0)
+        {
+            var sw = Stopwatch.StartNew();
+            ips = await DohResolver.ResolveAsync(host);
+            sw.Stop();
+            if (ips != null && ips.Length > 0)
+                r.Line($"[1b] DNS-over-HTTPS: OK за {sw.ElapsedMilliseconds} мс → {string.Join(", ", (object[])ips)}");
+            else
+            {
+                r.Line($"[1b] DNS-over-HTTPS: НЕ СРАБОТАЛ за {sw.ElapsedMilliseconds} мс");
+                r.Line("    Даже обход DNS не помог — режут и Cloudflare/Google DNS, или нет интернета.");
+                return r;
+            }
+        }
+
+        // 2) TCP :443 (по первому IP — системному или из DoH)
         try
         {
             var sw = Stopwatch.StartNew();
             using var tcp = new TcpClient();
-            var connect = tcp.ConnectAsync(host, 443);
+            var connect = tcp.ConnectAsync(ips[0], 443);
             var done = await Task.WhenAny(connect, Task.Delay(8000));
             sw.Stop();
             if (done != connect || !tcp.Connected)
             {
                 r.Line($"[2] TCP 443: НЕ ОТКРЫЛСЯ (таймаут {sw.ElapsedMilliseconds} мс)");
-                r.Line("    Порт 443 закрыт/режется (файрвол, провайдер, гео-блокировка).");
+                r.Line("    Порт 443 закрыт/режется (файрвол, провайдер, гео-блокировка по IP).");
                 return r;
             }
             r.Line($"[2] TCP 443: OK за {sw.ElapsedMilliseconds} мс");
