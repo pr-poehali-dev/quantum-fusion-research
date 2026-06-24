@@ -3,6 +3,22 @@
 
 ---
 
+## v5.47 | 2026-06-25 | StressRunner: универсальное распознавание датчиков GPU
+
+### Проблема (RTX 5080 + встройка AMD)
+- GPU Memory Junction = 255° (битый датчик) перехватывал Hot Spot (искал «junction»).
+- Две видеокарты (встройка Radeon + NVIDIA) → путаница, бралась не та.
+
+### desktop/StressRunner (MetricsCollector)
+- Hot Spot теперь строго по «hot spot/hotspot» (без «junction») — не пересекается
+  с памятью. GPU память — Memory/Junction отдельно.
+- PickMainGpu: при нескольких GPU берём дискретный (NVIDIA/RTX → Radeon RX →
+  прочее), встройка ((TM) Graphics/UHD/Iris) в конце. Метрики GPU — только с него.
+- Put с диапазоном lo/hi: отсев битых значений (255°, отрицательные температуры).
+- IsCpu/IsGpu вынесены, распознавание не привязано к конкретной модели.
+
+---
+
 ## v5.46 | 2026-06-25 | Стресс-тесты: конструктор пресетов в БД + Cinebench R23
 
 ### БД (V0159) + backend/stress
