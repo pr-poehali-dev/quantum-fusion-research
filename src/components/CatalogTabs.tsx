@@ -28,7 +28,7 @@ export default function CatalogTabs() {
 
   return (
     <div className="border-b border-border">
-      <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch">
+      <div className="mx-auto flex max-w-7xl gap-0 px-6 overflow-x-auto items-stretch justify-start sm:justify-center">
         {TABS.map((t, i) => {
           if (t === "sep") return <div key={`sep-${i}`} className="mx-3 my-3 w-px bg-border shrink-0" />
           const active = pathname === t.path || pathname.startsWith(t.path + "/")
