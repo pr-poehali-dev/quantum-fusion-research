@@ -49,7 +49,34 @@ export default function CablePage() {
             Цена согласовывается после оформления.
           </p>
         </div>
-        <CableConfigurator standalone />
+        {/* Мобильная версия: создание кабелей недоступно — конфигуратор кабелей
+            слишком детальный для маленького экрана. Просим зайти с компьютера
+            или обратиться к менеджеру. */}
+        <div className="sm:hidden">
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
+              <Icon name="Monitor" size={24} />
+            </div>
+            <p className="mb-1.5 text-base font-semibold text-foreground">
+              На телефоне кабели собрать нельзя
+            </p>
+            <p className="mb-4 text-sm text-foreground/70">
+              Конструктор кастомных кабелей доступен только на компьютере. Зайдите
+              с большого экрана или напишите нашим менеджерам — поможем оформить заказ.
+            </p>
+            <a href="https://t.me/+QgiLIa1gFRY4Y2Iy" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              style={{ cursor: "pointer" }}>
+              <Icon name="MessageCircle" size={16} />
+              Написать менеджеру
+            </a>
+          </div>
+        </div>
+
+        {/* Десктоп: полный конструктор кабелей */}
+        <div className="hidden sm:block">
+          <CableConfigurator standalone />
+        </div>
       </div>
     </div>
   )

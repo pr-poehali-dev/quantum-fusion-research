@@ -282,6 +282,7 @@ export default function Configurator() {
   const [buildImageUrls, setBuildImageUrls] = useState<string[]>([])
   const [slotExtras, setSlotExtras] = useState<Record<string, SlotExtra>>(draft0.slotExtras || {})
   const [slotSearch, setSlotSearch] = useState("")
+  const [slotSearchIdx, setSlotSearchIdx] = useState(0)
   const slotSearchRef = useRef<HTMLInputElement>(null)
 
   const { addItem, count } = useCart()
@@ -404,6 +405,18 @@ export default function Configurator() {
     setSelectedSpec(prev => ({ ...prev, [specCatId]: p.values }))
     setSpecSlotMap(prev => ({ ...prev, [specCatId]: slot }))
     setPickerSlot(null)
+  }
+
+  // Быстрый выбор товара из глобального поиска (дропдаун вверху).
+  // Подставляем деталь в её слот сразу. Spec-значения для совместимости здесь
+  // не подгружаем — пользователь может открыть полное окно слота для проверки.
+  const quickPick = (comp: CatalogComp) => {
+    setSelected(s => ({ ...s, [comp.slot]: {
+      slot: comp.slot, name: comp.name, price: comp.price, qty: 1, source: "catalog", source_id: comp.id,
+    } }))
+    setSlotSearch("")
+    setSlotSearchIdx(0)
+    setTimeout(() => slotSearchRef.current?.focus(), 0)
   }
 
   // Очистка слота: убираем деталь И её характеристики/привязку, чтобы не
@@ -776,36 +789,77 @@ export default function Configurator() {
               </div>
             ) : (
             <>
-            {/* Поиск по компонентам */}
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 focus-within:border-primary transition-colors">
-              <Icon name="Search" size={15} className="text-foreground/40 shrink-0" />
-              <input
-                ref={slotSearchRef}
-                type="text"
-                value={slotSearch}
-                onChange={e => setSlotSearch(e.target.value)}
-                onKeyDown={e => { if (e.key === "Escape") setSlotSearch("") }}
-                placeholder="Поиск по компонентам..."
-                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
-                style={{ cursor: "text" }}
-              />
-              {slotSearch && (
-                <button type="button" onClick={() => { setSlotSearch(""); slotSearchRef.current?.focus() }} className="text-foreground/30 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                  <Icon name="X" size={13} />
-                </button>
-              )}
-            </div>
+            {/* Быстрый поиск по всему железу — с выпадающим списком и мгновенным
+                выбором (как в админке при создании сборки). */}
+            {(() => {
+              const allComps = Object.entries(slots).flatMap(([slot, comps]) =>
+                comps.map(c => ({ ...c, slot })))
+              const q = slotSearch.trim().toLowerCase()
+              const results = q.length >= 1
+                ? allComps.filter(c => c.name.toLowerCase().includes(q)).slice(0, 12)
+                : []
+              const safeIdx = Math.min(slotSearchIdx, results.length - 1)
+              return (
+                <div className="relative">
+                  <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 focus-within:border-primary transition-colors">
+                    <Icon name="Search" size={15} className="text-foreground/40 shrink-0" />
+                    <input
+                      ref={slotSearchRef}
+                      type="text"
+                      value={slotSearch}
+                      onChange={e => { setSlotSearch(e.target.value); setSlotSearchIdx(0) }}
+                      onKeyDown={e => {
+                        if (e.key === "ArrowDown") { e.preventDefault(); setSlotSearchIdx(i => Math.min(i + 1, results.length - 1)) }
+                        else if (e.key === "ArrowUp") { e.preventDefault(); setSlotSearchIdx(i => Math.max(i - 1, 0)) }
+                        else if (e.key === "Enter") { e.preventDefault(); if (results[safeIdx]) quickPick(results[safeIdx]) }
+                        else if (e.key === "Escape") { setSlotSearch(""); setSlotSearchIdx(0) }
+                      }}
+                      placeholder="Быстрый поиск по железу — выберите деталь сразу..."
+                      className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+                      style={{ cursor: "text" }}
+                    />
+                    {slotSearch && (
+                      <button type="button" onClick={() => { setSlotSearch(""); setSlotSearchIdx(0); slotSearchRef.current?.focus() }} className="text-foreground/30 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="X" size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {results.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-border bg-card shadow-xl">
+                      {results.map((c, i) => {
+                        const isAdded = selected[c.slot]?.source_id === c.id
+                        const meta = SLOT_LABELS[c.slot]
+                        return (
+                          <button key={`${c.slot}-${c.id}`} type="button" onClick={() => quickPick(c)}
+                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${i === safeIdx ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"}`}
+                            style={{ cursor: "pointer" }}>
+                            <Icon name={(meta?.icon as "Cpu") || "Box"} size={15} className="shrink-0 text-foreground/40" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{c.name}</span>
+                              {meta && <span className="block text-[11px] text-foreground/40">{meta.label}</span>}
+                            </span>
+                            <span className="shrink-0 text-xs font-bold text-primary tabular-nums">{c.price ? fmt(c.price) : "—"}</span>
+                            {isAdded && <Icon name="Check" size={13} className="shrink-0 text-primary" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {q.length >= 1 && results.length === 0 && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-4 py-3 text-xs text-foreground/40 shadow-xl">
+                      Ничего не найдено
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {loading
               ? [...Array(6)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-card animate-pulse" />)
               : Object.entries(SLOT_LABELS).map(([slot, meta]) => {
-                const options = (slots[slot] || []).filter(o =>
-                  !slotSearch || o.name.toLowerCase().includes(slotSearch.toLowerCase())
-                )
                 const current = selected[slot]
-
-                // Скрываем слот если поиск активен и нет совпадений (и ничего не выбрано)
-                if (slotSearch && options.length === 0 && !current) return null
 
                 return (
                   <div key={slot} className={`rounded-xl border bg-card transition-all duration-200 ${current ? "border-primary/40" : "border-border"}`}>

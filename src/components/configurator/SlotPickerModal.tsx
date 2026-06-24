@@ -514,6 +514,18 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
           </div>
         )}
 
+        {/* Поиск по названию для мобильных — всегда на виду (в боковой панели
+            фильтров он спрятан до нажатия «Фильтры»). На десктопе поиск в aside. */}
+        {!customMode && (
+          <div className="border-b border-border p-3 sm:hidden">
+            <div className="relative">
+              <Icon name="Search" size={14} className="absolute left-2.5 top-2.5 text-foreground/30" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по названию"
+                className="w-full rounded-lg border border-border bg-background py-2 pl-8 pr-2 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
+            </div>
+          </div>
+        )}
+
         {customMode ? (
           /* ── Ручной ввод своей позиции ── */
           <div className="flex-1 overflow-y-auto p-6">
@@ -551,7 +563,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
               На телефоне панель занимает всю ширину и ограничена по высоте, чтобы
               не выталкивать список товаров. */}
           <aside className={`${mobileFiltersOpen ? "block max-h-[45vh] border-b" : "hidden"} w-full shrink-0 overflow-y-auto border-border p-4 sm:block sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r`}>
-            <div className="relative mb-3">
+            <div className="relative mb-3 hidden sm:block">
               <Icon name="Search" size={14} className="absolute left-2.5 top-2.5 text-foreground/30" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по названию"
                 className="w-full rounded-lg border border-border bg-background py-2 pl-8 pr-2 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
