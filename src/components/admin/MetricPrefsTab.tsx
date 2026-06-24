@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/types"
@@ -7,12 +7,19 @@ import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/m
 // Метрика, как она приходит в прогоне (для подтягивания списка известных метрик).
 interface SeenMetric { key: string; label: string }
 
-export default function MetricPrefsTab() {
+interface Props {
+  highlight?: string | null
+  onHighlightDone?: () => void
+}
+
+export default function MetricPrefsTab({ highlight, onHighlightDone }: Props) {
   const adminKey = getAdminKey()
   const [prefs, setPrefs] = useState<MetricPref[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const load = useCallback(() => {
     setLoading(true)
@@ -50,6 +57,16 @@ export default function MetricPrefsTab() {
   }, [adminKey])
 
   useEffect(() => { load() }, [load])
+
+  // Подсветка метрики при переходе по двойному клику из карточки прогона.
+  useEffect(() => {
+    if (!highlight || loading || prefs.length === 0) return
+    setFlash(highlight)
+    const el = rowRefs.current[highlight]
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+    const t = setTimeout(() => { setFlash(null); onHighlightDone?.() }, 2500)
+    return () => clearTimeout(t)
+  }, [highlight, loading, prefs.length, onHighlightDone])
 
   const upd = (i: number, patch: Partial<MetricPref>) =>
     setPrefs(prefs.map((p, idx) => idx === i ? { ...p, ...patch } : p))
@@ -93,13 +110,17 @@ export default function MetricPrefsTab() {
         </div>
       ) : (
         <div className="space-y-1.5">
-          {prefs.map((p, i) => (
-            <div key={prefId(p.metric_key, p.label_orig)}
+          {prefs.map((p, i) => {
+            const id = prefId(p.metric_key, p.label_orig)
+            const isFlash = flash === id
+            return (
+            <div key={id}
+              ref={el => { rowRefs.current[id] = el }}
               draggable
               onDragStart={() => setDragIdx(i)}
               onDragOver={e => e.preventDefault()}
               onDrop={() => onDrop(i)}
-              className={`flex items-center gap-2 rounded-xl border bg-card p-2.5 transition-colors ${dragIdx === i ? "border-primary opacity-60" : "border-border"} ${!p.visible ? "opacity-50" : ""}`}>
+              className={`flex items-center gap-2 rounded-xl border p-2.5 transition-all ${isFlash ? "border-primary bg-primary/10 ring-2 ring-primary" : dragIdx === i ? "border-primary bg-card opacity-60" : "border-border bg-card"} ${!p.visible ? "opacity-50" : ""}`}>
               <Icon name="GripVertical" size={16} className="shrink-0 cursor-grab text-foreground/30" />
 
               {/* Видимость */}
@@ -122,7 +143,8 @@ export default function MetricPrefsTab() {
 
               <span className="shrink-0 w-16 truncate text-right text-[11px] text-foreground/30" title={p.metric_key}>{p.metric_key}</span>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

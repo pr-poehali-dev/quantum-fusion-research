@@ -66,6 +66,7 @@ export default function StressTestsTab() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [prefs, setPrefs] = useState<MetricPref[]>([])
   const [catFilter, setCatFilter] = useState<string>("all")
+  const [highlightMetric, setHighlightMetric] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -115,7 +116,7 @@ export default function StressTestsTab() {
         </button>
       </div>
 
-      {view === "metrics" ? <MetricPrefsTab /> : view === "profiles" ? <StressProfilesTab /> : (
+      {view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} /> : view === "profiles" ? <StressProfilesTab /> : (
     <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
       {/* Список прогонов */}
       <div>
@@ -236,7 +237,10 @@ export default function StressTestsTab() {
                   ) : (
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {items.map((x, i) => (
-                        <div key={i} className="rounded-xl border border-border bg-card p-3">
+                        <div key={i}
+                          onDoubleClick={() => { setHighlightMetric(prefId(x.m.key, x.m.label)); setView("metrics") }}
+                          title="Двойной клик — настроить эту метрику"
+                          className="rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/50" style={{ cursor: "pointer" }}>
                           <div className="truncate text-[11px] text-foreground/40" title={x.label}>{x.label}</div>
                           <div className="mt-1 flex items-baseline gap-1">
                             <span className="text-xl font-bold text-foreground">{x.m.max ?? "—"}</span>
