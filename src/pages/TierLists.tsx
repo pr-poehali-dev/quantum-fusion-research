@@ -323,7 +323,7 @@ export default function TierLists() {
           <h1 className="text-3xl font-bold">Тир-листы железа</h1>
           <p className="mt-1 text-sm text-foreground/60">
             Рейтинг комплектующих по рядам — от лучших (S) до спорных (F).
-            Дважды кликните на букву ряда, чтобы узнать, что она означает.
+            <span className="sm:hidden"> Дважды кликните на букву ряда, чтобы узнать, что она означает.</span>
           </p>
           {isAdmin && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground/70">
@@ -420,7 +420,7 @@ export default function TierLists() {
               <div className="relative min-w-0 flex-1">
                 {/* Подсказка: ряды кликабельны (через 10 сек бездействия) */}
                 {showTierHint && (
-                  <div className="mb-3 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground/70 xl:absolute xl:right-full xl:top-0 xl:mb-0 xl:mr-4 xl:w-44 xl:flex-col xl:items-start xl:text-center">
+                  <div className="hidden items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground/70 xl:absolute xl:right-full xl:top-0 xl:mr-4 xl:flex xl:w-44 xl:flex-col xl:items-start xl:text-center">
                     <Icon name="MousePointerClick" size={16} className="shrink-0 text-primary" />
                     <span className="leading-snug">Нажмите на букву ряда (S, A, B…) — узнаете, что она означает</span>
                   </div>
