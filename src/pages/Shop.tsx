@@ -650,7 +650,7 @@ export default function Shop() {
                 <>
                   {featured.length > 0 && (
                     <>
-                      {rest.length > 0 && <p className="mb-3 text-3xl font-mono uppercase tracking-widest text-primary">Рекомендуем</p>}
+                      {rest.length > 0 && <p className="mb-3 text-base font-mono uppercase tracking-widest text-primary">Рекомендуем</p>}
                       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {featured.map(renderCard)}
                       </div>
@@ -667,7 +667,7 @@ export default function Shop() {
                     <div className={featured.length > 0 ? "mt-10" : ""}>
                       <div className="mb-4 flex items-center gap-2">
                         <span className="rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">Б/У</span>
-                        <p className="text-xs font-mono uppercase tracking-widest text-foreground/40">Комплектующие бывшие в употреблении с гарантией</p>
+                        <p className="text-base font-mono uppercase tracking-widest text-primary">Комплектующие бывшие в употреблении с гарантией</p>
                       </div>
                       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                         {usedProducts.slice(0, 3).map(renderCard)}
@@ -692,7 +692,7 @@ export default function Shop() {
                     <div className={`space-y-10 ${featured.length > 0 ? "mt-10" : ""}`}>
                       {catProducts.map(({ cat, top }) => (
                         <div key={cat.slug}>
-                          <p className="mb-4 text-xs font-mono uppercase tracking-widest text-foreground/40">{cat.name}</p>
+                          <p className="mb-4 text-base font-mono uppercase tracking-widest text-primary">{cat.name}</p>
                           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                             {top.map(renderCard)}
                             {/* Бокс "Посмотреть все" */}
