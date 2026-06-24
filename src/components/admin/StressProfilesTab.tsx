@@ -105,15 +105,15 @@ const PRESETS: Preset[] = [
   },
   {
     key: "furmark",
-    label: "FurMark 1.39.0",
-    hint: "Положи в StressTests\\FurMark\\. Стресс GPU, лог температур/FPS. Через 5 сек жмёт «P» — размазывает бублик и сильнее греет GPU.",
+    label: "FurMark 1.37+",
+    hint: "Положи в StressTests\\FurMark\\. Через 5 сек жмёт V/F2/G/P/T: читаемый OSI, мониторинг GPU, post-FX (размазанный бублик, выше нагрузка) и графики температур.",
     make: () => ({
       ...emptyTest(),
       name: "FurMark — GPU стресс",
       program: "StressTests\\FurMark\\furmark.exe",
       args: "/nogui /no_score_box /width=1920 /height=1080 /msaa=4 /max_time=600000 /log_temperature /log_score",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
-      send_keys: "P", send_keys_delay_sec: 5,
+      send_keys: "V,F2,G,P,T", send_keys_delay_sec: 5,
       report_files: ["StressTests\\FurMark\\*.csv", "StressTests\\FurMark\\*_log.txt"],
     }),
   },
