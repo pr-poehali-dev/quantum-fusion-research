@@ -115,6 +115,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
   const [brandFilter, setBrandFilter] = useState<Set<string>>(new Set())
   const [brandOpen, setBrandOpen] = useState(false)
   const [attrFilters, setAttrFilters] = useState<Record<number, Set<string>>>({})
+  const [sortKey, setSortKey] = useState<string>("auto")  // auto | price_asc | price_desc | attr:<id>:asc|desc
   const [openAttr, setOpenAttr] = useState<Record<number, boolean>>({})
   // Показ панели фильтров на телефоне (на десктопе она видна всегда).
   // По умолчанию свёрнута — пользователь раскрывает кнопкой «Фильтры».
@@ -166,7 +167,8 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
 
   const filterableAttrs = useMemo(() => {
     return attributes.filter(a => {
-      if (a.field_type === "number" || a.field_type === "bool" || a.field_type === "text") return false
+      // показываем ВСЕ характеристики (включая числовые/bool) как список значений; кроме служебного text
+      if (a.field_type === "text") return false
       // скрываем характеристики чужого подтипа охлаждения, когда тип выбран
       if (coolingKind !== null && (a.applies_to === "air" || a.applies_to === "liquid") && a.applies_to !== coolingKind) return false
       return products.some(p => {
@@ -186,10 +188,26 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
         if (Array.isArray(v)) v.forEach(x => set.add(String(x)))
         else if (v !== undefined && v !== null && String(v).length) set.add(String(v))
       })
-      m[a.id] = Array.from(set).sort()
+      const arr = Array.from(set)
+      // числовые значения сортируем как числа, остальные — по алфавиту
+      const allNum = arr.every(x => x !== "" && !isNaN(parseFloat(x)))
+      m[a.id] = allNum
+        ? arr.sort((x, y) => parseFloat(x) - parseFloat(y))
+        : arr.sort((x, y) => x.localeCompare(y, "ru"))
     })
     return m
   }, [filterableAttrs, products])
+
+  // Числовые характеристики — для меню сортировки
+  const numericSortAttrs = useMemo(() =>
+    attributes
+      .filter(a => a.field_type === "number")
+      .filter(a => products.some(p => {
+        const v = p.values[String(a.id)]
+        return v !== undefined && v !== null && !isNaN(parseFloat(Array.isArray(v) ? v[0] : String(v)))
+      }))
+      .sort((a, b) => a.sort_order - b.sort_order),
+  [attributes, products])
 
   // Проверка совместимости одного кандидата с уже выбранными деталями.
   // Возвращает null если совместим, или строку-причину если нет.
@@ -410,12 +428,30 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
         }
         // затем приоритет наличия (в наличии — выше)
         if (!!a.p.in_stock !== !!b.p.in_stock) return a.p.in_stock ? -1 : 1
-        // затем скрытая сортировка по марже (макс → мин)
+        // финальный порядок — по выбору пользователя
+        if (sortKey === "price_asc") return a.p.price - b.p.price
+        if (sortKey === "price_desc") return b.p.price - a.p.price
+        if (sortKey.startsWith("attr:")) {
+          const [, idStr, dir] = sortKey.split(":")
+          const aid = parseInt(idStr, 10)
+          const numOf = (p: SlotProduct) => {
+            const raw = p.values[String(aid)]
+            if (raw === undefined || raw === null) return NaN
+            return parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
+          }
+          const x = numOf(a.p), y = numOf(b.p)
+          if (!(isNaN(x) && isNaN(y))) {
+            if (isNaN(x)) return 1
+            if (isNaN(y)) return -1
+            if (x !== y) return dir === "desc" ? y - x : x - y
+          }
+        }
+        // авто: скрытая сортировка по марже (макс → мин), затем по цене
         const dm = (b.p.margin || 0) - (a.p.margin || 0)
         if (dm !== 0) return dm
         return a.p.price - b.p.price
       })
-  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, brandFilter, attrFilters, links, selectedSpec, attributes, psuAdvice, psuWattAttrId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [products, search, onlyStock, recommended, marginThreshold, priceMin, priceMax, brandFilter, attrFilters, sortKey, links, selectedSpec, attributes, psuAdvice, psuWattAttrId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = onlyCompatible ? filtered.filter(f => !f.reason) : filtered
   const compatCount = filtered.filter(f => !f.reason).length
@@ -652,6 +688,22 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
 
           {/* Список товаров */}
           <main className="min-w-0 flex-1 overflow-y-auto p-4">
+            {!loading && visible.length > 0 && (
+              <div className="mb-3 flex items-center gap-2">
+                <Icon name="ArrowDownUp" size={14} className="text-foreground/40" />
+                <select value={sortKey} onChange={e => setSortKey(e.target.value)}
+                  className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
+                  style={{ cursor: "pointer" }}>
+                  <option value="auto">Авто (рекомендуем)</option>
+                  <option value="price_asc">Цена: по возрастанию</option>
+                  <option value="price_desc">Цена: по убыванию</option>
+                  {numericSortAttrs.map(a => [
+                    <option key={`${a.id}-asc`} value={`attr:${a.id}:asc`}>{a.name}: меньше → больше</option>,
+                    <option key={`${a.id}-desc`} value={`attr:${a.id}:desc`}>{a.name}: больше → меньше</option>,
+                  ])}
+                </select>
+              </div>
+            )}
             {loading ? (
               <div className="flex h-full items-center justify-center">
                 <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />

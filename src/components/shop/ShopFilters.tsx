@@ -40,6 +40,75 @@ export const emptyFilterState = (): ShopFilterState => ({
   onlyStock: false, priceMin: "", priceMax: "", brands: new Set(), attrs: {},
 })
 
+// ─── Сортировка ───────────────────────────────────────────────────────────
+// "default" — по умолчанию (наличие выше), "price_asc"/"price_desc" — по цене,
+// "attr:<id>:asc|desc" — по числовой характеристике.
+export type ShopSortKey = string
+
+export const numericAttrs = (attributes: ShopAttr[], products: ShopSpecProduct[]): ShopAttr[] =>
+  attributes
+    .filter(a => a.field_type === "number")
+    .filter(a => products.some(p => {
+      const v = p.values[String(a.id)]
+      return v !== undefined && v !== null && !isNaN(parseFloat(Array.isArray(v) ? v[0] : String(v)))
+    }))
+    .sort((a, b) => a.sort_order - b.sort_order)
+
+const attrNum = (p: ShopSpecProduct, aid: number): number => {
+  const v = p.values[String(aid)]
+  if (v === undefined || v === null) return NaN
+  return parseFloat(Array.isArray(v) ? v[0] : String(v))
+}
+
+// Применяет выбранную сортировку к УЖЕ отфильтрованному списку
+export function sortShopProducts(products: ShopSpecProduct[], sort: ShopSortKey): ShopSpecProduct[] {
+  const arr = [...products]
+  if (sort === "price_asc") return arr.sort((a, b) => a.price - b.price)
+  if (sort === "price_desc") return arr.sort((a, b) => b.price - a.price)
+  if (sort.startsWith("attr:")) {
+    const [, idStr, dir] = sort.split(":")
+    const aid = parseInt(idStr, 10)
+    return arr.sort((a, b) => {
+      const x = attrNum(a, aid), y = attrNum(b, aid)
+      if (isNaN(x) && isNaN(y)) return 0
+      if (isNaN(x)) return 1
+      if (isNaN(y)) return -1
+      return dir === "desc" ? y - x : x - y
+    })
+  }
+  // default — товары в наличии выше
+  return arr.sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+}
+
+interface SortControlProps {
+  attributes: ShopAttr[]
+  products: ShopSpecProduct[]
+  value: ShopSortKey
+  onChange: (v: ShopSortKey) => void
+  defaultLabel?: string
+}
+
+// Выпадающее меню "Сортировка" — цена ↑/↓ + по каждой числовой характеристике
+export function ShopSortControl({ attributes, products, value, onChange, defaultLabel = "По умолчанию" }: SortControlProps) {
+  const nums = useMemo(() => numericAttrs(attributes, products), [attributes, products])
+  return (
+    <div className="flex items-center gap-2">
+      <Icon name="ArrowDownUp" size={14} className="text-foreground/40" />
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
+        style={{ cursor: "pointer" }}>
+        <option value="default">{defaultLabel}</option>
+        <option value="price_asc">Цена: по возрастанию</option>
+        <option value="price_desc">Цена: по убыванию</option>
+        {nums.map(a => [
+          <option key={`${a.id}-asc`} value={`attr:${a.id}:asc`}>{a.name}: меньше → больше</option>,
+          <option key={`${a.id}-desc`} value={`attr:${a.id}:desc`}>{a.name}: больше → меньше</option>,
+        ])}
+      </select>
+    </div>
+  )
+}
+
 // Применяет фильтры к списку товаров
 export function applyShopFilters(products: ShopSpecProduct[], f: ShopFilterState): ShopSpecProduct[] {
   const pmin = f.priceMin ? parseFloat(f.priceMin) : null
@@ -79,10 +148,11 @@ export default function ShopFilters({ attributes, products, state, setState, ope
     return coolerKindFromValue(Array.from(sel)[0])
   }, [attributes, state.attrs])
 
-  // Фильтруемые характеристики — только select/multiselect, у которых есть заполненные значения
+  // Фильтруемые характеристики — ВСЕ типы (кроме служебных text), у которых есть заполненные значения.
+  // Числовые тоже показываем как список конкретных значений-чекбоксов.
   const filterableAttrs = useMemo(() =>
     attributes
-      .filter(a => (a.field_type === "select" || a.field_type === "multiselect"))
+      .filter(a => a.field_type !== "text")
       // скрываем характеристики чужого подтипа охлаждения, когда тип выбран
       .filter(a => coolingKind === null ? true : attrVisibleForKind(a, coolingKind))
       .filter(a => products.some(p => {
@@ -101,7 +171,12 @@ export default function ShopFilters({ attributes, products, state, setState, ope
         if (Array.isArray(v)) v.forEach(x => set.add(String(x)))
         else if (v !== undefined && v !== null && String(v).length) set.add(String(v))
       })
-      m[a.id] = Array.from(set).sort()
+      const arr = Array.from(set)
+      // числовые значения сортируем как числа, остальные — по алфавиту
+      const allNum = arr.every(x => x !== "" && !isNaN(parseFloat(x)))
+      m[a.id] = allNum
+        ? arr.sort((x, y) => parseFloat(x) - parseFloat(y))
+        : arr.sort((x, y) => x.localeCompare(y, "ru"))
     })
     return m
   }, [filterableAttrs, products])

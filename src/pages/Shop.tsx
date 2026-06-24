@@ -9,7 +9,7 @@ import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
 import CatalogTabs from "@/components/CatalogTabs"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, emptyFilterState, applyShopFilters } from "@/components/shop/ShopFilters"
+import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, ShopSortKey, emptyFilterState, applyShopFilters, sortShopProducts, ShopSortControl } from "@/components/shop/ShopFilters"
 
 interface Product {
   id: number
@@ -153,6 +153,7 @@ export default function Shop() {
   const [specProducts, setSpecProducts] = useState<ShopSpecProduct[]>([])
   const [specLoading, setSpecLoading] = useState(false)
   const [filterState, setFilterState] = useState<ShopFilterState>(emptyFilterState)
+  const [sortKey, setSortKey] = useState<ShopSortKey>("default")
   const [openAttr, setOpenAttr] = useState<Record<number | string, boolean>>({ brand: true })
   const [allTags, setAllTags] = useState<BuildTag[]>([])
   const [activeTagIds, setActiveTagIds] = useState<number[]>([])
@@ -213,6 +214,7 @@ export default function Shop() {
   // со значениями (для фильтров). Для «Все» / Б/У — не нужно.
   useEffect(() => {
     setFilterState(emptyFilterState())
+    setSortKey("default")
     if (activeCategory === "all" || usedOnly) {
       setSpecAttrs([]); setSpecProducts([]); return
     }
@@ -517,9 +519,10 @@ export default function Shop() {
                 const bySearch = search
                   ? specProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
                   : specProducts
-                const filtered = applyShopFilters(bySearch, filterState)
-                  .filter(hasPhoto)
-                  .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+                const filtered = sortShopProducts(
+                  applyShopFilters(bySearch, filterState).filter(hasPhoto),
+                  sortKey,
+                )
                 // Карточки рендерим по полному Product из allProducts (там old_price, is_used и т.д.)
                 const byId = new Map(allProducts.map(p => [p.id, p]))
                 return (
@@ -540,7 +543,10 @@ export default function Shop() {
                         </div>
                       ) : (
                         <>
-                          <p className="mb-3 text-xs text-foreground/40">Найдено: {filtered.length}</p>
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs text-foreground/40">Найдено: {filtered.length}</p>
+                            <ShopSortControl attributes={specAttrs} products={specProducts} value={sortKey} onChange={setSortKey} />
+                          </div>
                           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                             {filtered.map(sp => {
                               const p = byId.get(sp.id) || ({
