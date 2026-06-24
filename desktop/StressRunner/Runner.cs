@@ -102,7 +102,19 @@ public class Runner
             else
             {
                 result.ExitCode = proc.ExitCode;
-                result.Success = test.SuccessExitCode == -1 || proc.ExitCode == test.SuccessExitCode;
+                bool codeOk = test.SuccessExitCode == -1 || proc.ExitCode == test.SuccessExitCode;
+
+                // Защита от GUI-лаунчеров (OCCT, FurMark): процесс мог «открыть
+                // окно и сразу выйти». Если завершился раньше min_run_sec — провал.
+                if (test.MinRunSec > 0 && sw.Elapsed.TotalSeconds < test.MinRunSec)
+                {
+                    result.Success = false;
+                    Log($"    Завершился за {sw.Elapsed.TotalSeconds:F0} сек — это раньше минимума ({test.MinRunSec} сек). Похоже, программа открыла окно и вышла. Проверь аргументы запуска теста на время.");
+                }
+                else
+                {
+                    result.Success = codeOk;
+                }
             }
         }
         catch (Exception ex)
@@ -128,19 +140,21 @@ public class Runner
 
     private static ProcessStartInfo BuildStartInfo(TestItem test)
     {
-        string program = test.Program;
-        string args = test.Args;
+        string exePath = Environment.ExpandEnvironmentVariables(test.Program);
+        string program = exePath;
+        string args = Environment.ExpandEnvironmentVariables(test.Args);
+        string workDir = Environment.ExpandEnvironmentVariables(test.WorkingDir);
         string ext = Path.GetExtension(program).ToLowerInvariant();
 
         // Скрипты запускаем через нужный интерпретатор.
         if (ext is ".bat" or ".cmd")
         {
-            args = $"/c \"{program}\" {args}";
+            args = $"/c \"{exePath}\" {args}";
             program = "cmd.exe";
         }
         else if (ext == ".ps1")
         {
-            args = $"-ExecutionPolicy Bypass -File \"{test.Program}\" {test.Args}";
+            args = $"-ExecutionPolicy Bypass -File \"{exePath}\" {args}";
             program = "powershell.exe";
         }
 
@@ -151,10 +165,10 @@ public class Runner
             UseShellExecute = false,
             CreateNoWindow = false,
         };
-        if (!string.IsNullOrWhiteSpace(test.WorkingDir))
-            psi.WorkingDirectory = test.WorkingDir;
-        else if (File.Exists(test.Program))
-            psi.WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(test.Program)) ?? "";
+        if (!string.IsNullOrWhiteSpace(workDir))
+            psi.WorkingDirectory = workDir;
+        else if (File.Exists(exePath))
+            psi.WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(exePath)) ?? "";
         return psi;
     }
 
@@ -167,10 +181,12 @@ public class Runner
     private void CollectReports(TestItem test, ResultPayload result)
     {
         long maxBytes = (long)_settings.MaxFileMb * 1024 * 1024;
-        foreach (var pattern in test.ReportFiles)
+        foreach (var rawPattern in test.ReportFiles)
         {
             try
             {
+                // Разворачиваем переменные окружения (%USERPROFILE%, %APPDATA%...).
+                string pattern = Environment.ExpandEnvironmentVariables(rawPattern);
                 string dir = Path.GetDirectoryName(pattern) ?? ".";
                 if (string.IsNullOrWhiteSpace(dir)) dir = ".";
                 string mask = Path.GetFileName(pattern);

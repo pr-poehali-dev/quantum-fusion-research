@@ -46,6 +46,14 @@ public class TestItem
     /// </summary>
     [JsonPropertyName("report_files")]
     public List<string> ReportFiles { get; set; } = new();
+
+    /// <summary>
+    /// Минимум секунд работы. Если процесс завершился раньше — тест провален
+    /// (защита от GUI-программ типа OCCT, которые «открыли окно и вышли»).
+    /// 0 — проверка выключена.
+    /// </summary>
+    [JsonPropertyName("min_run_sec")]
+    public int MinRunSec { get; set; } = 0;
 }
 
 /// <summary>

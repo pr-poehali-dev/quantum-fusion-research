@@ -12,6 +12,7 @@ interface TestItem {
   timeout_is_success: boolean
   success_exit_code: number
   report_files: string[]
+  min_run_sec: number
 }
 interface Profile {
   id?: number
@@ -25,10 +26,88 @@ interface Profile {
 const emptyTest = (): TestItem => ({
   name: "", program: "", args: "", working_dir: "",
   duration_sec: 60, timeout_is_success: true, success_exit_code: 0, report_files: [],
+  min_run_sec: 0,
 })
 const emptyProfile = (): Profile => ({
   name: "", note: "", tests: [emptyTest()], is_active: true, sort_order: 0,
 })
+
+// Готовые пресеты тестов. program оставляем пустым — путь юзер впишет под свой ПК.
+interface Preset { key: string; label: string; hint: string; make: () => TestItem }
+const PRESETS: Preset[] = [
+  {
+    key: "occt",
+    label: "OCCT (CPU)",
+    hint: "Запускает OCCT.exe, само крутит CPU-тест 10 мин и закрывается. Путь обычно C:\\Program Files\\OCCT\\OCCT.exe. Отчёт — в Документы\\OCCT.",
+    make: () => ({
+      ...emptyTest(),
+      name: "OCCT — CPU стресс",
+      args: "-run -test=CPU -duration=00:10:00 -auto -report=Documents",
+      duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
+      report_files: ["%USERPROFILE%\\Documents\\OCCT\\*.html", "%USERPROFILE%\\Documents\\OCCT\\*\\*.csv"],
+    }),
+  },
+  {
+    key: "occt_gpu",
+    label: "OCCT (GPU)",
+    hint: "OCCT в режиме 3D/VRAM на видеокарту. Путь к OCCT.exe тот же. Отчёт — в Документы\\OCCT.",
+    make: () => ({
+      ...emptyTest(),
+      name: "OCCT — GPU стресс (3D)",
+      args: "-run -test=3D -duration=00:10:00 -auto -report=Documents",
+      duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
+      report_files: ["%USERPROFILE%\\Documents\\OCCT\\*.html"],
+    }),
+  },
+  {
+    key: "cinebench",
+    label: "Cinebench R23",
+    hint: "CPU-бенчмарк Maxon. Путь к Cinebench.exe. Крутит мультиядро ~10 мин. Результат смотри в окне Cinebench.",
+    make: () => ({
+      ...emptyTest(),
+      name: "Cinebench R23 — Multi Core",
+      args: "g_CinebenchCpuXTest=true g_CinebenchMinimumTestDuration=600",
+      duration_sec: 660, timeout_is_success: true, success_exit_code: 0,
+      report_files: [],
+    }),
+  },
+  {
+    key: "prime95",
+    label: "Prime95",
+    hint: "Прогрев CPU. Путь к prime95.exe. Режим Torture задаётся в local.txt/prime.txt рядом с программой.",
+    make: () => ({
+      ...emptyTest(),
+      name: "Prime95 — Torture Test",
+      args: "-t",
+      duration_sec: 900, timeout_is_success: true, success_exit_code: 0,
+      report_files: ["results.txt"],
+    }),
+  },
+  {
+    key: "superposition",
+    label: "Superposition 8K",
+    hint: "Unigine Superposition в режиме консоли. Путь к superposition_cli.exe (папка bin). Пресет 8K. Отчёт — JSON рядом.",
+    make: () => ({
+      ...emptyTest(),
+      name: "Superposition — 8K",
+      args: "-preset 4 -mode 2 -api 2 -report_path superposition_report.json",
+      duration_sec: 600, timeout_is_success: false, success_exit_code: 0,
+      report_files: ["superposition_report.json"],
+    }),
+  },
+  {
+    key: "furmark",
+    label: "FurMark 1.39.0",
+    hint: "Стресс GPU с мониторингом. Путь к furmark.exe. Лог с температурами/FPS пишется в файл.",
+    make: () => ({
+      ...emptyTest(),
+      name: "FurMark — GPU стресс",
+      args: "/nogui /no_score_box /width=1920 /height=1080 /msaa=4 /max_time=600000 /log_temperature /log_score",
+      duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
+      report_files: ["*.csv", "*_log.txt"],
+    }),
+  },
+]
 
 export default function StressProfilesTab() {
   const adminKey = getAdminKey()
@@ -69,6 +148,7 @@ export default function StressProfilesTab() {
     setEdit({ ...edit, tests })
   }
   const addTest = () => edit && setEdit({ ...edit, tests: [...edit.tests, emptyTest()] })
+  const addPreset = (p: Preset) => edit && setEdit({ ...edit, tests: [...edit.tests, p.make()] })
   const delTest = (i: number) => edit && setEdit({ ...edit, tests: edit.tests.filter((_, idx) => idx !== i) })
   const moveTest = (i: number, dir: -1 | 1) => {
     if (!edit) return
@@ -111,6 +191,23 @@ export default function StressProfilesTab() {
           </label>
         </div>
 
+        {/* Готовые пресеты */}
+        <div className="mt-5 rounded-xl border border-border bg-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Icon name="Zap" size={15} className="text-accent" />
+            <span className="text-sm font-medium text-foreground">Добавить готовый тест</span>
+          </div>
+          <p className="mb-3 text-xs text-foreground/40">Жми — тест добавится с правильными аргументами и отчётом. Останется вписать путь к программе под свой ПК.</p>
+          <div className="flex flex-wrap gap-2">
+            {PRESETS.map(p => (
+              <button key={p.key} onClick={() => addPreset(p)} title={p.hint}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={13} /> {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Тесты */}
         <div className="mt-5 space-y-3">
           {edit.tests.map((t, i) => (
@@ -143,6 +240,7 @@ export default function StressProfilesTab() {
                     <input value={t.args} onChange={e => updTest(i, { args: e.target.value })}
                       placeholder="/cpu /duration 600"
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary" />
+                    <span className="mt-1 block text-[11px] text-foreground/30">Ключи командной строки. Для GUI-программ (OCCT, FurMark) обязательно режим запуска теста на время, иначе откроется окно и тест завершится мгновенно.</span>
                   </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -150,22 +248,34 @@ export default function StressProfilesTab() {
                     <span className="mb-1 block text-xs text-foreground/50">Время теста, сек</span>
                     <input type="number" value={t.duration_sec} onChange={e => updTest(i, { duration_sec: Number(e.target.value) })}
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                    <span className="mt-1 block text-[11px] text-foreground/30">Сколько держать тест. Ставь чуть больше длительности в аргументах (запас на запуск).</span>
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-xs text-foreground/50">Код успеха</span>
                     <input type="number" value={t.success_exit_code} onChange={e => updTest(i, { success_exit_code: Number(e.target.value) })}
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                    <span className="mt-1 block text-[11px] text-foreground/30">Какой код = успех, если программа завершилась сама. Обычно 0. Поставь -1, чтобы принимать любой код.</span>
                   </label>
-                  <label className="flex items-end gap-2 pb-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
-                    <input type="checkbox" checked={t.timeout_is_success} onChange={e => updTest(i, { timeout_is_success: e.target.checked })} />
-                    Таймаут = успех
+                  <label className="flex flex-col gap-1 text-sm text-foreground/70">
+                    <span className="text-xs text-foreground/50">Таймаут = успех</span>
+                    <span className="flex items-center gap-2 pt-1.5" style={{ cursor: "pointer" }}>
+                      <input type="checkbox" checked={t.timeout_is_success} onChange={e => updTest(i, { timeout_is_success: e.target.checked })} />
+                      <span className="text-[11px] text-foreground/30">Вкл — если тест «крутится вечно» и мы гасим его по времени (OCCT/Prime95/FurMark). Выкл — если программа сама завершается (Cinebench/Superposition).</span>
+                    </span>
                   </label>
                 </div>
                 <label className="block">
+                  <span className="mb-1 block text-xs text-foreground/50">Минимум секунд работы (защита от «мгновенного» теста)</span>
+                  <input type="number" value={t.min_run_sec} onChange={e => updTest(i, { min_run_sec: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                  <span className="mt-1 block text-[11px] text-foreground/30">Если программа закрылась раньше этого времени — тест считается ПРОВАЛЕННЫМ. Спасает от случая, когда OCCT/FurMark открыл окно и сразу «вышел». 0 — выключено. Для OCCT поставь 30.</span>
+                </label>
+                <label className="block">
                   <span className="mb-1 block text-xs text-foreground/50">Файлы-отчёты (через запятую, можно маски *.log)</span>
                   <input value={t.report_files.join(", ")} onChange={e => updTest(i, { report_files: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}
-                    placeholder="C:\OCCT\reports\*.csv"
+                    placeholder="%USERPROFILE%\Documents\OCCT\*.html"
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary" />
+                  <span className="mt-1 block text-[11px] text-foreground/30">Откуда забрать отчёт после теста. OCCT кладёт отчёты в «Документы\OCCT». Можно маски (*.html, *.csv). Эти файлы приложатся к прогону на сайте.</span>
                 </label>
               </div>
             </div>
