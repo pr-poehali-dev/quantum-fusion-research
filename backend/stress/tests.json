@@ -1,0 +1,23 @@
+{
+  "tests": [
+    {
+      "name": "Ingest without token forbidden",
+      "method": "POST",
+      "path": "/?action=ingest",
+      "body": {"run_uid": "__sttest__", "results": []},
+      "expectedStatus": 403
+    },
+    {
+      "name": "List without admin forbidden",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Get without admin forbidden",
+      "method": "GET",
+      "path": "/?action=get&id=1",
+      "expectedStatus": 403
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import { AdminUsersTab } from "@/components/admin/AdminUsersTab"
 import RmaTab from "@/components/admin/RmaTab"
 import QuizRequestsTab from "@/components/admin/QuizRequestsTab"
 import PriceMonitorTab from "@/components/admin/PriceMonitorTab"
+import StressTestsTab from "@/components/admin/StressTestsTab"
 import {
   ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
@@ -179,6 +180,7 @@ export default function Admin() {
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
+    { key: "stress", label: "Стресс-тесты", icon: "Activity" },
   ]
   // Группа 4 — Быстрый доступ
   const quickTabs = [
@@ -324,6 +326,9 @@ export default function Admin() {
 
         {/* PRICE MONITOR — цены от парсера */}
         {tab === "price_monitor" && <PriceMonitorTab />}
+
+        {/* STRESS — результаты стресс-тестов от desktop-приложения */}
+        {tab === "stress" && <StressTestsTab />}
       </div>
 
       {/* WAREHOUSE — на всю ширину браузера с отступами 50px */}

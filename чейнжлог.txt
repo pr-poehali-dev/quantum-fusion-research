@@ -3,6 +3,33 @@
 
 ---
 
+## v5.20 | 2026-06-24 | Стресс-тесты: backend + раздел админки + desktop-приложение (EXE)
+
+### БД (миграция V0155)
+- Новые таблицы: stress_runs (прогоны с ПК), stress_results (тесты прогона:
+  exit_code, длительность, таймаут, успех), stress_files (файлы-отчёты, CDN url).
+
+### backend/stress (новая функция)
+- URL: https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c
+- action=ingest (POST, токен X-Stress-Token) — приём прогона от EXE,
+  файлы-отчёты base64 → S3, идемпотентность по run_uid.
+- action=list / get / delete_run — для админки (X-Admin-Token или admin-сессия).
+- Секрет STRESS_INGEST_TOKEN — токен приложения.
+
+### Frontend
+- Новый раздел админки /admin/stress (StressTestsTab): список прогонов,
+  детали с результатами тестов и скачиванием файлов-отчётов.
+- api.stress.list/get/deleteRun, добавлен URLS.stress (src/lib/api.ts).
+- Вкладка «Стресс-тесты» в группе «Прочее» (Admin.tsx, types.ts).
+
+### desktop/StressRunner (C#/.NET — НЕ часть веб-сборки)
+- Консольное приложение: профили тестов (profiles.json), запуск внешних
+  программ/скриптов (.exe/.bat/.cmd/.ps1) с таймаутом, сбор exit-кода + времени +
+  файлов-отчётов, локальная БД SQLite, отправка на сайт + дослыл неотправленных.
+- README.md с инструкцией сборки в .exe через dotnet publish.
+
+---
+
 ## v5.19 | 2026-06-24 | Страница товара: все характеристики из админки
 
 ### src/pages/ProductPage.tsx

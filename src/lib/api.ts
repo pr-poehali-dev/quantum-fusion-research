@@ -20,6 +20,7 @@ const URLS = {
   quiz: "https://functions.poehali.dev/8660d01d-f97e-4034-8704-30fd94dc3041",
   snArchive: "https://functions.poehali.dev/147bf909-3e68-44c2-bd73-5c6dc9b11195",
   priceMonitor: "https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab",
+  stress: "https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c",
 }
 
 function authHeaders(session?: string | null) {
@@ -248,6 +249,14 @@ export const api = {
     addCategory: (data: { category: string, require_serial?: boolean }) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_add", ...data }) }).then(r => r.json()),
     removeCategory: (category: string) => fetch(URLS.snArchive, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_remove", category }) }).then(r => r.json()),
     getStores: () => fetch(`${URLS.snArchive}?action=stores`).then(r => r.json()),
+  },
+  stress: {
+    list: (adminKey: string) =>
+      fetch(`${URLS.stress}?action=list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    get: (id: number, adminKey: string) =>
+      fetch(`${URLS.stress}?action=get&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    deleteRun: (id: number, adminKey: string) =>
+      fetch(`${URLS.stress}?action=delete_run&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),
