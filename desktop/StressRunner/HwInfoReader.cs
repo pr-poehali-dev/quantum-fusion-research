@@ -42,16 +42,16 @@ public class HwInfoReader
 
             if (s.Type == "Temperature")
             {
-                if (snap.CpuTemp == null && isCpu && (nm.Contains("package") || nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("core (tctl") || nm.Contains("cpu")))
+                if (snap.CpuTemp == null && isCpu && (nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("package")))
                     snap.CpuTemp = s.Value;
-                else if (snap.GpuTemp == null && isGpu && (nm.Contains("core") || nm.Contains("gpu") || nm == "temperature"))
+                else if (snap.GpuTemp == null && isGpu && nm == "gpu core")
                     snap.GpuTemp = s.Value;
             }
             else if (s.Type == "Load")
             {
-                if (snap.CpuLoad == null && isCpu && (nm.Contains("total") || nm.Contains("cpu total")))
+                if (snap.CpuLoad == null && isCpu && nm.Contains("cpu total"))
                     snap.CpuLoad = s.Value;
-                else if (snap.GpuLoad == null && isGpu && (nm.Contains("core") || nm.Contains("d3d") || nm.Contains("gpu")))
+                else if (snap.GpuLoad == null && isGpu && nm == "gpu core")
                     snap.GpuLoad = s.Value;
             }
         }

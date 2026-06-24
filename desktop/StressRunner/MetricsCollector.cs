@@ -47,34 +47,47 @@ public class MetricsCollector
                 switch (s.Type)
                 {
                     case "Temperature":
-                        if (isCpu && (nm.Contains("package") || nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("core (tctl") || nm == "core average"))
+                        // CPU: "Core (Tctl/Tdie)" — основная температура процессора.
+                        if (isCpu && (nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("package") || nm == "core average"))
                             Put("cpu_temp", "CPU температура", "°C", s.Value);
-                        else if (isGpu && (nm.Contains("hot spot") || nm.Contains("hotspot") || nm.Contains("junction")))
-                            Put("gpu_hotspot", "GPU Hot Spot", "°C", s.Value);   // горячая точка — отдельно
+                        // GPU память: "GPU Memory Junction" — ВАЖНО проверять ДО hot spot,
+                        // т.к. содержит "junction".
                         else if (isGpu && nm.Contains("memory"))
-                            Put("gpu_mem_temp", "GPU память °C", "°C", s.Value);
-                        else if (isGpu && (nm.Contains("core") || nm == "gpu" || nm == "temperature"))
-                            Put("gpu_temp", "GPU температура", "°C", s.Value);
+                            Put("gpu_mem_temp", "GPU память (Junction)", "°C", s.Value);
+                        // GPU горячая точка: "GPU Hot Spot".
+                        else if (isGpu && (nm.Contains("hot spot") || nm.Contains("hotspot") || nm.Contains("junction")))
+                            Put("gpu_hotspot", "GPU Hot Spot", "°C", s.Value);
+                        // GPU ядро: "GPU Core".
+                        else if (isGpu && (nm == "gpu core" || nm == "gpu" || nm == "temperature"))
+                            Put("gpu_temp", "GPU температура (Core)", "°C", s.Value);
                         break;
                     case "Load":
-                        if (isCpu && (nm.Contains("cpu total") || nm == "total"))
+                        // CPU: "CPU Total".
+                        if (isCpu && nm.Contains("cpu total"))
                             Put("cpu_load", "Нагрузка CPU", "%", s.Value);
-                        else if (isGpu && (nm.Contains("core") || nm.Contains("d3d") || nm == "gpu"))
+                        // GPU: строго "GPU Core" (а не D3D/память — иначе мешанина).
+                        else if (isGpu && nm == "gpu core")
                             Put("gpu_load", "Нагрузка GPU", "%", s.Value);
                         break;
                     case "Fan":
-                        Put($"fan::{s.Hardware}::{s.Name}", $"{s.Name} ({s.Hardware})", "RPM", s.Value);
+                        // Только реально вертящиеся (>0), чтобы не плодить нулевые.
+                        if (s.Value > 0)
+                            Put($"fan::{s.Hardware}::{s.Name}", $"{s.Name} ({s.Hardware})", "RPM", s.Value);
                         break;
                     case "Clock":
-                        if (isCpu && nm.Contains("core") && !nm.Contains("bus"))
+                        // CPU: берём первое ядро как репрезентативную частоту.
+                        if (isCpu && nm.StartsWith("core #1"))
                             Put("cpu_clock", "Частота CPU", "MHz", s.Value);
-                        else if (isGpu && nm.Contains("core"))
+                        // GPU: "GPU Core".
+                        else if (isGpu && nm == "gpu core")
                             Put("gpu_clock", "Частота GPU", "MHz", s.Value);
                         break;
                     case "Power":
-                        if (isCpu && (nm.Contains("package") || nm.Contains("cpu")))
+                        // CPU: "Package".
+                        if (isCpu && nm == "package")
                             Put("cpu_power", "Потребление CPU", "W", s.Value);
-                        else if (isGpu && (nm.Contains("gpu") || nm.Contains("total") || nm.Contains("power")))
+                        // GPU: "GPU Package".
+                        else if (isGpu && nm == "gpu package")
                             Put("gpu_power", "Потребление GPU", "W", s.Value);
                         break;
                 }

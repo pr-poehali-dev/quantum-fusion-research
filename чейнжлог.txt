@@ -3,6 +3,20 @@
 
 ---
 
+## v5.42 | 2026-06-24 | StressRunner: точное распознавание датчиков (Hot Spot заработал)
+
+### desktop/StressRunner
+- MetricsCollector/HwInfoReader: распознавание метрик подогнано под реальные
+  имена LibreHardwareMonitor (по дебагу RTX 3080 Ti + Ryzen 9800X3D):
+  - GPU Hot Spot («GPU Hot Spot») и GPU память («GPU Memory Junction») —
+    отдельными метриками (память проверяется ДО hotspot, т.к. содержит junction).
+  - GPU температура/нагрузка/частота строго по «GPU Core», потребление «GPU Package».
+  - CPU темп «Core (Tctl/Tdie)», нагрузка «CPU Total», частота «Core #1»,
+    потребление «Package».
+  - Вентиляторы только с RPM>0 (нулевые не плодим).
+
+---
+
 ## v5.41 | 2026-06-24 | StressRunner: сетевая диагностика (для проблем с подключением)
 
 ### desktop/StressRunner
