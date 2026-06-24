@@ -97,10 +97,6 @@ export function ThemeSwitcher() {
           className="text-primary"
           style={{ filter: "drop-shadow(0 0 5px hsl(var(--primary)))" }}
         />
-        <span
-          className="h-3 w-3 rounded-full ring-1 ring-border"
-          style={{ backgroundColor: accentId.startsWith("custom:") ? currentCustomHex : currentDot }}
-        />
         {showHint && (
           <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
