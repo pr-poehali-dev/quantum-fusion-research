@@ -149,30 +149,23 @@ function CompatWarning({ texts, severity = "critical" }: { texts: string[]; seve
     )
   }
 
-  // Одно сообщение
+  // Одно сообщение — единый свёрнутый вид на всех экранах: значок + пояснялка,
+  // полный текст раскрывается по клику.
   const label = crit ? "Проблема" : "Совет"
   return (
-    <>
-      {/* Десктоп — полный текст */}
-      <div className={`hidden max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug sm:flex ${box}`}>
+    <div className="flex flex-col items-end gap-1">
+      <button onClick={() => setOpen(o => !o)} style={{ cursor: "pointer" }}
+        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium leading-snug ${box}`}>
         <Icon name={icon} size={13} className="shrink-0" />
-        <span>{single}</span>
-      </div>
-      {/* Мобильный — компактный значок + пояснялка */}
-      <div className="flex flex-col items-end gap-1 sm:hidden">
-        <button onClick={() => setOpen(o => !o)} style={{ cursor: "pointer" }}
-          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium leading-snug ${box}`}>
-          <Icon name={icon} size={13} className="shrink-0" />
-          <span>{label}</span>
-          <Icon name="CircleHelp" size={13} className="shrink-0 opacity-70" />
-        </button>
-        {open && (
-          <div className={`max-w-[220px] rounded-lg border px-2.5 py-1.5 text-right text-[11px] leading-snug ${box}`}>
-            {single}
-          </div>
-        )}
-      </div>
-    </>
+        <span>{label}</span>
+        <Icon name="CircleHelp" size={13} className="shrink-0 opacity-70" />
+      </button>
+      {open && (
+        <div className={`max-w-[240px] rounded-lg border px-2.5 py-1.5 text-right text-[11px] leading-snug ${box}`}>
+          {single}
+        </div>
+      )}
+    </div>
   )
 }
 
