@@ -323,6 +323,21 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
       .sort((a, b) => {
         // совместимые сверху
         if (!!a.reason !== !!b.reason) return a.reason ? 1 : -1
+        // для БП: товары с предупреждением о мощности — в самый низ,
+        // а среди «проблемных» по мощности сортируем по ваттам от мощного к слабому
+        if (slotCode === "psu") {
+          if (!!a.warn !== !!b.warn) return a.warn ? 1 : -1
+          if (a.warn && b.warn) {
+            const wattOf = (p: SlotProduct) => {
+              if (psuWattAttrId === null) return 0
+              const raw = p.values[String(psuWattAttrId)]
+              const w = parseFloat(String(Array.isArray(raw) ? raw[0] : raw).replace(",", "."))
+              return Number.isNaN(w) ? 0 : w
+            }
+            const dw = wattOf(b.p) - wattOf(a.p)
+            if (dw !== 0) return dw
+          }
+        }
         // затем приоритет наличия (в наличии — выше)
         if (!!a.p.in_stock !== !!b.p.in_stock) return a.p.in_stock ? -1 : 1
         // затем скрытая сортировка по марже (макс → мин)
