@@ -288,7 +288,7 @@ export default function Shop() {
   }
 
   const handleAddToCart = (p: Product, preorder = false) => {
-    addItem({ id: p.id, name: p.name, price: p.price, image_url: p.image_url, type: "product", preorder })
+    addItem({ id: p.id, name: p.name, price: p.price, image_url: p.image_url, description: p.description, type: "product", preorder })
     showAddedToast(p.name)
   }
 

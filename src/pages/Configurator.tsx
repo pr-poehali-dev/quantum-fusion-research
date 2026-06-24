@@ -410,6 +410,7 @@ export default function Configurator() {
           name: c!.name,
           price: c!.price,
           image_url: c!.image_urls?.[0] || null,
+          description: c!.description || null,
           type: "product",
         })
       }

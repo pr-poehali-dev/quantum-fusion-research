@@ -187,7 +187,7 @@ export default function ProductPage() {
   const cartQty = cartItem?.quantity ?? 0
 
   const handleAddToCart = () => {
-    addItem({ id: product.id, name: product.name, price: product.price, image_url: product.image_url, type: "product" })
+    addItem({ id: product.id, name: product.name, price: product.price, image_url: product.image_url, description: product.description, type: "product" })
   }
 
   const discount = product.old_price ? Math.round((1 - product.price / product.old_price) * 100) : null

@@ -16,6 +16,7 @@ export interface CartItem {
   price: number
   quantity: number
   image_url?: string | null
+  description?: string | null
   type: "product" | "config"
   assembly?: boolean
   components?: CartComponent[]

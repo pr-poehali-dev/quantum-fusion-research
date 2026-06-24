@@ -22,6 +22,7 @@ export default function Cart() {
   const [form, setForm] = useState(() => ({ ...prefilled, comment: "" }))
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed")
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -112,14 +113,31 @@ export default function Cart() {
           <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
             {/* Items */}
             <div className="space-y-3">
+              {/* Переключатель вида: подробный (с превью и описанием) / компактный */}
+              <div className="flex items-center justify-end gap-1.5">
+                <span className="mr-1 text-xs text-foreground/40">Вид:</span>
+                <button onClick={() => setViewMode("detailed")} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "detailed" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
+                  <Icon name="LayoutList" size={14} />Подробный
+                </button>
+                <button onClick={() => setViewMode("compact")} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "compact" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
+                  <Icon name="Menu" size={14} />Компактный
+                </button>
+              </div>
               {items.map(item => (
-                <div key={item.id} className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <Icon name={item.type === "config" ? "Cpu" : "Package"} size={24} className="text-foreground/40" />
+                <div key={item.id} className={`flex gap-4 rounded-xl border border-border bg-card p-4 ${viewMode === "detailed" ? "items-start" : "items-center"}`}>
+                  <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-40 w-40" : "h-14 w-14"}`}>
+                    {item.image_url
+                      ? <img src={item.image_url} alt={item.name} className="h-full w-full object-contain" />
+                      : <Icon name={item.type === "config" ? "Cpu" : "Package"} size={viewMode === "detailed" ? 56 : 24} className="text-foreground/40" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
+                    <p className={`text-sm font-medium text-foreground ${viewMode === "detailed" ? "" : "truncate"}`}>{item.name}</p>
                     <p className="text-xs text-foreground/40">{item.type === "config" ? "Кастомная сборка" : "Комплектующее"}</p>
+                    {viewMode === "detailed" && item.description && (
+                      <p className="mt-1 text-xs leading-snug text-foreground/50 line-clamp-3">
+                        {item.description.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()}
+                      </p>
+                    )}
                     {item.preorder && (
                       <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                         <Icon name="Clock" size={11} />
