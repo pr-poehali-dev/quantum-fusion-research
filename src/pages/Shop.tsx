@@ -650,7 +650,7 @@ export default function Shop() {
                 <>
                   {featured.length > 0 && (
                     <>
-                      {rest.length > 0 && <p className="mb-3 text-xs font-mono uppercase tracking-widest text-foreground/40">Рекомендуем</p>}
+                      {rest.length > 0 && <p className="mb-3 text-3xl font-mono uppercase tracking-widest text-primary">Рекомендуем</p>}
                       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {featured.map(renderCard)}
                       </div>
