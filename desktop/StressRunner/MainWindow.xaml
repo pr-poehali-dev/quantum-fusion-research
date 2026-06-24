@@ -7,11 +7,10 @@
     Background="{DynamicResource Bg}"
     FontFamily="Segoe UI">
 
-    <Window.LayoutTransform>
-        <ScaleTransform x:Name="UiScale" ScaleX="1" ScaleY="1"/>
-    </Window.LayoutTransform>
-
     <Grid Margin="0">
+        <Grid.LayoutTransform>
+            <ScaleTransform x:Name="UiScale" ScaleX="1" ScaleY="1"/>
+        </Grid.LayoutTransform>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="320"/>
             <ColumnDefinition Width="*"/>

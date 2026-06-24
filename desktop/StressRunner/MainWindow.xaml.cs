@@ -134,11 +134,17 @@ public partial class MainWindow : Window
         SaveSettings();
     }
 
+    private const double BaseWidth = 1040;
+    private const double BaseHeight = 700;
+
     private void ApplyScale(double s)
     {
         if (s < 0.8 || s > 1.6) s = 1.0;
         UiScale.ScaleX = s;
         UiScale.ScaleY = s;
+        // Подгоняем размер окна под масштаб, чтобы контент не обрезался.
+        Width = BaseWidth * s;
+        Height = BaseHeight * s;
     }
 
     private void Restart()

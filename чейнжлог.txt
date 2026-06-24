@@ -3,6 +3,17 @@
 
 ---
 
+## v5.39 | 2026-06-24 | StressRunner: фикс масштаба и окна темы
+
+### desktop/StressRunner
+- Масштаб: LayoutTransform перенесён с Window на корневой Grid (на Window он
+  игнорировался — поэтому масштаб «не сохранялся» визуально). ApplyScale теперь
+  ещё и подгоняет размер окна (BaseWidth/Height × scale), чтобы не обрезалось.
+- ThemeWindow: ResizeMode=CanResize, MinHeight/MinWidth, убран ToolWindow —
+  окно темы растягивается и полностью показывает содержимое.
+
+---
+
 ## v5.38 | 2026-06-24 | StressRunner: FurMark авто+P, масштаб окна, свой цвет
 
 ### desktop/StressRunner
