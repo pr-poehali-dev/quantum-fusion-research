@@ -656,9 +656,15 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
               </div>
             ) : (
               <div className="space-y-2">
-                {visible.map(({ p, reason, warn }) => (
+                {visible.map(({ p, warn }) => {
+                  // Проблемы складываются: критичные несовместимости (рыжие) + советы (жёлтые).
+                  const crit = incompatReasons(p)        // критичные — рыжий
+                  const advices = warn ? [warn] : []     // советы (ватты и т.п.) — жёлтый
+                  const totalProblems = crit.length + advices.length
+                  const open = reasonsOpenId === p.id
+                  return (
                   <div key={p.id}
-                    className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-all ${reason ? "border-border opacity-50" : warn ? "border-amber-400/50 hover:border-amber-400" : "border-border hover:border-primary/50"}`}>
+                    className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-all ${crit.length ? "border-border opacity-50" : advices.length ? "border-amber-400/50 hover:border-amber-400" : "border-border hover:border-primary/50"}`}>
                     <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                       {(p.image_url || p.image_urls?.[0]) ? (
                         <img src={p.image_url || p.image_urls?.[0]} alt={p.name} className="h-full w-full object-contain" />
@@ -678,40 +684,44 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
                         {p.in_stock
                           ? <span className="text-xs text-green-500">В наличии</span>
                           : <span className="text-xs text-foreground/40">Под заказ</span>}
-                        {reason && (() => {
-                          // Для матплаты при нескольких несовпадениях — счётчик с раскрытием списка
-                          const allReasons = slotCode === "motherboard" ? incompatReasons(p) : []
-                          if (allReasons.length > 1) {
-                            const open = reasonsOpenId === p.id
-                            return (
-                              <button onClick={() => setReasonsOpenId(open ? null : p.id)} style={{ cursor: "pointer" }}
-                                className="flex items-center gap-1 text-xs text-orange-500">
-                                <Icon name="TriangleAlert" size={11} />
-                                {allReasons.length} {plural(allReasons.length, "несовпадение", "несовпадения", "несовпадений")}
-                                <Icon name={open ? "ChevronUp" : "ChevronDown"} size={11} className="opacity-70" />
-                              </button>
-                            )
-                          }
-                          return (
-                            <span className="flex items-center gap-1 text-xs text-orange-500">
-                              <Icon name="TriangleAlert" size={11} /> {reason}
-                            </span>
-                          )
-                        })()}
+                        {totalProblems > 1 ? (
+                          // Несколько проблем — общий счётчик с раскрытием. Цвет: рыжий
+                          // если есть хоть одна критичная, иначе жёлтый (только советы).
+                          <button onClick={() => setReasonsOpenId(open ? null : p.id)} style={{ cursor: "pointer" }}
+                            className={`flex items-center gap-1 text-xs ${crit.length ? "text-orange-500" : "text-amber-500"}`}>
+                            <Icon name={crit.length ? "TriangleAlert" : "Lightbulb"} size={11} />
+                            {totalProblems} {plural(totalProblems, "проблема", "проблемы", "проблем")}
+                            <Icon name={open ? "ChevronUp" : "ChevronDown"} size={11} className="opacity-70" />
+                          </button>
+                        ) : crit.length === 1 ? (
+                          <span className="flex items-center gap-1 text-xs text-orange-500">
+                            <Icon name="TriangleAlert" size={11} /> {crit[0]}
+                          </span>
+                        ) : advices.length === 1 ? (
+                          <span className="flex items-center gap-1 text-xs text-amber-500">
+                            <Icon name="Lightbulb" size={11} /> Совет
+                          </span>
+                        ) : null}
                       </div>
-                      {/* Раскрытый список несовпадений (матплата) */}
-                      {slotCode === "motherboard" && reasonsOpenId === p.id && (
-                        <ul className="mt-1.5 space-y-1 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
-                          {incompatReasons(p).map((r, i) => (
-                            <li key={i} className="flex items-start gap-1.5 text-xs leading-snug text-orange-500">
-                              <Icon name="Dot" size={14} className="-ml-1 shrink-0" /> {r}
+                      {/* Раскрытый список проблем: критичные (рыжие) + советы (жёлтые) */}
+                      {open && totalProblems > 1 && (
+                        <ul className="mt-1.5 space-y-1 rounded-lg border border-border bg-muted/40 p-2">
+                          {crit.map((r, i) => (
+                            <li key={`c${i}`} className="flex items-start gap-1.5 text-xs leading-snug text-orange-500">
+                              <Icon name="TriangleAlert" size={11} className="mt-0.5 shrink-0" /> {r}
+                            </li>
+                          ))}
+                          {advices.map((r, i) => (
+                            <li key={`a${i}`} className="flex items-start gap-1.5 text-xs leading-snug text-amber-500">
+                              <Icon name="Lightbulb" size={11} className="mt-0.5 shrink-0" /> {r}
                             </li>
                           ))}
                         </ul>
                       )}
-                      {!reason && warn && (
+                      {/* Один совет (без критичных) — показываем текст сразу */}
+                      {totalProblems === 1 && advices.length === 1 && (
                         <p className="mt-1 flex items-start gap-1 text-xs leading-tight text-amber-500">
-                          <Icon name="Lightbulb" size={11} className="mt-0.5 shrink-0" /> {warn}
+                          <Icon name="Lightbulb" size={11} className="mt-0.5 shrink-0" /> {advices[0]}
                         </p>
                       )}
                     </div>
@@ -724,7 +734,8 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
                       </button>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </main>
