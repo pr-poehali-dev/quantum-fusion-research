@@ -106,21 +106,24 @@ public static class HwInfoSharedMem
         try
         {
             uint type = acc.ReadUInt32(off + 0);
-            string labelOrig = ReadStr(acc, off + 12, 128);
-            string labelUser = ReadStr(acc, off + 12 + 128, 128);
-            string unit = ReadStr(acc, off + 12 + 256, 16);
 
-            // 4 double в конце элемента.
+            // Читаем весь элемент в буфер и достаём метку/единицу эвристикой —
+            // у разных версий HWiNFO смещения строк отличаются (есть и UTF-8,
+            // и UTF-16 поля). Числа же всегда лежат в конце (4×double).
+            int strLen = Math.Max(0, sizeElem - 32);
+            var buf = new byte[strLen];
+            acc.ReadArray(off + 12, buf, 0, Math.Min(strLen, sizeElem - 12));
+
+            string label = ExtractBestString(buf, out string unit);
+
             long dblOff = off + sizeElem - 32;
             double value = acc.ReadDouble(dblOff);
             double vmin = acc.ReadDouble(dblOff + 8);
             double vmax = acc.ReadDouble(dblOff + 16);
             double vavg = acc.ReadDouble(dblOff + 24);
 
-            string label = !string.IsNullOrWhiteSpace(labelUser) ? labelUser : labelOrig;
             if (string.IsNullOrWhiteSpace(label)) return null;
 
-            // Фильтр мусора: запредельные/NaN значения отбрасываем.
             if (!IsSane(value)) value = 0;
             if (!IsSane(vmin)) vmin = value;
             if (!IsSane(vmax)) vmax = value;
@@ -139,8 +142,55 @@ public static class HwInfoSharedMem
     private static bool IsSane(double v)
         => !double.IsNaN(v) && !double.IsInfinity(v) && Math.Abs(v) < 1e9;
 
-    // HWiNFO пишет строки в кодировке Windows-1251 (кириллица) либо ANSI.
-    // Пробуем 1251, если не вышло — системную.
+    /// <summary>
+    /// Эвристика: вытаскивает осмысленную метку (англ.) из байтов элемента.
+    /// HWiNFO пишет метки латиницей в UTF-8; кириллица — это локализация, но
+    /// для распознавания нам достаточно англ. полей (Label original).
+    /// Берём самую длинную «чистую» ASCII-подстроку — это и есть оригинальная метка.
+    /// </summary>
+    private static string ExtractBestString(byte[] buf, out string unit)
+    {
+        unit = "";
+        var found = new List<string>();
+        var cur = new StringBuilder();
+        foreach (byte b in buf)
+        {
+            // печатаемый ASCII
+            if (b >= 32 && b < 127)
+            {
+                cur.Append((char)b);
+            }
+            else
+            {
+                if (cur.Length >= 3) found.Add(cur.ToString().Trim());
+                cur.Clear();
+            }
+        }
+        if (cur.Length >= 3) found.Add(cur.ToString().Trim());
+
+        if (found.Count == 0) return "";
+
+        // Самая длинная подстрока с буквами = метка.
+        string best = "";
+        foreach (var s in found)
+            if (HasLetters(s) && s.Length > best.Length) best = s;
+
+        // Единица — короткая строка из набора °C/%/RPM/MHz/W/V.
+        foreach (var s in found)
+        {
+            string t = s.Trim();
+            if (t is "%" or "W" or "V" or "RPM" or "MHz" or "C" or "°C" || t.EndsWith("RPM") || t.EndsWith("MHz"))
+            { unit = t; break; }
+        }
+        return best;
+    }
+
+    private static bool HasLetters(string s)
+    {
+        foreach (char c in s) if (char.IsLetter(c)) return true;
+        return false;
+    }
+
     private static string ReadStr(MemoryMappedViewAccessor acc, long off, int len)
     {
         var buf = new byte[len];
@@ -150,7 +200,7 @@ public static class HwInfoSharedMem
         if (end == 0) return "";
         try
         {
-            return Encoding.GetEncoding(1251).GetString(buf, 0, end).Trim();
+            return Encoding.UTF8.GetString(buf, 0, end).Trim();
         }
         catch
         {
