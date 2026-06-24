@@ -3,6 +3,24 @@
 
 ---
 
+## v5.40 | 2026-06-24 | Стресс-тесты: редактор метрик в админке (видимость/порядок/имя/категории)
+
+### БД (V0158) + backend/stress
+- Таблица stress_metric_prefs (metric_key, label_orig, label_custom, category,
+  visible, sort_order). Actions: metric_prefs_list (GET), metric_prefs_save (POST,
+  полная перезапись).
+
+### Frontend
+- Новая вкладка «Метрики» (MetricPrefsTab): список всех метрик из последних
+  прогонов + настройки — скрыть/показать (глаз), перетаскивание (порядок),
+  своё название, категория (CPU/GPU/Вентиляторы/Прочее). Сохранение на сайте.
+- metricUtils.ts: categoryOf, prefId, CATEGORIES.
+- В карточке прогона метрики применяют настройки: фильтр по категориям (чипсы
+  Все/CPU/GPU/...), скрытие, переименование, порядок.
+- api.stress.metricPrefsList/metricPrefsSave.
+
+---
+
 ## v5.39 | 2026-06-24 | StressRunner: фикс масштаба и окна темы
 
 ### desktop/StressRunner

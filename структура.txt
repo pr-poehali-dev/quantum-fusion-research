@@ -101,6 +101,10 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
     Требуются права администратора (есть в манифесте).
   Таблица stress_metrics (V0157). backend: ingest сохраняет, get_run отдаёт.
     Админка: плитки min/сред/max в карточке прогона (StressTestsTab).
+  НАСТРОЙКИ МЕТРИК: таблица stress_metric_prefs (V0158), actions metric_prefs_list/
+    metric_prefs_save. Вкладка «Метрики» (MetricPrefsTab): скрыть/показать,
+    порядок (drag), своё имя, категория. Применяется в карточке прогона +
+    фильтр по категориям. metricUtils.ts (categoryOf/prefId/CATEGORIES).
   АВТОНАЖАТИЕ КЛАВИШ: KeySender (Win32) — поле send_keys в тесте (FurMark «P»).
   OCCT 12+ CLI в пресетах: -run -test=CPU -duration=600 -auto=1 -report=...
 

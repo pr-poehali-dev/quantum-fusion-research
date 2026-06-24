@@ -36,6 +36,12 @@
       "method": "GET",
       "path": "/?action=verify_token",
       "expectedStatus": 403
+    },
+    {
+      "name": "Metric prefs without admin forbidden",
+      "method": "GET",
+      "path": "/?action=metric_prefs_list",
+      "expectedStatus": 403
     }
   ]
 }

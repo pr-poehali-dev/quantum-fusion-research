@@ -3,6 +3,8 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/types"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
+import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
+import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
 interface Metric { key: string; label: string; unit: string; min: number | null; max: number | null; avg: number | null; samples: number }
@@ -57,11 +59,13 @@ function fmtSize(b: number) {
 
 export default function StressTestsTab() {
   const adminKey = getAdminKey()
-  const [view, setView] = useState<"runs" | "profiles">("runs")
+  const [view, setView] = useState<"runs" | "profiles" | "metrics">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [prefs, setPrefs] = useState<MetricPref[]>([])
+  const [catFilter, setCatFilter] = useState<string>("all")
 
   const load = useCallback(() => {
     setLoading(true)
@@ -71,6 +75,9 @@ export default function StressTestsTab() {
   }, [adminKey])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    api.stress.metricPrefsList(adminKey).then(d => setPrefs(d.prefs || []))
+  }, [adminKey, view])
 
   const openRun = (id: number) => {
     setDetailLoading(true)
@@ -101,9 +108,14 @@ export default function StressTestsTab() {
           style={{ cursor: "pointer" }}>
           <Icon name="ListChecks" size={15} /> Профили тестов
         </button>
+        <button onClick={() => setView("metrics")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "metrics" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="SlidersHorizontal" size={15} /> Метрики
+        </button>
       </div>
 
-      {view === "profiles" ? <StressProfilesTab /> : (
+      {view === "metrics" ? <MetricPrefsTab /> : view === "profiles" ? <StressProfilesTab /> : (
     <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
       {/* Список прогонов */}
       <div>
@@ -184,31 +196,65 @@ export default function StressTestsTab() {
               </div>
             </div>
 
-            {/* Метрики HWiNFO */}
-            {selected.metrics && selected.metrics.length > 0 && (
-              <div className="mb-5">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">
-                  <Icon name="Activity" size={13} /> Датчики HWiNFO (min / сред / max)
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {selected.metrics.map((m, i) => (
-                    <div key={i} className="rounded-xl border border-border bg-card p-3">
-                      <div className="truncate text-[11px] text-foreground/40" title={m.label}>{m.label}</div>
-                      <div className="mt-1 flex items-baseline gap-1">
-                        <span className="text-xl font-bold text-foreground">{m.max ?? "—"}</span>
-                        <span className="text-xs text-foreground/40">{m.unit}</span>
-                        <span className="ml-1 rounded bg-red-500/15 px-1 py-0.5 text-[9px] text-red-400">max</span>
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/50">
-                        <span>мин {m.min ?? "—"}</span>
-                        <span>·</span>
-                        <span>сред {m.avg ?? "—"}</span>
-                      </div>
+            {/* Метрики (датчики) с применением настроек из вкладки «Метрики» */}
+            {(() => {
+              const prefMap = new Map(prefs.map(p => [prefId(p.metric_key, p.label_orig), p]))
+              const items = (selected.metrics || [])
+                .map(m => {
+                  const pr = prefMap.get(prefId(m.key, m.label))
+                  return {
+                    m,
+                    visible: pr ? pr.visible : true,
+                    label: pr && pr.label_custom ? pr.label_custom : m.label,
+                    category: pr ? pr.category : categoryOf(m.key),
+                    order: pr ? pr.sort_order : 999,
+                  }
+                })
+                .filter(x => x.visible)
+                .filter(x => catFilter === "all" || x.category === catFilter)
+                .sort((a, b) => a.order - b.order)
+              if ((selected.metrics || []).length === 0) return null
+              return (
+                <div className="mb-5">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">
+                      <Icon name="Activity" size={13} /> Датчики (min / сред / max)
                     </div>
-                  ))}
+                    {/* Фильтр по категориям */}
+                    <div className="flex flex-wrap gap-1">
+                      {[{ id: "all", label: "Все" }, ...CATEGORIES].map(c => (
+                        <button key={c.id} onClick={() => setCatFilter(c.id)}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${catFilter === c.id ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
+                          style={{ cursor: "pointer" }}>
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {items.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-foreground/40">Нет метрик в этой категории.</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {items.map((x, i) => (
+                        <div key={i} className="rounded-xl border border-border bg-card p-3">
+                          <div className="truncate text-[11px] text-foreground/40" title={x.label}>{x.label}</div>
+                          <div className="mt-1 flex items-baseline gap-1">
+                            <span className="text-xl font-bold text-foreground">{x.m.max ?? "—"}</span>
+                            <span className="text-xs text-foreground/40">{x.m.unit}</span>
+                            <span className="ml-1 rounded bg-red-500/15 px-1 py-0.5 text-[9px] text-red-400">max</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/50">
+                            <span>мин {x.m.min ?? "—"}</span>
+                            <span>·</span>
+                            <span>сред {x.m.avg ?? "—"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Таблица результатов */}
             <div className="space-y-2">

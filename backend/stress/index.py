@@ -133,6 +133,12 @@ def handler(event, context):
         if action == "profile_delete" and method == "DELETE":
             return profile_delete(cur, conn, int(params.get("id") or 0))
 
+        # Настройки отображения метрик
+        if action == "metric_prefs_list" and method == "GET":
+            return metric_prefs_list(cur)
+        if action == "metric_prefs_save" and method in ("POST", "PUT"):
+            return metric_prefs_save(cur, conn, body)
+
         return err(f"unknown action: {action}")
     except Exception as e:
         conn.rollback()
@@ -360,3 +366,34 @@ def profile_delete(cur, conn, pid):
     cur.execute(f"DELETE FROM {SCHEMA}.stress_profiles WHERE id = {pid}")
     conn.commit()
     return ok({"ok": True})
+
+
+# ─── Настройки отображения метрик (видимость/порядок/имя/категория) ─────────
+
+def metric_prefs_list(cur):
+    cur.execute(
+        f"SELECT metric_key, label_orig, label_custom, category, visible, sort_order "
+        f"FROM {SCHEMA}.stress_metric_prefs ORDER BY sort_order, id"
+    )
+    prefs = [{
+        "metric_key": r[0], "label_orig": r[1], "label_custom": r[2],
+        "category": r[3], "visible": r[4], "sort_order": r[5],
+    } for r in cur.fetchall()]
+    return ok({"prefs": prefs})
+
+
+def metric_prefs_save(cur, conn, body):
+    # body: {prefs: [{metric_key, label_orig, label_custom, category, visible, sort_order}]}
+    prefs = body.get("prefs") or []
+    # Полная перезапись: проще и предсказуемо.
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_metric_prefs")
+    for i, p in enumerate(prefs):
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_metric_prefs "
+            f"(metric_key, label_orig, label_custom, category, visible, sort_order) VALUES "
+            f"({esc(p.get('metric_key', ''))}, {esc(p.get('label_orig', ''))}, "
+            f"{esc(p.get('label_custom', ''))}, {esc(p.get('category', ''))}, "
+            f"{'TRUE' if p.get('visible', True) else 'FALSE'}, {int(p.get('sort_order') or i)})"
+        )
+    conn.commit()
+    return ok({"ok": True, "count": len(prefs)})
