@@ -206,7 +206,7 @@ export default function HomeStonks() {
                     return (
                       <button key={b.id} onClick={() => navigate(`/build-preview/${b.id}`)} style={{ cursor: "pointer" }}
                         className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left hover:border-primary/50 transition-colors">
-                        <div className="relative h-64 w-full overflow-hidden">
+                        <div className="relative h-[280px] w-full overflow-hidden sm:h-64">
                           {img ? (
                             <img src={img} alt={b.name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                           ) : (
@@ -280,7 +280,7 @@ export default function HomeStonks() {
                 <div className="group/car relative"
                   onMouseEnter={() => { artPaused.current = true }}
                   onMouseLeave={() => { artPaused.current = false }}>
-                  <div className="relative h-56 w-full overflow-hidden rounded-xl border border-border bg-muted">
+                  <div className="relative h-[280px] w-full overflow-hidden rounded-xl border border-border bg-muted sm:h-56">
                     {articles.map((a, i) => (
                       <button key={i} onClick={() => navigate(`/articles/${a.id}`)} style={{ cursor: "pointer", opacity: i === artIdx ? 1 : 0 }}
                         className={`group absolute inset-0 block w-full text-left transition-opacity duration-700 ${i === artIdx ? "" : "pointer-events-none"}`}
