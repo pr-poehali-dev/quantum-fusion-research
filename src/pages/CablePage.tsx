@@ -64,12 +64,12 @@ export default function CablePage() {
               Конструктор кастомных кабелей доступен только на компьютере. Зайдите
               с большого экрана или напишите нашим менеджерам — поможем оформить заказ.
             </p>
-            <a href="https://t.me/+QgiLIa1gFRY4Y2Iy" target="_blank" rel="noopener noreferrer"
+            <button onClick={() => navigate("/contacts")}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               style={{ cursor: "pointer" }}>
               <Icon name="MessageCircle" size={16} />
               Написать менеджеру
-            </a>
+            </button>
           </div>
         </div>
 
