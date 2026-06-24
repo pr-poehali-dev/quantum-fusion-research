@@ -20,14 +20,29 @@ echo.
 dotnet publish -c Release -o publish
 if errorlevel 1 goto BUILDFAIL
 
+if not exist "%~dp0publish\StressRunner.exe" goto BUILDFAIL
+
+REM --- Build a clean portable folder: only exe + StressTests + Others ---
+set "REL=%~dp0StressRunner_App"
+if exist "%REL%" rmdir /s /q "%REL%"
+mkdir "%REL%"
+mkdir "%REL%\StressTests"
+mkdir "%REL%\Others"
+copy /y "%~dp0publish\StressRunner.exe" "%REL%\StressRunner.exe" >nul
+
 echo.
 echo ============================================
-echo   DONE. File is here:
-echo   %~dp0publish\StressRunner.exe
+echo   DONE. Clean portable folder:
+echo   %REL%
+echo.
+echo   Inside:
+echo     StressRunner.exe   (run this)
+echo     StressTests\       (put OCCT, FurMark, ... here)
+echo     Others\            (settings, profiles, db - auto)
 echo ============================================
 echo.
 
-if exist "%~dp0publish\StressRunner.exe" explorer "%~dp0publish"
+explorer "%REL%"
 goto END
 
 :NODOTNET

@@ -48,6 +48,31 @@ public class Uploader
     public static string Serialize(RunPayload run) =>
         JsonSerializer.Serialize(run, new JsonSerializerOptions { WriteIndented = false });
 
+    /// <summary>
+    /// Проверить токен на сайте (action=verify_token). Возвращает true, если
+    /// сайт ответил 200 (токен правильный). url/token можно передать явно —
+    /// чтобы проверять ДО сохранения в settings.
+    /// </summary>
+    public static async Task<bool> VerifyTokenAsync(string ingestUrl, string token)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(token)) return false;
+            var url = ingestUrl;
+            url += (url.Contains('?') ? "&" : "?") + "action=verify_token";
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Add("X-Stress-Token", token);
+
+            using var resp = await Http.SendAsync(req);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Скачать активные профили с сайта (action=profiles_pull).</summary>
     public async Task<List<Profile>?> PullProfilesAsync()
     {

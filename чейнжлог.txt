@@ -3,6 +3,23 @@
 
 ---
 
+## v5.27 | 2026-06-24 | StressRunner: авторизация в окне + чистая папка релиза
+
+### backend/stress
+- action=verify_token (GET, по X-Stress-Token) — проверка ключа с сайта.
+
+### desktop/StressRunner
+- AuthWindow: окно «Авторизоваться» — ввод ключа + имя ПК, проверка на сайте,
+  сохранение в settings.json, авто-перезапуск приложения.
+- MainWindow: кнопка «🔑 Авторизоваться», бейдж статуса
+  «✓ Админ-режим включён · ПК: …» / «Не авторизован».
+- Uploader.VerifyTokenAsync — проверка токена до сохранения.
+- Paths: папка Data переименована в Others.
+- Собрать_EXE.bat: после сборки создаёт чистую папку StressRunner_App
+  (только StressRunner.exe + StressTests\ + Others\) — её носить на флешке.
+
+---
+
 ## v5.26 | 2026-06-24 | StressRunner: фиксы сборки (.NET 8) + global.json
 
 ### desktop/StressRunner

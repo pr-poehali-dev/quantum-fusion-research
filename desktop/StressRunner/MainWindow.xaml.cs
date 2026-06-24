@@ -32,6 +32,9 @@ public partial class MainWindow : Window
         StartBtn.Click += async (_, _) => await StartRun();
         StopBtn.Click += (_, _) => _running = false;
         ReloadBtn.Click += async (_, _) => await ReloadProfiles();
+        AuthBtn.Click += (_, _) => OpenAuth();
+
+        UpdateAuthBadge();
 
         _sensorTimer.Interval = TimeSpan.FromMilliseconds(1000);
         _sensorTimer.Tick += (_, _) => TickSensors();
@@ -43,6 +46,57 @@ public partial class MainWindow : Window
             HwInfoHint.Text = "HWiNFO подключён. График показывает реальную загрузку.";
 
         Loaded += async (_, _) => await ReloadProfiles();
+    }
+
+    // ─── Авторизация ───
+
+    private void UpdateAuthBadge()
+    {
+        bool authed = !string.IsNullOrWhiteSpace(_settings.Token);
+        string machine = string.IsNullOrWhiteSpace(_settings.MachineName)
+            ? Environment.MachineName : _settings.MachineName;
+        MachineLabel.Text = machine;
+
+        if (authed)
+        {
+            AuthStatus.Text = "✓ Админ-режим включён";
+            AuthStatus.Foreground = (Brush)FindResource("Ok");
+            AuthSub.Text = $"ПК: {machine} · результаты уходят на сайт";
+            AuthBtn.Content = "🔑 Сменить ключ / ПК";
+        }
+        else
+        {
+            AuthStatus.Text = "Не авторизован";
+            AuthStatus.Foreground = (Brush)FindResource("Primary");
+            AuthSub.Text = "Подключись к сайту, чтобы слать результаты";
+            AuthBtn.Content = "🔑 Авторизоваться";
+        }
+    }
+
+    private void OpenAuth()
+    {
+        var dlg = new AuthWindow(_settings) { Owner = this };
+        bool? res = dlg.ShowDialog();
+        if (res == true && dlg.Authorized)
+        {
+            // Настройки уже сохранены в settings.json — перезапускаем приложение.
+            Restart();
+        }
+    }
+
+    private void Restart()
+    {
+        try
+        {
+            string exe = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exe,
+                UseShellExecute = true,
+            });
+        }
+        catch { }
+        Application.Current.Shutdown();
     }
 
     // ─── Настройки / профили ───

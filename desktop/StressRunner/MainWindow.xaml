@@ -27,6 +27,17 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- Статус авторизации -->
+                <Border x:Name="AuthBadge" CornerRadius="8" Padding="11,8" Margin="0,0,0,14"
+                        Background="{StaticResource Muted}" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock x:Name="AuthStatus" Text="Не авторизован" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Primary}"/>
+                        <TextBlock x:Name="AuthSub" Text="Подключись к сайту, чтобы слать результаты" FontSize="11" Foreground="{StaticResource FgMuted}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Button x:Name="AuthBtn" Content="🔑 Авторизоваться" Margin="0,0,0,18"
+                        HorizontalContentAlignment="Left" FontSize="12"/>
+
                 <TextBlock Text="ПРОФИЛЬ" FontSize="10" Foreground="{StaticResource FgMuted}" Margin="2,0,0,6"/>
                 <ComboBox x:Name="ProfileBox" Margin="0,0,0,10"/>
                 <Button x:Name="ReloadBtn" Content="↻ Обновить профили с сайта" Margin="0,0,0,18"

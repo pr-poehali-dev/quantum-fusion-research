@@ -102,10 +102,12 @@ def handler(event, context):
     cur = conn.cursor()
     try:
         # ── Контур EXE: приём результатов / выдача профилей по токену ────────
-        if action in ("ingest", "profiles_pull"):
+        if action in ("ingest", "profiles_pull", "verify_token"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
             if not token or token != os.environ.get("STRESS_INGEST_TOKEN"):
                 return err("forbidden", 403)
+            if action == "verify_token" and method == "GET":
+                return ok({"ok": True, "valid": True})
             if action == "ingest" and method == "POST":
                 return ingest(cur, conn, body)
             if action == "profiles_pull" and method == "GET":

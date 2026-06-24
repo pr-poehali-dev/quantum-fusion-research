@@ -30,6 +30,12 @@
       "method": "GET",
       "path": "/?action=profiles_pull",
       "expectedStatus": 403
+    },
+    {
+      "name": "Verify token without token forbidden",
+      "method": "GET",
+      "path": "/?action=verify_token",
+      "expectedStatus": 403
     }
   ]
 }

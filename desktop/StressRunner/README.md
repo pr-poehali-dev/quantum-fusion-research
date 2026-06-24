@@ -44,19 +44,28 @@ dotnet publish -c Release -o publish
 
 ## Портативная структура (всё ездит на флешке)
 
-Создай рядом с exe такую папку — приложение само создаст Data при первом запуске:
+После `Собрать_EXE.bat` рядом появится **чистая папка `StressRunner_App`** —
+её и носи на флешке:
 
 ```
-StressRunner\
-├── StressRunner.exe        ← сам файл
-├── Data\                   ← settings.json, profiles.json, база (создаётся авто)
-└── StressTests\            ← сюда кладёшь сами утилиты:
-    ├── OCCT\OCCT.exe
-    ├── FurMark\furmark.exe
-    ├── Cinebench\Cinebench.exe
-    ├── prime95\prime95.exe
-    └── Superposition\bin\superposition_cli.exe
+StressRunner_App\
+├── StressRunner.exe        ← запускаешь это
+├── StressTests\            ← сюда кладёшь сами утилиты:
+│   ├── OCCT\OCCT.exe
+│   ├── FurMark\furmark.exe
+│   ├── Cinebench\Cinebench.exe
+│   ├── prime95\prime95.exe
+│   └── Superposition\bin\superposition_cli.exe
+└── Others\                 ← settings.json, profiles.json, база (создаётся авто)
 ```
+
+## Авторизация (подключение к сайту в один клик)
+
+В окне приложения нажми **🔑 Авторизоваться**, введи секретный ключ
+(значение секрета **STRESS_INGEST_TOKEN** с сайта) и название этого ПК →
+«Авторизоваться». Приложение проверит ключ на сайте, сохранит настройки в
+`Others\settings.json` и перезапустится. После старта в углу появится
+**«✓ Админ-режим включён»** и имя ПК.
 
 В профилях на сайте используй **относительные пути** вида
 `StressTests\OCCT\OCCT.exe` — они считаются от папки StressRunner, поэтому всё
