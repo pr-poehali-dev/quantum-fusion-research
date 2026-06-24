@@ -113,24 +113,50 @@ function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => v
   )
 }
 
-// Предупреждение о проблеме компонента.
-// severity: "critical" — критичная несовместимость (рыжий), "advice" — мягкий совет (жёлтый).
-// Десктоп: показывает полный текст. Мобильный: компактный значок + пояснялка,
-// по тапу на которую раскрывается полный текст.
-function CompatWarning({ text, severity = "critical" }: { text: string; severity?: "critical" | "advice" }) {
+// Предупреждение о проблемах/совете компонента.
+// severity: "critical" — критичные несовместимости (рыжий, ⚠️, «Проблема»),
+//           "advice" — мягкий совет (жёлтый, 💡, «Совет»).
+// texts — список сообщений. При нескольких critical показывается счётчик
+// «Проблемы: N» с раскрытием списка; при одном — обычный текст.
+// Совет и проблемы НЕ объединяются — рендерятся отдельными блоками.
+function CompatWarning({ texts, severity = "critical" }: { texts: string[]; severity?: "critical" | "advice" }) {
   const [open, setOpen] = useState(false)
+  if (texts.length === 0) return null
   const crit = severity === "critical"
   const box = crit
     ? "border-orange-500/40 bg-orange-500/10 text-orange-600 dark:text-orange-400"
     : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
   const icon = crit ? "TriangleAlert" : "Lightbulb"
+  const single = texts[0]
+  const multi = texts.length > 1
+
+  // Несколько проблем — счётчик «Проблемы: N» с раскрытием (десктоп и моб.)
+  if (multi) {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <button onClick={() => setOpen(o => !o)} style={{ cursor: "pointer" }}
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium leading-snug ${box}`}>
+          <Icon name={icon} size={13} className="shrink-0" />
+          <span>Проблемы: {texts.length}</span>
+          <Icon name={open ? "ChevronUp" : "ChevronDown"} size={13} className="shrink-0 opacity-70" />
+        </button>
+        {open && (
+          <ul className={`max-w-[240px] space-y-1 rounded-lg border px-2.5 py-1.5 text-right text-[11px] leading-snug ${box}`}>
+            {texts.map((t, i) => <li key={i}>{t}</li>)}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  // Одно сообщение
   const label = crit ? "Проблема" : "Совет"
   return (
     <>
       {/* Десктоп — полный текст */}
       <div className={`hidden max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug sm:flex ${box}`}>
         <Icon name={icon} size={13} className="shrink-0" />
-        <span>{text}</span>
+        <span>{single}</span>
       </div>
       {/* Мобильный — компактный значок + пояснялка */}
       <div className="flex flex-col items-end gap-1 sm:hidden">
@@ -142,7 +168,7 @@ function CompatWarning({ text, severity = "critical" }: { text: string; severity
         </button>
         {open && (
           <div className={`max-w-[220px] rounded-lg border px-2.5 py-1.5 text-right text-[11px] leading-snug ${box}`}>
-            {text}
+            {single}
           </div>
         )}
       </div>
@@ -841,15 +867,20 @@ export default function Configurator() {
                             {/* Предупреждения: на десктопе слева от цены (order меняем флексом),
                                 на мобильных — ниже цены (порядок DOM сохраняем, но визуально вниз) */}
                             <div className="order-2 flex flex-col items-end gap-1.5 sm:order-1 sm:flex-row sm:items-center">
-                              {slot === "storage" && ssdSlotWarning && (
-                                <CompatWarning text={`На материнской плате ${ssdSlotWarning.slots} ${plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили ${ssdSlotWarning.qty}. Уменьшите на ${ssdSlotWarning.over}.`} />
-                              )}
+                              {/* Критичные проблемы (рыжие) складываем в один список:
+                                  при нескольких — счётчик «Проблемы: N». Совет (БП) — отдельно. */}
+                              {(() => {
+                                const problems: string[] = [
+                                  ...(slot === "storage" && ssdSlotWarning
+                                    ? [`На материнской плате ${ssdSlotWarning.slots} ${plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили ${ssdSlotWarning.qty}. Уменьшите на ${ssdSlotWarning.over}.`]
+                                    : []),
+                                  ...(compatWarningsBySlot[slot] || []),
+                                ]
+                                return <CompatWarning texts={problems} />
+                              })()}
                               {slot === "psu" && psuWarning && (
-                                <CompatWarning severity="advice" text={`Маловато мощности: блок ${psuWarning.watt} Вт при нагрузке сборки ~${psuWarning.totalTdp} Вт. Возьмите от ${psuWarning.recommended} Вт.`} />
+                                <CompatWarning severity="advice" texts={[`Маловато мощности: блок ${psuWarning.watt} Вт при нагрузке сборки ~${psuWarning.totalTdp} Вт. Возьмите от ${psuWarning.recommended} Вт.`]} />
                               )}
-                              {(compatWarningsBySlot[slot] || []).map((msg, i) => (
-                                <CompatWarning key={i} text={msg} />
-                              ))}
                             </div>
                             {/* Цена / кол-во / итог */}
                             <div className="order-1 flex items-center gap-3 sm:order-2">
