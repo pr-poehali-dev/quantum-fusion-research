@@ -10,9 +10,22 @@ public class Runner
 {
     private readonly AppSettings _settings;
 
+    /// <summary>Лог-сообщение для UI (необязательно). Вызывается из фонового потока.</summary>
+    public Action<string>? OnLog;
+    /// <summary>Прогресс: (номер теста, всего тестов, имя теста). Для UI.</summary>
+    public Action<int, int, string>? OnTestStart;
+    /// <summary>Результат теста готов: (успех, имя теста). Для UI.</summary>
+    public Action<bool, string>? OnTestDone;
+
     public Runner(AppSettings settings)
     {
         _settings = settings;
+    }
+
+    private void Log(string msg)
+    {
+        Console.WriteLine(msg);
+        OnLog?.Invoke(msg);
     }
 
     public RunPayload RunProfile(Profile profile)
@@ -28,18 +41,20 @@ public class Runner
             StartedAt = DateTime.UtcNow.ToString("o"),
         };
 
-        Console.WriteLine($"\n=== Профиль: {profile.Name} ({profile.Tests.Count} тестов) ===\n");
+        Log($"=== Профиль: {profile.Name} ({profile.Tests.Count} тестов) ===");
 
         int idx = 0;
         foreach (var test in profile.Tests)
         {
             idx++;
-            Console.WriteLine($"[{idx}/{profile.Tests.Count}] {test.Name} — {test.DurationSec} сек");
+            Log($"[{idx}/{profile.Tests.Count}] {test.Name} — {test.DurationSec} сек");
+            OnTestStart?.Invoke(idx, profile.Tests.Count, test.Name);
             var res = RunSingle(test);
             run.Results.Add(res);
-            Console.WriteLine(res.Success
+            Log(res.Success
                 ? $"    OK (код {res.ExitCode?.ToString() ?? "—"}, {res.DurationSec:F0} сек{(res.TimedOut ? ", по таймауту" : "")})"
                 : $"    ОШИБКА (код {res.ExitCode?.ToString() ?? "—"}, {res.DurationSec:F0} сек)");
+            OnTestDone?.Invoke(res.Success, test.Name);
         }
 
         run.FinishedAt = DateTime.UtcNow.ToString("o");

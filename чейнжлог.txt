@@ -3,6 +3,21 @@
 
 ---
 
+## v5.22 | 2026-06-24 | StressRunner: графическое окно (WPF) + график HWiNFO
+
+### desktop/StressRunner — переход с консоли на оконное приложение
+- .csproj: WPF (net8.0-windows, UseWPF), манифест requireAdministrator.
+- Тёмная тема Theme.xaml в цветах сайта (чёрный фон, красный/оранжевый акцент).
+- App.xaml / MainWindow: окно в стиле OCCT — выбор профиля, кнопки СТАРТ/Стоп,
+  обновление профилей с сайта, прогресс-бар, живой лог, график CPU/GPU.
+- HwInfoReader: чтение сенсоров HWiNFO из реестра (VSB / Shared Memory) —
+  CPU/GPU нагрузка и температуры, живой график загрузки.
+- Runner: добавлены колбэки OnLog/OnTestStart/OnTestDone для UI (движок не тронут).
+- Program.cs → ConsoleMode: пакетный режим без окна (run "профиль") для планировщика.
+- README: инструкции по HWiNFO и рецепты готовых тестов (Cinebench/Prime95/FurMark/OCCT).
+
+---
+
 ## v5.21 | 2026-06-24 | Стресс-тесты: профили через интерфейс (редактор в админке)
 
 ### БД (миграция V0156)

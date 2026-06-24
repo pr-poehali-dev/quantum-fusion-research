@@ -4,16 +4,16 @@ using System.Text.Json;
 namespace StressRunner;
 
 /// <summary>
-/// StressRunner — консольное приложение для запуска стресс-тестов по списку.
-/// Запускает внешние программы/скрипты на заданное время, сохраняет результат
-/// в локальную БД (SQLite) и отправляет на сайт.
+/// Консольный (пакетный) режим: StressRunner.exe run "Имя профиля".
+/// Запускает профиль без окна — удобно для планировщика задач / автозапуска.
+/// GUI-режим живёт в App.xaml / MainWindow.
 ///
 /// Файлы рядом с exe:
-///   settings.json  — URL сайта, токен, имя ПК
-///   profiles.json  — профили (наборы тестов)
+///   settings.json   — URL сайта, токен, имя ПК
+///   profiles.json   — кэш профилей (тянутся с сайта)
 ///   stressrunner.db — локальная база результатов
 /// </summary>
-internal class Program
+internal static class ConsoleMode
 {
     private static readonly string BaseDir = AppContext.BaseDirectory;
     private static string Path(string name) => System.IO.Path.Combine(BaseDir, name);
@@ -24,68 +24,21 @@ internal class Program
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private static async Task<int> Main(string[] args)
+    /// <summary>Точка входа пакетного режима. args: ["run", "Имя профиля"].</summary>
+    public static async Task RunAsync(string[] args)
     {
-        Console.OutputEncoding = Encoding.UTF8;
-        Console.WriteLine("===== StressRunner =====\n");
+        try { Console.OutputEncoding = Encoding.UTF8; } catch { }
+        Console.WriteLine("===== StressRunner (пакетный режим) =====\n");
 
         var settings = LoadSettings();
-        var profiles = LoadProfiles();
         var storage = new Storage(Path("stressrunner.db"));
+        var profiles = await PullOrLoadProfiles(settings);
 
-        if (string.IsNullOrWhiteSpace(settings.Token))
-        {
-            Console.WriteLine("ВНИМАНИЕ: не задан токен в settings.json — отправка на сайт не сработает.");
-            Console.WriteLine("Открой settings.json, вставь значение секрета STRESS_INGEST_TOKEN.\n");
-        }
-        else
-        {
-            // При старте подтягиваем актуальные профили с сайта (если есть сеть).
-            Console.WriteLine("Загружаю профили с сайта...");
-            var pulled = await PullProfiles(settings);
-            if (pulled != null && pulled.Count > 0) profiles = pulled;
-        }
+        string profileName = args.Length >= 2 ? args[1] : (profiles.FirstOrDefault()?.Name ?? "");
+        var p = profiles.FirstOrDefault(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase));
+        if (p == null) { Console.WriteLine($"Профиль '{profileName}' не найден."); return; }
 
-        // Режим командной строки: StressRunner.exe run "Имя профиля"
-        if (args.Length >= 1 && args[0].Equals("run", StringComparison.OrdinalIgnoreCase))
-        {
-            string profileName = args.Length >= 2 ? args[1] : (profiles.FirstOrDefault()?.Name ?? "");
-            var p = profiles.FirstOrDefault(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase));
-            if (p == null) { Console.WriteLine($"Профиль '{profileName}' не найден."); return 1; }
-            await ExecuteProfile(p, settings, storage);
-            return 0;
-        }
-
-        // Интерактивное меню
-        while (true)
-        {
-            Console.WriteLine("\nМеню:");
-            Console.WriteLine("  Профили:");
-            for (int i = 0; i < profiles.Count; i++)
-                Console.WriteLine($"    {i + 1}. {profiles[i].Name}  ({profiles[i].Tests.Count} тестов)");
-            Console.WriteLine("  s. Скачать профили с сайта");
-            Console.WriteLine("  d. Дослать неотправленные прогоны");
-            Console.WriteLine("  q. Выход");
-            Console.Write("\nВыбор: ");
-            string? choice = Console.ReadLine()?.Trim();
-
-            if (string.IsNullOrEmpty(choice)) continue;
-            if (choice == "q") break;
-            if (choice == "d") { await ResendUnsent(settings, storage); continue; }
-            if (choice == "s")
-            {
-                var pulled = await PullProfiles(settings);
-                if (pulled != null) profiles = pulled;
-                continue;
-            }
-
-            if (int.TryParse(choice, out int n) && n >= 1 && n <= profiles.Count)
-                await ExecuteProfile(profiles[n - 1], settings, storage);
-            else
-                Console.WriteLine("Не понял выбор.");
-        }
-
-        return 0;
+        await ExecuteProfile(p, settings, storage);
     }
 
     private static async Task ExecuteProfile(Profile profile, AppSettings settings, Storage storage)
@@ -107,40 +60,24 @@ internal class Program
             if (await up.SendAsync(json))
                 storage.MarkSent(run.RunUid);
             else
-                Console.WriteLine("Не доставлено — сохранено локально, дослать можно пунктом 'd'.");
+                Console.WriteLine("Не доставлено — сохранено локально.");
         }
     }
 
-    private static async Task<List<Profile>?> PullProfiles(AppSettings settings)
+    private static async Task<List<Profile>> PullOrLoadProfiles(AppSettings settings)
     {
-        if (string.IsNullOrWhiteSpace(settings.Token))
+        if (!string.IsNullOrWhiteSpace(settings.Token))
         {
-            Console.WriteLine("Нет токена в settings.json — профили с сайта недоступны.");
-            return null;
-        }
-        var up = new Uploader(settings);
-        var profiles = await up.PullProfilesAsync();
-        if (profiles == null) { Console.WriteLine("Не удалось загрузить профили (работаю с локальными)."); return null; }
-        // Кэшируем в profiles.json, чтобы работало и без сети.
-        File.WriteAllText(Path("profiles.json"), JsonSerializer.Serialize(profiles, JsonOpts));
-        Console.WriteLine($"Загружено профилей с сайта: {profiles.Count}");
-        return profiles;
-    }
-
-    private static async Task ResendUnsent(AppSettings settings, Storage storage)
-    {
-        var unsent = storage.GetUnsent();
-        if (unsent.Count == 0) { Console.WriteLine("Все прогоны уже отправлены."); return; }
-        Console.WriteLine($"Не отправлено: {unsent.Count}. Досылаю...");
-        var up = new Uploader(settings);
-        foreach (var (uid, jsonPayload) in unsent)
-        {
-            if (await up.SendAsync(jsonPayload))
+            var up = new Uploader(settings);
+            var pulled = await up.PullProfilesAsync();
+            if (pulled != null && pulled.Count > 0)
             {
-                storage.MarkSent(uid);
-                Console.WriteLine($"  {uid} — ок");
+                try { File.WriteAllText(Path("profiles.json"), JsonSerializer.Serialize(pulled, JsonOpts)); } catch { }
+                Console.WriteLine($"Загружено профилей с сайта: {pulled.Count}");
+                return pulled;
             }
         }
+        return LoadProfiles();
     }
 
     // ─── Загрузка/создание конфигов ───────────────────────────────────────
@@ -152,7 +89,7 @@ internal class Program
         {
             var def = new AppSettings();
             File.WriteAllText(path, JsonSerializer.Serialize(def, JsonOpts));
-            Console.WriteLine($"Создан {path} — впиши токен и URL.\n");
+            Console.WriteLine($"Создан {path} — впиши токен.\n");
             return def;
         }
         return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
@@ -161,42 +98,7 @@ internal class Program
     private static List<Profile> LoadProfiles()
     {
         string path = Path("profiles.json");
-        if (!File.Exists(path))
-        {
-            var def = new List<Profile>
-            {
-                new Profile
-                {
-                    Name = "Пример: проверка ПК",
-                    Note = "Демо-профиль. Замени программы на реальные (OCCT, Prime95, FurMark...).",
-                    Tests = new List<TestItem>
-                    {
-                        new TestItem
-                        {
-                            Name = "CPU stress (пример ping вместо утилиты)",
-                            Program = "ping.exe",
-                            Args = "-n 10 127.0.0.1",
-                            DurationSec = 12,
-                            TimeoutIsSuccess = true,
-                            SuccessExitCode = 0,
-                            ReportFiles = new List<string>(),
-                        },
-                        new TestItem
-                        {
-                            Name = "Свой bat-скрипт",
-                            Program = @"C:\stress\my_test.bat",
-                            Args = "",
-                            DurationSec = 60,
-                            TimeoutIsSuccess = true,
-                            ReportFiles = new List<string> { @"C:\stress\*.log" },
-                        },
-                    },
-                },
-            };
-            File.WriteAllText(path, JsonSerializer.Serialize(def, JsonOpts));
-            Console.WriteLine($"Создан {path} с примером — отредактируй под свои тесты.\n");
-            return def;
-        }
+        if (!File.Exists(path)) return new List<Profile>();
         return JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(path)) ?? new List<Profile>();
     }
 }

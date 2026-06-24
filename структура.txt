@@ -76,6 +76,13 @@ API: api.stress.list/get/deleteRun/profilesList/profileSave/profileDelete (src/l
 Секрет STRESS_INGEST_TOKEN — токен приложения для приёма данных.
 Desktop-приложение (НЕ часть веб-сборки): desktop/StressRunner — собирается в .exe
 через `dotnet publish` на ПК (инструкция в README.md). Локальная БД SQLite на ПК.
+  Тип: WPF-окно (net8.0-windows, тёмная тема как на сайте), стиль OCCT.
+  Файлы: App.xaml(+cs), MainWindow.xaml(+cs), Theme.xaml, Runner.cs (движок,
+    колбэки OnLog/OnTestStart/OnTestDone), HwInfoReader.cs (сенсоры HWiNFO из
+    реестра VSB — график CPU/GPU нагрузки и температур), Uploader.cs, Storage.cs,
+    Models.cs, ConsoleMode (Program.cs) — пакетный режим run "профиль".
+  Два режима: окно (по умолчанию) и пакетный `StressRunner.exe run "Профиль"`.
+  Для графика нужен HWiNFO с включённым Shared Memory Support / Gadget.
 
 ## Функции и их назначение (продолжение)
 
