@@ -18,8 +18,8 @@ export function ScheduleStampPanel({
   onStampTypeChange, onStampStartChange, onStampEndChange,
 }: ScheduleStampPanelProps) {
   return (
-    <div className="w-52 shrink-0">
-      <div className="rounded-xl border border-border bg-card p-4 space-y-4 sticky top-4">
+    <div className="w-full shrink-0 lg:w-52">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-4 lg:sticky lg:top-4">
         {/* Тип события */}
         <div>
           <p className="mb-2 text-xs font-semibold text-foreground/60">Тип события</p>

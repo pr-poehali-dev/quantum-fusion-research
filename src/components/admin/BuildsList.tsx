@@ -41,32 +41,33 @@ export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoa
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 shrink-0">
-        <button onClick={() => onEdit(b)} className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-          <Icon name="Pencil" size={12} />Ред.
+        <button onClick={() => onEdit(b)} title="Редактировать" className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <Icon name="Pencil" size={12} /><span className="hidden sm:inline">Ред.</span>
         </button>
         {isMain && !isArchive && (
-          <button onClick={() => onDupe(b)} disabled={dupeLoading === b.id}
-            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
+          <button onClick={() => onDupe(b)} disabled={dupeLoading === b.id} title="Создать вариант"
+            className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
             style={{ cursor: "pointer" }}>
             <Icon name={dupeLoading === b.id ? "Loader2" : "Plus"} size={12} />
-            {dupeLoading === b.id ? "..." : "Вариант"}
+            <span className="hidden sm:inline">{dupeLoading === b.id ? "..." : "Вариант"}</span>
           </button>
         )}
         {isMain && !isArchive && (
-          <button onClick={() => onLink(b)}
-            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${b.client_token ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+          <button onClick={() => onLink(b)} title="Ссылка для клиента"
+            className={`flex items-center gap-1 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${b.client_token ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
             style={{ cursor: "pointer" }}>
             <Icon name={copiedBuildId === b.id ? "Check" : "Link"} size={12} />
-            {copiedBuildId === b.id ? "Скопировано!" : b.client_token ? "Ссылка" : "Ссылка клиенту"}
+            <span className="hidden sm:inline">{copiedBuildId === b.id ? "Скопировано!" : b.client_token ? "Ссылка" : "Ссылка клиенту"}</span>
           </button>
         )}
+        {/* Смена статуса — только на десктопе (на мобильных скрыта) */}
         {isMain ? (
           <select value={b.status} onChange={e => onStatus(b, e.target.value)}
-            className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+            className="hidden rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none sm:block" style={{ cursor: "pointer" }}>
             {Object.entries(BUILD_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         ) : (
-          <span className="rounded-lg border border-border/50 px-2 py-1.5 text-xs text-foreground/30 select-none" title="Статус берётся с основной сборки">
+          <span className="hidden rounded-lg border border-border/50 px-2 py-1.5 text-xs text-foreground/30 select-none sm:inline" title="Статус берётся с основной сборки">
             {BUILD_STATUS[b.status] || b.status}
           </span>
         )}

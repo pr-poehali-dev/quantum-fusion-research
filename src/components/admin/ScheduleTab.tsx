@@ -190,13 +190,13 @@ export default function ScheduleTab() {
         </div>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* ── Список сотрудников ── */}
-        <div className="w-44 shrink-0">
+        <div className="w-full shrink-0 lg:w-44">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground/50">Сотрудники</p>
-          <div className="space-y-1.5">
+          <div className="flex flex-wrap gap-1.5 lg:flex-col lg:flex-nowrap lg:space-y-1.5 lg:gap-0">
             <button onClick={() => setSelectedEmployee(null)}
-              className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${selectedEmployee === null ? "bg-primary/15 text-primary font-medium" : "text-foreground/60 hover:bg-muted"}`}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors lg:w-full ${selectedEmployee === null ? "bg-primary/15 text-primary font-medium" : "text-foreground/60 hover:bg-muted"}`}
               style={{ cursor: "pointer" }}>
               <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-xs shrink-0">
                 <Icon name="Users" size={12} />
@@ -207,7 +207,7 @@ export default function ScheduleTab() {
               <button key={e.id}
                 onClick={() => setSelectedEmployee(selectedEmployee === e.id ? null : e.id)}
                 onDoubleClick={() => setEmpModal(e)}
-                className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${selectedEmployee === e.id ? "bg-primary/15 text-primary font-medium" : "text-foreground/70 hover:bg-muted"}`}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors lg:w-full ${selectedEmployee === e.id ? "bg-primary/15 text-primary font-medium" : "text-foreground/70 hover:bg-muted"}`}
                 style={{ cursor: "pointer" }}>
                 <div className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
                   style={{ backgroundColor: e.color }}>
@@ -219,8 +219,8 @@ export default function ScheduleTab() {
           </div>
         </div>
 
-        {/* ── Календарь + штамп ── */}
-        <div className="flex flex-1 gap-4 min-w-0">
+        {/* ── Календарь + штамп ── на мобильных в колонку, на десктопе в ряд ── */}
+        <div className="flex min-w-0 flex-1 flex-col gap-4 lg:flex-row">
           <ScheduleCalendar
             year={year} month={month} today={today}
             weeks={weeks} loading={loading}
