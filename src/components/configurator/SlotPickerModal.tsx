@@ -239,6 +239,52 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
     return null
   }
 
+  // Кол-во несовпадений (нарушенных правил совместимости) у кандидата.
+  // Используется для сортировки матплат: чем больше несовпадений — тем ниже.
+  // Логика проверок 1:1 как в incompatReason, но без раннего выхода — считаем все.
+  const incompatCount = (p: SlotProduct): number => {
+    let cnt = 0
+    for (const link of links) {
+      const fromCat = attrCat[link.from_attribute_id]
+      const toCat = attrCat[link.to_attribute_id]
+      const meIsFrom = fromCat === specCategoryId
+      const meIsTo = toCat === specCategoryId
+      if (!meIsFrom && !meIsTo) continue
+
+      const myAttrId = meIsFrom ? link.from_attribute_id : link.to_attribute_id
+      const otherAttrId = meIsFrom ? link.to_attribute_id : link.from_attribute_id
+      const otherCat = meIsFrom ? toCat : fromCat
+
+      const myAttrDef = attributes.find(a => a.id === myAttrId)
+      const applies = myAttrDef?.applies_to
+      if (applies === "air" || applies === "liquid") {
+        const typeAttr = attributes.find(a => a.code === COOLER_TYPE_CODE)
+        const kind = typeAttr ? coolerKindFromValue(p.values[String(typeAttr.id)]) : null
+        if (kind && kind !== applies) continue
+      }
+
+      const myVal = p.values[String(myAttrId)]
+      const otherVals = selectedSpec[otherCat]
+      if (otherVals === undefined) continue
+      const otherVal = otherVals[String(otherAttrId)]
+
+      const isEmpty = (v: unknown) => v === undefined || v === null
+        || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "")
+
+      if (link.rule === "eq" || link.rule === "contains") {
+        if (isEmpty(otherVal)) continue
+        if (isEmpty(myVal)) { cnt++; continue }
+      } else {
+        if (isEmpty(myVal) || isEmpty(otherVal)) continue
+      }
+
+      const fromVal = meIsFrom ? myVal : otherVal
+      const toVal = meIsFrom ? otherVal : myVal
+      if (!ruleHolds(link.rule, fromVal, toVal)) cnt++
+    }
+    return cnt
+  }
+
   // ── Рекомендация мощности БП (только для слота psu) ──
   // Считаем TDP процессора + видеокарты из уже выбранных деталей,
   // накидываем фиксированный запас 300 Вт и округляем вверх до номинала.
@@ -323,6 +369,11 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
       .sort((a, b) => {
         // совместимые сверху
         if (!!a.reason !== !!b.reason) return a.reason ? 1 : -1
+        // для матплаты: среди несовместимых — чем больше несовпадений, тем ниже
+        if (slotCode === "motherboard" && a.reason && b.reason) {
+          const dc = incompatCount(a.p) - incompatCount(b.p)
+          if (dc !== 0) return dc
+        }
         // для БП: товары с предупреждением о мощности — в самый низ,
         // а среди «проблемных» по мощности сортируем по ваттам от мощного к слабому
         if (slotCode === "psu") {
