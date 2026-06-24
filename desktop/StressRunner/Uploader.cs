@@ -8,7 +8,13 @@ namespace StressRunner;
 public class Uploader
 {
     private readonly AppSettings _settings;
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+    // Используем системный прокси (важно для корп-сетей и обхода у тестировщиков).
+    private static readonly HttpClient Http = new(new System.Net.Http.HttpClientHandler
+    {
+        UseProxy = true,
+        Proxy = System.Net.WebRequest.GetSystemWebProxy(),
+    })
+    { Timeout = TimeSpan.FromMinutes(5) };
 
     public Uploader(AppSettings settings)
     {

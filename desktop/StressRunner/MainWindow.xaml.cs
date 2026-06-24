@@ -40,6 +40,7 @@ public partial class MainWindow : Window
         ThemeBtn.Click += (_, _) => OpenTheme();
         OpenTestsBtn.Click += (_, _) => OpenTestsFolder();
         DebugBtn.Click += (_, _) => new DebugWindow { Owner = this }.ShowDialog();
+        NetDiagBtn.Click += (_, _) => new NetDiagWindow(_settings) { Owner = this }.ShowDialog();
         ScaleDownBtn.Click += (_, _) => ChangeScale(-0.1);
         ScaleUpBtn.Click += (_, _) => ChangeScale(+0.1);
 
@@ -56,7 +57,27 @@ public partial class MainWindow : Window
         else
             HwInfoHint.Text = "Датчики читаются напрямую (без HWiNFO). График показывает реальную загрузку.";
 
-        Loaded += async (_, _) => await ReloadProfiles();
+        Loaded += async (_, _) =>
+        {
+            await SelfCheckNetwork();
+            await ReloadProfiles();
+        };
+    }
+
+    /// <summary>Быстрая проверка сети при старте — пишет краткий статус в лог.</summary>
+    private async System.Threading.Tasks.Task SelfCheckNetwork()
+    {
+        AppendLog("Проверяю подключение к сайту...");
+        var res = await NetDiag.RunAsync(_settings);
+        // В основной лог — короткий итог, подробности в окне «Диагностика сети».
+        foreach (var line in res.Log.ToString().Split('\n'))
+        {
+            string l = line.TrimEnd();
+            if (l.Contains("ОШИБКА") || l.Contains("ТАЙМАУТ") || l.Contains("ИТОГ") || l.Contains("НЕ ОТКРЫЛСЯ") || l.Contains("✓") || l.Contains("✗"))
+                AppendLog("  " + l);
+        }
+        if (!res.Ok)
+            AppendLog("  Открой «🌐 Диагностика сети» для подробностей.");
     }
 
     // ─── Авторизация ───
