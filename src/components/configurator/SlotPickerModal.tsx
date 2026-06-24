@@ -66,6 +66,14 @@ interface Props {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
+// Русское склонение числительных: plural(2, "слот","слота","слотов") → "слота"
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10, mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return one
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few
+  return many
+}
+
 // Проверка одного правила связи между значением выбранной детали и кандидата.
 function ruleHolds(rule: string, fromVal: unknown, toVal: unknown): boolean {
   const norm = (v: unknown) => Array.isArray(v) ? v.map(x => String(x).trim().toLowerCase()) : String(v ?? "").trim().toLowerCase()
@@ -111,6 +119,8 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
   // Показ панели фильтров на телефоне (на десктопе она видна всегда).
   // По умолчанию свёрнута — пользователь раскрывает кнопкой «Фильтры».
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  // Раскрытый список несовпадений по карточке матплаты (по id товара).
+  const [reasonsOpenId, setReasonsOpenId] = useState<number | null>(null)
 
   // Режим ручного ввода («Моё железо»)
   const [customMode, setCustomMode] = useState(!!startCustom)
@@ -239,11 +249,10 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
     return null
   }
 
-  // Кол-во несовпадений (нарушенных правил совместимости) у кандидата.
-  // Используется для сортировки матплат: чем больше несовпадений — тем ниже.
-  // Логика проверок 1:1 как в incompatReason, но без раннего выхода — считаем все.
-  const incompatCount = (p: SlotProduct): number => {
-    let cnt = 0
+  // Все несовпадения (нарушенные правила совместимости) у кандидата — списком.
+  // Логика проверок 1:1 как в incompatReason, но без раннего выхода — собираем все.
+  const incompatReasons = (p: SlotProduct): string[] => {
+    const reasons: string[] = []
     for (const link of links) {
       const fromCat = attrCat[link.from_attribute_id]
       const toCat = attrCat[link.to_attribute_id]
@@ -273,17 +282,27 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
 
       if (link.rule === "eq" || link.rule === "contains") {
         if (isEmpty(otherVal)) continue
-        if (isEmpty(myVal)) { cnt++; continue }
+        if (isEmpty(myVal)) {
+          const myAttr = attributes.find(a => a.id === myAttrId)
+          reasons.push(`Не указана характеристика «${myAttr?.name || "?"}»`)
+          continue
+        }
       } else {
         if (isEmpty(myVal) || isEmpty(otherVal)) continue
       }
 
       const fromVal = meIsFrom ? myVal : otherVal
       const toVal = meIsFrom ? otherVal : myVal
-      if (!ruleHolds(link.rule, fromVal, toVal)) cnt++
+      if (!ruleHolds(link.rule, fromVal, toVal)) {
+        const myAttr = attributes.find(a => a.id === myAttrId)
+        reasons.push(link.note || `Не подходит по «${myAttr?.name || "характеристике"}»`)
+      }
     }
-    return cnt
+    return reasons
   }
+
+  // Кол-во несовпадений — для сортировки матплат (больше → ниже).
+  const incompatCount = (p: SlotProduct): number => incompatReasons(p).length
 
   // ── Рекомендация мощности БП (только для слота psu) ──
   // Считаем TDP процессора + видеокарты из уже выбранных деталей,
@@ -655,16 +674,41 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
                           ))}
                         </div>
                       )}
-                      <div className="mt-1.5 flex items-center gap-2">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         {p.in_stock
                           ? <span className="text-xs text-green-500">В наличии</span>
                           : <span className="text-xs text-foreground/40">Под заказ</span>}
-                        {reason && (
-                          <span className="flex items-center gap-1 text-xs text-orange-500">
-                            <Icon name="TriangleAlert" size={11} /> {reason}
-                          </span>
-                        )}
+                        {reason && (() => {
+                          // Для матплаты при нескольких несовпадениях — счётчик с раскрытием списка
+                          const allReasons = slotCode === "motherboard" ? incompatReasons(p) : []
+                          if (allReasons.length > 1) {
+                            const open = reasonsOpenId === p.id
+                            return (
+                              <button onClick={() => setReasonsOpenId(open ? null : p.id)} style={{ cursor: "pointer" }}
+                                className="flex items-center gap-1 text-xs text-orange-500">
+                                <Icon name="TriangleAlert" size={11} />
+                                {allReasons.length} {plural(allReasons.length, "несовпадение", "несовпадения", "несовпадений")}
+                                <Icon name={open ? "ChevronUp" : "ChevronDown"} size={11} className="opacity-70" />
+                              </button>
+                            )
+                          }
+                          return (
+                            <span className="flex items-center gap-1 text-xs text-orange-500">
+                              <Icon name="TriangleAlert" size={11} /> {reason}
+                            </span>
+                          )
+                        })()}
                       </div>
+                      {/* Раскрытый список несовпадений (матплата) */}
+                      {slotCode === "motherboard" && reasonsOpenId === p.id && (
+                        <ul className="mt-1.5 space-y-1 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
+                          {incompatReasons(p).map((r, i) => (
+                            <li key={i} className="flex items-start gap-1.5 text-xs leading-snug text-orange-500">
+                              <Icon name="Dot" size={14} className="-ml-1 shrink-0" /> {r}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {!reason && warn && (
                         <p className="mt-1 flex items-start gap-1 text-xs leading-tight text-amber-500">
                           <Icon name="Lightbulb" size={11} className="mt-0.5 shrink-0" /> {warn}
