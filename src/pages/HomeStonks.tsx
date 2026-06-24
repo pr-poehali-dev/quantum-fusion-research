@@ -133,18 +133,17 @@ export default function HomeStonks() {
             <ThemeSwitcher />
             <NotificationBell />
             {isAuthed() ? (
-              <button onClick={() => navigate("/profile")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="User" size={15} />
+              <button onClick={() => navigate("/profile")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="User" size={16} />
               </button>
             ) : (
-              <button onClick={() => navigate("/auth")} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="LogIn" size={15} />
+              <button onClick={() => navigate("/auth")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+                <Icon name="LogIn" size={16} />
               </button>
             )}
-            <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors sm:px-4" style={{ cursor: "pointer" }}>
+            <button onClick={() => navigate("/cart")} className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
               <Icon name="ShoppingCart" size={16} />
-              <span className="hidden sm:inline">Корзина</span>
-              {count() > 0 && <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>}
+              {count() > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{count()}</span>}
             </button>
           </div>
         </div>
