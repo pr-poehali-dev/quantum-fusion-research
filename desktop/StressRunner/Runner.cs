@@ -209,7 +209,7 @@ public class Runner
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"    Не смог забрать отчёт {pattern}: {ex.Message}");
+                Console.WriteLine($"    Не смог забрать отчёт {rawPattern}: {ex.Message}");
             }
         }
     }
