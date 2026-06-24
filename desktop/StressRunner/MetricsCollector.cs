@@ -49,7 +49,11 @@ public class MetricsCollector
                     case "Temperature":
                         if (isCpu && (nm.Contains("package") || nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("core (tctl") || nm == "core average"))
                             Put("cpu_temp", "CPU температура", "°C", s.Value);
-                        else if (isGpu && (nm.Contains("core") || nm.Contains("gpu") || nm == "temperature" || nm == "hot spot"))
+                        else if (isGpu && (nm.Contains("hot spot") || nm.Contains("hotspot") || nm.Contains("junction")))
+                            Put("gpu_hotspot", "GPU Hot Spot", "°C", s.Value);   // горячая точка — отдельно
+                        else if (isGpu && nm.Contains("memory"))
+                            Put("gpu_mem_temp", "GPU память °C", "°C", s.Value);
+                        else if (isGpu && (nm.Contains("core") || nm == "gpu" || nm == "temperature"))
                             Put("gpu_temp", "GPU температура", "°C", s.Value);
                         break;
                     case "Load":

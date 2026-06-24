@@ -3,6 +3,15 @@
 
 ---
 
+## v5.37 | 2026-06-24 | StressRunner: GPU Hot Spot выделен в отдельную метрику
+
+### desktop/StressRunner
+- MetricsCollector: GPU Hot Spot (Hot Spot/Junction) теперь собирается отдельной
+  метрикой gpu_hotspot, а не сливается с обычной gpu_temp. Также добавлена
+  температура памяти GPU (gpu_mem_temp). Обычная GPU температура — только Core/GPU.
+
+---
+
 ## v5.36 | 2026-06-24 | StressRunner: датчики через LibreHardwareMonitor (без HWiNFO)
 
 ### Суть
