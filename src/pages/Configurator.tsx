@@ -921,29 +921,28 @@ export default function Configurator() {
                     {/* Selected component: name + link + qty + line total */}
                     {current && (
                       <div className="border-t border-border/40 px-4 pb-4 pt-3">
-                        <div className={`flex gap-3 ${viewMode === "detailed" ? "items-center" : "items-start"}`}>
-                          {/* Превью-фото (подробный вид) — как в корзине */}
-                          {viewMode === "detailed" && (
-                            current.source === "catalog" && current.source_id ? (
+                        <div className={`flex gap-3 items-center`}>
+                          {/* Превью-фото — крупное в подробном (h-40), маленькое в компактном (h-14) */}
+                          {(() => {
+                            const photoClass = `flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-40 w-40" : "h-14 w-14"}`
+                            const iconSize = viewMode === "detailed" ? 56 : 24
+                            const inner = current.image_urls?.[0]
+                              ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
+                              : <Icon name={meta.icon as "Cpu"} size={iconSize} className="text-foreground/40" />
+                            return current.source === "catalog" && current.source_id ? (
                               <a href={`/product/${current.source_id}`} target="_blank" rel="noopener noreferrer"
                                 title="Открыть товар в новой вкладке"
-                                className="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted transition-opacity hover:opacity-90"
-                                style={{ cursor: "pointer" }}>
-                                {current.image_urls?.[0]
-                                  ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
-                                  : <Icon name={meta.icon as "Cpu"} size={56} className="text-foreground/40" />}
+                                className={`${photoClass} transition-opacity hover:opacity-90`} style={{ cursor: "pointer" }}>
+                                {inner}
                               </a>
                             ) : (
-                              <div className="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
-                                {current.image_urls?.[0]
-                                  ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
-                                  : <Icon name={meta.icon as "Cpu"} size={56} className="text-foreground/40" />}
-                              </div>
+                              <div className={photoClass}>{inner}</div>
                             )
-                          )}
-                          {/* Name + link */}
+                          })()}
+                          {/* Name + type + description + link */}
                           <div className={`min-w-0 flex-1 ${viewMode === "detailed" ? "text-center" : ""}`}>
-                            <p className="text-sm font-medium text-foreground leading-tight">{current.name}</p>
+                            <p className={`text-sm font-medium text-foreground leading-tight ${viewMode === "detailed" ? "" : "truncate"}`}>{current.name}</p>
+                            <p className="mt-0.5 text-xs text-foreground/40">{meta.label}</p>
                             {viewMode === "detailed" && current.description && (
                               <p className="mt-1 text-xs leading-snug text-foreground/50 line-clamp-3">
                                 {current.description.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()}
