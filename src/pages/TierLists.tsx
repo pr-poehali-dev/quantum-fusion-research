@@ -407,10 +407,10 @@ export default function TierLists() {
                       onDrop={() => dropToRank(t.rank)}
                       onClick={() => { if (isAdmin && pickedId != null) dropToRank(t.rank) }}
                       className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
-                      {/* Ярлык ряда. Двойной клик — показать/скрыть описание тира */}
+                      {/* Ярлык ряда. Клик — показать/скрыть описание тира */}
                       <div
-                        onDoubleClick={() => setOpenTier(o => o === t.rank ? null : t.rank)}
-                        title="Дважды кликните, чтобы узнать про этот ряд"
+                        onClick={e => { if (!(isAdmin && pickedId != null)) { e.stopPropagation(); setOpenTier(o => o === t.rank ? null : t.rank) } }}
+                        title="Нажмите, чтобы узнать про этот ряд"
                         className="flex w-16 shrink-0 flex-col items-center justify-center sm:w-20"
                         style={{ backgroundColor: t.color, cursor: "pointer" }}>
                         <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
