@@ -921,7 +921,7 @@ export default function Configurator() {
                     {/* Selected component: name + link + qty + line total */}
                     {current && (
                       <div className="border-t border-border/40 px-4 pb-4 pt-3">
-                        <div className="flex items-start gap-3">
+                        <div className={`flex gap-3 ${viewMode === "detailed" ? "items-center" : "items-start"}`}>
                           {/* Превью-фото (подробный вид) — как в корзине */}
                           {viewMode === "detailed" && (
                             current.source === "catalog" && current.source_id ? (
@@ -942,7 +942,7 @@ export default function Configurator() {
                             )
                           )}
                           {/* Name + link */}
-                          <div className="min-w-0 flex-1">
+                          <div className={`min-w-0 flex-1 ${viewMode === "detailed" ? "text-center" : ""}`}>
                             <p className="text-sm font-medium text-foreground leading-tight">{current.name}</p>
                             {viewMode === "detailed" && current.description && (
                               <p className="mt-1 text-xs leading-snug text-foreground/50 line-clamp-3">

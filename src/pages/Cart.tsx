@@ -135,7 +135,7 @@ export default function Cart() {
                 const photoClass = `flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-40 w-40" : "h-14 w-14"}`
                 return (
                 <div key={item.id} className={`rounded-xl border border-border bg-card p-4 transition-all duration-200`}>
-                  <div className={`flex gap-3 ${viewMode === "detailed" ? "items-start" : "items-center"}`}>
+                  <div className={`flex gap-3 items-center`}>
                     {/* Превью-фото — кликабельно на товар (в новой вкладке) */}
                     {viewMode === "detailed" && isProduct ? (
                       <a href={`/product/${item.id}`} target="_blank" rel="noopener noreferrer"
@@ -148,7 +148,7 @@ export default function Cart() {
                     )}
 
                     {/* Название + тип + описание */}
-                    <div className="min-w-0 flex-1">
+                    <div className={`min-w-0 flex-1 ${viewMode === "detailed" ? "text-center" : ""}`}>
                       <p className={`text-sm font-medium text-foreground leading-tight ${viewMode === "detailed" ? "" : "truncate"}`}>{item.name}</p>
                       <p className="mt-0.5 text-xs text-foreground/40">{item.type === "config" ? "Кастомная сборка" : "Комплектующее"}</p>
                       {viewMode === "detailed" && item.description && (
