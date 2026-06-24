@@ -926,23 +926,28 @@ export default function Configurator() {
                             current.source === "catalog" && current.source_id ? (
                               <a href={`/product/${current.source_id}`} target="_blank" rel="noopener noreferrer"
                                 title="Открыть товар в новой вкладке"
-                                className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted transition-opacity hover:opacity-90"
+                                className="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted transition-opacity hover:opacity-90"
                                 style={{ cursor: "pointer" }}>
                                 {current.image_urls?.[0]
                                   ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
-                                  : <Icon name={meta.icon as "Cpu"} size={22} className="text-foreground/40" />}
+                                  : <Icon name={meta.icon as "Cpu"} size={56} className="text-foreground/40" />}
                               </a>
                             ) : (
-                              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                              <div className="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                                 {current.image_urls?.[0]
                                   ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
-                                  : <Icon name={meta.icon as "Cpu"} size={22} className="text-foreground/40" />}
+                                  : <Icon name={meta.icon as "Cpu"} size={56} className="text-foreground/40" />}
                               </div>
                             )
                           )}
                           {/* Name + link */}
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-foreground leading-tight">{current.name}</p>
+                            {viewMode === "detailed" && current.description && (
+                              <p className="mt-1 text-xs leading-snug text-foreground/50 line-clamp-3">
+                                {current.description.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()}
+                              </p>
+                            )}
                             {current.link && (
                               <a href={current.link} target="_blank" rel="noopener noreferrer"
                                 className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
