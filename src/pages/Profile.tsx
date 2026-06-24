@@ -283,7 +283,7 @@ export default function Profile() {
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex border-b border-border overflow-x-auto">
+        <div className="mb-6 flex flex-col items-center gap-2">
           {[
             { key: "profile", label: "Мой профиль", icon: "UserCog" },
             { key: "orders", label: "Мои заказы", icon: "ShoppingBag", count: orders.length },
@@ -293,7 +293,7 @@ export default function Profile() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key as typeof activeTab)}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
+              className={`flex w-full max-w-xs items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${activeTab === t.key ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`}
               style={{ cursor: "pointer" }}
             >
               <Icon name={t.icon as "Cpu"} size={15} />
