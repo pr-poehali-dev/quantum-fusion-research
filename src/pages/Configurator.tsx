@@ -113,6 +113,37 @@ function QtyControl({ qty, onChange }: { qty: number; onChange: (q: number) => v
   )
 }
 
+// Предупреждение о несовместимости/проблеме компонента.
+// Десктоп: показывает полный текст (как раньше).
+// Мобильный: компактный значок «Проблема» + иконка-пояснялка «?»,
+// по тапу на которую раскрывается полный текст пояснения.
+function CompatWarning({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      {/* Десктоп — полный текст */}
+      <div className="hidden max-w-[240px] items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400 sm:flex">
+        <Icon name="TriangleAlert" size={13} className="shrink-0" />
+        <span>{text}</span>
+      </div>
+      {/* Мобильный — компактный значок «Проблема» + пояснялка */}
+      <div className="flex flex-col items-end gap-1 sm:hidden">
+        <button onClick={() => setOpen(o => !o)} style={{ cursor: "pointer" }}
+          className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium leading-snug text-amber-600 dark:text-amber-400">
+          <Icon name="TriangleAlert" size={13} className="shrink-0" />
+          <span>Проблема</span>
+          <Icon name="CircleHelp" size={13} className="shrink-0 opacity-70" />
+        </button>
+        {open && (
+          <div className="max-w-[220px] rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-right text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+            {text}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 function ExtrasSection({ extraItems, onAddCustom, onRemoveExtra }: {
   extraItems: { key: string; item: SelectedComp }[]
   onAddCustom: () => void
@@ -797,39 +828,31 @@ export default function Configurator() {
                             )}
                           </div>
 
-                          {/* Price → qty controls → line total */}
-                          <div className="flex shrink-0 items-center gap-3">
-                            {slot === "storage" && ssdSlotWarning && (
-                              <div className="flex max-w-[220px] items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                                <Icon name="TriangleAlert" size={13} className="shrink-0" />
-                                <span>
-                                  На материнской плате {ssdSlotWarning.slots} {plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили {ssdSlotWarning.qty}. Уменьшите на {ssdSlotWarning.over}.
-                                </span>
-                              </div>
-                            )}
-                            {slot === "psu" && psuWarning && (
-                              <div className="flex max-w-[240px] items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                                <Icon name="TriangleAlert" size={13} className="shrink-0" />
-                                <span>
-                                  Маловато мощности: блок {psuWarning.watt} Вт при нагрузке сборки ~{psuWarning.totalTdp} Вт. Возьмите от {psuWarning.recommended} Вт.
-                                </span>
-                              </div>
-                            )}
-                            {(compatWarningsBySlot[slot] || []).length > 0 && (
-                              <div className="flex max-w-[240px] flex-col gap-1.5">
-                                {compatWarningsBySlot[slot].map((msg, i) => (
-                                  <div key={i} className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                                    <Icon name="TriangleAlert" size={13} className="shrink-0" />
-                                    <span>{msg}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
-                            <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
-                            <span className="w-24 text-right text-sm font-bold text-primary">
-                              {fmt(current.price * current.qty)}
-                            </span>
+                          {/* Price → qty controls → line total + предупреждения.
+                              На десктопе предупреждения стоят в один ряд с ценой;
+                              на мобильных — переносятся под кол-во и ценник, по правому краю. */}
+                          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+                            {/* Предупреждения: на десктопе слева от цены (order меняем флексом),
+                                на мобильных — ниже цены (порядок DOM сохраняем, но визуально вниз) */}
+                            <div className="order-2 flex flex-col items-end gap-1.5 sm:order-1 sm:flex-row sm:items-center">
+                              {slot === "storage" && ssdSlotWarning && (
+                                <CompatWarning text={`На материнской плате ${ssdSlotWarning.slots} ${plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили ${ssdSlotWarning.qty}. Уменьшите на ${ssdSlotWarning.over}.`} />
+                              )}
+                              {slot === "psu" && psuWarning && (
+                                <CompatWarning text={`Маловато мощности: блок ${psuWarning.watt} Вт при нагрузке сборки ~${psuWarning.totalTdp} Вт. Возьмите от ${psuWarning.recommended} Вт.`} />
+                              )}
+                              {(compatWarningsBySlot[slot] || []).map((msg, i) => (
+                                <CompatWarning key={i} text={msg} />
+                              ))}
+                            </div>
+                            {/* Цена / кол-во / итог */}
+                            <div className="order-1 flex items-center gap-3 sm:order-2">
+                              <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
+                              <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
+                              <span className="w-24 text-right text-sm font-bold text-primary">
+                                {fmt(current.price * current.qty)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
