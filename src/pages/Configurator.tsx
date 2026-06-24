@@ -376,6 +376,11 @@ export default function Configurator() {
   const allFromCatalog = Object.values(selected).filter(Boolean).every(c => c?.source === "catalog")
   const hasComponents = Object.values(selected).some(Boolean)
 
+  // Незаполненные обязательные слоты — для предупреждения (без блокировки)
+  const missingRequired = requiredSlots
+    .filter(slot => !selected[slot])
+    .map(slot => SLOT_LABELS[slot]?.label || slot)
+
   const addToCart = () => {
     const names = Object.values(selected).filter(Boolean).map(c => c!.name).join(", ").substring(0, 80)
     const components = Object.values(selected).filter(Boolean).map(c => ({
@@ -390,6 +395,28 @@ export default function Configurator() {
     clearDraft()
     navigate("/cart")
   }
+
+  // «Добавить все товары в корзину» — кладёт КАЖДЫЙ выбранный товар из каталога
+  // отдельной позицией (пустые слоты и «своё железо» пропускаем).
+  const addAllProductsToCart = () => {
+    const fromCatalog = Object.values(selected)
+      .filter(Boolean)
+      .filter(c => c!.source === "catalog" && c!.source_id)
+    if (!fromCatalog.length) return
+    fromCatalog.forEach(c => {
+      for (let i = 0; i < (c!.qty || 1); i++) {
+        addItem({
+          id: c!.source_id!,
+          name: c!.name,
+          price: c!.price,
+          image_url: c!.image_urls?.[0] || null,
+          type: "product",
+        })
+      }
+    })
+    navigate("/cart")
+  }
+  const catalogPicked = Object.values(selected).filter(c => c?.source === "catalog" && c?.source_id).length
 
   // Выбор из НОВОГО окна (с фильтрами совместимости).
   // p — товар слота с values характеристик, specCatId — id spec-категории.
@@ -1043,14 +1070,30 @@ export default function Configurator() {
                 <span className="text-2xl font-bold text-foreground">{fmt(total)}</span>
               </div>
 
+              {!isComplete && hasComponents && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                  <Icon name="TriangleAlert" size={14} className="mt-0.5 shrink-0" />
+                  <span>Не выбраны: {missingRequired.join(", ")}. Можно оформить как есть — часть железа может быть вашей.</span>
+                </div>
+              )}
               <button
                 onClick={addToCart}
-                disabled={!isComplete}
+                disabled={!hasComponents}
                 className="w-full rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-                style={{ cursor: isComplete ? "pointer" : "not-allowed" }}
+                style={{ cursor: hasComponents ? "pointer" : "not-allowed" }}
               >
-                {isComplete ? "Оформить заказ" : "Выберите обязательные компоненты"}
+                {hasComponents ? "Оформить заказ" : "Добавьте компоненты"}
               </button>
+              {catalogPicked > 0 && (
+                <button
+                  onClick={addAllProductsToCart}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/40 py-2.5 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                  style={{ cursor: "pointer" }}
+                >
+                  <Icon name="ShoppingCart" size={15} />
+                  Добавить все товары в корзину ({catalogPicked})
+                </button>
+              )}
               <p className="mt-2 text-center text-xs text-foreground/40">Менеджер свяжется для подтверждения</p>
             </div>
 
