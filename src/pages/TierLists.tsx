@@ -77,12 +77,13 @@ const TierCard = memo(function TierCard({
             />
           : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={26} className="text-foreground/30" /></div>}
 
-        {/* Название — отдельное окно поверх превью при наведении */}
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+        {/* Название — отдельное окно поверх превью при наведении (десктоп)
+            или при выборе карточки тапом (телефон — первый тап). */}
+        <div className={`pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 ${picked ? "opacity-100" : "opacity-0"}`}>
           <p className="text-sm font-semibold leading-snug text-foreground">{it.name}</p>
         </div>
 
-        {picked && (
+        {picked && isAdmin && (
           <div className="absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
             <Icon name="Check" size={12} />
           </div>
@@ -242,8 +243,14 @@ export default function TierLists() {
 
   // Клик по карточке: админ — если выбрана другая карточка, вставляем её ПЕРЕД этой;
   // иначе выбираем/снимаем выбор. Гость — открывает товар.
+  // На телефоне (нет hover) гостю первый тап показывает название (подсветка),
+  // второй тап по той же карточке — переход на товар. На десктопе — сразу товар.
   const onCardClick = (it: TierItem) => {
-    if (!isAdmin) { navigate(`/product/${it.id}`); return }
+    if (!isAdmin) {
+      const isTouch = typeof window !== "undefined" && window.matchMedia("(hover: none)").matches
+      if (isTouch && pickedId !== it.id) { setPickedId(it.id); return }
+      navigate(`/product/${it.id}`); return
+    }
     if (pickedId != null && pickedId !== it.id) { dropOnCard(it); return }
     setPickedId(prev => prev === it.id ? null : it.id)
   }
