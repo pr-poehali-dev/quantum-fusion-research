@@ -119,8 +119,27 @@ export default function TierLists() {
   const [dragId, setDragId] = useState<number | null>(null)
   const [dragOverId, setDragOverId] = useState<number | null>(null)  // карточка, перед которой будет вставка (для полосы)
   const [pickedId, setPickedId] = useState<number | null>(null)  // выбранная карточка (клик-режим)
-  const [openTier, setOpenTier] = useState<string | null>(null)  // ряд с раскрытым описанием (по двойному клику)
+  const [openTier, setOpenTier] = useState<string | null>(null)  // ряд с раскрытым описанием (по клику)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
+  // Подсказка слева «ряды кликабельны» — через 10 сек бездействия, если юзер ещё не пользовался фичей
+  const [showTierHint, setShowTierHint] = useState(false)
+  const tierHintUsed = useRef<boolean>(typeof window !== "undefined" && localStorage.getItem("tier_hint_used") === "1")
+
+  useEffect(() => {
+    if (tierHintUsed.current) return
+    const t = setTimeout(() => { if (!tierHintUsed.current) setShowTierHint(true) }, 10000)
+    return () => clearTimeout(t)
+  }, [])
+
+  // Открытие описания тира = пользователь воспользовался фичей → больше не показывать подсказку
+  const openTierDesc = (rank: string) => {
+    if (!tierHintUsed.current) {
+      tierHintUsed.current = true
+      try { localStorage.setItem("tier_hint_used", "1") } catch { /* ignore */ }
+    }
+    setShowTierHint(false)
+    setOpenTier(o => o === rank ? null : rank)
+  }
 
   useEffect(() => {
     api.tier.getAll().then(d => {
@@ -398,7 +417,14 @@ export default function TierLists() {
 
             {/* Контент: тир-лист на всю ширину (фильтры теперь в дропдауне) */}
             <div className="flex flex-col gap-6">
-              <div className="min-w-0 flex-1">
+              <div className="relative min-w-0 flex-1">
+                {/* Подсказка: ряды кликабельны (через 10 сек бездействия) */}
+                {showTierHint && (
+                  <div className="mb-3 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground/70 xl:absolute xl:right-full xl:top-0 xl:mb-0 xl:mr-4 xl:w-44 xl:flex-col xl:items-start xl:text-center">
+                    <Icon name="MousePointerClick" size={16} className="shrink-0 text-primary" />
+                    <span className="leading-snug">Нажмите на букву ряда (S, A, B…) — узнаете, что она означает</span>
+                  </div>
+                )}
                 {/* Таблица рядов */}
                 <div className="overflow-hidden rounded-2xl border border-border">
                   {TIERS.map((t, idx) => (
@@ -409,7 +435,7 @@ export default function TierLists() {
                       className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
                       {/* Ярлык ряда. Клик — показать/скрыть описание тира */}
                       <div
-                        onClick={e => { if (!(isAdmin && pickedId != null)) { e.stopPropagation(); setOpenTier(o => o === t.rank ? null : t.rank) } }}
+                        onClick={e => { if (!(isAdmin && pickedId != null)) { e.stopPropagation(); openTierDesc(t.rank) } }}
                         title="Нажмите, чтобы узнать про этот ряд"
                         className="flex w-16 shrink-0 flex-col items-center justify-center sm:w-20"
                         style={{ backgroundColor: t.color, cursor: "pointer" }}>
