@@ -3,6 +3,26 @@
 
 ---
 
+## v5.32 | 2026-06-24 | StressRunner: правильный подход к запуску (CLI vs GUI)
+
+### Суть
+- GUI-бенчмарки (OCCT Personal, FurMark, Superposition free) НЕ умеют CLI-
+  автозапуск теста → перестали гадать с флагами. Новый подход:
+  - CLI-утилиты (Prime95, Cinebench) — автозапуск аргументами.
+  - GUI-утилиты — приложение открывает окно, СТАРТ юзер жмёт сам, мы меряем
+    время и снимаем метрики с HWiNFO.
+
+### desktop/StressRunner
+- HwInfoReader: запуск HWiNFO БЕЗ ключей (бесплатная версия не поддерживает CLI,
+  -minimize ломал старт). Авто-INI убран — Shared Memory включается галкой 1 раз.
+
+### Frontend (StressProfilesTab)
+- Пресеты пересобраны: Prime95/Cinebench (авто) + OCCT/FurMark/Superposition
+  (открыть, старт вручную). У FurMark убран /nogui и send_keys. Путь Superposition
+  поправлен под «Superposition Benchmark\bin\superposition.exe».
+
+---
+
 ## v5.31 | 2026-06-24 | StressRunner: фикс FurMark-клавиш и Superposition (GUI)
 
 ### desktop/StressRunner
