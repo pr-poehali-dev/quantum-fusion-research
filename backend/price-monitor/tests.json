@@ -1,0 +1,30 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Парсер без токена — 401",
+      "method": "POST",
+      "path": "/?action=ingest",
+      "body": {"source": "Test", "items": [{"name": "RTX 4070", "price": 50000}]},
+      "expectedStatus": 401
+    },
+    {
+      "name": "Админ-список без доступа — 403",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Админ-действие без доступа — 403",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "accept", "id": 1},
+      "expectedStatus": 403
+    }
+  ]
+}

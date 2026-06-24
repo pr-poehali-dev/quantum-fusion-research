@@ -19,6 +19,7 @@ const URLS = {
   finance: "https://functions.poehali.dev/c96c7960-8abb-43f1-bdf1-191c8f3250fc",
   quiz: "https://functions.poehali.dev/8660d01d-f97e-4034-8704-30fd94dc3041",
   snArchive: "https://functions.poehali.dev/147bf909-3e68-44c2-bd73-5c6dc9b11195",
+  priceMonitor: "https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab",
 }
 
 function authHeaders(session?: string | null) {
@@ -69,6 +70,16 @@ export const api = {
     setPrepayment: (data: { id: number; prepayment_percent?: number; prepayment_amount?: number }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_prepayment", ...data }) }).then(r => r.json()),
     getMyOrders: (session: string) => fetch(`${URLS.orders}?my=true`, { headers: { "X-Session-Id": session } }).then(r => r.json()),
     createWithSession: (data: unknown, session?: string | null) => fetch(URLS.orders, { method: "POST", headers: { "Content-Type": "application/json", ...(session ? { "X-Session-Id": session } : {}) }, body: JSON.stringify(data) }).then(r => r.json()),
+  },
+  priceMonitor: {
+    list: (adminKey: string, kind?: string) =>
+      fetch(`${URLS.priceMonitor}?action=list${kind ? `&kind=${kind}` : ""}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    accept: (id: number, adminKey: string) =>
+      fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "accept", id }) }).then(r => r.json()),
+    reject: (id: number, adminKey: string) =>
+      fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "reject", id }) }).then(r => r.json()),
+    acceptAll: (adminKey: string) =>
+      fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "accept_all" }) }).then(r => r.json()),
   },
   builds: {
     getAll: (params?: Record<string, string>) => {

@@ -3,6 +3,35 @@
 
 ---
 
+## v5.09 | 2026-06-24 | Мониторинг цен парсером + автонаценка
+
+### БД (миграция V0154)
+- Новые таблицы: price_sources (источники-конкуренты),
+  price_observations (входящие цены от парсера + матч с товаром),
+  price_suggestions (предложения на утро: price_change / new_product).
+
+### backend/price-monitor (новая функция)
+- Приёмник данных парсера (POST, авторизация X-Parser-Token == PARSER_INGEST_TOKEN):
+  парсер шлёт ТОЛЬКО изменения цен, система матчит по названию (Жаккар, порог 0.45),
+  считает рекомендованную цену = цена_конкурента * 0.93, округл. до 250 ₽,
+  создаёт предложения (есть товар → price_change, нет → new_product).
+- Админ-обзор (X-Admin-Token == ADMIN_KEY): action=list/accept/reject/accept_all.
+  accept проставляет рекомендованную цену в products.price.
+- URL: https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab
+
+### src/lib/api.ts
+- Добавлен api.priceMonitor.list/accept/reject/acceptAll + URL priceMonitor.
+
+### src/components/admin/PriceMonitorTab.tsx (новый)
+- Вкладка «Цены»: подвкладки «Изменения цен» / «Новые товары», карточки
+  с ценами (у нас / рынок / рекомендуем), кнопки Принять/Отклонить, «Принять все».
+
+### src/pages/Admin.tsx, src/pages/admin/types.ts
+- Новая вкладка price_monitor в группе «Операции» (иконка TrendingUp).
+
+### Секреты
+- PARSER_INGEST_TOKEN — токен для авторизации парсера (нужно задать в UI).
+
 ## v5.08 | 2026-06-24 | Шапка: корзина-иконка на моб. + подсветка темы
 
 ### src/pages/HomeStonks.tsx
