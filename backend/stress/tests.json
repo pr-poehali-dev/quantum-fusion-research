@@ -42,6 +42,12 @@
       "method": "GET",
       "path": "/?action=metric_prefs_list",
       "expectedStatus": 403
+    },
+    {
+      "name": "Presets list without admin forbidden",
+      "method": "GET",
+      "path": "/?action=presets_list",
+      "expectedStatus": 403
     }
   ]
 }

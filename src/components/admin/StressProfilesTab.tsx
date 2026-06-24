@@ -34,80 +34,44 @@ const emptyProfile = (): Profile => ({
   name: "", note: "", tests: [emptyTest()], is_active: true, sort_order: 0,
 })
 
-// Готовые пресеты. Пути ОТНОСИТЕЛЬНЫЕ от папки StressRunner (StressTests\...) —
-// тогда профиль работает на любом ПК: кинул папку на флешку и поехал.
-interface Preset { key: string; label: string; hint: string; make: () => TestItem }
-const PRESETS: Preset[] = [
-  // ── CLI-утилиты: реально запускают тест из командной строки (автозапуск) ──
-  {
-    key: "prime95",
-    label: "Prime95 (авто)",
-    hint: "CLI-утилита: запускается и сразу гонит Torture Test. Положи в StressTests\\prime95\\. Режим задаётся в prime.txt/local.txt рядом.",
-    make: () => ({
-      ...emptyTest(),
-      name: "Prime95 — Torture Test",
-      program: "StressTests\\prime95\\prime95.exe",
-      args: "-t",
-      duration_sec: 900, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
-      report_files: ["StressTests\\prime95\\results.txt"],
-    }),
-  },
-  {
-    key: "cinebench",
-    label: "Cinebench R23 (авто)",
-    hint: "CLI-аргументы запускают мультиядро ~10 мин. Положи в StressTests\\Cinebench\\.",
-    make: () => ({
-      ...emptyTest(),
-      name: "Cinebench R23 — Multi Core",
-      program: "StressTests\\Cinebench\\Cinebench.exe",
-      args: "g_CinebenchCpuXTest=true g_CinebenchMinimumTestDuration=600",
-      duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 20,
-      report_files: [],
-    }),
-  },
+// Пресет теста, как он лежит в БД (конструктор готовых тестов).
+interface DbPreset {
+  id?: number
+  label: string
+  hint: string
+  test_name: string
+  program: string
+  args: string
+  duration_sec: number
+  timeout_is_success: boolean
+  success_exit_code: number
+  min_run_sec: number
+  send_keys: string
+  send_keys_delay_sec: number
+  report_files: string[]
+  sort_order: number
+}
 
-  // ── GUI-бенчмарки: открываем окно, СТАРТ нажимаешь сам. Стабильно. ──
-  {
-    key: "occt",
-    label: "OCCT (открыть)",
-    hint: "Бесплатный OCCT без CLI. Приложение откроет окно — выбери тест (CPU/GPU) и нажми Старт. Нагрузка/температуры снимутся через HWiNFO.",
-    make: () => ({
-      ...emptyTest(),
-      name: "OCCT — ручной старт",
-      program: "StressTests\\OCCT\\OCCT.exe",
-      args: "",
-      duration_sec: 660, timeout_is_success: true, success_exit_code: -1, min_run_sec: 0,
-      report_files: [],
-    }),
-  },
-  {
-    key: "furmark",
-    label: "FurMark (авто)",
-    hint: "Сам стартует burn-in на видеокарту (/nogui) и через 6 сек жмёт «P» (post-FX — размазанный бублик, выше нагрузка). Лучший прогрев GPU.",
-    make: () => ({
-      ...emptyTest(),
-      name: "FurMark — GPU стресс",
-      program: "StressTests\\FurMark\\furmark.exe",
-      args: "/nogui /width=1920 /height=1080 /msaa=4 /max_time=600000",
-      duration_sec: 660, timeout_is_success: true, success_exit_code: -1, min_run_sec: 20,
-      send_keys: "P", send_keys_delay_sec: 6,
-      report_files: [],
-    }),
-  },
-  {
-    key: "superposition",
-    label: "Superposition (открыть)",
-    hint: "Открывает окно Superposition — выбери пресет (8K) и нажми RUN. Путь: StressTests\\Superposition Benchmark\\Superposition.exe.",
-    make: () => ({
-      ...emptyTest(),
-      name: "Superposition — ручной старт",
-      program: "StressTests\\Superposition Benchmark\\Superposition.exe",
-      args: "",
-      duration_sec: 600, timeout_is_success: true, success_exit_code: -1, min_run_sec: 0,
-      report_files: [],
-    }),
-  },
-]
+const emptyPreset = (): DbPreset => ({
+  label: "", hint: "", test_name: "", program: "", args: "",
+  duration_sec: 600, timeout_is_success: true, success_exit_code: -1, min_run_sec: 0,
+  send_keys: "", send_keys_delay_sec: 5, report_files: [], sort_order: 0,
+})
+
+// Превратить пресет из БД в тест профиля.
+const presetToTest = (p: DbPreset): TestItem => ({
+  ...emptyTest(),
+  name: p.test_name || p.label,
+  program: p.program,
+  args: p.args,
+  duration_sec: p.duration_sec,
+  timeout_is_success: p.timeout_is_success,
+  success_exit_code: p.success_exit_code,
+  min_run_sec: p.min_run_sec,
+  send_keys: p.send_keys,
+  send_keys_delay_sec: p.send_keys_delay_sec,
+  report_files: p.report_files || [],
+})
 
 export default function StressProfilesTab() {
   const adminKey = getAdminKey()
@@ -115,22 +79,39 @@ export default function StressProfilesTab() {
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<Profile | null>(null)
   const [saving, setSaving] = useState(false)
-  const [presetMenu, setPresetMenu] = useState(false)
-
-  // Создать новый профиль сразу с готовым тестом из пресета.
-  const newFromPreset = (p: Preset) => {
-    setPresetMenu(false)
-    setEdit({ ...emptyProfile(), name: p.label, tests: [p.make()] })
-  }
+  const [presets, setPresets] = useState<DbPreset[]>([])
+  const [editPreset, setEditPreset] = useState<DbPreset | null>(null)
+  const [savingPreset, setSavingPreset] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
-    api.stress.profilesList(adminKey)
-      .then(d => setProfiles(d.profiles || []))
-      .finally(() => setLoading(false))
+    Promise.all([
+      api.stress.profilesList(adminKey),
+      api.stress.presetsList(adminKey),
+    ]).then(([prof, pres]) => {
+      setProfiles(prof.profiles || [])
+      setPresets(pres.presets || [])
+    }).finally(() => setLoading(false))
   }, [adminKey])
 
   useEffect(() => { load() }, [load])
+
+  const savePreset = () => {
+    if (!editPreset) return
+    if (!editPreset.label.trim()) { alert("Укажите название теста"); return }
+    setSavingPreset(true)
+    api.stress.presetSave(editPreset, adminKey).then(() => {
+      setEditPreset(null)
+      load()
+    }).finally(() => setSavingPreset(false))
+  }
+
+  const removePreset = (id?: number) => {
+    if (!id) return
+    if (!confirm("Удалить этот готовый тест?")) return
+    api.stress.presetDelete(id, adminKey).then(load)
+  }
+  const updPreset = (patch: Partial<DbPreset>) => editPreset && setEditPreset({ ...editPreset, ...patch })
 
   const save = () => {
     if (!edit) return
@@ -155,7 +136,7 @@ export default function StressProfilesTab() {
     setEdit({ ...edit, tests })
   }
   const addTest = () => edit && setEdit({ ...edit, tests: [...edit.tests, emptyTest()] })
-  const addPreset = (p: Preset) => edit && setEdit({ ...edit, tests: [...edit.tests, p.make()] })
+  const addPreset = (p: DbPreset) => edit && setEdit({ ...edit, tests: [...edit.tests, presetToTest(p)] })
   const delTest = (i: number) => edit && setEdit({ ...edit, tests: edit.tests.filter((_, idx) => idx !== i) })
   const moveTest = (i: number, dir: -1 | 1) => {
     if (!edit) return
@@ -164,6 +145,87 @@ export default function StressProfilesTab() {
     const tests = [...edit.tests]
     ;[tests[i], tests[j]] = [tests[j], tests[i]]
     setEdit({ ...edit, tests })
+  }
+
+  // ─────────────────────── Конструктор готового теста ─────────────────────
+  if (editPreset) {
+    const ep = editPreset
+    const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+    const monoCls = "w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+    return (
+      <div className="max-w-3xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">{ep.id ? "Редактирование теста" : "Новый готовый тест"}</h2>
+          <button onClick={() => setEditPreset(null)} className="text-sm text-foreground/50 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>← Назад</button>
+        </div>
+
+        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Название теста (кнопка-пресет)</span>
+              <input value={ep.label} onChange={e => updPreset({ label: e.target.value })} placeholder="Напр.: Cinebench R23 (авто)" className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Имя теста внутри профиля</span>
+              <input value={ep.test_name} onChange={e => updPreset({ test_name: e.target.value })} placeholder="Напр.: Cinebench R23 — Multi Core" className={inputCls} />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-xs text-foreground/50">Подсказка (описание)</span>
+            <input value={ep.hint} onChange={e => updPreset({ hint: e.target.value })} placeholder="Что делает тест, куда класть программу" className={inputCls} />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Программа (путь)</span>
+              <input value={ep.program} onChange={e => updPreset({ program: e.target.value })} placeholder="StressTests\CINEBENCH R23\23.2.0.0\Cinebench.exe" className={monoCls} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Аргументы запуска</span>
+              <input value={ep.args} onChange={e => updPreset({ args: e.target.value })} placeholder="g_CinebenchCpuXTest=true ..." className={monoCls} />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Время теста, сек</span>
+              <input type="number" value={ep.duration_sec} onChange={e => updPreset({ duration_sec: Number(e.target.value) })} className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Код успеха (-1 = любой)</span>
+              <input type="number" value={ep.success_exit_code} onChange={e => updPreset({ success_exit_code: Number(e.target.value) })} className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Минимум секунд</span>
+              <input type="number" value={ep.min_run_sec} onChange={e => updPreset({ min_run_sec: Number(e.target.value) })} className={inputCls} />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={ep.timeout_is_success} onChange={e => updPreset({ timeout_is_success: e.target.checked })} />
+            Таймаут = успех (для стресс-утилит, которые крутятся вечно)
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Нажать клавиши (через запятую)</span>
+              <input value={ep.send_keys} onChange={e => updPreset({ send_keys: e.target.value })} placeholder="напр. P для FurMark" className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Через сколько секунд нажать</span>
+              <input type="number" value={ep.send_keys_delay_sec} onChange={e => updPreset({ send_keys_delay_sec: Number(e.target.value) })} className={inputCls} />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-xs text-foreground/50">Файлы-отчёты (через запятую, маски *.html)</span>
+            <input value={ep.report_files.join(", ")} onChange={e => updPreset({ report_files: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} placeholder="StressTests\OCCT\report\*.html" className={monoCls} />
+          </label>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button onClick={savePreset} disabled={savingPreset} className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="Save" size={16} /> {savingPreset ? "Сохранение..." : "Сохранить тест"}
+          </button>
+          <button onClick={() => setEditPreset(null)} className="rounded-xl border border-border px-6 py-2.5 text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Отмена</button>
+        </div>
+      </div>
+    )
   }
 
   // ─────────────────────────── Редактор профиля ───────────────────────────
@@ -206,12 +268,13 @@ export default function StressProfilesTab() {
           </div>
           <p className="mb-3 text-xs text-foreground/40">Жми — тест добавится с правильными аргументами и отчётом. Останется вписать путь к программе под свой ПК.</p>
           <div className="flex flex-wrap gap-2">
-            {PRESETS.map(p => (
-              <button key={p.key} onClick={() => addPreset(p)} title={p.hint}
+            {presets.map(p => (
+              <button key={p.id} onClick={() => addPreset(p)} title={p.hint}
                 className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={13} /> {p.label}
               </button>
             ))}
+            {presets.length === 0 && <span className="text-xs text-foreground/40">Пресетов нет — создай их кнопкой «Создать новый тест» в списке профилей.</span>}
           </div>
         </div>
 
@@ -326,28 +389,10 @@ export default function StressProfilesTab() {
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Профили тестов</h2>
         <div className="flex items-center gap-2">
-          {/* Готовый тест из пресета */}
-          <div className="relative">
-            <button onClick={() => setPresetMenu(v => !v)}
-              className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="Zap" size={16} className="text-accent" /> Создать новый тест
-              <Icon name="ChevronDown" size={14} />
-            </button>
-            {presetMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setPresetMenu(false)} />
-                <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-border bg-card p-1.5 shadow-2xl">
-                  <div className="px-2 py-1.5 text-[11px] uppercase tracking-wide text-foreground/40">Выбери тип теста</div>
-                  {PRESETS.map(p => (
-                    <button key={p.key} onClick={() => newFromPreset(p)} title={p.hint}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-foreground/80 hover:bg-muted hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                      <Icon name="Plus" size={13} className="shrink-0 text-accent" /> {p.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <button onClick={() => setEditPreset(emptyPreset())}
+            className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="Zap" size={16} className="text-accent" /> Создать новый тест
+          </button>
           <button onClick={() => setEdit(emptyProfile())} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="Plus" size={16} /> Новый профиль
           </button>
@@ -385,6 +430,40 @@ export default function StressProfilesTab() {
           ))}
         </div>
       )}
+
+      {/* Готовые тесты (пресеты) */}
+      <div className="mt-8">
+        <div className="mb-3 flex items-center gap-2">
+          <Icon name="Zap" size={15} className="text-accent" />
+          <h3 className="text-sm font-semibold text-foreground">Готовые тесты</h3>
+          <span className="text-xs text-foreground/40">— переиспользуй их в профилях</span>
+        </div>
+        {presets.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-foreground/40">
+            Пока нет. Нажми «Создать новый тест» выше.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {presets.map(p => (
+              <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="min-w-0">
+                  <span className="truncate text-sm font-medium text-foreground">{p.label}</span>
+                  <div className="mt-0.5 truncate font-mono text-[11px] text-foreground/40">{p.program || "путь не задан"}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button onClick={() => setEditPreset({ ...emptyPreset(), ...p })}
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Pencil" size={13} /> Изменить
+                  </button>
+                  <button onClick={() => removePreset(p.id)} className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Trash2" size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

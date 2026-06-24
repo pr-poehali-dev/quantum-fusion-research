@@ -139,6 +139,14 @@ def handler(event, context):
         if action == "metric_prefs_save" and method in ("POST", "PUT"):
             return metric_prefs_save(cur, conn, body)
 
+        # Пресеты тестов (конструктор готовых тестов)
+        if action == "presets_list" and method == "GET":
+            return presets_list(cur)
+        if action == "preset_save" and method in ("POST", "PUT"):
+            return preset_save(cur, conn, body)
+        if action == "preset_delete" and method == "DELETE":
+            return preset_delete(cur, conn, int(params.get("id") or 0))
+
         return err(f"unknown action: {action}")
     except Exception as e:
         conn.rollback()
@@ -397,3 +405,74 @@ def metric_prefs_save(cur, conn, body):
         )
     conn.commit()
     return ok({"ok": True, "count": len(prefs)})
+
+
+# ─── Пресеты тестов (конструктор готовых тестов) ───────────────────────────
+
+def _row_to_preset(r):
+    report = r[12]
+    if isinstance(report, str):
+        try:
+            report = json.loads(report)
+        except Exception:
+            report = []
+    return {
+        "id": r[0], "label": r[1], "hint": r[2], "test_name": r[3],
+        "program": r[4], "args": r[5], "duration_sec": r[6],
+        "timeout_is_success": r[7], "success_exit_code": r[8], "min_run_sec": r[9],
+        "send_keys": r[10], "send_keys_delay_sec": r[11],
+        "report_files": report or [], "sort_order": r[13],
+    }
+
+
+def presets_list(cur):
+    cur.execute(
+        f"SELECT id, label, hint, test_name, program, args, duration_sec, "
+        f"timeout_is_success, success_exit_code, min_run_sec, send_keys, "
+        f"send_keys_delay_sec, report_files, sort_order "
+        f"FROM {SCHEMA}.stress_test_presets ORDER BY sort_order, id"
+    )
+    return ok({"presets": [_row_to_preset(r) for r in cur.fetchall()]})
+
+
+def preset_save(cur, conn, body):
+    pid = body.get("id")
+    report_json = json.dumps(body.get("report_files") or [], ensure_ascii=False)
+    fields = (
+        f"label = {esc(body.get('label', ''))}, hint = {esc(body.get('hint', ''))}, "
+        f"test_name = {esc(body.get('test_name', ''))}, program = {esc(body.get('program', ''))}, "
+        f"args = {esc(body.get('args', ''))}, duration_sec = {int(num(body.get('duration_sec') or 600))}, "
+        f"timeout_is_success = {'TRUE' if body.get('timeout_is_success', True) else 'FALSE'}, "
+        f"success_exit_code = {int(num(body.get('success_exit_code') if body.get('success_exit_code') is not None else -1))}, "
+        f"min_run_sec = {int(num(body.get('min_run_sec') or 0))}, "
+        f"send_keys = {esc(body.get('send_keys', ''))}, "
+        f"send_keys_delay_sec = {int(num(body.get('send_keys_delay_sec') or 5))}, "
+        f"report_files = {esc(report_json)}::jsonb, "
+        f"sort_order = {int(num(body.get('sort_order') or 0))}"
+    )
+    if pid:
+        cur.execute(f"UPDATE {SCHEMA}.stress_test_presets SET {fields} WHERE id = {int(pid)} RETURNING id")
+    else:
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_test_presets "
+            f"(label, hint, test_name, program, args, duration_sec, timeout_is_success, "
+            f"success_exit_code, min_run_sec, send_keys, send_keys_delay_sec, report_files, sort_order) VALUES "
+            f"({esc(body.get('label', ''))}, {esc(body.get('hint', ''))}, {esc(body.get('test_name', ''))}, "
+            f"{esc(body.get('program', ''))}, {esc(body.get('args', ''))}, {int(num(body.get('duration_sec') or 600))}, "
+            f"{'TRUE' if body.get('timeout_is_success', True) else 'FALSE'}, "
+            f"{int(num(body.get('success_exit_code') if body.get('success_exit_code') is not None else -1))}, "
+            f"{int(num(body.get('min_run_sec') or 0))}, {esc(body.get('send_keys', ''))}, "
+            f"{int(num(body.get('send_keys_delay_sec') or 5))}, {esc(report_json)}::jsonb, "
+            f"{int(num(body.get('sort_order') or 0))}) RETURNING id"
+        )
+    new_id = cur.fetchone()[0]
+    conn.commit()
+    return ok({"ok": True, "id": new_id})
+
+
+def preset_delete(cur, conn, pid):
+    if not pid:
+        return err("id required")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_test_presets WHERE id = {pid}")
+    conn.commit()
+    return ok({"ok": True})

@@ -105,6 +105,10 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
     metric_prefs_save. Вкладка «Метрики» (MetricPrefsTab): скрыть/показать,
     порядок (drag), своё имя, категория. Применяется в карточке прогона +
     фильтр по категориям. metricUtils.ts (categoryOf/prefId/CATEGORIES).
+    Двойной клик по плитке метрики → переход на «Метрики» + красная подсветка.
+  ПРЕСЕТЫ ТЕСТОВ: таблица stress_test_presets (V0159), actions presets_list/
+    preset_save/preset_delete. Кнопка «Создать новый тест» — конструктор пресета
+    (форма). Пресеты из БД используются в редакторе профиля. Cinebench R23 засеян.
   АВТОНАЖАТИЕ КЛАВИШ: KeySender (Win32) — поле send_keys в тесте (FurMark «P»).
   OCCT 12+ CLI в пресетах: -run -test=CPU -duration=600 -auto=1 -report=...
 

@@ -3,6 +3,24 @@
 
 ---
 
+## v5.46 | 2026-06-25 | Стресс-тесты: конструктор пресетов в БД + Cinebench R23
+
+### БД (V0159) + backend/stress
+- Таблица stress_test_presets (label, hint, test_name, program, args, время,
+  таймаут, код успеха, min_run_sec, send_keys, report_files...). Засеяна 5
+  встроенными пресетами + Cinebench R23 с путём
+  StressTests\CINEBENCH R23\23.2.0.0\Cinebench.exe (CLI-автозапуск).
+- Actions: presets_list / preset_save / preset_delete.
+
+### Frontend (StressProfilesTab)
+- Кнопка «Создать новый тест» теперь открывает КОНСТРУКТОР пресета (форма со
+  всеми параметрами теста). Сохранённый тест доступен в списке «Готовые тесты»
+  и как кнопка-пресет в редакторе профиля.
+- Пресеты грузятся из БД (хардкод убран). Блок «Готовые тесты» в списке профилей
+  с Изменить/Удалить. api.stress.presetsList/presetSave/presetDelete.
+
+---
+
 ## v5.45 | 2026-06-25 | StressRunner: температуры планок памяти (SPD/DIMM)
 
 ### desktop/StressRunner
