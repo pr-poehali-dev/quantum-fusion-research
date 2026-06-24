@@ -254,7 +254,7 @@ export default function Configurator() {
   const [slots, setSlots] = useState<Record<string, CatalogComp[]>>({})
   const [selected, setSelected] = useState<Record<string, SelectedComp | null>>(draft0.selected || {})
   const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>>(draft0.customInputs || {})
-  const [mode, setMode] = useState<"catalog" | "custom">("catalog")
+  const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed")
 
   // НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип)
   const [pickerSlot, setPickerSlot] = useState<string | null>(null)
@@ -684,20 +684,21 @@ export default function Configurator() {
           )}
         </div>
 
-        {/* Mode toggle */}
+        {/* View toggle: подробный (с превью, как в корзине) / компактный */}
         {!(buildToken && isReadOnly) && (
-        <div className="mb-6 flex flex-col items-center gap-2">
-          <button onClick={() => setMode("catalog")} className={`flex w-full max-w-xs items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${mode === "catalog" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
-            <Icon name="ShoppingBag" size={16} />Из нашего каталога
+        <div className="mb-6 flex items-center justify-end gap-1.5">
+          <span className="mr-1 text-xs text-foreground/40">Вид:</span>
+          <button onClick={() => setViewMode("detailed")} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "detailed" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
+            <Icon name="LayoutList" size={14} />Подробный
           </button>
-          <button onClick={() => setMode("custom")} className={`flex w-full max-w-xs items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${mode === "custom" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
-            <Icon name="PenLine" size={16} />Своё железо
+          <button onClick={() => setViewMode("compact")} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "compact" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
+            <Icon name="Menu" size={14} />Компактный
           </button>
         </div>
         )}
 
         {/* Banner: всё из каталога → предложить сборку */}
-        {!(buildToken && isReadOnly) && mode === "custom" && hasComponents && allFromCatalog && (
+        {!(buildToken && isReadOnly) && hasComponents && allFromCatalog && !wantAssembly && (
           <div className="mb-5 flex items-center gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
             <Icon name="Sparkles" size={20} className="text-primary shrink-0" />
             <div className="flex-1">
@@ -920,6 +921,25 @@ export default function Configurator() {
                     {current && (
                       <div className="border-t border-border/40 px-4 pb-4 pt-3">
                         <div className="flex items-start gap-3">
+                          {/* Превью-фото (подробный вид) — как в корзине */}
+                          {viewMode === "detailed" && (
+                            current.source === "catalog" && current.source_id ? (
+                              <a href={`/product/${current.source_id}`} target="_blank" rel="noopener noreferrer"
+                                title="Открыть товар в новой вкладке"
+                                className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted transition-opacity hover:opacity-90"
+                                style={{ cursor: "pointer" }}>
+                                {current.image_urls?.[0]
+                                  ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
+                                  : <Icon name={meta.icon as "Cpu"} size={22} className="text-foreground/40" />}
+                              </a>
+                            ) : (
+                              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                                {current.image_urls?.[0]
+                                  ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-contain" />
+                                  : <Icon name={meta.icon as "Cpu"} size={22} className="text-foreground/40" />}
+                              </div>
+                            )
+                          )}
                           {/* Name + link */}
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-foreground leading-tight">{current.name}</p>
