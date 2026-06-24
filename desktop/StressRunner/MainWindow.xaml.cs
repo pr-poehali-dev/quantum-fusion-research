@@ -45,6 +45,12 @@ public partial class MainWindow : Window
         ScaleUpBtn.Click += (_, _) => ChangeScale(+0.1);
 
         ApplyScale(_settings.UiScale);
+        RestoreWindowSize();
+
+        // Сохраняем размер окна при ресайзе и при закрытии.
+        SizeChanged += (_, _) => SaveWindowSize();
+        StateChanged += (_, _) => SaveWindowSize();
+        Closing += (_, _) => SaveWindowSize();
 
         UpdateAuthBadge();
 
@@ -152,6 +158,10 @@ public partial class MainWindow : Window
         double s = Math.Clamp(Math.Round(_settings.UiScale + delta, 1), 0.8, 1.6);
         _settings.UiScale = s;
         ApplyScale(s);
+        // Чтобы при увеличении масштаба контент не обрезался — окно может
+        // подрасти, но НЕ меньше уже выбранного пользователем размера.
+        Width = Math.Max(Width, BaseWidth * s);
+        Height = Math.Max(Height, BaseHeight * s);
         SaveSettings();
     }
 
@@ -163,9 +173,39 @@ public partial class MainWindow : Window
         if (s < 0.8 || s > 1.6) s = 1.0;
         UiScale.ScaleX = s;
         UiScale.ScaleY = s;
-        // Подгоняем размер окна под масштаб, чтобы контент не обрезался.
-        Width = BaseWidth * s;
-        Height = BaseHeight * s;
+    }
+
+    // ─── Размер окна (запоминаем разрешение и состояние) ───
+
+    private void RestoreWindowSize()
+    {
+        if (_settings.WinMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            if (_settings.WinW >= 400 && _settings.WinW <= 6000) Width = _settings.WinW;
+            if (_settings.WinH >= 300 && _settings.WinH <= 4000) Height = _settings.WinH;
+        }
+    }
+
+    private bool _sizeReady;
+
+    private void SaveWindowSize()
+    {
+        // Игнорируем самые первые события до полной инициализации.
+        if (!IsLoaded) { _sizeReady = true; return; }
+        if (!_sizeReady) { _sizeReady = true; return; }
+
+        _settings.WinMaximized = WindowState == WindowState.Maximized;
+        // Размер сохраняем только в нормальном состоянии (RestoreBounds — на случай макс.).
+        if (WindowState == WindowState.Normal)
+        {
+            _settings.WinW = Width;
+            _settings.WinH = Height;
+        }
+        SaveSettings();
     }
 
     private void Restart()

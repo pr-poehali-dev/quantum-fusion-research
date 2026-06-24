@@ -122,6 +122,12 @@ public class AppSettings
     [JsonPropertyName("ui_scale")]
     public double UiScale { get; set; } = 1.0;
 
+    /// <summary>Размер окна (ширина/высота) — запоминается при ресайзе. 0 — не задано.</summary>
+    [JsonPropertyName("win_w")] public double WinW { get; set; } = 0;
+    [JsonPropertyName("win_h")] public double WinH { get; set; } = 0;
+    /// <summary>Развёрнуто ли окно на весь экран.</summary>
+    [JsonPropertyName("win_maximized")] public bool WinMaximized { get; set; } = false;
+
     /// <summary>Путь к HWiNFO64.exe (относительный или полный). Пусто — авто-поиск в StressTests\HWinfo.</summary>
     [JsonPropertyName("hwinfo_path")]
     public string HwInfoPath { get; set; } = "";
