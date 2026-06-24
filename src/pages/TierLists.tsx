@@ -25,14 +25,20 @@ interface TierItem {
 interface TierCategory { id: number; name: string; slug: string; sort_order?: number }
 interface TierAttr extends ShopAttr { category_slug?: string }
 
-// Ряды тир-листа: буква + цвет фона ярлыка (как на классических тир-листах)
-const TIERS: Array<{ rank: string; color: string }> = [
-  { rank: "S", color: "#ef4444" },
-  { rank: "A", color: "#f97316" },
-  { rank: "B", color: "#eab308" },
-  { rank: "C", color: "#22c55e" },
-  { rank: "D", color: "#3b82f6" },
-  { rank: "F", color: "#a855f7" },
+// Ряды тир-листа: буква + цвет фона ярлыка + описание (показывается по двойному клику)
+const TIERS: Array<{ rank: string; color: string; title: string; desc: string }> = [
+  { rank: "S", color: "#ef4444", title: "Эталон",
+    desc: "Лучшее в своём классе. Минимум огрехов или безальтернативное решение под конкретную задачу либо бюджет. Берём не задумываясь — переплата (если она есть) полностью оправдана." },
+  { rank: "A", color: "#f97316", title: "Отличный выбор",
+    desc: "Почти топ: отличное соотношение цены и возможностей. Есть мелкие компромиссы, но для подавляющего большинства сборок это лучший разумный вариант." },
+  { rank: "B", color: "#eab308", title: "Крепкий середняк",
+    desc: "Хорошее, сбалансированное решение без явных слабых мест. Не вершина, но честно отрабатывает свои деньги. Подойдёт, если нужен надёжный вариант без переплат." },
+  { rank: "C", color: "#22c55e", title: "На любителя",
+    desc: "Рабочий вариант, но с заметными компромиссами — по цене, нагреву, шуму или функциям. Брать стоит по акции или под узкую задачу, когда устраивают его минусы." },
+  { rank: "D", color: "#3b82f6", title: "Так себе",
+    desc: "Слабая позиция: за эти деньги почти всегда есть варианты лучше. Рассматривать только при сильной скидке или если ничего другого реально нет в наличии." },
+  { rank: "F", color: "#a855f7", title: "Не рекомендуем",
+    desc: "Категорически не советуем: завышенная цена, устаревшая или проблемная конструкция, плохая надёжность либо совместимость. Почти всегда есть более выгодная альтернатива." },
 ]
 const RANKS = TIERS.map(t => t.rank)
 
@@ -113,6 +119,7 @@ export default function TierLists() {
   const [dragId, setDragId] = useState<number | null>(null)
   const [dragOverId, setDragOverId] = useState<number | null>(null)  // карточка, перед которой будет вставка (для полосы)
   const [pickedId, setPickedId] = useState<number | null>(null)  // выбранная карточка (клик-режим)
+  const [openTier, setOpenTier] = useState<string | null>(null)  // ряд с раскрытым описанием (по двойному клику)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
@@ -297,6 +304,7 @@ export default function TierLists() {
           <h1 className="text-3xl font-bold">Тир-листы железа</h1>
           <p className="mt-1 text-sm text-foreground/60">
             Рейтинг комплектующих по рядам — от лучших (S) до спорных (F).
+            Дважды кликните на букву ряда, чтобы узнать, что она означает.
           </p>
           {isAdmin && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground/70">
@@ -399,11 +407,33 @@ export default function TierLists() {
                       onDrop={() => dropToRank(t.rank)}
                       onClick={() => { if (isAdmin && pickedId != null) dropToRank(t.rank) }}
                       className={`flex items-stretch ${idx > 0 ? "border-t border-border" : ""} ${isAdmin && pickedId != null ? "cursor-pointer hover:bg-primary/5" : ""}`}>
-                      <div className="flex w-16 shrink-0 items-center justify-center sm:w-20" style={{ backgroundColor: t.color }}>
+                      {/* Ярлык ряда. Двойной клик — показать/скрыть описание тира */}
+                      <div
+                        onDoubleClick={() => setOpenTier(o => o === t.rank ? null : t.rank)}
+                        title="Дважды кликните, чтобы узнать про этот ряд"
+                        className="flex w-16 shrink-0 flex-col items-center justify-center sm:w-20"
+                        style={{ backgroundColor: t.color, cursor: "pointer" }}>
                         <span className="text-2xl font-black text-white drop-shadow">{t.rank}</span>
+                        <Icon name="Info" size={11} className="mt-0.5 text-white/70" />
                       </div>
-                      <div className="flex min-h-[7rem] flex-1 flex-wrap content-start gap-2 bg-card/40 p-3">
-                        {byRank.map[t.rank].map(it => renderCard(it))}
+                      <div className="flex min-h-[7rem] flex-1 flex-col gap-2 bg-card/40 p-3">
+                        {/* Описание тира (раскрывается по двойному клику на букву) */}
+                        {openTier === t.rank && (
+                          <div className="flex items-start gap-2 rounded-lg border px-3 py-2"
+                            style={{ borderColor: `${t.color}55`, backgroundColor: `${t.color}14` }}>
+                            <span className="mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold text-white" style={{ backgroundColor: t.color }}>{t.rank}</span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">{t.title}</p>
+                              <p className="mt-0.5 text-xs leading-snug text-foreground/70">{t.desc}</p>
+                            </div>
+                            <button onClick={() => setOpenTier(null)} className="ml-auto shrink-0 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+                              <Icon name="X" size={14} />
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap content-start gap-2">
+                          {byRank.map[t.rank].map(it => renderCard(it))}
+                        </div>
                       </div>
                     </div>
                   ))}
