@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 
@@ -20,6 +21,10 @@ const TABS: Array<Tab | "sep"> = [
 export default function CatalogTabs() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  // На мобильных вкладки показываются только иконками. Первый тап раскрывает
+  // название (revealed), второй тап по той же вкладке — переход на страницу.
+  // На десктопе (sm+) текст виден всегда, тап сразу ведёт на страницу.
+  const [revealed, setRevealed] = useState<string | null>(null)
 
   return (
     <div className="border-b border-border">
@@ -27,11 +32,21 @@ export default function CatalogTabs() {
         {TABS.map((t, i) => {
           if (t === "sep") return <div key={`sep-${i}`} className="mx-3 my-3 w-px bg-border shrink-0" />
           const active = pathname === t.path || pathname.startsWith(t.path + "/")
+          const isRevealed = revealed === t.path
+          const onTabClick = () => {
+            // На широких экранах поведение прежнее — сразу переход.
+            if (window.matchMedia("(min-width: 640px)").matches) { navigate(t.path); return }
+            // На мобильных: первый тап раскрывает название, второй — переход.
+            if (isRevealed) { navigate(t.path); return }
+            setRevealed(t.path)
+          }
           return (
             <button
               key={t.path}
-              onClick={() => navigate(t.path)}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
+              onClick={onTabClick}
+              title={t.label}
+              aria-label={t.label}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-3 sm:px-5 py-3 text-sm font-medium transition-colors ${
                 active
                   ? "border-primary text-primary"
                   : "border-transparent text-foreground/60 hover:text-foreground"
@@ -39,7 +54,8 @@ export default function CatalogTabs() {
               style={{ cursor: "pointer" }}
             >
               <Icon name={t.icon} size={15} />
-              {t.label}
+              {/* Текст: на десктопе всегда; на мобильных — у активной или раскрытой тапом */}
+              <span className={`${active || isRevealed ? "inline" : "hidden"} sm:inline`}>{t.label}</span>
             </button>
           )
         })}
