@@ -91,7 +91,12 @@ export function ThemeSwitcher() {
         style={{ cursor: "pointer" }}
         title="Настройки темы"
       >
-        <Icon name={mode === "dark" ? "Moon" : "Sun"} size={15} />
+        <Icon
+          name={mode === "dark" ? "Moon" : "Sun"}
+          size={15}
+          className="text-primary"
+          style={{ filter: "drop-shadow(0 0 5px hsl(var(--primary)))" }}
+        />
         <span
           className="h-3 w-3 rounded-full ring-1 ring-border"
           style={{ backgroundColor: accentId.startsWith("custom:") ? currentCustomHex : currentDot }}

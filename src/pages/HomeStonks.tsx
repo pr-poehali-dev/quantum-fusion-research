@@ -141,9 +141,9 @@ export default function HomeStonks() {
                 <Icon name="LogIn" size={15} />
               </button>
             )}
-            <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
+            <button onClick={() => navigate("/cart")} className="relative flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm hover:border-primary transition-colors sm:px-4" style={{ cursor: "pointer" }}>
               <Icon name="ShoppingCart" size={16} />
-              <span>Корзина</span>
+              <span className="hidden sm:inline">Корзина</span>
               {count() > 0 && <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">{count()}</span>}
             </button>
           </div>
