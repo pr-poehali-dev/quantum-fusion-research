@@ -44,6 +44,19 @@ public class Runner
 
         Log($"=== Профиль: {profile.Name} ({profile.Tests.Count} тестов) ===");
 
+        // Фоновый сбор метрик с HWiNFO (раз в секунду) на всё время прогона.
+        var metrics = new MetricsCollector();
+        using var stopSampling = new System.Threading.CancellationTokenSource();
+        var sampler = System.Threading.Tasks.Task.Run(async () =>
+        {
+            while (!stopSampling.IsCancellationRequested)
+            {
+                metrics.Sample();
+                try { await System.Threading.Tasks.Task.Delay(1000, stopSampling.Token); }
+                catch { break; }
+            }
+        });
+
         int idx = 0;
         foreach (var test in profile.Tests)
         {
@@ -57,6 +70,15 @@ public class Runner
                 : $"    ОШИБКА (код {res.ExitCode?.ToString() ?? "—"}, {res.DurationSec:F0} сек)");
             OnTestDone?.Invoke(res.Success, test.Name);
         }
+
+        // Останавливаем сэмплер и собираем итог.
+        stopSampling.Cancel();
+        try { sampler.Wait(2000); } catch { }
+        run.Metrics = metrics.Build();
+        if (run.Metrics.Count > 0)
+            Log($"Метрики HWiNFO собраны: {run.Metrics.Count} показателей.");
+        else
+            Log("Метрики HWiNFO не собраны (датчики недоступны — проверь HWiNFO/отладку).");
 
         run.FinishedAt = DateTime.UtcNow.ToString("o");
         int failed = run.Results.Count(r => !r.Success);

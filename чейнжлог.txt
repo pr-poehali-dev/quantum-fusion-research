@@ -3,6 +3,31 @@
 
 ---
 
+## v5.33 | 2026-06-24 | StressRunner: метрики HWiNFO (Shared Memory) + дебаг + админка
+
+### desktop/StressRunner
+- HwInfoSharedMem: чтение сенсоров из общей памяти HWiNFO_SENS_SM2 (типы Temp/
+  Usage/Fan/Clock/Power, значение/min/max/avg/unit).
+- HwInfoReader: сначала Shared Memory, потом реестр Gadget (оба канала).
+  Метод Debug() — статус канала + полный список сенсоров.
+- DebugWindow: окно «🔍 Датчики (отладка)» — какой канал доступен и таблица
+  всех сенсоров (тип/метка/значение/min/max/ед.), кнопка «Скопировать».
+- MetricsCollector: во время прогона сэмплит раз в секунду, агрегирует min/max/avg
+  по cpu_temp/gpu_temp/cpu_load/gpu_load/fan_*/clock_*/power_*.
+- Runner: фоновый сбор метрик на всё время прогона → run.Metrics.
+- Models: MetricPayload + RunPayload.Metrics.
+
+### БД (V0157) + backend/stress
+- Таблица stress_metrics (run_id, key, label, unit, min/max/avg, samples).
+- ingest сохраняет метрики, get_run отдаёт, delete_run чистит.
+- action=verify_token (для авторизации в приложении).
+
+### Frontend (StressTestsTab)
+- В карточке прогона блок «Датчики HWiNFO» — плитки min/сред/max по каждому
+  показателю (температуры, нагрузка, обороты, частоты, ватты).
+
+---
+
 ## v5.32 | 2026-06-24 | StressRunner: правильный подход к запуску (CLI vs GUI)
 
 ### Суть

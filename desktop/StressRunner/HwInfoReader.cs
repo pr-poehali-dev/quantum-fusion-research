@@ -26,9 +26,10 @@ public class HwInfoReader
         public bool Available;      // нашли ли вообще данные HWiNFO
     }
 
-    /// <summary>Доступен ли HWiNFO (есть ли ветка VSB в реестре).</summary>
+    /// <summary>Доступен ли HWiNFO (Shared Memory или реестр Gadget).</summary>
     public static bool IsAvailable()
     {
+        if (HwInfoSharedMem.ReadAll(out _).Count > 0) return true;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(VsbPath);
@@ -89,8 +90,47 @@ public class HwInfoReader
         }
     }
 
-    /// <summary>Снять текущие показания. Если HWiNFO нет — Available=false.</summary>
+    /// <summary>
+    /// Снять текущие показания. Сначала пробуем Shared Memory (SM2), если её
+    /// нет — реестр Gadget (VSB). Available=false если оба канала пусты.
+    /// </summary>
     public Snapshot Read()
+    {
+        // 1) Shared Memory — основной канал.
+        var sm = HwInfoSharedMem.ReadAll(out _);
+        if (sm.Count > 0) return FromReadings(sm);
+
+        // 2) Реестр Gadget — запасной.
+        return FromRegistry();
+    }
+
+    private static Snapshot FromReadings(List<HwInfoSharedMem.Reading> readings)
+    {
+        var snap = new Snapshot { Available = true };
+        foreach (var r in readings)
+        {
+            string l = r.Label.ToLowerInvariant();
+            bool isTemp = r.Type == HwInfoSharedMem.ReadingType.Temp;
+            bool isUsage = r.Type == HwInfoSharedMem.ReadingType.Usage;
+
+            if (snap.CpuLoad == null && isUsage && l.Contains("cpu") && (l.Contains("total") || l.Contains("usage")))
+                snap.CpuLoad = r.Value;
+            else if (snap.GpuLoad == null && isUsage && l.Contains("gpu"))
+                snap.GpuLoad = r.Value;
+            else if (snap.CpuTemp == null && isTemp && l.Contains("cpu") && (l.Contains("package") || l.Contains("tctl") || l.Contains("tdie") || l.Contains("ccd")))
+                snap.CpuTemp = r.Value;
+            else if (snap.GpuTemp == null && isTemp && l.Contains("gpu"))
+                snap.GpuTemp = r.Value;
+        }
+        // Если по точным меткам не нашли CPU temp — берём первый CPU temp.
+        if (snap.CpuTemp == null)
+            foreach (var r in readings)
+                if (r.Type == HwInfoSharedMem.ReadingType.Temp && r.Label.ToLowerInvariant().Contains("cpu"))
+                { snap.CpuTemp = r.Value; break; }
+        return snap;
+    }
+
+    private Snapshot FromRegistry()
     {
         var snap = new Snapshot();
         try
@@ -98,7 +138,6 @@ public class HwInfoReader
             using var key = Registry.CurrentUser.OpenSubKey(VsbPath);
             if (key == null) return snap;
 
-            // Собираем пары LabelN -> ValueN.
             var labels = new Dictionary<int, string>();
             var values = new Dictionary<int, string>();
             foreach (var name in key.GetValueNames())
@@ -130,6 +169,45 @@ public class HwInfoReader
         }
         catch { /* нет доступа — оставим Available=false */ }
         return snap;
+    }
+
+    /// <summary>
+    /// Для дебаг-окна: какой канал доступен и полный список сенсоров.
+    /// </summary>
+    public static (string status, List<HwInfoSharedMem.Reading> readings) Debug()
+    {
+        var sm = HwInfoSharedMem.ReadAll(out string smStatus);
+        if (sm.Count > 0)
+            return ($"Канал: Shared Memory. {smStatus}", sm);
+
+        // Реестр → отдадим как readings (упрощённо).
+        var list = new List<HwInfoSharedMem.Reading>();
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(VsbPath);
+            if (key != null)
+            {
+                var labels = new Dictionary<int, string>();
+                var values = new Dictionary<int, string>();
+                foreach (var name in key.GetValueNames())
+                {
+                    if (name.StartsWith("Label") && int.TryParse(name[5..], out int li))
+                        labels[li] = key.GetValue(name)?.ToString() ?? "";
+                    else if (name.StartsWith("Value") && int.TryParse(name[5..], out int vi))
+                        values[vi] = key.GetValue(name)?.ToString() ?? "";
+                }
+                foreach (var (i, label) in labels)
+                {
+                    values.TryGetValue(i, out var raw);
+                    list.Add(new HwInfoSharedMem.Reading { Label = label, Unit = raw ?? "", Value = ParseNumber(raw ?? "") ?? 0 });
+                }
+                if (list.Count > 0)
+                    return ($"Канал: реестр Gadget (Shared Memory недоступна: {smStatus}). Сенсоров: {list.Count}", list);
+            }
+        }
+        catch { }
+
+        return ($"HWiNFO не отдаёт данные. {smStatus} Реестр Gadget тоже пуст. Проверь, что HWiNFO запущен и включён Shared Memory или Gadget.", list);
     }
 
     private static double? ParseNumber(string raw)

@@ -39,6 +39,7 @@ public partial class MainWindow : Window
         AuthBtn.Click += (_, _) => OpenAuth();
         ThemeBtn.Click += (_, _) => OpenTheme();
         OpenTestsBtn.Click += (_, _) => OpenTestsFolder();
+        DebugBtn.Click += (_, _) => new DebugWindow { Owner = this }.ShowDialog();
 
         // Запускаем HWiNFO в фоне (если он положен в StressTests\HWinfo).
         HwInfoReader.EnsureRunning(_settings, msg => AppendLog(msg));

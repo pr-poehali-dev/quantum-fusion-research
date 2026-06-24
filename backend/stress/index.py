@@ -193,8 +193,16 @@ def ingest(cur, conn, body):
                 f"({result_id}, {esc(name)}, {esc(url)}, {size})"
             )
 
+    # Метрики HWiNFO за прогон (min/max/avg по температурам, нагрузке, оборотам и т.д.)
+    for m in (body.get("metrics") or []):
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_metrics (run_id, key, label, unit, min_val, max_val, avg_val, samples) VALUES "
+            f"({run_id}, {esc(m.get('key', ''))}, {esc(m.get('label', ''))}, {esc(m.get('unit', ''))}, "
+            f"{num(m.get('min'))}, {num(m.get('max'))}, {num(m.get('avg'))}, {int(num(m.get('samples')))})"
+        )
+
     conn.commit()
-    return ok({"ok": True, "run_id": run_id, "results": len(results)})
+    return ok({"ok": True, "run_id": run_id, "results": len(results), "metrics": len(body.get("metrics") or [])})
 
 
 def list_runs(cur):
@@ -254,6 +262,19 @@ def get_run(cur, run_id):
         for r2 in results:
             r2["files"] = by_res.get(r2["id"], [])
     run["results"] = results
+
+    # Метрики HWiNFO
+    cur.execute(
+        f"SELECT key, label, unit, min_val, max_val, avg_val, samples "
+        f"FROM {SCHEMA}.stress_metrics WHERE run_id = {run_id} ORDER BY id"
+    )
+    run["metrics"] = [{
+        "key": m[0], "label": m[1], "unit": m[2],
+        "min": float(m[3]) if m[3] is not None else None,
+        "max": float(m[4]) if m[4] is not None else None,
+        "avg": float(m[5]) if m[5] is not None else None,
+        "samples": m[6],
+    } for m in cur.fetchall()]
     return ok({"run": run})
 
 
@@ -265,6 +286,7 @@ def delete_run(cur, conn, run_id):
         f"(SELECT id FROM {SCHEMA}.stress_results WHERE run_id = {run_id})"
     )
     cur.execute(f"DELETE FROM {SCHEMA}.stress_results WHERE run_id = {run_id}")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_metrics WHERE run_id = {run_id}")
     cur.execute(f"DELETE FROM {SCHEMA}.stress_runs WHERE id = {run_id}")
     conn.commit()
     return ok({"ok": True})

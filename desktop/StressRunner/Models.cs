@@ -141,6 +141,18 @@ public class FilePayload
     [JsonPropertyName("content_base64")] public string ContentBase64 { get; set; } = "";
 }
 
+/// <summary>Агрегированная метрика за прогон: min/max/avg по одной величине.</summary>
+public class MetricPayload
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";       // cpu_temp, gpu_temp, cpu_load, gpu_load, fan, clock, power
+    [JsonPropertyName("label")] public string Label { get; set; } = "";   // человекочитаемое
+    [JsonPropertyName("unit")] public string Unit { get; set; } = "";     // °C, %, RPM, MHz, W
+    [JsonPropertyName("min")] public double Min { get; set; }
+    [JsonPropertyName("max")] public double Max { get; set; }
+    [JsonPropertyName("avg")] public double Avg { get; set; }
+    [JsonPropertyName("samples")] public int Samples { get; set; }
+}
+
 public class RunPayload
 {
     [JsonPropertyName("run_uid")] public string RunUid { get; set; } = "";
@@ -152,4 +164,5 @@ public class RunPayload
     [JsonPropertyName("finished_at")] public string? FinishedAt { get; set; }
     [JsonPropertyName("status")] public string Status { get; set; } = "completed";
     [JsonPropertyName("results")] public List<ResultPayload> Results { get; set; } = new();
+    [JsonPropertyName("metrics")] public List<MetricPayload> Metrics { get; set; } = new();
 }

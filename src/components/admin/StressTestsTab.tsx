@@ -5,6 +5,7 @@ import { getAdminKey } from "@/pages/admin/types"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
+interface Metric { key: string; label: string; unit: string; min: number | null; max: number | null; avg: number | null; samples: number }
 interface ResultRow {
   id: number
   test_name: string
@@ -33,6 +34,7 @@ interface Run {
   status: string
   created_at: string
   results?: ResultRow[]
+  metrics?: Metric[]
 }
 
 function fmtDate(s: string | null) {
@@ -181,6 +183,32 @@ export default function StressTestsTab() {
                 <div className="text-xs text-foreground/40">с ошибкой</div>
               </div>
             </div>
+
+            {/* Метрики HWiNFO */}
+            {selected.metrics && selected.metrics.length > 0 && (
+              <div className="mb-5">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">
+                  <Icon name="Activity" size={13} /> Датчики HWiNFO (min / сред / max)
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {selected.metrics.map((m, i) => (
+                    <div key={i} className="rounded-xl border border-border bg-card p-3">
+                      <div className="truncate text-[11px] text-foreground/40" title={m.label}>{m.label}</div>
+                      <div className="mt-1 flex items-baseline gap-1">
+                        <span className="text-xl font-bold text-foreground">{m.max ?? "—"}</span>
+                        <span className="text-xs text-foreground/40">{m.unit}</span>
+                        <span className="ml-1 rounded bg-red-500/15 px-1 py-0.5 text-[9px] text-red-400">max</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/50">
+                        <span>мин {m.min ?? "—"}</span>
+                        <span>·</span>
+                        <span>сред {m.avg ?? "—"}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Таблица результатов */}
             <div className="space-y-2">
