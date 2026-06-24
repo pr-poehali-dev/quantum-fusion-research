@@ -330,14 +330,14 @@ export default function StressProfilesTab() {
           <div className="relative">
             <button onClick={() => setPresetMenu(v => !v)}
               className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="Zap" size={16} className="text-accent" /> Готовый тест
+              <Icon name="Zap" size={16} className="text-accent" /> Создать новый тест
               <Icon name="ChevronDown" size={14} />
             </button>
             {presetMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setPresetMenu(false)} />
                 <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-border bg-card p-1.5 shadow-2xl">
-                  <div className="px-2 py-1.5 text-[11px] uppercase tracking-wide text-foreground/40">Создать профиль с тестом</div>
+                  <div className="px-2 py-1.5 text-[11px] uppercase tracking-wide text-foreground/40">Выбери тип теста</div>
                   {PRESETS.map(p => (
                     <button key={p.key} onClick={() => newFromPreset(p)} title={p.hint}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-foreground/80 hover:bg-muted hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
