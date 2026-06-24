@@ -1786,8 +1786,8 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
   const [form, setForm] = useState({
     store_id: "" as number | "",
-    qty: 1,
-    cost_price: 0,
+    qty: "" as string,
+    cost_price: "" as string,
     purchase_date: new Date().toISOString().substring(0, 10),
     has_vat: null as boolean | null,
   })
@@ -1795,11 +1795,15 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
   const [error, setError] = useState("")
   const [showErrors, setShowErrors] = useState(false)
 
-  // Условия валидности: выбран магазин, цена закупки (> 0) и выбран НДС (да/нет)
+  const qtyNum = parseInt(form.qty) || 0
+  const costNum = parseFloat(form.cost_price) || 0
+
+  // Условия валидности: выбран магазин, кол-во (> 0), цена закупки (> 0) и выбран НДС (да/нет)
   const storeInvalid = form.store_id === "" || form.store_id == null
-  const priceInvalid = !form.cost_price || form.cost_price <= 0
+  const qtyInvalid = qtyNum <= 0
+  const priceInvalid = costNum <= 0
   const vatInvalid = form.has_vat === null
-  const canSave = !storeInvalid && !priceInvalid && !vatInvalid
+  const canSave = !storeInvalid && !qtyInvalid && !priceInvalid && !vatInvalid
   const [alerts, setAlerts] = useState<{product: string, reserved: number, orders: number[]}[]>([])
 
   // ── Ввод серийников после приёмки (для категорий из учёта SN) ──
@@ -1832,17 +1836,17 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
     const data = await api.warehouse.createSupply({
       group_id: selectedGroup.id,
       store_id: form.store_id || null,
-      qty: form.qty,
-      price_with_vat: form.cost_price,
+      qty: qtyNum,
+      price_with_vat: costNum,
       has_vat: form.has_vat,
       purchase_date: form.purchase_date,
     })
     setLoading(false)
     if (data.error) { setError(data.error); return }
     // Категория с учётом серийников → переходим к вводу SN (не закрываем).
-    if (needSerials && data.id && form.qty > 0) {
+    if (needSerials && data.id && qtyNum > 0) {
       setSnSupplyId(data.id)
-      setSerials(Array.from({ length: form.qty }, () => ""))
+      setSerials(Array.from({ length: qtyNum }, () => ""))
       setSnStep(true)
       if (data.negative_alerts?.length) setAlerts(data.negative_alerts)
       return
@@ -2044,13 +2048,17 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs text-foreground/50">Кол-во *</label>
-                <Input type="number" min={1} value={form.qty}
-                  onChange={e => setForm(p => ({ ...p, qty: parseInt(e.target.value) || 1 }))} />
+                <Input type="number" min={1} value={form.qty} placeholder="0"
+                  onChange={e => setForm(p => ({ ...p, qty: e.target.value }))}
+                  className={showErrors && qtyInvalid ? "border-red-500 ring-1 ring-red-500" : ""} />
+                {showErrors && qtyInvalid && <p className="mt-1 text-[11px] text-red-500">Укажите количество</p>}
               </div>
               <div>
-                <label className="mb-1 block text-xs text-foreground/50">Цена закупки с НДС *</label>
-                <Input type="number" value={form.cost_price}
-                  onChange={e => setForm(p => ({ ...p, cost_price: parseFloat(e.target.value) || 0 }))}
+                <label className="mb-1 block text-xs text-foreground/50">
+                  {form.has_vat === false ? "Цена закупки без НДС *" : "Цена закупки с НДС *"}
+                </label>
+                <Input type="number" value={form.cost_price} placeholder="0"
+                  onChange={e => setForm(p => ({ ...p, cost_price: e.target.value }))}
                   className={showErrors && priceInvalid ? "border-red-500 ring-1 ring-red-500" : ""} />
                 {showErrors && priceInvalid && <p className="mt-1 text-[11px] text-red-500">Укажите цену закупки</p>}
               </div>
