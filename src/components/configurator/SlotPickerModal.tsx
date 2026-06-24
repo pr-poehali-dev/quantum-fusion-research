@@ -108,6 +108,9 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
   const [brandOpen, setBrandOpen] = useState(false)
   const [attrFilters, setAttrFilters] = useState<Record<number, Set<string>>>({})
   const [openAttr, setOpenAttr] = useState<Record<number, boolean>>({})
+  // Показ панели фильтров на телефоне (на десктопе она видна всегда).
+  // По умолчанию свёрнута — пользователь раскрывает кнопкой «Фильтры».
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   // Режим ручного ввода («Моё железо»)
   const [customMode, setCustomMode] = useState(!!startCustom)
@@ -390,6 +393,13 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
             {!customMode && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{visible.length}</span>}
           </div>
           <div className="flex items-center gap-2">
+            {!customMode && (
+              <button onClick={() => setMobileFiltersOpen(v => !v)}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors sm:hidden ${mobileFiltersOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary hover:text-primary"}`}
+                style={{ cursor: "pointer" }}>
+                <Icon name="SlidersHorizontal" size={13} /> Фильтры
+              </button>
+            )}
             {onCustomAdd && !hideCatalogToggle && (
               <button onClick={() => setCustomMode(v => !v)}
                 className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${customMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary hover:text-primary"}`}
@@ -451,9 +461,11 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
             </div>
           </div>
         ) : (
-        <div className="flex min-h-0 flex-1">
-          {/* Фильтры слева */}
-          <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-border p-4 sm:block">
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          {/* Фильтры: слева на десктопе; на телефоне — раскрываются кнопкой «Фильтры».
+              На телефоне панель занимает всю ширину и ограничена по высоте, чтобы
+              не выталкивать список товаров. */}
+          <aside className={`${mobileFiltersOpen ? "block max-h-[45vh] border-b" : "hidden"} w-full shrink-0 overflow-y-auto border-border p-4 sm:block sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r`}>
             <div className="relative mb-3">
               <Icon name="Search" size={14} className="absolute left-2.5 top-2.5 text-foreground/30" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по названию"
