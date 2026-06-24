@@ -89,6 +89,24 @@ public class Runner
                 return result;
             }
 
+            // Автонажатие клавиш (напр. "P" для FurMark) через N секунд.
+            if (!string.IsNullOrWhiteSpace(test.SendKeys))
+            {
+                var p = proc;
+                var keys = test.SendKeys;
+                int delay = test.SendKeysDelaySec > 0 ? test.SendKeysDelaySec : 5;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    System.Threading.Thread.Sleep(delay * 1000);
+                    try
+                    {
+                        KeySender.FocusAndSend(p, keys);
+                        Log($"    Нажал клавиши «{keys}» в окне теста.");
+                    }
+                    catch { }
+                });
+            }
+
             bool exitedInTime = proc.WaitForExit(test.DurationSec * 1000);
             sw.Stop();
 

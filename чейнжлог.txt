@@ -3,6 +3,27 @@
 
 ---
 
+## v5.29 | 2026-06-24 | StressRunner: темы как на сайте, HWiNFO автозапуск, FurMark «P», OCCT 12+
+
+### desktop/StressRunner
+- Темы как на сайте: ThemeManager (тёмная/светлая + 6 акцентов red/orange/blue/
+  purple/green/cyan). Theme.xaml переведён на DynamicResource — смена темы на лету.
+  Кастомный тёмный ComboBox (выбор профиля больше не светлый системный).
+  ThemeWindow — окно выбора темы (кнопка 🎨), сохранение в settings.json.
+- HWiNFO автозапуск: HwInfoReader.EnsureRunning — стартует HWiNFO64.EXE из
+  StressTests\HWinfo при запуске приложения (если ещё не запущен).
+- FurMark: автонажатие клавиши «P» через N сек (KeySender, Win32) — размазывает
+  бублик, выше нагрузка на GPU. Поля send_keys/send_keys_delay_sec в модели.
+- Кнопка «📂 Папка StressTests» в окне.
+- AppSettings: theme_mode, accent, hwinfo_path.
+
+### Frontend (StressProfilesTab)
+- OCCT-пресеты под CLI 12+: -run -test=CPU -duration=600 -auto=1 -report=...
+- FurMark-пресет: send_keys=P (задержка 5 сек).
+- Поля «Нажать клавиши после запуска» + «через сколько секунд» в редакторе.
+
+---
+
 ## v5.28 | 2026-06-24 | StressRunner: чистую папку релиза выносим на уровень выше
 
 ### desktop/StressRunner

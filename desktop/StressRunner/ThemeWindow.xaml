@@ -1,0 +1,26 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="StressRunner.ThemeWindow"
+    Title="Тема" Height="430" Width="320"
+    WindowStartupLocation="CenterOwner"
+    ResizeMode="NoResize" WindowStyle="ToolWindow"
+    Background="{DynamicResource Bg}"
+    FontFamily="Segoe UI">
+
+    <StackPanel Margin="22">
+        <TextBlock Text="ТЕМА" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource FgMuted}" Margin="0,0,0,8"/>
+        <Grid Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="DarkBtn" Grid.Column="0" Content="🌙  Тёмная" FontSize="13"/>
+            <Button x:Name="LightBtn" Grid.Column="2" Content="☀  Светлая" FontSize="13"/>
+        </Grid>
+
+        <TextBlock Text="АКЦЕНТНЫЙ ЦВЕТ" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource FgMuted}" Margin="0,0,0,10"/>
+        <StackPanel x:Name="AccentList"/>
+    </StackPanel>
+</Window>

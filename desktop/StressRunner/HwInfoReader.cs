@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using Microsoft.Win32;
 
 namespace StressRunner;
@@ -33,6 +35,52 @@ public class HwInfoReader
             return key != null && key.GetValueNames().Length > 0;
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Запустить HWiNFO в фоне, если он положен в StressTests\HWinfo (или указан
+    /// путь в settings) и ещё не запущен. Без него график пустой.
+    /// </summary>
+    public static void EnsureRunning(AppSettings settings, Action<string>? log = null)
+    {
+        try
+        {
+            // Уже запущен?
+            if (Process.GetProcessesByName("HWiNFO64").Length > 0 ||
+                Process.GetProcessesByName("HWiNFO32").Length > 0)
+                return;
+
+            // Ищем exe: сначала из settings, потом типовые места в StressTests.
+            string[] candidates =
+            {
+                string.IsNullOrWhiteSpace(settings.HwInfoPath) ? "" : Paths.Resolve(settings.HwInfoPath),
+                Paths.Resolve(@"StressTests\HWinfo\HWiNFO64.EXE"),
+                Paths.Resolve(@"StressTests\HWiNFO\HWiNFO64.EXE"),
+                Paths.Resolve(@"StressTests\HWinfo\HWiNFO64.exe"),
+            };
+
+            string? exe = null;
+            foreach (var c in candidates)
+                if (!string.IsNullOrWhiteSpace(c) && File.Exists(c)) { exe = c; break; }
+
+            if (exe == null)
+            {
+                log?.Invoke("HWiNFO не найден в StressTests\\HWinfo — график будет пустым. Положи туда HWiNFO64.EXE.");
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                WorkingDirectory = Path.GetDirectoryName(exe) ?? "",
+                UseShellExecute = true,
+            });
+            log?.Invoke("HWiNFO запущен. Если график пуст — включи в HWiNFO «Shared Memory Support».");
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"Не смог запустить HWiNFO: {ex.Message}");
+        }
     }
 
     /// <summary>Снять текущие показания. Если HWiNFO нет — Available=false.</summary>

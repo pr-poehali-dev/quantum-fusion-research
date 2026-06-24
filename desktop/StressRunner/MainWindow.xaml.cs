@@ -26,6 +26,10 @@ public partial class MainWindow : Window
         Paths.EnsureDirs();
         _settings = LoadSettings();
         _storage = new Storage(Paths.Db);
+
+        // Применяем тему из настроек (тёмная/светлая + акцент).
+        ThemeManager.Apply(_settings.ThemeMode, _settings.Accent);
+
         MachineLabel.Text = string.IsNullOrWhiteSpace(_settings.MachineName)
             ? Environment.MachineName : _settings.MachineName;
 
@@ -33,6 +37,11 @@ public partial class MainWindow : Window
         StopBtn.Click += (_, _) => _running = false;
         ReloadBtn.Click += async (_, _) => await ReloadProfiles();
         AuthBtn.Click += (_, _) => OpenAuth();
+        ThemeBtn.Click += (_, _) => OpenTheme();
+        OpenTestsBtn.Click += (_, _) => OpenTestsFolder();
+
+        // Запускаем HWiNFO в фоне (если он положен в StressTests\HWinfo).
+        HwInfoReader.EnsureRunning(_settings, msg => AppendLog(msg));
 
         UpdateAuthBadge();
 
@@ -82,6 +91,35 @@ public partial class MainWindow : Window
             // Настройки уже сохранены в settings.json — перезапускаем приложение.
             Restart();
         }
+    }
+
+    private void OpenTheme()
+    {
+        var dlg = new ThemeWindow(_settings, SaveSettings) { Owner = this };
+        dlg.ShowDialog();
+    }
+
+    private void OpenTestsFolder()
+    {
+        try
+        {
+            Paths.EnsureDirs();
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Paths.TestsDir, UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) { AppendLog($"Не смог открыть папку: {ex.Message}"); }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            File.WriteAllText(Paths.Settings,
+                JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
     }
 
     private void Restart()

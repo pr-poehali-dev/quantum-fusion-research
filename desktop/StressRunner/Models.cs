@@ -54,6 +54,18 @@ public class TestItem
     /// </summary>
     [JsonPropertyName("min_run_sec")]
     public int MinRunSec { get; set; } = 0;
+
+    /// <summary>
+    /// Клавиши, которые нажать через несколько секунд после запуска
+    /// (эмуляция в активное окно теста). Напр. "P" для FurMark — размазывает
+    /// бублик и повышает нагрузку на GPU. Пусто — ничего не нажимаем.
+    /// </summary>
+    [JsonPropertyName("send_keys")]
+    public string SendKeys { get; set; } = "";
+
+    /// <summary>Через сколько секунд после запуска нажать SendKeys. По умолчанию 5.</summary>
+    [JsonPropertyName("send_keys_delay_sec")]
+    public int SendKeysDelaySec { get; set; } = 5;
 }
 
 /// <summary>
@@ -93,6 +105,18 @@ public class AppSettings
     /// <summary>Максимальный размер одного файла-отчёта для отправки, МБ.</summary>
     [JsonPropertyName("max_file_mb")]
     public int MaxFileMb { get; set; } = 8;
+
+    /// <summary>Тема оформления: "dark" или "light".</summary>
+    [JsonPropertyName("theme_mode")]
+    public string ThemeMode { get; set; } = "dark";
+
+    /// <summary>Акцентный цвет: red/orange/blue/purple/green/cyan.</summary>
+    [JsonPropertyName("accent")]
+    public string Accent { get; set; } = "red";
+
+    /// <summary>Путь к HWiNFO64.exe (относительный или полный). Пусто — авто-поиск в StressTests\HWinfo.</summary>
+    [JsonPropertyName("hwinfo_path")]
+    public string HwInfoPath { get; set; } = "";
 }
 
 // ─── Модели для отправки на сайт (JSON совпадает с backend/stress) ───

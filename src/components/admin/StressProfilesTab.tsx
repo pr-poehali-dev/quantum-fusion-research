@@ -13,6 +13,8 @@ interface TestItem {
   success_exit_code: number
   report_files: string[]
   min_run_sec: number
+  send_keys: string
+  send_keys_delay_sec: number
 }
 interface Profile {
   id?: number
@@ -26,7 +28,7 @@ interface Profile {
 const emptyTest = (): TestItem => ({
   name: "", program: "", args: "", working_dir: "",
   duration_sec: 60, timeout_is_success: true, success_exit_code: 0, report_files: [],
-  min_run_sec: 0,
+  min_run_sec: 0, send_keys: "", send_keys_delay_sec: 5,
 })
 const emptyProfile = (): Profile => ({
   name: "", note: "", tests: [emptyTest()], is_active: true, sort_order: 0,
@@ -39,12 +41,12 @@ const PRESETS: Preset[] = [
   {
     key: "occt",
     label: "OCCT (CPU)",
-    hint: "Положи OCCT в StressTests\\OCCT\\. Сам крутит CPU-тест 10 мин и пишет отчёт прямо в свою папку.",
+    hint: "OCCT 12+: запуск через CLI, сам крутит CPU-тест 10 мин и закрывается. Положи в StressTests\\OCCT\\. Отчёт в папку report.",
     make: () => ({
       ...emptyTest(),
       name: "OCCT — CPU стресс",
       program: "StressTests\\OCCT\\OCCT.exe",
-      args: "-run -test=CPU -duration=00:10:00 -auto -report=StressTests\\OCCT\\report",
+      args: "-run -test=CPU -duration=600 -auto=1 -report=StressTests\\OCCT\\report",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
       report_files: ["StressTests\\OCCT\\report\\*.html", "StressTests\\OCCT\\report\\*.csv"],
     }),
@@ -57,7 +59,7 @@ const PRESETS: Preset[] = [
       ...emptyTest(),
       name: "OCCT — GPU стресс (3D)",
       program: "StressTests\\OCCT\\OCCT.exe",
-      args: "-run -test=3D -duration=00:10:00 -auto -report=StressTests\\OCCT\\report",
+      args: "-run -test=3D -duration=600 -auto=1 -report=StressTests\\OCCT\\report",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
       report_files: ["StressTests\\OCCT\\report\\*.html"],
     }),
@@ -104,13 +106,14 @@ const PRESETS: Preset[] = [
   {
     key: "furmark",
     label: "FurMark 1.39.0",
-    hint: "Положи в StressTests\\FurMark\\. Стресс GPU с мониторингом, лог температур/FPS в файл.",
+    hint: "Положи в StressTests\\FurMark\\. Стресс GPU, лог температур/FPS. Через 5 сек жмёт «P» — размазывает бублик и сильнее греет GPU.",
     make: () => ({
       ...emptyTest(),
       name: "FurMark — GPU стресс",
       program: "StressTests\\FurMark\\furmark.exe",
       args: "/nogui /no_score_box /width=1920 /height=1080 /msaa=4 /max_time=600000 /log_temperature /log_score",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
+      send_keys: "P", send_keys_delay_sec: 5,
       report_files: ["StressTests\\FurMark\\*.csv", "StressTests\\FurMark\\*_log.txt"],
     }),
   },
@@ -278,6 +281,20 @@ export default function StressProfilesTab() {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
                   <span className="mt-1 block text-[11px] text-foreground/30">Если программа закрылась раньше этого времени — тест считается ПРОВАЛЕННЫМ. Спасает от случая, когда OCCT/FurMark открыл окно и сразу «вышел». 0 — выключено. Для OCCT поставь 30.</span>
                 </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-foreground/50">Нажать клавиши после запуска</span>
+                    <input value={t.send_keys} onChange={e => updTest(i, { send_keys: e.target.value })}
+                      placeholder="напр. P для FurMark"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                    <span className="mt-1 block text-[11px] text-foreground/30">Приложение само нажмёт эти клавиши в окне теста. Для FurMark «P» размазывает бублик и сильнее греет GPU. Пусто — ничего не жмём.</span>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-foreground/50">Через сколько секунд нажать</span>
+                    <input type="number" value={t.send_keys_delay_sec} onChange={e => updTest(i, { send_keys_delay_sec: Number(e.target.value) })}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" />
+                  </label>
+                </div>
                 <label className="block">
                   <span className="mb-1 block text-xs text-foreground/50">Файлы-отчёты (через запятую, можно маски *.log)</span>
                   <input value={t.report_files.join(", ")} onChange={e => updTest(i, { report_files: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}

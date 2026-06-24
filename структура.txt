@@ -91,6 +91,11 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
   АВТОРИЗАЦИЯ: в окне кнопка «🔑 Авторизоваться» (AuthWindow) — ключ + имя ПК,
     проверка через stress?action=verify_token, сохранение в Others\settings.json,
     авто-перезапуск. Бейдж «✓ Админ-режим включён · ПК: …».
+  ТЕМЫ (как на сайте): ThemeManager + ThemeWindow (кнопка 🎨) — тёмная/светлая +
+    6 акцентов. Theme.xaml на DynamicResource (смена на лету). Кастомный ComboBox.
+  HWiNFO автозапуск: HwInfoReader.EnsureRunning из StressTests\HWinfo\HWiNFO64.EXE.
+  АВТОНАЖАТИЕ КЛАВИШ: KeySender (Win32) — поле send_keys в тесте (FurMark «P»).
+  OCCT 12+ CLI в пресетах: -run -test=CPU -duration=600 -auto=1 -report=...
 
 ## Функции и их назначение (продолжение)
 
