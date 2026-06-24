@@ -738,14 +738,19 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
                   return (
                   <div key={p.id}
                     className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-all ${crit.length ? "border-border opacity-50" : advices.length ? "border-amber-400/50 hover:border-amber-400" : "border-border hover:border-primary/50"}`}>
-                    <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                    <a href={`/product/${p.id}`} target="_blank" rel="noopener noreferrer" title="Открыть товар в новой вкладке"
+                      className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted transition-opacity hover:opacity-90"
+                      style={{ cursor: "pointer" }}>
                       {(p.image_url || p.image_urls?.[0]) ? (
                         <img src={p.image_url || p.image_urls?.[0]} alt={p.name} className="h-full w-full object-contain" />
                       ) : <Icon name="Image" size={32} className="text-foreground/20" />}
-                    </div>
+                    </a>
                     <div className="min-w-0 flex-1">
                       {p.brand && <p className="text-xs font-semibold uppercase tracking-wide text-primary/70">{p.brand}</p>}
-                      <p className="text-sm font-medium text-foreground line-clamp-2">{p.name}</p>
+                      <a href={`/product/${p.id}`} target="_blank" rel="noopener noreferrer" title="Открыть товар в новой вкладке"
+                        className="text-sm font-medium text-foreground line-clamp-2 hover:text-primary hover:underline" style={{ cursor: "pointer" }}>
+                        {p.name}
+                      </a>
                       {keySpecs(p).length > 0 && (
                         <div className="mt-1 space-y-0.5">
                           {keySpecs(p).map((s, i) => (
