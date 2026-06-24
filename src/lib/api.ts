@@ -257,6 +257,12 @@ export const api = {
       fetch(`${URLS.stress}?action=get&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     deleteRun: (id: number, adminKey: string) =>
       fetch(`${URLS.stress}?action=delete_run&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    profilesList: (adminKey: string) =>
+      fetch(`${URLS.stress}?action=profiles_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    profileSave: (data: unknown, adminKey: string) =>
+      fetch(`${URLS.stress}?action=profile_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "profile_save", ...(data as object) }) }).then(r => r.json()),
+    profileDelete: (id: number, adminKey: string) =>
+      fetch(`${URLS.stress}?action=profile_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),

@@ -64,9 +64,15 @@
 2) АДМИН: X-Admin-Token == ADMIN_KEY (или X-Session-Id роли admin).
    GET action=list — список прогонов; GET action=get&id — прогон с результатами+файлами;
    DELETE action=delete_run&id — удалить прогон.
-Таблицы: stress_runs, stress_results, stress_files (миграция V0155).
-Frontend: вкладка /admin/stress (StressTestsTab) в группе «Прочее».
-API: api.stress.list/get/deleteRun (src/lib/api.ts).
+ПРОФИЛИ ТЕСТОВ (редактор без JSON):
+- Таблица stress_profiles (name/note/tests jsonb/is_active/sort_order, миграция V0156).
+- Админ: GET profiles_list, POST/PUT profile_save, DELETE profile_delete.
+- EXE: GET profiles_pull (по X-Stress-Token) — только активные профили.
+- Приложение тянет профили с сайта (при старте + пункт меню), кэширует в profiles.json.
+Таблицы: stress_runs, stress_results, stress_files (V0155), stress_profiles (V0156).
+Frontend: вкладка /admin/stress (StressTestsTab) в группе «Прочее»:
+  переключатель «Результаты / Профили тестов» (StressProfilesTab — редактор кнопками).
+API: api.stress.list/get/deleteRun/profilesList/profileSave/profileDelete (src/lib/api.ts).
 Секрет STRESS_INGEST_TOKEN — токен приложения для приёма данных.
 Desktop-приложение (НЕ часть веб-сборки): desktop/StressRunner — собирается в .exe
 через `dotnet publish` на ПК (инструкция в README.md). Локальная БД SQLite на ПК.

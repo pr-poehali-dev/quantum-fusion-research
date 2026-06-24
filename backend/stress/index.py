@@ -101,12 +101,16 @@ def handler(event, context):
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # ── Контур EXE: приём результатов ───────────────────────────────────
-        if action == "ingest" and method == "POST":
+        # ── Контур EXE: приём результатов / выдача профилей по токену ────────
+        if action in ("ingest", "profiles_pull"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
             if not token or token != os.environ.get("STRESS_INGEST_TOKEN"):
                 return err("forbidden", 403)
-            return ingest(cur, conn, body)
+            if action == "ingest" and method == "POST":
+                return ingest(cur, conn, body)
+            if action == "profiles_pull" and method == "GET":
+                return profiles_pull(cur)
+            return err("bad request", 400)
 
         # ── Контур АДМИНА ───────────────────────────────────────────────────
         if not is_admin(cur, headers, params, body):
@@ -118,6 +122,14 @@ def handler(event, context):
             return get_run(cur, int(params.get("id") or 0))
         if action == "delete_run" and method == "DELETE":
             return delete_run(cur, conn, int(params.get("id") or 0))
+
+        # Профили (редактор в админке)
+        if action == "profiles_list" and method == "GET":
+            return profiles_list(cur)
+        if action == "profile_save" and method in ("POST", "PUT"):
+            return profile_save(cur, conn, body)
+        if action == "profile_delete" and method == "DELETE":
+            return profile_delete(cur, conn, int(params.get("id") or 0))
 
         return err(f"unknown action: {action}")
     except Exception as e:
@@ -252,5 +264,75 @@ def delete_run(cur, conn, run_id):
     )
     cur.execute(f"DELETE FROM {SCHEMA}.stress_results WHERE run_id = {run_id}")
     cur.execute(f"DELETE FROM {SCHEMA}.stress_runs WHERE id = {run_id}")
+    conn.commit()
+    return ok({"ok": True})
+
+
+# ─── Профили тестов (редактор в админке + выдача приложению) ────────────────
+
+def _row_to_profile(r):
+    tests = r[3]
+    if isinstance(tests, str):
+        try:
+            tests = json.loads(tests)
+        except Exception:
+            tests = []
+    return {
+        "id": r[0], "name": r[1], "note": r[2], "tests": tests or [],
+        "is_active": r[4], "sort_order": r[5],
+    }
+
+
+def profiles_list(cur):
+    cur.execute(
+        f"SELECT id, name, note, tests, is_active, sort_order "
+        f"FROM {SCHEMA}.stress_profiles ORDER BY sort_order, id"
+    )
+    return ok({"profiles": [_row_to_profile(r) for r in cur.fetchall()]})
+
+
+def profiles_pull(cur):
+    # То же, но только активные — для desktop-приложения.
+    cur.execute(
+        f"SELECT id, name, note, tests, is_active, sort_order "
+        f"FROM {SCHEMA}.stress_profiles WHERE is_active = TRUE ORDER BY sort_order, id"
+    )
+    profiles = []
+    for r in cur.fetchall():
+        p = _row_to_profile(r)
+        profiles.append({"name": p["name"], "note": p["note"], "tests": p["tests"]})
+    return ok({"profiles": profiles})
+
+
+def profile_save(cur, conn, body):
+    pid = body.get("id")
+    name = body.get("name", "")
+    note = body.get("note", "")
+    tests = body.get("tests") or []
+    is_active = body.get("is_active", True)
+    sort_order = int(body.get("sort_order") or 0)
+    tests_json = json.dumps(tests, ensure_ascii=False)
+
+    if pid:
+        cur.execute(
+            f"UPDATE {SCHEMA}.stress_profiles SET name = {esc(name)}, note = {esc(note)}, "
+            f"tests = {esc(tests_json)}::jsonb, is_active = {'TRUE' if is_active else 'FALSE'}, "
+            f"sort_order = {sort_order}, updated_at = NOW() WHERE id = {int(pid)} RETURNING id"
+        )
+    else:
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_profiles (name, note, tests, is_active, sort_order) VALUES "
+            f"({esc(name)}, {esc(note)}, {esc(tests_json)}::jsonb, "
+            f"{'TRUE' if is_active else 'FALSE'}, {sort_order}) RETURNING id"
+        )
+    new_id = cur.fetchone()[0]
+    conn.commit()
+    return ok({"ok": True, "id": new_id})
+
+
+def profile_delete(cur, conn, pid):
+    if not pid:
+        return err("id required")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_profiles WHERE id = {pid}")
     conn.commit()
     return ok({"ok": True})

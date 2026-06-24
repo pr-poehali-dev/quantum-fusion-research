@@ -47,4 +47,35 @@ public class Uploader
 
     public static string Serialize(RunPayload run) =>
         JsonSerializer.Serialize(run, new JsonSerializerOptions { WriteIndented = false });
+
+    /// <summary>Скачать активные профили с сайта (action=profiles_pull).</summary>
+    public async Task<List<Profile>?> PullProfilesAsync()
+    {
+        try
+        {
+            var url = _settings.IngestUrl;
+            url += (url.Contains('?') ? "&" : "?") + "action=profiles_pull";
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Add("X-Stress-Token", _settings.Token);
+
+            using var resp = await Http.SendAsync(req);
+            string text = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"    Сайт ответил {(int)resp.StatusCode}: {text}");
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(text);
+            if (!doc.RootElement.TryGetProperty("profiles", out var arr))
+                return new List<Profile>();
+            return JsonSerializer.Deserialize<List<Profile>>(arr.GetRawText()) ?? new List<Profile>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"    Ошибка загрузки профилей: {ex.Message}");
+            return null;
+        }
+    }
 }

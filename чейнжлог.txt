@@ -3,6 +3,27 @@
 
 ---
 
+## v5.21 | 2026-06-24 | Стресс-тесты: профили через интерфейс (редактор в админке)
+
+### БД (миграция V0156)
+- Таблица stress_profiles (name, note, tests jsonb, is_active, sort_order).
+
+### backend/stress
+- profiles_list / profile_save / profile_delete — CRUD профилей для админки.
+- profiles_pull (по X-Stress-Token) — выдача активных профилей приложению.
+
+### Frontend
+- В разделе /admin/stress переключатель «Результаты / Профили тестов».
+- StressProfilesTab — редактор профилей кнопками (без JSON): название, тесты,
+  программа/аргументы/время/код успеха/таймаут/файлы-отчёты, сортировка, активность.
+- api.stress.profilesList/profileSave/profileDelete.
+
+### desktop/StressRunner
+- Тянет профили с сайта при старте и пунктом меню «s», кэширует в profiles.json
+  (работает и без сети). Uploader.PullProfilesAsync.
+
+---
+
 ## v5.20 | 2026-06-24 | Стресс-тесты: backend + раздел админки + desktop-приложение (EXE)
 
 ### БД (миграция V0155)

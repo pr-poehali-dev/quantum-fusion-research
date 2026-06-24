@@ -18,6 +18,18 @@
       "method": "GET",
       "path": "/?action=get&id=1",
       "expectedStatus": 403
+    },
+    {
+      "name": "Profiles list without admin forbidden",
+      "method": "GET",
+      "path": "/?action=profiles_list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Profiles pull without token forbidden",
+      "method": "GET",
+      "path": "/?action=profiles_pull",
+      "expectedStatus": 403
     }
   ]
 }

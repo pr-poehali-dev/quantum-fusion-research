@@ -38,6 +38,13 @@ internal class Program
             Console.WriteLine("ВНИМАНИЕ: не задан токен в settings.json — отправка на сайт не сработает.");
             Console.WriteLine("Открой settings.json, вставь значение секрета STRESS_INGEST_TOKEN.\n");
         }
+        else
+        {
+            // При старте подтягиваем актуальные профили с сайта (если есть сеть).
+            Console.WriteLine("Загружаю профили с сайта...");
+            var pulled = await PullProfiles(settings);
+            if (pulled != null && pulled.Count > 0) profiles = pulled;
+        }
 
         // Режим командной строки: StressRunner.exe run "Имя профиля"
         if (args.Length >= 1 && args[0].Equals("run", StringComparison.OrdinalIgnoreCase))
@@ -56,6 +63,7 @@ internal class Program
             Console.WriteLine("  Профили:");
             for (int i = 0; i < profiles.Count; i++)
                 Console.WriteLine($"    {i + 1}. {profiles[i].Name}  ({profiles[i].Tests.Count} тестов)");
+            Console.WriteLine("  s. Скачать профили с сайта");
             Console.WriteLine("  d. Дослать неотправленные прогоны");
             Console.WriteLine("  q. Выход");
             Console.Write("\nВыбор: ");
@@ -64,6 +72,12 @@ internal class Program
             if (string.IsNullOrEmpty(choice)) continue;
             if (choice == "q") break;
             if (choice == "d") { await ResendUnsent(settings, storage); continue; }
+            if (choice == "s")
+            {
+                var pulled = await PullProfiles(settings);
+                if (pulled != null) profiles = pulled;
+                continue;
+            }
 
             if (int.TryParse(choice, out int n) && n >= 1 && n <= profiles.Count)
                 await ExecuteProfile(profiles[n - 1], settings, storage);
@@ -95,6 +109,22 @@ internal class Program
             else
                 Console.WriteLine("Не доставлено — сохранено локально, дослать можно пунктом 'd'.");
         }
+    }
+
+    private static async Task<List<Profile>?> PullProfiles(AppSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(settings.Token))
+        {
+            Console.WriteLine("Нет токена в settings.json — профили с сайта недоступны.");
+            return null;
+        }
+        var up = new Uploader(settings);
+        var profiles = await up.PullProfilesAsync();
+        if (profiles == null) { Console.WriteLine("Не удалось загрузить профили (работаю с локальными)."); return null; }
+        // Кэшируем в profiles.json, чтобы работало и без сети.
+        File.WriteAllText(Path("profiles.json"), JsonSerializer.Serialize(profiles, JsonOpts));
+        Console.WriteLine($"Загружено профилей с сайта: {profiles.Count}");
+        return profiles;
     }
 
     private static async Task ResendUnsent(AppSettings settings, Storage storage)

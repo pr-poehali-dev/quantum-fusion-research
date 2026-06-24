@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/types"
+import StressProfilesTab from "@/components/admin/StressProfilesTab"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
 interface ResultRow {
@@ -54,6 +55,7 @@ function fmtSize(b: number) {
 
 export default function StressTestsTab() {
   const adminKey = getAdminKey()
+  const [view, setView] = useState<"runs" | "profiles">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
@@ -84,6 +86,22 @@ export default function StressTestsTab() {
   }
 
   return (
+    <div>
+      {/* Переключатель Прогоны / Профили */}
+      <div className="mb-5 inline-flex rounded-xl border border-border bg-card p-1">
+        <button onClick={() => setView("runs")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "runs" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="Activity" size={15} /> Результаты
+        </button>
+        <button onClick={() => setView("profiles")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "profiles" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="ListChecks" size={15} /> Профили тестов
+        </button>
+      </div>
+
+      {view === "profiles" ? <StressProfilesTab /> : (
     <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
       {/* Список прогонов */}
       <div>
@@ -196,6 +214,8 @@ export default function StressTestsTab() {
           </div>
         )}
       </div>
+    </div>
+      )}
     </div>
   )
 }
