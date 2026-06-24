@@ -194,7 +194,21 @@ export default function ScheduleTab() {
         {/* ── Список сотрудников ── */}
         <div className="w-full shrink-0 lg:w-44">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground/50">Сотрудники</p>
-          <div className="flex flex-wrap gap-1.5 lg:flex-col lg:flex-nowrap lg:space-y-1.5 lg:gap-0">
+
+          {/* Мобильный: выпадающий список выбора сотрудника */}
+          <select
+            value={selectedEmployee ?? ""}
+            onChange={e => setSelectedEmployee(e.target.value === "" ? null : Number(e.target.value))}
+            className="mb-1 block w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none lg:hidden"
+            style={{ cursor: "pointer" }}>
+            <option value="">Все сотрудники</option>
+            {employees.filter(e => e.is_active).map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+
+          {/* Десктоп: список кнопок */}
+          <div className="hidden gap-1.5 lg:flex lg:flex-col lg:space-y-1.5">
             <button onClick={() => setSelectedEmployee(null)}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors lg:w-full ${selectedEmployee === null ? "bg-primary/15 text-primary font-medium" : "text-foreground/60 hover:bg-muted"}`}
               style={{ cursor: "pointer" }}>
