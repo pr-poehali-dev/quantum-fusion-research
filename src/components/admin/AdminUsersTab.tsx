@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { AdminUser, ADMIN_PASSWORD } from "@/pages/admin/types"
+import { AdminUser, getAdminKey } from "@/pages/admin/types"
 
 interface Props {
   adminUsers: AdminUser[]
@@ -16,22 +16,22 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
 
   const adminUserOp = async (userId: number, op: string, extra?: Record<string, unknown>) => {
     setUserActionLoading(userId)
-    await api.auth.adminUpdateUser({ user_id: userId, op, ...extra }, ADMIN_PASSWORD)
-    const d = await api.auth.adminGetUsers(ADMIN_PASSWORD, userSearch)
+    await api.auth.adminUpdateUser({ user_id: userId, op, ...extra }, getAdminKey())
+    const d = await api.auth.adminGetUsers(getAdminKey(), userSearch)
     setAdminUsers(d.users || [])
     setUserActionLoading(null)
   }
 
   const handleSearch = async () => {
     setUserSearch(userSearchInput)
-    const d = await api.auth.adminGetUsers(ADMIN_PASSWORD, userSearchInput)
+    const d = await api.auth.adminGetUsers(getAdminKey(), userSearchInput)
     setAdminUsers(d.users || [])
   }
 
   const handleClearSearch = () => {
     setUserSearchInput("")
     setUserSearch("")
-    api.auth.adminGetUsers(ADMIN_PASSWORD).then(d => setAdminUsers(d.users || []))
+    api.auth.adminGetUsers(getAdminKey()).then(d => setAdminUsers(d.users || []))
   }
 
   return (

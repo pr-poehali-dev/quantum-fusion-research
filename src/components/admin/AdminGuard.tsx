@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ADMIN_PASSWORD } from "@/pages/admin/types"
+import { api } from "@/lib/api"
+import { ADMIN_KEY_STORAGE } from "@/pages/admin/types"
 
 const SESSION_KEY = "begraphics_admin"
 
@@ -17,14 +18,26 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
   const navigate = useNavigate()
   const [authed, setAuthed] = useState(isAdminAuthed)
   const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  const login = () => {
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1")
-      setAuthed(true)
-    } else {
-      alert("Неверный пароль")
+  // Проверяем пароль на бэкенде (по секрету ADMIN_KEY). При успехе сохраняем
+  // сам пароль в sessionStorage — он используется как ключ для админ-запросов.
+  const login = async () => {
+    if (!password || loading) return
+    setLoading(true)
+    try {
+      const res = await api.auth.adminLogin(password)
+      if (res.ok) {
+        sessionStorage.setItem(SESSION_KEY, "1")
+        sessionStorage.setItem(ADMIN_KEY_STORAGE, password)
+        setAuthed(true)
+      } else {
+        alert("Неверный пароль")
+      }
+    } catch {
+      alert("Ошибка соединения")
     }
+    setLoading(false)
   }
 
   if (authed) return <>{children}</>
@@ -50,8 +63,8 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
               placeholder="Введите пароль" style={{ cursor: "text" }}
             />
           </div>
-          <button onClick={login} className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-            Войти
+          <button onClick={login} disabled={loading} className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+            {loading ? "Проверка..." : "Войти"}
           </button>
           <button onClick={() => navigate("/")} className="w-full text-center text-xs text-foreground/40 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
             ← На сайт

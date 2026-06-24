@@ -1,6 +1,14 @@
 import React from "react"
 
-export const ADMIN_PASSWORD = "begraphics2024"
+// Ключ sessionStorage, под которым хранится введённый администратором пароль.
+// Сам пароль проверяется на бэкенде по секрету ADMIN_KEY (см. AdminGuard).
+export const ADMIN_KEY_STORAGE = "begraphics_admin_key"
+
+// Возвращает текущий админ-пароль (введённый при входе) для админ-запросов.
+// Пустая строка, если не залогинен.
+export function getAdminKey(): string {
+  try { return sessionStorage.getItem(ADMIN_KEY_STORAGE) || "" } catch { return "" }
+}
 
 export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new: { label: "Заказ новый", color: "text-primary bg-primary/10" },

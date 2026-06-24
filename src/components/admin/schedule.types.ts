@@ -24,17 +24,19 @@ export interface Schedule {
   is_day_off: boolean; event_type?: EventType; note: string | null
 }
 
-// Пароль входа в админ-панель (совпадает с ADMIN_PASSWORD на фронте).
-// Передаём в заголовке, чтобы расписание/календарь работали и без user-сессии.
-export const SCHEDULE_ADMIN_KEY = "begraphics2024"
+// Админ-пароль для расписания/календаря берём из sessionStorage (введён при
+// входе в админку и проверен на бэкенде по секрету ADMIN_KEY).
+function scheduleAdminKey(): string {
+  try { return sessionStorage.getItem("begraphics_admin_key") || "" } catch { return "" }
+}
 
 export function authH(sid: string) {
-  return { "Content-Type": "application/json", "X-Session-Id": sid || "", "X-Admin-Key": SCHEDULE_ADMIN_KEY }
+  return { "Content-Type": "application/json", "X-Session-Id": sid || "", "X-Admin-Key": scheduleAdminKey() }
 }
 
 // Добавляет admin-ключ в query-строку (на случай фильтрации кастомных заголовков облаком)
 export function withAk(qs: string) {
-  return qs + (qs.includes("?") || qs.includes("=") ? "&" : "") + "ak=" + encodeURIComponent(SCHEDULE_ADMIN_KEY)
+  return qs + (qs.includes("?") || qs.includes("=") ? "&" : "") + "ak=" + encodeURIComponent(scheduleAdminKey())
 }
 
 export function getMonthDays(year: number, month: number) {

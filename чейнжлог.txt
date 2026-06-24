@@ -3,6 +3,33 @@
 
 ---
 
+## v5.00 | 2026-06-24 | Вход в админку через секрет ADMIN_KEY (безопасно)
+
+### backend/auth/index.py
+- Новый action=admin_login: сверяет присланный пароль с секретом ADMIN_KEY,
+  возвращает {ok: true/false}. tests.json: тест на неверный пароль.
+
+### backend/schedule/index.py
+- ADMIN_PASSWORD теперь читается из os.environ ADMIN_KEY (фолбэк begraphics2024),
+  а не захардкожен.
+
+### src/pages/admin/types.ts
+- Удалена константа ADMIN_PASSWORD="begraphics2024". Добавлены ADMIN_KEY_STORAGE
+  и getAdminKey() — берут введённый пароль из sessionStorage.
+
+### src/lib/api.ts
+- Добавлен api.auth.adminLogin(adminKey).
+
+### src/components/admin/AdminGuard.tsx, src/pages/Admin.tsx
+- Вход проверяется через бэкенд (adminLogin). При успехе пароль сохраняется в
+  sessionStorage (begraphics_admin_key) и используется как ak для админ-запросов.
+  Logout очищает ключ. Кнопка входа со состоянием «Проверка...».
+
+### src/components/admin/AdminUsersTab.tsx, schedule.types.ts
+- Все админ-запросы (пользователи, расписание, календарь) используют getAdminKey()
+  вместо захардкоженного пароля. Это чинит пустой список пользователей при
+  смене пароля.
+
 ## v4.99 | 2026-06-24 | Админка (моб.): «Наши ПК» и «График работ»
 
 ### BuildsList.tsx

@@ -12,7 +12,8 @@ def esc(v):
         return "NULL"
     return "'" + str(v).replace("'", "''") + "'"
 
-ADMIN_PASSWORD = "begraphics2024"  # вход в админ-панель по паролю (как на фронте)
+# Пароль входа в админ-панель берём из секрета ADMIN_KEY (фолбэк — старое значение).
+ADMIN_PASSWORD = os.environ.get("ADMIN_KEY", "begraphics2024")
 
 
 def require_admin(cur, session_id, admin_key=None):

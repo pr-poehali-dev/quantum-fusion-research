@@ -15,7 +15,7 @@ import { AdminUsersTab } from "@/components/admin/AdminUsersTab"
 import RmaTab from "@/components/admin/RmaTab"
 import QuizRequestsTab from "@/components/admin/QuizRequestsTab"
 import {
-  ADMIN_PASSWORD, VALID_TABS, AdminTab,
+  ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
 } from "./admin/types"
 
@@ -24,6 +24,7 @@ export default function Admin() {
   const { tab: tabParam } = useParams<{ tab: string }>()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
+  const [loginLoading, setLoginLoading] = useState(false)
 
   const currentTab = (VALID_TABS.includes(tabParam as AdminTab) ? tabParam : "orders") as AdminTab
   const [tab, setTabState] = useState<AdminTab>(currentTab)
@@ -96,17 +97,31 @@ export default function Admin() {
     } else if (tab === "articles" || tab === "add_article") {
       api.articles.getAll().then(d => { setArticles(d.articles || []); setLoading(false) })
     } else if (tab === "users") {
-      api.auth.adminGetUsers(ADMIN_PASSWORD).then(d => { setAdminUsers(d.users || []); setLoading(false) })
+      api.auth.adminGetUsers(getAdminKey()).then(d => { setAdminUsers(d.users || []); setLoading(false) })
     } else {
       setLoading(false)
     }
   }, [authed, tab])
 
-  const login = () => {
-    if (password === ADMIN_PASSWORD) { sessionStorage.setItem("begraphics_admin", "1"); setAuthed(true) }
-    else alert("Неверный пароль")
+  // Вход проверяется на бэкенде по секрету ADMIN_KEY; пароль сохраняем для запросов.
+  const login = async () => {
+    if (!password || loginLoading) return
+    setLoginLoading(true)
+    try {
+      const res = await api.auth.adminLogin(password)
+      if (res.ok) {
+        sessionStorage.setItem("begraphics_admin", "1")
+        sessionStorage.setItem(ADMIN_KEY_STORAGE, password)
+        setAuthed(true)
+      } else alert("Неверный пароль")
+    } catch { alert("Ошибка соединения") }
+    setLoginLoading(false)
   }
-  const logout = () => { sessionStorage.removeItem("begraphics_admin"); setAuthed(false) }
+  const logout = () => {
+    sessionStorage.removeItem("begraphics_admin")
+    sessionStorage.removeItem(ADMIN_KEY_STORAGE)
+    setAuthed(false)
+  }
 
   // ── Auth screen ───────────────────────────────────────────────────────────
   if (!authed) return (
@@ -130,8 +145,8 @@ export default function Admin() {
               placeholder="Введите пароль" style={{ cursor: "text" }}
             />
           </div>
-          <button onClick={login} className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-            Войти
+          <button onClick={login} disabled={loginLoading} className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+            {loginLoading ? "Проверка..." : "Войти"}
           </button>
           <button onClick={() => navigate("/")} className="w-full text-center text-xs text-foreground/40 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
             ← На сайт

@@ -356,6 +356,17 @@ def handler(event: dict, context) -> dict:
                 "image_urls": row[14] or [],
             })}
 
+        # ── ADMIN: проверка пароля входа в админку ──
+        # Сверяет присланный пароль с секретом ADMIN_KEY. Возвращает ok=true/false.
+        elif action == "admin_login":
+            if method == "POST":
+                body_login = json.loads(event.get("body") or "{}")
+                admin_key = body_login.get("ak") or ""
+            else:
+                admin_key = params.get("ak") or ""
+            ok = bool(admin_key) and admin_key == os.environ.get("ADMIN_KEY", "begraphics2024")
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": ok})}
+
         # ── ADMIN: управление пользователями ──
 
         elif action == "admin_users" and method == "GET":

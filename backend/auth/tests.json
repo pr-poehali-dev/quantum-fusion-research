@@ -7,6 +7,15 @@
       "expectedStatus": 401,
       "bodyMatcher": "partial",
       "expectedBody": {"error": "Не авторизован"}
+    },
+    {
+      "name": "Admin login wrong password",
+      "method": "POST",
+      "path": "/?action=admin_login",
+      "body": {"ak": "definitely-wrong-password"},
+      "expectedStatus": 200,
+      "bodyMatcher": "partial",
+      "expectedBody": {"ok": false}
     }
   ]
 }
