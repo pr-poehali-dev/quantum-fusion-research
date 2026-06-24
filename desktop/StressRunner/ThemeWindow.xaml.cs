@@ -22,16 +22,48 @@ public partial class ThemeWindow : Window
         DarkBtn.Click += (_, _) => SetMode("dark");
         LightBtn.Click += (_, _) => SetMode("light");
 
+        HexBox.Text = string.IsNullOrWhiteSpace(_settings.CustomAccent) ? "#E60000" : _settings.CustomAccent;
+        UpdateCustomPreview();
+        HexBox.TextChanged += (_, _) => UpdateCustomPreview();
+        ApplyHexBtn.Click += (_, _) => ApplyCustom();
+
         BuildAccents();
         RefreshModeButtons();
     }
 
+    private void ApplyTheme() => ThemeManager.Apply(_settings.ThemeMode, _settings.Accent, _settings.CustomAccent);
+
     private void SetMode(string mode)
     {
         _settings.ThemeMode = mode;
-        ThemeManager.Apply(_settings.ThemeMode, _settings.Accent);
+        ApplyTheme();
         RefreshModeButtons();
         _onChanged();
+    }
+
+    private void UpdateCustomPreview()
+    {
+        try { CustomPreview.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(HexBox.Text.Trim())!); }
+        catch { }
+    }
+
+    private void ApplyCustom()
+    {
+        string hex = HexBox.Text.Trim();
+        try
+        {
+            _ = (Color)ColorConverter.ConvertFromString(hex)!; // проверка валидности
+            _settings.CustomAccent = hex;
+            _settings.Accent = "custom";
+            ApplyTheme();
+            BuildAccents();
+            RefreshModeButtons();
+            _onChanged();
+        }
+        catch
+        {
+            MessageBox.Show(this, "Неверный цвет. Введи в формате #RRGGBB, напр. #00BFA6.");
+        }
     }
 
     private void RefreshModeButtons()
@@ -102,7 +134,7 @@ public partial class ThemeWindow : Window
             row.MouseLeftButtonUp += (_, _) =>
             {
                 _settings.Accent = id;
-                ThemeManager.Apply(_settings.ThemeMode, _settings.Accent);
+                ApplyTheme();
                 BuildAccents();
                 RefreshModeButtons();
                 _onChanged();

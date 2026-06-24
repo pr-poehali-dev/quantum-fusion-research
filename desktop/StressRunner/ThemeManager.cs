@@ -24,10 +24,28 @@ public static class ThemeManager
         new("cyan",   "Бирюзовый",  Hex("#06B6D4"), Hex("#22D3EE")),
     };
 
-    public static void Apply(string mode, string accentId)
+    public static void Apply(string mode, string accentId) => Apply(mode, accentId, "#E60000");
+
+    public static void Apply(string mode, string accentId, string customHex)
     {
         bool dark = mode != "light";
-        var acc = Find(accentId);
+
+        Color primary, accent;
+        if (accentId == "custom")
+        {
+            try
+            {
+                primary = Hex(customHex);
+                accent = Lighten(primary, 0.15);
+            }
+            catch { primary = Hex("#E60000"); accent = Hex("#F26B1F"); }
+        }
+        else
+        {
+            var acc = Find(accentId);
+            primary = acc.Primary;
+            accent = acc.AccentCol;
+        }
 
         // База (фон/карточки/текст) — для тёмной и светлой темы.
         if (dark)
@@ -49,9 +67,15 @@ public static class ThemeManager
             Set("FgMuted",  Hex("#8A8A8A"));
         }
 
-        Set("Primary", acc.Primary);
-        Set("Accent",  acc.AccentCol);
+        Set("Primary", primary);
+        Set("Accent",  accent);
         Set("Ok",      Hex("#22C55E"));
+    }
+
+    private static Color Lighten(Color c, double amount)
+    {
+        byte L(byte v) => (byte)Math.Clamp(v + (255 - v) * amount, 0, 255);
+        return Color.FromArgb(c.A, L(c.R), L(c.G), L(c.B));
     }
 
     public static Accent Find(string id)

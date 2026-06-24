@@ -110,9 +110,17 @@ public class AppSettings
     [JsonPropertyName("theme_mode")]
     public string ThemeMode { get; set; } = "dark";
 
-    /// <summary>Акцентный цвет: red/orange/blue/purple/green/cyan.</summary>
+    /// <summary>Акцентный цвет: red/orange/blue/purple/green/cyan/custom.</summary>
     [JsonPropertyName("accent")]
     public string Accent { get; set; } = "red";
+
+    /// <summary>Свой акцентный цвет в HEX (#RRGGBB), если accent = "custom".</summary>
+    [JsonPropertyName("custom_accent")]
+    public string CustomAccent { get; set; } = "#E60000";
+
+    /// <summary>Масштаб интерфейса окна (0.8 .. 1.6). По умолчанию 1.0.</summary>
+    [JsonPropertyName("ui_scale")]
+    public double UiScale { get; set; } = 1.0;
 
     /// <summary>Путь к HWiNFO64.exe (относительный или полный). Пусто — авто-поиск в StressTests\HWinfo.</summary>
     [JsonPropertyName("hwinfo_path")]

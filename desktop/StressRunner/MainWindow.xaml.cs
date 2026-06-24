@@ -28,7 +28,7 @@ public partial class MainWindow : Window
         _storage = new Storage(Paths.Db);
 
         // Применяем тему из настроек (тёмная/светлая + акцент).
-        ThemeManager.Apply(_settings.ThemeMode, _settings.Accent);
+        ThemeManager.Apply(_settings.ThemeMode, _settings.Accent, _settings.CustomAccent);
 
         MachineLabel.Text = string.IsNullOrWhiteSpace(_settings.MachineName)
             ? Environment.MachineName : _settings.MachineName;
@@ -40,6 +40,10 @@ public partial class MainWindow : Window
         ThemeBtn.Click += (_, _) => OpenTheme();
         OpenTestsBtn.Click += (_, _) => OpenTestsFolder();
         DebugBtn.Click += (_, _) => new DebugWindow { Owner = this }.ShowDialog();
+        ScaleDownBtn.Click += (_, _) => ChangeScale(-0.1);
+        ScaleUpBtn.Click += (_, _) => ChangeScale(+0.1);
+
+        ApplyScale(_settings.UiScale);
 
         UpdateAuthBadge();
 
@@ -118,6 +122,23 @@ public partial class MainWindow : Window
                 JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch { }
+    }
+
+    // ─── Масштаб интерфейса ───
+
+    private void ChangeScale(double delta)
+    {
+        double s = Math.Clamp(Math.Round(_settings.UiScale + delta, 1), 0.8, 1.6);
+        _settings.UiScale = s;
+        ApplyScale(s);
+        SaveSettings();
+    }
+
+    private void ApplyScale(double s)
+    {
+        if (s < 0.8 || s > 1.6) s = 1.0;
+        UiScale.ScaleX = s;
+        UiScale.ScaleY = s;
     }
 
     private void Restart()

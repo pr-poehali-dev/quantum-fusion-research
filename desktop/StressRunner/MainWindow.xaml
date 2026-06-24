@@ -7,6 +7,10 @@
     Background="{DynamicResource Bg}"
     FontFamily="Segoe UI">
 
+    <Window.LayoutTransform>
+        <ScaleTransform x:Name="UiScale" ScaleX="1" ScaleY="1"/>
+    </Window.LayoutTransform>
+
     <Grid Margin="0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="320"/>
@@ -27,9 +31,12 @@
                             <TextBlock x:Name="MachineLabel" Text="—" FontSize="11" Foreground="{DynamicResource FgMuted}"/>
                         </StackPanel>
                     </StackPanel>
-                    <!-- Кнопка темы -->
-                    <Button x:Name="ThemeBtn" Width="34" Height="34" Padding="0" HorizontalAlignment="Right" VerticalAlignment="Top"
-                            ToolTip="Тема оформления" Content="🎨" FontSize="15"/>
+                    <!-- Масштаб + тема -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <Button x:Name="ScaleDownBtn" Width="30" Height="34" Padding="0" Content="−" FontSize="17" ToolTip="Уменьшить масштаб"/>
+                        <Button x:Name="ScaleUpBtn" Width="30" Height="34" Padding="0" Margin="4,0,0,0" Content="+" FontSize="15" ToolTip="Увеличить масштаб"/>
+                        <Button x:Name="ThemeBtn" Width="34" Height="34" Padding="0" Margin="6,0,0,0" ToolTip="Тема оформления" Content="🎨" FontSize="15"/>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Статус авторизации -->

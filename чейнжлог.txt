@@ -3,6 +3,20 @@
 
 ---
 
+## v5.38 | 2026-06-24 | StressRunner: FurMark авто+P, масштаб окна, свой цвет
+
+### desktop/StressRunner
+- FurMark-пресет снова автозапуск (/nogui burn-in) + send_keys "P" через 6 сек.
+- KeySender переписан: жёсткая активация окна (AttachThreadInput), поиск окна
+  по PID/заголовку (EnumWindows), двойная отправка клавиш (keybd_event + PostMessage).
+- Масштаб интерфейса: кнопки −/+ в шапке, ScaleTransform на окне,
+  сохранение в settings (ui_scale 0.8–1.6).
+- Тема: свой акцентный цвет в HEX (#RRGGBB) с превью и кнопкой «Применить».
+  ThemeManager.Apply(mode, accent, customHex); accent="custom". settings:
+  custom_accent, ui_scale.
+
+---
+
 ## v5.37 | 2026-06-24 | StressRunner: GPU Hot Spot выделен в отдельную метрику
 
 ### desktop/StressRunner

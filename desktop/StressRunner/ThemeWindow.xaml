@@ -2,12 +2,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Class="StressRunner.ThemeWindow"
-    Title="Тема" Height="430" Width="320"
+    Title="Тема" Height="560" Width="320"
     WindowStartupLocation="CenterOwner"
     ResizeMode="NoResize" WindowStyle="ToolWindow"
     Background="{DynamicResource Bg}"
     FontFamily="Segoe UI">
 
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="22">
         <TextBlock Text="ТЕМА" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource FgMuted}" Margin="0,0,0,8"/>
         <Grid Margin="0,0,0,20">
@@ -22,5 +23,23 @@
 
         <TextBlock Text="АКЦЕНТНЫЙ ЦВЕТ" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource FgMuted}" Margin="0,0,0,10"/>
         <StackPanel x:Name="AccentList"/>
+
+        <TextBlock Text="СВОЙ ЦВЕТ (HEX)" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource FgMuted}" Margin="0,14,0,8"/>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Border x:Name="CustomPreview" Grid.Column="0" Width="34" Height="34" CornerRadius="8" Background="#E60000"/>
+            <Border Grid.Column="1" Margin="8,0" Background="{DynamicResource Muted}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8">
+                <TextBox x:Name="HexBox" Margin="10,0" VerticalAlignment="Center" Background="Transparent"
+                         Foreground="{DynamicResource Fg}" BorderThickness="0" FontSize="13" Text="#E60000"/>
+            </Border>
+            <Button x:Name="ApplyHexBtn" Grid.Column="2" Content="Применить" FontSize="12"/>
+        </Grid>
+        <TextBlock Text="Напр. #00BFA6 — введи свой цвет и нажми «Применить»." FontSize="10.5"
+                   Foreground="{DynamicResource FgMuted}" Margin="0,8,0,0" TextWrapping="Wrap"/>
     </StackPanel>
+    </ScrollViewer>
 </Window>
