@@ -3,6 +3,21 @@
 
 ---
 
+## v5.31 | 2026-06-24 | StressRunner: фикс FurMark-клавиш и Superposition (GUI)
+
+### desktop/StressRunner
+- KeySender переписан: клавиши через запятую (V,F2,G,P,T), поддержка F1..F12 и
+  спец-клавиш, нажатие через scan-code (надёжно для OpenGL-окна FurMark),
+  форс фокуса на окно перед каждым нажатием.
+
+### Frontend (StressProfilesTab)
+- FurMark-пресет: send_keys = "V,F2,G,P,T" (OSI, мониторинг GPU, post-FX, графики).
+- Superposition-пресет: бесплатная версия без CLI — запуск GUI (superposition.exe)
+  без аргументов, старт RUN вручную; success_exit_code=-1, timeout=успех.
+  Раньше падал с кодом 1 из-за несуществующего CLI.
+
+---
+
 ## v5.30 | 2026-06-24 | StressRunner: HWiNFO работает «из коробки» (авто-INI + трей)
 
 ### desktop/StressRunner

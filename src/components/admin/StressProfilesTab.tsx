@@ -92,15 +92,15 @@ const PRESETS: Preset[] = [
   },
   {
     key: "superposition",
-    label: "Superposition 8K",
-    hint: "Положи в StressTests\\Superposition\\. Консольный режим, пресет 8K, отчёт JSON.",
+    label: "Superposition (GUI)",
+    hint: "Положи в StressTests\\Superposition\\. Бесплатная версия без CLI: приложение откроет окно — выбери пресет (8K) и нажми RUN вручную. Нагрузка/температуры всё равно снимутся через HWiNFO.",
     make: () => ({
       ...emptyTest(),
-      name: "Superposition — 8K",
-      program: "StressTests\\Superposition\\bin\\superposition_cli.exe",
-      args: "-preset 4 -mode 2 -api 2 -report_path StressTests\\Superposition\\report.json",
-      duration_sec: 600, timeout_is_success: false, success_exit_code: 0,
-      report_files: ["StressTests\\Superposition\\report.json"],
+      name: "Superposition — ручной старт",
+      program: "StressTests\\Superposition\\bin\\superposition.exe",
+      args: "",
+      duration_sec: 600, timeout_is_success: true, success_exit_code: -1, min_run_sec: 0,
+      report_files: [],
     }),
   },
   {
