@@ -227,55 +227,57 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                     {order.order_type === "pc_build" && (
                       <button
                         onClick={() => copyOrderSheet(order.id)}
-                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${copiedOrderId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-border text-foreground/50 hover:border-primary hover:text-primary"}`}
+                        className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3 ${copiedOrderId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-border text-foreground/50 hover:border-primary hover:text-primary"}`}
                         style={{ cursor: "pointer" }}
                         title="Скопировать ссылку для приёмщика">
                         <Icon name={copiedOrderId === order.id ? "Check" : "Link"} size={12} />
-                        {copiedOrderId === order.id ? "Скопировано" : "Ссылка"}
+                        <span className="hidden sm:inline">{copiedOrderId === order.id ? "Скопировано" : "Ссылка"}</span>
                       </button>
                     )}
                     <button
                       onClick={() => downloadWarranty(order.id)}
                       disabled={warrantyLoadingId === order.id}
-                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/50 hover:border-green-400/50 hover:text-green-400 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground/50 hover:border-green-400/50 hover:text-green-400 transition-colors disabled:opacity-50 sm:px-3"
                       style={{ cursor: "pointer" }}
                       title="Скачать гарантийный лист PDF">
                       <Icon name={warrantyLoadingId === order.id ? "Loader" : "FileText"} size={12} className={warrantyLoadingId === order.id ? "animate-spin" : ""} />
-                      Гарантийный лист
+                      <span className="hidden sm:inline">Гарантийный лист</span>
                     </button>
                     {order.order_type === "pc_build" && !isArchive && (
                       <button
                         onClick={() => syncOrder(order.id)}
                         disabled={syncingId === order.id}
-                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${syncResultId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-yellow-400/40 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
+                        className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:px-3 ${syncResultId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-yellow-400/40 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
                         style={{ cursor: "pointer" }}
                         title="Выбить компоненты со склада, создать резервы">
                         <Icon name={syncingId === order.id ? "Loader" : syncResultId === order.id ? "Check" : "RefreshCw"} size={12} className={syncingId === order.id ? "animate-spin" : ""} />
-                        {syncResultId === order.id ? "Готово" : "Синхронизировать"}
+                        <span className="hidden sm:inline">{syncResultId === order.id ? "Готово" : "Синхронизировать"}</span>
                       </button>
                     )}
                     {isReserved && (
                       <button
                         onClick={() => clearReservation(order.id)}
-                        className="flex items-center gap-1.5 rounded-lg border border-orange-400/40 bg-orange-400/5 px-3 py-1.5 text-xs font-medium text-orange-400 hover:bg-orange-400/10 transition-colors"
+                        className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-orange-400/40 bg-orange-400/5 px-2.5 py-1.5 text-xs font-medium text-orange-400 hover:bg-orange-400/10 transition-colors sm:px-3"
                         style={{ cursor: "pointer" }}
                         title="Снять резерв: вернуть сборку в наличие, стереть данные клиента, отменить заказ">
                         <Icon name="Eraser" size={12} />
-                        Очистить резерв
+                        <span className="hidden sm:inline">Очистить резерв</span>
                       </button>
                     )}
                     <button
                       onClick={() => navigate(`/admin/order/${order.id}`)}
-                      className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
-                      style={{ cursor: "pointer" }}>
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors sm:px-3"
+                      style={{ cursor: "pointer" }}
+                      title="Обработать заказ">
                       <Icon name="Settings2" size={12} />
-                      Обработать
+                      <span className="hidden sm:inline">Обработать</span>
                     </button>
+                    {/* Смена статуса — только на десктопе (на мобильных убрана) */}
                     {order.order_type !== "pc_build" && (
                       <select
                         value={order.status}
                         onChange={e => updateStatus(order.id, e.target.value)}
-                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+                        className="hidden rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none sm:block"
                         style={{ cursor: "pointer" }}>
                         {Object.entries(STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                       </select>
