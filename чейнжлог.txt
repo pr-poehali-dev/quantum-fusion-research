@@ -3,6 +3,18 @@
 
 ---
 
+## v5.45 | 2026-06-25 | StressRunner: температуры планок памяти (SPD/DIMM)
+
+### desktop/StressRunner
+- MetricsCollector: добавлено распознавание температур ОЗУ (DDR5 SPD-датчик) —
+  hardware Memory/DIMM/SPD или имя с dimm/spd. Каждая планка отдельной метрикой
+  (ram_temp::hw::name). Подхватится, если LibreHardwareMonitor их отдаёт.
+
+### Frontend (metricUtils)
+- Новая категория «Память» (ram) для фильтра метрик в админке.
+
+---
+
 ## v5.44 | 2026-06-25 | StressRunner: обход блокировки DNS (DNS-over-HTTPS)
 
 ### Проблема

@@ -43,12 +43,18 @@ public class MetricsCollector
                 string nm = s.Name.ToLowerInvariant();
                 bool isGpu = hw.Contains("nvidia") || hw.Contains("geforce") || hw.Contains("radeon") || hw.Contains("gpu");
                 bool isCpu = hw.Contains("cpu") || hw.Contains("ryzen") || hw.Contains("intel") || hw.Contains("core i");
+                // Память (DDR5 SPD-датчик): hardware "Memory"/"DIMM" или имя с dimm/spd.
+                bool isRamTemp = hw.Contains("memory") || hw.Contains("dimm") || hw.Contains("spd")
+                                 || nm.Contains("dimm") || nm.Contains("spd");
 
                 switch (s.Type)
                 {
                     case "Temperature":
+                        // Температура планок ОЗУ (SPD). Каждая планка — отдельной метрикой.
+                        if (isRamTemp && !isCpu && !isGpu)
+                            Put($"ram_temp::{s.Hardware}::{s.Name}", $"RAM {s.Name} ({s.Hardware})", "°C", s.Value);
                         // CPU: "Core (Tctl/Tdie)" — основная температура процессора.
-                        if (isCpu && (nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("package") || nm == "core average"))
+                        else if (isCpu && (nm.Contains("tctl") || nm.Contains("tdie") || nm.Contains("package") || nm == "core average"))
                             Put("cpu_temp", "CPU температура", "°C", s.Value);
                         // GPU память: "GPU Memory Junction" — ВАЖНО проверять ДО hot spot,
                         // т.к. содержит "junction".
