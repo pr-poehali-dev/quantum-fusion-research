@@ -69,17 +69,63 @@ public class HwInfoReader
                 return;
             }
 
+            // Пишем INI рядом с EXE: включаем Shared Memory + Gadget, прячем окна,
+            // отключаем автообновления/всплывашки. Юзеру ничего настраивать не надо.
+            string dir = Path.GetDirectoryName(exe) ?? "";
+            WriteIni(dir, log);
+
             Process.Start(new ProcessStartInfo
             {
                 FileName = exe,
-                WorkingDirectory = Path.GetDirectoryName(exe) ?? "",
+                Arguments = "-minimize",   // свёрнуто в трей
+                WorkingDirectory = dir,
                 UseShellExecute = true,
             });
-            log?.Invoke("HWiNFO запущен. Если график пуст — включи в HWiNFO «Shared Memory Support».");
+            log?.Invoke("HWiNFO запущен в фоне (свёрнут в трей). Мониторинг включён автоматически.");
         }
         catch (Exception ex)
         {
             log?.Invoke($"Не смог запустить HWiNFO: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Создать HWiNFO64.INI рядом с EXE (если его ещё нет), чтобы HWiNFO сразу
+    /// работал «как надо»: только сенсоры, Shared Memory + Gadget включены,
+    /// окна свёрнуты, без автообновлений и приветствий. Юзер ничего не настраивает.
+    /// Существующий INI не перезаписываем — вдруг юзер уже настроил под себя.
+    /// </summary>
+    private static void WriteIni(string dir, Action<string>? log)
+    {
+        try
+        {
+            string ini = Path.Combine(dir, "HWiNFO64.INI");
+            if (File.Exists(ini)) return;
+
+            string[] lines =
+            {
+                "[Settings]",
+                "SensorsOnly=1",            // запускать только окно датчиков
+                "SummaryOnly=0",
+                "OpenSystemSummary=0",      // не открывать сводку системы
+                "ShowWelcomeAndProgress=0", // без экрана приветствия
+                "MinimizeMainOnStartup=1",  // главное окно свёрнуто
+                "MinimizeSensorsOnStartup=1",// окно датчиков свёрнуто
+                "MinimizeSensorsToTray=1",  // в трей
+                "AutoUpdateBetaCheck=0",
+                "DisableAutoUpdate=1",
+                "RememberSettings=1",
+                "SensorsSHM=1",             // Shared Memory — наш канал чтения
+                "EnableGadget=1",           // Gadget/VSB в реестр (резервный канал)
+                "GadgetVSB=1",
+                "SensorsPollingPeriod=1000",// опрос раз в секунду
+            };
+            File.WriteAllLines(ini, lines);
+            log?.Invoke("Создан конфиг HWiNFO (мониторинг настроен автоматически).");
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"Не смог создать конфиг HWiNFO: {ex.Message}");
         }
     }
 

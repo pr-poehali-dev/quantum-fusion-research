@@ -3,6 +3,18 @@
 
 ---
 
+## v5.30 | 2026-06-24 | StressRunner: HWiNFO работает «из коробки» (авто-INI + трей)
+
+### desktop/StressRunner
+- HwInfoReader.WriteIni: приложение само создаёт HWiNFO64.INI рядом с EXE
+  (если его нет): SensorsOnly, SensorsSHM=1 (Shared Memory), EnableGadget/VSB,
+  свёрнутые окна + трей, без автообновлений и приветствий. Юзер НЕ лезет в
+  настройки HWiNFO.
+- HWiNFO запускается с ключом -minimize (в трей).
+- Существующий INI не перезаписываем (вдруг юзер настроил вручную).
+
+---
+
 ## v5.29 | 2026-06-24 | StressRunner: темы как на сайте, HWiNFO автозапуск, FurMark «P», OCCT 12+
 
 ### desktop/StressRunner
