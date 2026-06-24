@@ -123,45 +123,72 @@ export default function Cart() {
                   <Icon name="Menu" size={14} />Компактный
                 </button>
               </div>
-              {items.map(item => (
-                <div key={item.id} className={`flex gap-4 rounded-xl border border-border bg-card p-4 ${viewMode === "detailed" ? "items-start" : "items-center"}`}>
-                  <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-40 w-40" : "h-14 w-14"}`}>
+              {items.map(item => {
+                const isProduct = item.type === "product"
+                const Photo = (
+                  <>
                     {item.image_url
                       ? <img src={item.image_url} alt={item.name} className="h-full w-full object-contain" />
                       : <Icon name={item.type === "config" ? "Cpu" : "Package"} size={viewMode === "detailed" ? 56 : 24} className="text-foreground/40" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium text-foreground ${viewMode === "detailed" ? "" : "truncate"}`}>{item.name}</p>
-                    <p className="text-xs text-foreground/40">{item.type === "config" ? "Кастомная сборка" : "Комплектующее"}</p>
-                    {viewMode === "detailed" && item.description && (
-                      <p className="mt-1 text-xs leading-snug text-foreground/50 line-clamp-3">
-                        {item.description.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()}
-                      </p>
+                  </>
+                )
+                const photoClass = `flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-40 w-40" : "h-14 w-14"}`
+                return (
+                <div key={item.id} className={`rounded-xl border border-border bg-card p-4 transition-all duration-200`}>
+                  <div className={`flex gap-3 ${viewMode === "detailed" ? "items-start" : "items-center"}`}>
+                    {/* Превью-фото — кликабельно на товар (в новой вкладке) */}
+                    {viewMode === "detailed" && isProduct ? (
+                      <a href={`/product/${item.id}`} target="_blank" rel="noopener noreferrer"
+                        title="Открыть товар в новой вкладке"
+                        className={`${photoClass} transition-opacity hover:opacity-90`} style={{ cursor: "pointer" }}>
+                        {Photo}
+                      </a>
+                    ) : (
+                      <div className={photoClass}>{Photo}</div>
                     )}
-                    {item.preorder && (
-                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                        <Icon name="Clock" size={11} />
-                        Под заказ — с вами свяжется менеджер
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1 rounded-lg border border-border">
-                      <button onClick={() => updateQty(item.id, item.quantity - 1)} className="px-2 py-1 text-foreground/60 hover:text-foreground" style={{ cursor: "pointer" }}>
-                        <Icon name="Minus" size={12} />
-                      </button>
-                      <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                      <button onClick={() => updateQty(item.id, item.quantity + 1)} className="px-2 py-1 text-foreground/60 hover:text-foreground" style={{ cursor: "pointer" }}>
-                        <Icon name="Plus" size={12} />
+
+                    {/* Название + тип + описание */}
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-medium text-foreground leading-tight ${viewMode === "detailed" ? "" : "truncate"}`}>{item.name}</p>
+                      <p className="mt-0.5 text-xs text-foreground/40">{item.type === "config" ? "Кастомная сборка" : "Комплектующее"}</p>
+                      {viewMode === "detailed" && item.description && (
+                        <p className="mt-1 text-xs leading-snug text-foreground/50 line-clamp-3">
+                          {item.description.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()}
+                        </p>
+                      )}
+                      {item.preorder && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                          <Icon name="Clock" size={11} />
+                          Под заказ — с вами свяжется менеджер
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Цена / кол-во / итог / удаление — 1в1 как в конфигураторе */}
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-xs text-foreground/50">{fmt(item.price)}</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => updateQty(item.id, item.quantity - 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                          <Icon name="Minus" size={11} />
+                        </button>
+                        <input type="number" min={1} max={99} value={item.quantity}
+                          onChange={e => updateQty(item.id, Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-11 rounded-lg border border-border bg-background px-1 py-1 text-center text-xs font-medium text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                        <button onClick={() => updateQty(item.id, item.quantity + 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                          <Icon name="Plus" size={11} />
+                        </button>
+                      </div>
+                      <span className="w-24 text-right text-sm font-bold text-primary">{fmt(item.price * item.quantity)}</span>
+                      <button onClick={() => removeItem(item.id)} className="text-foreground/25 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                        <Icon name="X" size={16} />
                       </button>
                     </div>
-                    <p className="w-24 text-right text-sm font-bold text-foreground">{fmt(item.price * item.quantity)}</p>
-                    <button onClick={() => removeItem(item.id)} className="text-foreground/30 hover:text-foreground/70 transition-colors" style={{ cursor: "pointer" }}>
-                      <Icon name="Trash2" size={16} />
-                    </button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
 
             {/* Order form */}
