@@ -463,6 +463,13 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
     return Array.from(s).sort()
   }, [products])
 
+  // Диапазон цен по товарам слота — для подсказок в полях «от/до»
+  const priceRange = useMemo(() => {
+    const prices = products.map(p => p.price).filter(n => n > 0)
+    if (!prices.length) return null
+    return { min: Math.min(...prices), max: Math.max(...prices) }
+  }, [products])
+
   const toggleBrand = (b: string) => {
     setBrandFilter(prev => {
       const next = new Set(prev)
@@ -629,9 +636,11 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
             <div className="mb-3">
               <p className="mb-1.5 text-xs font-semibold text-foreground/60">Цена, ₽</p>
               <div className="flex gap-2">
-                <input value={priceMin} onChange={e => setPriceMin(e.target.value)} placeholder="от" inputMode="numeric"
+                <input value={priceMin} onChange={e => setPriceMin(e.target.value)}
+                  placeholder={priceRange ? `от ${priceRange.min.toLocaleString("ru-RU")}` : "от"} inputMode="numeric"
                   className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
-                <input value={priceMax} onChange={e => setPriceMax(e.target.value)} placeholder="до" inputMode="numeric"
+                <input value={priceMax} onChange={e => setPriceMax(e.target.value)}
+                  placeholder={priceRange ? `до ${priceRange.max.toLocaleString("ru-RU")}` : "до"} inputMode="numeric"
                   className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
               </div>
             </div>
