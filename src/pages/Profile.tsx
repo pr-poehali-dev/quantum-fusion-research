@@ -275,15 +275,13 @@ export default function Profile() {
               )}
             </div>
           </div>
-          <div className="ml-auto flex gap-3">
-            <button onClick={() => navigate("/configurator")} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="Plus" size={16} />Новая сборка
-            </button>
-          </div>
         </div>
 
         {/* Tabs */}
         <div className="mb-6 flex flex-col items-center gap-2">
+          <button onClick={() => navigate("/configurator")} className="flex w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="Plus" size={16} />Новая сборка
+          </button>
           {[
             { key: "profile", label: "Мой профиль", icon: "UserCog" },
             { key: "orders", label: "Мои заказы", icon: "ShoppingBag", count: orders.length },
