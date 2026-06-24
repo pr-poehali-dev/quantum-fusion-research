@@ -323,7 +323,7 @@ export default function TierLists() {
           <h1 className="text-3xl font-bold">Тир-листы железа</h1>
           <p className="mt-1 text-sm text-foreground/60">
             Рейтинг комплектующих по рядам — от лучших (S) до спорных (F).
-            <span className="sm:hidden"> Дважды кликните на букву ряда, чтобы узнать, что она означает.</span>
+            <span className="sm:hidden"> Нажмите на букву ряда, чтобы узнать, что она означает.</span>
           </p>
           {isAdmin && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground/70">
