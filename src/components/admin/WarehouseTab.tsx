@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from "react"
+import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { playScanOk, playScanError } from "@/lib/scanSound"
+import { getAdminKey } from "@/pages/admin/types"
 import BrandsManager from "./BrandsManager"
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
@@ -1128,6 +1130,18 @@ export default function WarehouseTab() {
 
   const totalPages = Math.ceil(total / PAGE)
 
+  // ── Парсер цен: счётчик необработанных предложений ──
+  const navigate = useNavigate()
+  const [parserPending, setParserPending] = useState(0)
+  useEffect(() => {
+    api.priceMonitor.list(getAdminKey())
+      .then(d => {
+        const c = d.counts || {}
+        setParserPending((c.price_change || 0) + (c.new_product || 0))
+      })
+      .catch(() => {})
+  }, [])
+
   // Применяем фильтр и сортировку резервов
   const displayGroups = (() => {
     if (!reserveFilter) return groups
@@ -1171,6 +1185,20 @@ export default function WarehouseTab() {
         </Button>
         <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
           <Icon name="ClipboardList" size={14} className="mr-1.5" />Инвентаризация
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate("/admin/price_monitor")}
+          className="relative"
+          title="Предложения по ценам от парсера"
+        >
+          <Icon name="Radar" size={14} className="mr-1.5" />Работа с парсером
+          {parserPending > 0 && (
+            <span className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold leading-none text-white shadow">
+              {parserPending > 99 ? "99+" : parserPending}
+            </span>
+          )}
         </Button>
         <Button
           variant="outline"

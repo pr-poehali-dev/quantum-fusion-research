@@ -32,6 +32,11 @@
 ### Секреты
 - PARSER_INGEST_TOKEN — токен для авторизации парсера (нужно задать в UI).
 
+### src/components/admin/WarehouseTab.tsx
+- В шапку склада добавлена кнопка «Работа с парсером» (иконка Radar) с красным
+  кружком-счётчиком необработанных предложений (price_change + new_product).
+  Ведёт на вкладку /admin/price_monitor. Счётчик грузится через api.priceMonitor.list.
+
 ## v5.08 | 2026-06-24 | Шапка: корзина-иконка на моб. + подсветка темы
 
 ### src/pages/HomeStonks.tsx
