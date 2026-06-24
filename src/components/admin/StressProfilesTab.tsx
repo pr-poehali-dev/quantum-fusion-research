@@ -32,40 +32,44 @@ const emptyProfile = (): Profile => ({
   name: "", note: "", tests: [emptyTest()], is_active: true, sort_order: 0,
 })
 
-// Готовые пресеты тестов. program оставляем пустым — путь юзер впишет под свой ПК.
+// Готовые пресеты. Пути ОТНОСИТЕЛЬНЫЕ от папки StressRunner (StressTests\...) —
+// тогда профиль работает на любом ПК: кинул папку на флешку и поехал.
 interface Preset { key: string; label: string; hint: string; make: () => TestItem }
 const PRESETS: Preset[] = [
   {
     key: "occt",
     label: "OCCT (CPU)",
-    hint: "Запускает OCCT.exe, само крутит CPU-тест 10 мин и закрывается. Путь обычно C:\\Program Files\\OCCT\\OCCT.exe. Отчёт — в Документы\\OCCT.",
+    hint: "Положи OCCT в StressTests\\OCCT\\. Сам крутит CPU-тест 10 мин и пишет отчёт прямо в свою папку.",
     make: () => ({
       ...emptyTest(),
       name: "OCCT — CPU стресс",
-      args: "-run -test=CPU -duration=00:10:00 -auto -report=Documents",
+      program: "StressTests\\OCCT\\OCCT.exe",
+      args: "-run -test=CPU -duration=00:10:00 -auto -report=StressTests\\OCCT\\report",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
-      report_files: ["%USERPROFILE%\\Documents\\OCCT\\*.html", "%USERPROFILE%\\Documents\\OCCT\\*\\*.csv"],
+      report_files: ["StressTests\\OCCT\\report\\*.html", "StressTests\\OCCT\\report\\*.csv"],
     }),
   },
   {
     key: "occt_gpu",
     label: "OCCT (GPU)",
-    hint: "OCCT в режиме 3D/VRAM на видеокарту. Путь к OCCT.exe тот же. Отчёт — в Документы\\OCCT.",
+    hint: "OCCT в режиме 3D на видеокарту. Та же папка StressTests\\OCCT\\.",
     make: () => ({
       ...emptyTest(),
       name: "OCCT — GPU стресс (3D)",
-      args: "-run -test=3D -duration=00:10:00 -auto -report=Documents",
+      program: "StressTests\\OCCT\\OCCT.exe",
+      args: "-run -test=3D -duration=00:10:00 -auto -report=StressTests\\OCCT\\report",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
-      report_files: ["%USERPROFILE%\\Documents\\OCCT\\*.html"],
+      report_files: ["StressTests\\OCCT\\report\\*.html"],
     }),
   },
   {
     key: "cinebench",
     label: "Cinebench R23",
-    hint: "CPU-бенчмарк Maxon. Путь к Cinebench.exe. Крутит мультиядро ~10 мин. Результат смотри в окне Cinebench.",
+    hint: "Положи в StressTests\\Cinebench\\. Крутит мультиядро ~10 мин. Результат — в окне Cinebench.",
     make: () => ({
       ...emptyTest(),
       name: "Cinebench R23 — Multi Core",
+      program: "StressTests\\Cinebench\\Cinebench.exe",
       args: "g_CinebenchCpuXTest=true g_CinebenchMinimumTestDuration=600",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0,
       report_files: [],
@@ -74,37 +78,40 @@ const PRESETS: Preset[] = [
   {
     key: "prime95",
     label: "Prime95",
-    hint: "Прогрев CPU. Путь к prime95.exe. Режим Torture задаётся в local.txt/prime.txt рядом с программой.",
+    hint: "Положи в StressTests\\prime95\\. Режим Torture задаётся в local.txt/prime.txt рядом с программой.",
     make: () => ({
       ...emptyTest(),
       name: "Prime95 — Torture Test",
+      program: "StressTests\\prime95\\prime95.exe",
       args: "-t",
       duration_sec: 900, timeout_is_success: true, success_exit_code: 0,
-      report_files: ["results.txt"],
+      report_files: ["StressTests\\prime95\\results.txt"],
     }),
   },
   {
     key: "superposition",
     label: "Superposition 8K",
-    hint: "Unigine Superposition в режиме консоли. Путь к superposition_cli.exe (папка bin). Пресет 8K. Отчёт — JSON рядом.",
+    hint: "Положи в StressTests\\Superposition\\. Консольный режим, пресет 8K, отчёт JSON.",
     make: () => ({
       ...emptyTest(),
       name: "Superposition — 8K",
-      args: "-preset 4 -mode 2 -api 2 -report_path superposition_report.json",
+      program: "StressTests\\Superposition\\bin\\superposition_cli.exe",
+      args: "-preset 4 -mode 2 -api 2 -report_path StressTests\\Superposition\\report.json",
       duration_sec: 600, timeout_is_success: false, success_exit_code: 0,
-      report_files: ["superposition_report.json"],
+      report_files: ["StressTests\\Superposition\\report.json"],
     }),
   },
   {
     key: "furmark",
     label: "FurMark 1.39.0",
-    hint: "Стресс GPU с мониторингом. Путь к furmark.exe. Лог с температурами/FPS пишется в файл.",
+    hint: "Положи в StressTests\\FurMark\\. Стресс GPU с мониторингом, лог температур/FPS в файл.",
     make: () => ({
       ...emptyTest(),
       name: "FurMark — GPU стресс",
+      program: "StressTests\\FurMark\\furmark.exe",
       args: "/nogui /no_score_box /width=1920 /height=1080 /msaa=4 /max_time=600000 /log_temperature /log_score",
       duration_sec: 660, timeout_is_success: true, success_exit_code: 0, min_run_sec: 30,
-      report_files: ["*.csv", "*_log.txt"],
+      report_files: ["StressTests\\FurMark\\*.csv", "StressTests\\FurMark\\*_log.txt"],
     }),
   },
 ]
@@ -232,8 +239,9 @@ export default function StressProfilesTab() {
                   <label className="block">
                     <span className="mb-1 block text-xs text-foreground/50">Программа или скрипт (путь)</span>
                     <input value={t.program} onChange={e => updTest(i, { program: e.target.value })}
-                      placeholder="C:\OCCT\OCCT.exe"
+                      placeholder="StressTests\OCCT\OCCT.exe"
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary" />
+                    <span className="mt-1 block text-[11px] text-foreground/30">Лучше относительный путь от папки StressRunner: <span className="font-mono">StressTests\OCCT\OCCT.exe</span> — тогда работает на любом ПК (флешка). Можно и полный путь C:\...</span>
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-xs text-foreground/50">Аргументы запуска</span>

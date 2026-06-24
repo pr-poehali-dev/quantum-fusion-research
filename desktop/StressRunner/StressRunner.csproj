@@ -9,9 +9,16 @@
     <AssemblyName>StressRunner</AssemblyName>
     <RootNamespace>StressRunner</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Чтобы собрать один самодостаточный .exe — см. README (publish) -->
+    <!-- ── Портативная сборка: ОДИН самодостаточный .exe ──
+         Всё (рантайм .NET + dll) запаковано внутрь exe. На целевом ПК
+         НИЧЕГО ставить не нужно. Папка переносится на флешке как есть. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>

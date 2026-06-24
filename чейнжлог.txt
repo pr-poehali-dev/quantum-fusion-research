@@ -3,6 +3,29 @@
 
 ---
 
+## v5.24 | 2026-06-24 | StressRunner: портативная сборка (один .exe + флешка)
+
+### desktop/StressRunner
+- .csproj: один самодостаточный .exe (PublishSingleFile + SelfContained +
+  сжатие). На целевом ПК .NET ставить не нужно. Сборка одной командой:
+  `dotnet publish -c Release -o publish`.
+- Paths.cs: портативная схема путей —
+  StressRunner.exe (корень) + Data\ (settings/profiles/БД) + StressTests\ (утилиты).
+  Папки создаются автоматически. Resolve() разворачивает относительные пути
+  (StressTests\OCCT\OCCT.exe) от корня exe + переменные окружения.
+- MainWindow / ConsoleMode переведены на Paths (Data-папка).
+- Runner: запуск программ и сбор отчётов через Paths.Resolve — относительные
+  пути работают на любом ПК.
+
+### Frontend (StressProfilesTab)
+- Пресеты теперь подставляют относительные пути StressTests\... вместо C:\...
+- Подсказка под полем «Программа» про относительные пути и флешку.
+
+### Итог
+- Всю папку StressRunner можно носить на флешке: пути совпадают на любом ПК.
+
+---
+
 ## v5.23 | 2026-06-24 | Стресс-тесты: пресеты в редакторе + защита от «мгновенного» теста
 
 ### Frontend (StressProfilesTab)

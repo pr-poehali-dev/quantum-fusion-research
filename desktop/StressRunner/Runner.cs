@@ -140,10 +140,12 @@ public class Runner
 
     private static ProcessStartInfo BuildStartInfo(TestItem test)
     {
-        string exePath = Environment.ExpandEnvironmentVariables(test.Program);
+        // Относительные пути (StressTests\OCCT\OCCT.exe) разворачиваются от
+        // корня StressRunner — поэтому портативно на любом ПК.
+        string exePath = Paths.Resolve(test.Program);
         string program = exePath;
         string args = Environment.ExpandEnvironmentVariables(test.Args);
-        string workDir = Environment.ExpandEnvironmentVariables(test.WorkingDir);
+        string workDir = string.IsNullOrWhiteSpace(test.WorkingDir) ? "" : Paths.Resolve(test.WorkingDir);
         string ext = Path.GetExtension(program).ToLowerInvariant();
 
         // Скрипты запускаем через нужный интерпретатор.
@@ -185,8 +187,8 @@ public class Runner
         {
             try
             {
-                // Разворачиваем переменные окружения (%USERPROFILE%, %APPDATA%...).
-                string pattern = Environment.ExpandEnvironmentVariables(rawPattern);
+                // Разворачиваем переменные и относительные пути (от корня exe).
+                string pattern = Paths.Resolve(rawPattern);
                 string dir = Path.GetDirectoryName(pattern) ?? ".";
                 if (string.IsNullOrWhiteSpace(dir)) dir = ".";
                 string mask = Path.GetFileName(pattern);

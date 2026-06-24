@@ -15,9 +15,6 @@ namespace StressRunner;
 /// </summary>
 internal static class ConsoleMode
 {
-    private static readonly string BaseDir = AppContext.BaseDirectory;
-    private static string Path(string name) => System.IO.Path.Combine(BaseDir, name);
-
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
@@ -30,8 +27,9 @@ internal static class ConsoleMode
         try { Console.OutputEncoding = Encoding.UTF8; } catch { }
         Console.WriteLine("===== StressRunner (пакетный режим) =====\n");
 
+        Paths.EnsureDirs();
         var settings = LoadSettings();
-        var storage = new Storage(Path("stressrunner.db"));
+        var storage = new Storage(Paths.Db);
         var profiles = await PullOrLoadProfiles(settings);
 
         string profileName = args.Length >= 2 ? args[1] : (profiles.FirstOrDefault()?.Name ?? "");
@@ -72,7 +70,7 @@ internal static class ConsoleMode
             var pulled = await up.PullProfilesAsync();
             if (pulled != null && pulled.Count > 0)
             {
-                try { File.WriteAllText(Path("profiles.json"), JsonSerializer.Serialize(pulled, JsonOpts)); } catch { }
+                try { File.WriteAllText(Paths.Profiles, JsonSerializer.Serialize(pulled, JsonOpts)); } catch { }
                 Console.WriteLine($"Загружено профилей с сайта: {pulled.Count}");
                 return pulled;
             }
@@ -84,21 +82,19 @@ internal static class ConsoleMode
 
     private static AppSettings LoadSettings()
     {
-        string path = Path("settings.json");
-        if (!File.Exists(path))
+        if (!File.Exists(Paths.Settings))
         {
             var def = new AppSettings();
-            File.WriteAllText(path, JsonSerializer.Serialize(def, JsonOpts));
-            Console.WriteLine($"Создан {path} — впиши токен.\n");
+            File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(def, JsonOpts));
+            Console.WriteLine($"Создан {Paths.Settings} — впиши токен.\n");
             return def;
         }
-        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
+        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Paths.Settings)) ?? new AppSettings();
     }
 
     private static List<Profile> LoadProfiles()
     {
-        string path = Path("profiles.json");
-        if (!File.Exists(path)) return new List<Profile>();
-        return JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(path)) ?? new List<Profile>();
+        if (!File.Exists(Paths.Profiles)) return new List<Profile>();
+        return JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(Paths.Profiles)) ?? new List<Profile>();
     }
 }

@@ -83,6 +83,12 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
     Models.cs, ConsoleMode (Program.cs) — пакетный режим run "профиль".
   Два режима: окно (по умолчанию) и пакетный `StressRunner.exe run "Профиль"`.
   Для графика нужен HWiNFO с включённым Shared Memory Support / Gadget.
+  ПОРТАТИВНАЯ сборка: один .exe (PublishSingleFile+SelfContained), сборка
+    `dotnet publish -c Release -o publish`. Структура папки:
+    StressRunner.exe (корень) + Data\ (settings/profiles/БД, авто-создаётся) +
+    StressTests\ (утилиты OCCT/FurMark/...). Paths.cs разрешает относительные
+    пути (StressTests\OCCT\OCCT.exe) от корня — переносится на флешке на любой ПК.
+    Пресеты в админке подставляют такие относительные пути.
 
 ## Функции и их назначение (продолжение)
 

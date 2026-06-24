@@ -26,26 +26,42 @@ FurMark...), каждую на заданное время, сохраняет �
 1. **.NET SDK 8.0** — https://dotnet.microsoft.com/download/dotnet/8.0
    (скачай «SDK x64» для Windows, установи).
 
-## Сборка в .exe
+## Сборка в .exe (одна команда)
 
 Открой папку `desktop/StressRunner` в командной строке и выполни:
 
 ```bat
-dotnet restore
-dotnet publish -c Release -r win-x64 --self-contained false -o publish
+dotnet publish -c Release -o publish
 ```
 
-Готовый `StressRunner.exe` будет в папке `publish`.
+Получится **ОДИН файл** `publish\StressRunner.exe` — всё внутри (рантайм .NET
+и библиотеки запакованы). На целевом ПК **ничего ставить не нужно**.
+(Параметры single-file/self-contained уже прописаны в проекте.)
 
-> Хочешь, чтобы exe работал на ПК **без установленного .NET** — собери так:
-> ```bat
-> dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
-> ```
-> Получится один большой самодостаточный файл.
+## Портативная структура (всё ездит на флешке)
 
-## Настройка (рядом с exe появятся файлы при первом запуске)
+Создай рядом с exe такую папку — приложение само создаст Data при первом запуске:
 
-### settings.json
+```
+StressRunner\
+├── StressRunner.exe        ← сам файл
+├── Data\                   ← settings.json, profiles.json, база (создаётся авто)
+└── StressTests\            ← сюда кладёшь сами утилиты:
+    ├── OCCT\OCCT.exe
+    ├── FurMark\furmark.exe
+    ├── Cinebench\Cinebench.exe
+    ├── prime95\prime95.exe
+    └── Superposition\bin\superposition_cli.exe
+```
+
+В профилях на сайте используй **относительные пути** вида
+`StressTests\OCCT\OCCT.exe` — они считаются от папки StressRunner, поэтому всё
+работает на любом ПК: кинул папку на флешку, перенёс — пути совпадают.
+(Пресеты в админке уже подставляют такие пути.)
+
+## Настройка
+
+Файл `Data\settings.json` (создаётся при первом запуске):
 ```json
 {
   "ingest_url": "https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c",

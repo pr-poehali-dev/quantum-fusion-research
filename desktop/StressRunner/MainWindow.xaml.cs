@@ -20,14 +20,12 @@ public partial class MainWindow : Window
     private const int MaxPoints = 120;
     private bool _running;
 
-    private static string AppDir => AppContext.BaseDirectory;
-    private static string PathOf(string f) => System.IO.Path.Combine(AppDir, f);
-
     public MainWindow()
     {
         InitializeComponent();
+        Paths.EnsureDirs();
         _settings = LoadSettings();
-        _storage = new Storage(PathOf("stressrunner.db"));
+        _storage = new Storage(Paths.Db);
         MachineLabel.Text = string.IsNullOrWhiteSpace(_settings.MachineName)
             ? Environment.MachineName : _settings.MachineName;
 
@@ -53,13 +51,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            string p = PathOf("settings.json");
-            if (File.Exists(p))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(p)) ?? new AppSettings();
+            if (File.Exists(Paths.Settings))
+                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Paths.Settings)) ?? new AppSettings();
         }
         catch { }
         var s = new AppSettings();
-        File.WriteAllText(PathOf("settings.json"), JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
         return s;
     }
 
@@ -67,9 +64,8 @@ public partial class MainWindow : Window
     {
         try
         {
-            string p = PathOf("profiles.json");
-            if (File.Exists(p))
-                _profiles = JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(p)) ?? new();
+            if (File.Exists(Paths.Profiles))
+                _profiles = JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(Paths.Profiles)) ?? new();
         }
         catch { _profiles = new(); }
         BindProfiles();
@@ -85,7 +81,7 @@ public partial class MainWindow : Window
             if (pulled != null && pulled.Count > 0)
             {
                 _profiles = pulled;
-                try { File.WriteAllText(PathOf("profiles.json"), JsonSerializer.Serialize(pulled, new JsonSerializerOptions { WriteIndented = true })); } catch { }
+                try { File.WriteAllText(Paths.Profiles, JsonSerializer.Serialize(pulled, new JsonSerializerOptions { WriteIndented = true })); } catch { }
                 AppendLog($"Загружено профилей: {pulled.Count}");
                 BindProfiles();
                 return;
