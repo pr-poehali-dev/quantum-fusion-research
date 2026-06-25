@@ -753,30 +753,56 @@ def handler(event: dict, context) -> dict:
 
             elif action == "set_price":
                 new_price = float(body["price"])
-                # НДС-сборки: цену можно только повышать (скидка запрещена).
-                # Узнаём sell_with_vat сборки этого заказа.
+                slot = body.get("slot")
+                # Узнаём тип заказа и сборку (для ПК-сборок)
                 cur.execute(
-                    "SELECT pb.sell_with_vat FROM pc_builds pb "
+                    "SELECT pb.sell_with_vat, pb.id FROM pc_builds pb "
                     "JOIN wip_builds wb ON wb.build_id = pb.id "
                     "WHERE wb.order_id = %s LIMIT 1",
                     (order_id,),
                 )
                 vat_row = cur.fetchone()
                 is_vat = bool(vat_row[0]) if vat_row else False
-                cur_price = items[item_idx].get("final_price")
-                if cur_price is None:
-                    cur_price = items[item_idx].get("price", 0)
-                if is_vat and new_price < float(cur_price):
-                    return {"statusCode": 400, "headers": cors, "body": json.dumps({
-                        "error": "vat_no_discount",
-                        "message": "Товар с НДС: цену можно только повысить, скидка недоступна.",
-                    })}
-                items[item_idx]["final_price"] = new_price
-                # Пересчитать total
-                total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
-                            for it in items)
-                cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
-                            (json.dumps(items), total, order_id))
+                build_id = vat_row[1] if vat_row else None
+
+                if build_id and slot:
+                    # ПК-сборка: цена компонента/сборки хранится в pc_builds.components
+                    # этого конкретного заказа — меняем по слоту, НЕ трогая список позиций.
+                    cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id,))
+                    pc_row = cur.fetchone()
+                    comps = []
+                    if pc_row and pc_row[0]:
+                        comps = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                    target = next((c for c in comps if c.get("slot") == slot), None)
+                    cur_price = float(target.get("price", 0)) if target else 0
+                    if is_vat and new_price < cur_price:
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                            "error": "vat_no_discount",
+                            "message": "Товар с НДС: цену можно только повысить, скидка недоступна.",
+                        })}
+                    if slot == "assembly":
+                        cur.execute(f"UPDATE {schema}.pc_builds SET assembly_fee=%s WHERE id=%s",
+                                    (new_price, build_id))
+                    elif target is not None:
+                        target["price"] = new_price
+                        cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
+                                    (json.dumps(comps), build_id))
+                    cur.execute("UPDATE orders SET updated_at=NOW() WHERE id=%s", (order_id,))
+                else:
+                    # Обычный заказ: цена позиции в orders.items[item_idx]
+                    cur_price = items[item_idx].get("final_price")
+                    if cur_price is None:
+                        cur_price = items[item_idx].get("price", 0)
+                    if is_vat and new_price < float(cur_price):
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                            "error": "vat_no_discount",
+                            "message": "Товар с НДС: цену можно только повысить, скидка недоступна.",
+                        })}
+                    items[item_idx]["final_price"] = new_price
+                    total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
+                                for it in items)
+                    cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                                (json.dumps(items), total, order_id))
 
             elif action == "set_warranty":
                 # Для ПК-заказов гарантия сборки хранится в items[0].assembly_warranty

@@ -169,15 +169,15 @@ export default function OrderProcessPage() {
     setSaving(null)
     if (res.error) { alert(res.message || res.error); return res }
     if (res.ok) {
-      // Действия, меняющие состав сборки ПК — нужен полный рефетч
-      const needsReload = order?.order_type === "pc_build"
-        && !["set_serial", "set_price", "set_warranty"].includes(action)
       if (action === "set_serial") {
-        // ничего, SerialInput сам отражает новое значение
-      } else if (needsReload) {
+        // set_serial не перезагружает — SerialInput сам отражает новое значение
+      } else if (order?.order_type === "pc_build") {
+        // ПК-заказ: items на фронте развёрнуты из wip_build (~9 позиций),
+        // а бэкенд возвращает сырой orders.items (1 строка-конфиг) — поэтому
+        // подменять список нельзя, иначе позиции "исчезают". Делаем полный рефетч.
         await load()
       } else if (res.items) {
-        // Обновляем локально без перезагрузки — цена/гарантия применяются налету
+        // Обычный заказ: обновляем локально без перезагрузки — цена/сумма налету
         setOrder(prev => prev ? { ...prev, items: res.items, total: res.items.reduce((s: number, it: OrderItem) => s + (it.final_price ?? it.price) * it.quantity, 0) } : prev)
       }
     }
@@ -529,7 +529,7 @@ export default function OrderProcessPage() {
                   <PriceInput
                     value={finalPrice}
                     saving={saving === `set_price-${idx}`}
-                    onSave={val => callPut("set_price", idx, { price: val })}
+                    onSave={val => callPut("set_price", idx, { price: val, slot: "assembly" })}
                   />
                   <WarrantyInput
                     value={item.warranty_months ?? 12}
@@ -665,7 +665,7 @@ export default function OrderProcessPage() {
                   <PriceInput
                     value={finalPrice}
                     saving={saving === `set_price-${idx}`}
-                    onSave={val => callPut("set_price", idx, { price: val })}
+                    onSave={val => callPut("set_price", idx, { price: val, slot: item.slot || null })}
                   />
                 </div>
 
