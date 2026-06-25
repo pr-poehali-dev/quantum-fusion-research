@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
@@ -49,6 +49,7 @@ interface OrderItem {
   wip_status?: string
   warranty_months?: number
   preorder?: boolean
+  ram_modules?: number
   _supplies?: Supply[]
 }
 
@@ -118,6 +119,15 @@ export default function OrderProcessPage() {
   const [editBuildQty, setEditBuildQty] = useState(false)
   const [buildQtyInput, setBuildQtyInput] = useState(1)
   const [buildQtySaving, setBuildQtySaving] = useState(false)
+
+  // Голосовое сопровождение при сканировании серийников (по умолчанию выкл, состояние в localStorage)
+  const [voiceOn, setVoiceOn] = useState(isVoiceEnabled())
+  const toggleVoice = () => {
+    const next = !voiceOn
+    setVoiceOn(next)
+    setVoiceEnabled(next)
+    if (next) speak("Озвучка включена")
+  }
 
   const syncOrder = async () => {
     setSyncLoading(true)
@@ -513,7 +523,21 @@ export default function OrderProcessPage() {
 
         {/* Позиции */}
         <div className="space-y-3">
-          <h2 className="text-lg font-medium">Позиции заказа</h2>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-medium">Позиции заказа</h2>
+            <button
+              onClick={toggleVoice}
+              style={{ cursor: "pointer" }}
+              title="Озвучивать название железки при сканировании серийников"
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                voiceOn
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+              }`}>
+              <Icon name={voiceOn ? "Volume2" : "VolumeX"} size={14} />
+              Озвучка {voiceOn ? "вкл" : "выкл"}
+            </button>
+          </div>
 
           {order.items.map((item, idx) => {
             const isAssembly = item.item_type === "assembly"
@@ -650,22 +674,29 @@ export default function OrderProcessPage() {
 
                 {/* Поля редактирования */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {/* Серийные номера — при qty>1 все поля в строку */}
-                  <div className={item.quantity > 1 ? "sm:col-span-2" : ""}>
+                  {/* Серийные номера. Для ОЗУ — поле на каждую планку (ram_modules) × кол-во */}
+                  {(() => {
+                    const perUnit = item.slot === "ram" && item.ram_modules && item.ram_modules > 1
+                      ? item.ram_modules : 1
+                    const fieldCount = perUnit * item.quantity
+                    const multi = fieldCount > 1
+                    return (
+                  <div className={multi ? "sm:col-span-2" : ""}>
                     <label className="text-xs text-foreground/40 mb-1.5 block">
-                      Серийный номер{item.quantity > 1 ? ` (${item.quantity} шт.)` : ""}
+                      Серийный номер{multi ? ` (${fieldCount} шт.${perUnit > 1 ? `, ${perUnit} планки` : ""})` : ""}
                     </label>
                     <div className="space-y-1.5">
-                      {Array.from({ length: item.quantity }).map((_, qIdx) => {
+                      {Array.from({ length: fieldCount }).map((_, qIdx) => {
                         const serials = item.serial_numbers || (item.serial_number ? [item.serial_number] : [])
                         return (
                           <div key={qIdx} className="flex items-center gap-1">
-                            {item.quantity > 1 && <span className="text-xs text-foreground/30 shrink-0 w-5 text-right">#{qIdx + 1}</span>}
+                            {multi && <span className="text-xs text-foreground/30 shrink-0 w-5 text-right">#{qIdx + 1}</span>}
                             <SerialInput
                               value={serials[qIdx] || ""}
+                              itemName={item.name}
                               saving={saving === `set_serial-${idx}-${qIdx}`}
                               onSave={val => {
-                                const next = Array.from({ length: item.quantity }, (_, i) =>
+                                const next = Array.from({ length: fieldCount }, (_, i) =>
                                   (item.serial_numbers || [])[i] || ""
                                 )
                                 next[qIdx] = val
@@ -677,6 +708,8 @@ export default function OrderProcessPage() {
                       })}
                     </div>
                   </div>
+                    )
+                  })()}
 
                   {/* Финальная цена */}
                   <PriceInput
@@ -909,28 +942,75 @@ function playConfirmSound() {
   } catch (_) { /* AudioContext недоступен */ }
 }
 
-function SerialInput({ value, saving, onSave, label }: {
+// ── Голосовое сопровождение (Web Speech API) ──────────────────────────────────
+const VOICE_KEY = "serial_voice_enabled"
+export function isVoiceEnabled(): boolean {
+  try { return localStorage.getItem(VOICE_KEY) === "1" } catch { return false }
+}
+export function setVoiceEnabled(on: boolean) {
+  try { localStorage.setItem(VOICE_KEY, on ? "1" : "0") } catch { /* недоступно */ }
+}
+// Озвучить текст голосом (только если озвучка включена)
+export function speak(text: string) {
+  if (!text || !isVoiceEnabled()) return
+  try {
+    const synth = window.speechSynthesis
+    if (!synth) return
+    synth.cancel()
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = "ru-RU"
+    u.rate = 1.05
+    const ru = synth.getVoices().find(v => v.lang.startsWith("ru"))
+    if (ru) u.voice = ru
+    synth.speak(u)
+  } catch (_) { /* speechSynthesis недоступен */ }
+}
+
+// Переход к следующему пустому полю серийника по всему списку позиций + озвучка его железки.
+function focusNextSerial(currentEl: HTMLInputElement | null) {
+  try {
+    const all = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-serial-field]"))
+    const startIdx = currentEl ? all.indexOf(currentEl) : -1
+    // Ищем первое пустое поле ПОСЛЕ текущего, затем — с начала (по кругу)
+    const ordered = [...all.slice(startIdx + 1), ...all.slice(0, startIdx + 1)]
+    const next = ordered.find(el => el !== currentEl && !el.value.trim())
+    if (next) {
+      next.focus()
+      next.scrollIntoView({ block: "center", behavior: "smooth" })
+      const name = next.getAttribute("data-serial-name")
+      if (name) speak(name)
+    }
+  } catch (_) { /* DOM недоступен */ }
+}
+
+function SerialInput({ value, saving, onSave, label, itemName }: {
   value: string
   saving: boolean
   onSave: (v: string) => void
   label?: string
+  itemName?: string
 }) {
   const [v, setV] = useState(value)
   const [flash, setFlash] = useState(false)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => setV(value), [value])
 
   const handleSave = (val: string) => {
     playConfirmSound()
-    // Анимация кнопки
     setFlash(true)
     setTimeout(() => setFlash(false), 400)
     onSave(val)
+    // После пика серийника — переход к следующей железке с озвучкой
+    if (val.trim()) setTimeout(() => focusNextSerial(inputRef.current), 120)
   }
 
   return (
     <div className="flex gap-2 items-center">
       {label && <span className="text-xs text-foreground/30 w-5 shrink-0 text-right">{label}</span>}
       <input
+        ref={inputRef}
+        data-serial-field="1"
+        data-serial-name={itemName || ""}
         value={v}
         onChange={e => setV(e.target.value)}
         onKeyDown={e => e.key === "Enter" && handleSave(v)}

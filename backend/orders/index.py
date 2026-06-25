@@ -598,6 +598,16 @@ def handler(event: dict, context) -> dict:
                                               or wip_status_by_slot.get("extra")
                                               or "pending")
                         product_id = item.get("id")
+                        # Кол-во модулей ОЗУ (для отдельных полей серийников на планку)
+                        if _slot == "ram" and product_id:
+                            cur.execute(
+                                f"SELECT ram_modules FROM {schema}.product_specs "
+                                f"WHERE product_id = %s LIMIT 1",
+                                (int(product_id),)
+                            )
+                            rm = cur.fetchone()
+                            if rm and rm[0]:
+                                item["ram_modules"] = int(rm[0])
                         supplies = []
                         if product_id:
                             cur.execute(
