@@ -110,10 +110,11 @@ export default function HomeStonks() {
     return parts + (b.assembly_fee || 0)
   }
 
-  const Banner = ({ img, title, to }: { img: string; title: string; to: string }) => (
+  const Banner = ({ img, title, to, imgPos }: { img: string; title: string; to: string; imgPos?: string }) => (
     <button onClick={() => navigate(to)} style={{ cursor: "pointer" }}
       className="group relative h-[280px] overflow-hidden rounded-2xl border border-border sm:h-48">
-      <img src={img} alt={title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+      <img src={img} alt={title} style={{ objectPosition: imgPos }}
+        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
       <span className="absolute inset-0 flex items-center justify-center px-4 py-3 text-center text-2xl font-extrabold leading-tight text-white [text-shadow:_0_2px_8px_rgb(0_0_0_/_90%)] sm:text-3xl">
         {title}
       </span>
@@ -157,7 +158,7 @@ export default function HomeStonks() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Banner img={BANNER_PODBOR} title="Покупка комплектующих" to="/shop" />
           <Banner img={BANNER_SBORKA} title="Заказать сборку ПК" to="/builds" />
-          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/service" />
+          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/service" imgPos="center 20%" />
         </div>
 
         {/* Основной грид: контент слева + сайдбар справа */}
