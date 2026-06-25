@@ -52,6 +52,9 @@ const SERVICES = [
   { icon: "ShieldCheck", title: "Гарантия на работы", desc: "Официальная и честная гарантия. Диагностика оплачивается только в случае отказа от ремонта." },
 ]
 
+// Пример отчёта-согласования после диагностики (можно заменить на реальную ссылку/PDF)
+const SOGLASOVANIE_EXAMPLE_URL = "https://t.me/BeGraphicsCard"
+
 export default function Service() {
   const navigate = useNavigate()
   const { isAuthed } = useAuth()
@@ -123,7 +126,7 @@ export default function Service() {
             </div>
 
             {/* Правая часть — контакты */}
-            <div className="rounded-2xl border border-border bg-card/70 p-5 backdrop-blur">
+            <div id="contacts" className="scroll-mt-24 rounded-2xl border border-border bg-card/70 p-5 backdrop-blur">
               <h2 className="mb-4 text-xl font-bold">Контакты</h2>
               <div className="space-y-3 text-sm">
                 <a href={YANDEX_MAPS_URL} target="_blank" rel="noreferrer" className="flex items-start gap-3 hover:text-primary transition-colors">
@@ -158,6 +161,82 @@ export default function Service() {
               <p className="mt-1 text-sm text-foreground/55">{s.desc}</p>
             </div>
           ))}
+        </div>
+
+        {/* Как сдать в ремонт — гайд из 4 шагов */}
+        <div className="mt-12">
+          <h2 className="text-2xl font-bold">Как сдать в ремонт</h2>
+          <p className="mt-1 text-foreground/55">4 простых шага — от заявки до готового устройства с гарантией.</p>
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Шаг 1 */}
+            <div className="relative flex flex-col rounded-2xl border border-border bg-card p-5">
+              <span className="absolute right-4 top-4 text-3xl font-extrabold text-primary/15">1</span>
+              <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Icon name="MessageCircle" size={22} />
+              </span>
+              <h3 className="text-base font-bold">Связываетесь с нами</h3>
+              <p className="mt-1 text-sm text-foreground/55">
+                Описываете проблему — мы консультируем и предлагаем решение. Если по фото и описанию решить не выходит, переходим к шагу 2.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a href={`tel:${PHONE_TEL}`} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                  <Icon name="Phone" size={13} /> Позвонить
+                </a>
+                <a href={TELEGRAM_URL} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:border-primary transition-colors">
+                  <Icon name="Send" size={13} /> Telegram
+                </a>
+              </div>
+            </div>
+
+            {/* Шаг 2 */}
+            <div className="relative flex flex-col rounded-2xl border border-border bg-card p-5">
+              <span className="absolute right-4 top-4 text-3xl font-extrabold text-primary/15">2</span>
+              <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Icon name="Truck" size={22} />
+              </span>
+              <h3 className="text-base font-bold">Передаёте устройство</h3>
+              <p className="mt-1 text-sm text-foreground/55">
+                У нас договор со СДЭК — получаем и отправляем посылки ежедневно. Или привезите лично в один из наших офисов.
+              </p>
+              <a href="#contacts"
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+                <Icon name="MapPin" size={13} /> Адреса и контакты
+              </a>
+            </div>
+
+            {/* Шаг 3 */}
+            <div className="relative flex flex-col rounded-2xl border border-border bg-card p-5">
+              <span className="absolute right-4 top-4 text-3xl font-extrabold text-primary/15">3</span>
+              <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Icon name="FileSearch" size={22} />
+              </span>
+              <h3 className="text-base font-bold">Диагностика и отчёт</h3>
+              <p className="mt-1 text-sm text-foreground/55">
+                Диагностика — фиксированные 2000 ₽ только при отказе от ремонта. Вы получаете полный отчёт с текстом, фото и вариантами решения.
+              </p>
+              <a href={SOGLASOVANIE_EXAMPLE_URL} target="_blank" rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:border-primary transition-colors">
+                <Icon name="Eye" size={13} /> Посмотреть пример согласования
+              </a>
+            </div>
+
+            {/* Шаг 4 */}
+            <div className="relative flex flex-col rounded-2xl border border-border bg-card p-5">
+              <span className="absolute right-4 top-4 text-3xl font-extrabold text-primary/15">4</span>
+              <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Icon name="ShieldCheck" size={22} />
+              </span>
+              <h3 className="text-base font-bold">Получаете готовое</h3>
+              <p className="mt-1 text-sm text-foreground/55">
+                После согласования забираете устройство с прозрачной гарантией. Лично в офисе или транспортной компанией — как удобно.
+              </p>
+              <a href="#contacts"
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+                <Icon name="MapPin" size={13} /> Как забрать
+              </a>
+            </div>
+          </div>
         </div>
 
         {/* Карусель фото ремонтов */}
