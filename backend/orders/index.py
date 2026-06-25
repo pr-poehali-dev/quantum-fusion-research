@@ -16,6 +16,127 @@ def get_user_by_session(cur, session_id):
     row = cur.fetchone()
     return row[0] if row else None
 
+SLOT_LABELS = {
+    "cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
+    "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
+    "case": "Корпус", "case_name": "Корпус", "cooling": "Охлаждение",
+    "fan": "Вентилятор", "extra": "Доп.", "other": "Прочее",
+}
+
+
+def build_pc_snapshot(cur, schema, order_id, order_items, build_id, wip_row, build_qty):
+    """Строит «чистый» снимок позиций ПК-заказа (без обогащения складом).
+
+    Источник состава — pc_builds.components (qty*build_qty), цены из components,
+    serials/final_price/item_status берутся из существующих orders.items (по slot),
+    assembly_fee/assembly_warranty — из pc_builds + items. Возвращает список items
+    в формате снимка (product-строки + строка assembly).
+
+    wip_row — кортеж выборки wip_builds (см. GET-by-id) либо None; здесь не
+    используется для состава (состав из pc_builds), оставлен для совместимости
+    сигнатуры и возможных будущих нужд.
+    """
+    raw_items = order_items or []
+
+    # Финальные цены / серийники / статусы / гарантии из существующих items (по slot)
+    slot_serials = {}
+    slot_final_price = {}
+    slot_item_status = {}
+    slot_warranty = {}
+    for it in raw_items:
+        stored = it.get("slot_serials") or {}
+        for s, sn in stored.items():
+            slot_serials[s] = sn if isinstance(sn, list) else [sn]
+    for it in raw_items:
+        s = it.get("slot")
+        if s:
+            sn = it.get("serial_numbers") or []
+            if not sn and it.get("serial_number"):
+                sn = [it["serial_number"]]
+            if sn:
+                slot_serials[s] = [x for x in sn if x and str(x).strip()]
+            if it.get("final_price") is not None:
+                slot_final_price[s] = float(it["final_price"])
+            if it.get("item_status"):
+                slot_item_status[s] = it["item_status"]
+            if it.get("warranty_months") is not None:
+                slot_warranty[s] = it["warranty_months"]
+
+    # Гарантия / серийник / финальная цена услуги сборки
+    assembly_warranty = 12
+    assembly_serial = []
+    assembly_final_price = None
+    for it in raw_items:
+        if it.get("item_type") in ("config", "assembly") or it.get("assembly"):
+            if it.get("assembly_warranty"):
+                assembly_warranty = int(it["assembly_warranty"])
+            if it.get("warranty_months") is not None and it.get("item_type") == "assembly":
+                assembly_warranty = int(it["warranty_months"])
+            sn = it.get("serial_numbers") or []
+            if not sn and it.get("serial_number"):
+                sn = [it["serial_number"]]
+            assembly_serial = [x for x in sn if x and str(x).strip()]
+            if it.get("final_price") is not None:
+                assembly_final_price = float(it["final_price"])
+
+    # Состав + цены + assembly_fee из pc_builds
+    build_components = []
+    assembly_fee = 0.0
+    if build_id:
+        cur.execute(f"SELECT components, assembly_fee FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
+        pc_row = cur.fetchone()
+        if pc_row:
+            if pc_row[0]:
+                build_components = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+            if pc_row[1]:
+                assembly_fee = float(pc_row[1])
+
+    snapshot = []
+    for comp in build_components:
+        slot = comp.get("slot")
+        name = comp.get("name")
+        if not name or not str(name).strip():
+            continue
+        product_id = None
+        if comp.get("source") == "catalog" and comp.get("source_id"):
+            product_id = int(comp["source_id"])
+        if not product_id:
+            cur.execute(f"SELECT id FROM {schema}.products p WHERE p.name = %s LIMIT 1", (name,))
+            pr = cur.fetchone()
+            if pr:
+                product_id = pr[0]
+        slot_qty = int(comp.get("qty", 1)) * build_qty
+        raw_price = float(comp.get("price", 0) or 0)
+        snapshot.append({
+            "id": product_id,
+            "name": name,
+            "slot": slot,
+            "slot_label": SLOT_LABELS.get(slot, slot),
+            "price": raw_price,
+            "final_price": slot_final_price.get(slot),
+            "quantity": slot_qty,
+            "item_type": "product",
+            "warranty_months": slot_warranty.get(slot),
+            "serial_numbers": slot_serials.get(slot, []),
+            "item_status": slot_item_status.get(slot),
+        })
+
+    # Строка услуги сборки
+    snapshot.append({
+        "id": None,
+        "name": "Работа по сборке и настройке ПК",
+        "slot": "assembly",
+        "price": assembly_fee,
+        "final_price": assembly_final_price,
+        "quantity": 1,
+        "item_type": "assembly",
+        "warranty_months": assembly_warranty,
+        "serial_numbers": assembly_serial,
+        "item_status": None,
+    })
+    return snapshot
+
+
 def handler(event: dict, context) -> dict:
     """
     Заказы: POST создать, GET список (для админа или для пользователя по сессии), PATCH статус.
@@ -415,187 +536,107 @@ def handler(event: dict, context) -> dict:
                         (int(params["id"]),)
                     )
                     wip = cur.fetchone()
+
+                    raw_items = order.get("items") or []
+                    # «Старый» формат: все строки config/pc_build ИЛИ нет ни одной
+                    # product-строки со slot. «Новый» формат: есть product-строки со slot.
+                    has_product_slot = any(
+                        it.get("item_type") == "product" and it.get("slot")
+                        for it in raw_items
+                    )
+                    is_old_format = (not has_product_slot)
+
+                    build_qty = 1
+                    for oi in raw_items:
+                        if oi.get("item_type") in ("config", "pc_build"):
+                            build_qty = int(oi.get("quantity", 1))
+                            break
+
+                    build_id = wip[20] if wip else None
+
+                    if is_old_format:
+                        # АВТО-МИГРАЦИЯ: строим снимок и сохраняем его в orders.items
+                        snapshot = build_pc_snapshot(
+                            cur, schema, int(params["id"]), raw_items, build_id, wip, build_qty
+                        )
+                        snap_total = sum(
+                            (it.get("final_price") if it.get("final_price") is not None
+                             else it.get("price", 0))
+                            * it.get("quantity", 1)
+                            for it in snapshot
+                            if it.get("item_status") != "returned"
+                        )
+                        cur.execute(
+                            "UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                            (json.dumps(snapshot), snap_total, int(params["id"]))
+                        )
+                        conn.commit()
+                        order["items"] = snapshot
+                        order["total"] = snap_total
+                    # else: новый формат — используем order["items"] как есть
+
+                    # Статусы слотов из wip_builds (для подсветки в карточке заказа)
+                    wip_status_by_slot = {}
                     if wip:
-                        slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
-                        slot_labels = {"cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
-                                       "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
-                                       "case_name": "Корпус", "case": "Корпус", "cooling": "Охлаждение",
-                                       "fan": "Вентилятор", "extra": "Доп.", "other": "Прочее"}
-                        # Кол-во ПК из заказа
-                        build_qty = 1
-                        for oi in (order.get("items") or []):
-                            if oi.get("item_type") in ("config", "pc_build"):
-                                build_qty = int(oi.get("quantity", 1))
-                                break
+                        _slot_names = ["cpu", "motherboard", "ram", "gpu", "storage",
+                                       "psu", "case_name", "cooling", "extra"]
+                        for _i, _sn in enumerate(_slot_names):
+                            wip_status_by_slot[_sn] = wip[11 + _i] or "pending"
 
-                        # Маппинг slot -> source_id из pc_build
-                        slot_product_map = {}  # slot -> product_id
-                        slot_price_map = {}    # slot -> price за 1 шт из pc_builds.components
-                        slot_qty_map = {}      # slot -> qty (уже умножено на build_qty)
-                        assembly_fee = 0
-                        build_id = wip[20]
-                        if build_id:
-                            cur.execute(f"SELECT components, assembly_fee FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
-                            pc_row = cur.fetchone()
-                            if pc_row and pc_row[0]:
-                                raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
-                                for comp in raw:
-                                    s = comp.get("slot")
-                                    if s:
-                                        if comp.get("source") == "catalog" and comp.get("source_id"):
-                                            slot_product_map[s] = int(comp["source_id"])
-                                        if comp.get("price"):
-                                            # Цена за 1 шт = цена компонента / build_qty
-                                            slot_price_map[s] = float(comp["price"])
-                                        slot_qty_map[s] = int(comp.get("qty", build_qty))
-                            if pc_row and pc_row[1]:
-                                assembly_fee = float(pc_row[1])
-
-                        # Гарантия и серийник сборки из items[0].assembly_warranty
-                        assembly_warranty = 12
-                        assembly_serial = []
-                        assembly_final_price = None
-                        raw_items = order["items"]
-                        for it in raw_items:
-                            if it.get("item_type") in ("config", "assembly") or it.get("assembly"):
-                                if it.get("assembly_warranty"):
-                                    assembly_warranty = int(it["assembly_warranty"])
-                                sn = it.get("serial_numbers") or []
-                                if not sn and it.get("serial_number"):
-                                    sn = [it["serial_number"]]
-                                assembly_serial = [x for x in sn if x and str(x).strip()]
-                                if it.get("final_price"):
-                                    assembly_final_price = float(it["final_price"])
-
-                        # Серийники из items[0].slot_serials, финальные цены из items (по slot)
-                        slot_serials = {}
-                        slot_final_price = {}
-                        slot_item_status = {}
-                        raw_items = order["items"]
-                        # Читаем slot_serials из первого item
-                        for it in raw_items:
-                            stored = it.get("slot_serials") or {}
-                            for s, sn in stored.items():
-                                slot_serials[s] = sn if isinstance(sn, list) else [sn]
-                        # Остальные поля по slot
-                        for it in raw_items:
-                            s = it.get("slot")
-                            if s:
-                                sn = it.get("serial_numbers") or []
-                                if not sn and it.get("serial_number"):
-                                    sn = [it["serial_number"]]
-                                if sn:
-                                    slot_serials[s] = [x for x in sn if x and str(x).strip()]
-                                if it.get("final_price"):
-                                    slot_final_price[s] = float(it["final_price"])
-                                if it.get("item_status"):
-                                    slot_item_status[s] = it["item_status"]
-
-                        # Маппинг статусов по слотам wip_builds (для отображения статуса сборки)
-                        wip_status_by_slot = {}
-                        wip_name_by_slot = {}
-                        for i, sn_slot in enumerate(slot_names):
-                            wip_status_by_slot[sn_slot] = wip[11 + i] or "pending"
-                            wip_name_by_slot[sn_slot] = wip[2 + i]
-
-                        # Источник истины по составу — pc_builds.components (там верные slot/qty/price,
-                        # включая нестандартные слоты вроде "fan"). wip_builds — только статусы.
-                        build_components = []
-                        if build_id:
-                            cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
-                            bc_row = cur.fetchone()
-                            if bc_row and bc_row[0]:
-                                build_components = bc_row[0] if isinstance(bc_row[0], list) else json.loads(bc_row[0])
-
-                        wip_items = []
-                        for comp in build_components:
-                            slot = comp.get("slot")
-                            name = comp.get("name")
-                            if not name or not str(name).strip():
-                                continue
-                            # Статус берём из wip по слоту (case_name для слота case, extra для прочих)
-                            wip_key = "case_name" if slot == "case" else slot
-                            wip_status = wip_status_by_slot.get(wip_key) or wip_status_by_slot.get("extra") or "pending"
-                            product_id = None
-                            if comp.get("source") == "catalog" and comp.get("source_id"):
-                                product_id = int(comp["source_id"])
-                            if not product_id:
-                                cur.execute(f"SELECT id FROM {schema}.products p WHERE p.name = %s LIMIT 1", (name,))
-                                pr = cur.fetchone()
-                                if pr:
-                                    product_id = pr[0]
-                            # Кол-во для этого слота (qty компонента × кол-во ПК)
-                            slot_qty = int(comp.get("qty", 1)) * build_qty
-                            # Цена за 1 шт: финальная (по slot) → из components → из warehouse
-                            raw_price = float(comp.get("price", 0) or 0)
-                            price_per_unit = slot_final_price.get(slot) or raw_price
-                            if not price_per_unit and product_id:
-                                cur.execute(f"SELECT price_retail FROM {schema}.warehouse_groups WHERE product_id = %s LIMIT 1", (product_id,))
-                                pr2 = cur.fetchone()
-                                if pr2 and pr2[0]:
-                                    price_per_unit = float(pr2[0])
-                            # Складские остатки + резерв именно этого заказа
-                            supplies = []
-                            if product_id:
+                    # Обогащение складом по каждой product-строке снимка (по item["id"])
+                    final_items = order.get("items") or []
+                    for item in final_items:
+                        if item.get("item_type") != "product":
+                            item.setdefault("_supplies", [])
+                            if item.get("item_type") == "assembly" and not item.get("slot_label"):
+                                item["slot_label"] = "Услуга"
+                            continue
+                        # Статус сборки слота (case → case_name, нестандартные → extra)
+                        _slot = item.get("slot")
+                        _wkey = "case_name" if _slot == "case" else _slot
+                        item["wip_status"] = (wip_status_by_slot.get(_wkey)
+                                              or wip_status_by_slot.get("extra")
+                                              or "pending")
+                        product_id = item.get("id")
+                        supplies = []
+                        if product_id:
+                            cur.execute(
+                                f"SELECT s.id, s.qty, s.qty_reserved, s.qty_negative, wg.warranty_months, wg.id "
+                                f"FROM {schema}.warehouse_supplies s "
+                                f"JOIN {schema}.warehouse_groups wg ON wg.id = s.group_id "
+                                f"WHERE wg.product_id = %s ORDER BY s.id ASC",
+                                (int(product_id),)
+                            )
+                            supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
+                                         "free": r[1], "qty_negative": r[3],
+                                         "warranty_months": r[4], "group_id": r[5]}
+                                        for r in cur.fetchall()]
+                            if supplies:
                                 cur.execute(
-                                    f"SELECT s.id, s.qty, s.qty_reserved, s.qty_negative, wg.warranty_months, wg.id "
-                                    f"FROM {schema}.warehouse_supplies s "
-                                    f"JOIN {schema}.warehouse_groups wg ON wg.id = s.group_id "
-                                    f"WHERE wg.product_id = %s ORDER BY s.id ASC",
-                                    (product_id,)
+                                    f"SELECT COALESCE(SUM(m.qty_delta), 0) FROM {schema}.warehouse_movements m "
+                                    f"JOIN {schema}.warehouse_groups wg ON wg.id = m.group_id "
+                                    f"WHERE wg.product_id = %s AND m.order_id = %s "
+                                    f"AND m.type IN ('reserved','unreserved')",
+                                    (int(product_id), int(params["id"]))
                                 )
-                                supplies = [{"id": r[0], "qty": r[1], "qty_reserved": r[2],
-                                             "free": r[1], "qty_negative": r[3],
-                                             "warranty_months": r[4], "group_id": r[5]}
-                                            for r in cur.fetchall()]
-                                # Считаем сколько зарезервировано именно под этот заказ
-                                if supplies:
-                                    cur.execute(
-                                        f"SELECT COALESCE(SUM(m.qty_delta), 0) FROM {schema}.warehouse_movements m "
-                                        f"JOIN {schema}.warehouse_groups wg ON wg.id = m.group_id "
-                                        f"WHERE wg.product_id = %s AND m.order_id = %s "
-                                        f"AND m.type IN ('reserved','unreserved')",
-                                        (product_id, int(params["id"]))
-                                    )
-                                    r_qty = cur.fetchone()
-                                    reserved_for_order = int(r_qty[0]) if r_qty and r_qty[0] else 0
-                                    for s in supplies:
-                                        s["reserved_for_order"] = reserved_for_order
-                            wip_items.append({
-                                "id": product_id,
-                                "name": name,
-                                "price": price_per_unit,
-                                "quantity": slot_qty,
-                                "build_qty": build_qty,
-                                "item_type": "product",
-                                "slot": slot,
-                                "slot_label": slot_labels.get(slot, slot),
-                                "wip_status": wip_status,
-                                "item_status": slot_item_status.get(slot),
-                                "serial_numbers": slot_serials.get(slot, []),
-                                "_supplies": supplies,
-                            })
+                                r_qty = cur.fetchone()
+                                reserved_for_order = int(r_qty[0]) if r_qty and r_qty[0] else 0
+                                for s in supplies:
+                                    s["reserved_for_order"] = reserved_for_order
+                        item["_supplies"] = supplies
 
-                        # Строка стоимости сборки
-                        if assembly_fee:
-                            wip_items.append({
-                                "id": None,
-                                "name": "Работа по сборке и настройке ПК",
-                                "price": assembly_final_price or assembly_fee,
-                                "quantity": 1,
-                                "item_type": "assembly",
-                                "slot": None,
-                                "slot_label": "Услуга",
-                                "wip_status": None,
-                                "item_status": None,
-                                "warranty_months": assembly_warranty,
-                                "serial_numbers": assembly_serial,
-                                "_supplies": [],
-                            })
+                    # total пересчитываем из итоговых items (исключая returned)
+                    order["total"] = sum(
+                        (it.get("final_price") if it.get("final_price") is not None
+                         else it.get("price", 0))
+                        * it.get("quantity", 1)
+                        for it in final_items
+                        if it.get("item_status") != "returned"
+                    )
+                    order["_wip_stage"] = wip[1] if wip else None
+                    order["_build_qty"] = build_qty
+                    return {"statusCode": 200, "headers": cors, "body": json.dumps({"order": order})}
 
-                        order["items"] = wip_items
-                        order["_wip_stage"] = wip[1]
-                        order["_build_qty"] = build_qty
                 else:
                     # Для обычных заказов — подтягиваем складские остатки
                     for item in order["items"]:
@@ -754,16 +795,28 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
             elif action == "set_serial":
-                # Для ПК-заказов серийники хранятся в items[0].slot_serials[slot]
+                # Для ПК-заказов серийники теперь пишем в нужную строку orders.items
+                # (product-строку по slot) в поле serial_numbers. Для обратной
+                # совместимости чтения дублируем в items[0].slot_serials[slot].
                 cur.execute("SELECT order_type FROM orders WHERE id=%s", (order_id,))
                 ot = cur.fetchone()
                 slot = body.get("slot")
+                serials = body.get("serial_numbers")
+                if serials is None:
+                    serials = [body.get("serial_number", "")]
                 if ot and ot[0] == "pc_build" and slot:
                     if not items:
                         items = [{}]
+                    # Записываем в строку снимка по slot (product или assembly)
+                    matched = False
+                    for it in items:
+                        if it.get("slot") == slot:
+                            it["serial_numbers"] = serials
+                            matched = True
+                    # Обратная совместимость: дублируем в slot_serials первого item
                     if "slot_serials" not in items[0]:
                         items[0]["slot_serials"] = {}
-                    items[0]["slot_serials"][slot] = body.get("serial_numbers", [body.get("serial_number", "")])
+                    items[0]["slot_serials"][slot] = serials
                 else:
                     if "serial_numbers" in body:
                         items[item_idx]["serial_numbers"] = body["serial_numbers"]
@@ -787,28 +840,50 @@ def handler(event: dict, context) -> dict:
                 build_id = vat_row[1] if vat_row else None
 
                 if build_id and slot:
-                    # ПК-сборка: цена компонента/сборки хранится в pc_builds.components
-                    # этого конкретного заказа — меняем по слоту, НЕ трогая список позиций.
-                    cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id,))
-                    pc_row = cur.fetchone()
-                    comps = []
-                    if pc_row and pc_row[0]:
-                        comps = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
-                    target = next((c for c in comps if c.get("slot") == slot), None)
-                    cur_price = float(target.get("price", 0)) if target else 0
+                    # ПК-сборка: orders.items — источник истины (снимок). Пишем
+                    # final_price в строку по slot, пересчитываем total, затем
+                    # зеркалим цену в pc_builds.components (assembly → assembly_fee).
+                    # Текущую цену для проверки НДС берём из строки снимка по slot.
+                    cur_price = 0.0
+                    for it in items:
+                        if it.get("slot") == slot:
+                            cp = it.get("final_price")
+                            if cp is None:
+                                cp = it.get("price", 0)
+                            cur_price = float(cp or 0)
+                            break
                     if is_vat and new_price < cur_price:
                         return {"statusCode": 400, "headers": cors, "body": json.dumps({
                             "error": "vat_no_discount",
                             "message": "Товар с НДС: цену можно только повысить, скидка недоступна.",
                         })}
+                    # 1) Пишем в orders.items по slot
+                    for it in items:
+                        if it.get("slot") == slot:
+                            it["final_price"] = new_price
+                    total = sum(
+                        (it.get("final_price") if it.get("final_price") is not None
+                         else it.get("price", 0)) * it.get("quantity", 1)
+                        for it in items
+                        if it.get("item_status") != "returned"
+                    )
+                    cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                                (json.dumps(items), total, order_id))
+                    # 2) Зеркалим в pc_builds.components / assembly_fee
                     if slot == "assembly":
                         cur.execute(f"UPDATE {schema}.pc_builds SET assembly_fee=%s WHERE id=%s",
                                     (new_price, build_id))
-                    elif target is not None:
-                        target["price"] = new_price
-                        cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
-                                    (json.dumps(comps), build_id))
-                    cur.execute("UPDATE orders SET updated_at=NOW() WHERE id=%s", (order_id,))
+                    else:
+                        cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id,))
+                        pc_row = cur.fetchone()
+                        comps = []
+                        if pc_row and pc_row[0]:
+                            comps = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                        target = next((c for c in comps if c.get("slot") == slot), None)
+                        if target is not None:
+                            target["price"] = new_price
+                            cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
+                                        (json.dumps(comps), build_id))
                 else:
                     # Обычный заказ: цена позиции в orders.items[item_idx]
                     cur_price = items[item_idx].get("final_price")
@@ -826,16 +901,30 @@ def handler(event: dict, context) -> dict:
                                 (json.dumps(items), total, order_id))
 
             elif action == "set_warranty":
-                # Для ПК-заказов гарантия сборки хранится в items[0].assembly_warranty
-                # Для обычных — в items[item_idx].warranty_months
+                # ПК-заказ: гарантию пишем по slot.
+                #   slot=="assembly" или нет slot → строка услуги сборки
+                #     (warranty_months + items[0].assembly_warranty для совместимости);
+                #   есть slot → соответствующая product-строка warranty_months.
+                # Обычный заказ — items[item_idx].warranty_months.
                 cur.execute("SELECT order_type FROM orders WHERE id=%s", (order_id,))
                 ot = cur.fetchone()
+                wm = int(body.get("warranty_months", 12))
+                slot = body.get("slot")
                 if ot and ot[0] == "pc_build":
-                    # Всегда сохраняем в первый item (config) как assembly_warranty
-                    if items:
-                        items[0]["assembly_warranty"] = int(body.get("warranty_months", 12))
+                    if slot and slot != "assembly":
+                        # product-строка по slot
+                        for it in items:
+                            if it.get("slot") == slot:
+                                it["warranty_months"] = wm
+                    else:
+                        # строка услуги сборки + обратная совместимость
+                        for it in items:
+                            if it.get("item_type") == "assembly" or it.get("slot") == "assembly":
+                                it["warranty_months"] = wm
+                        if items:
+                            items[0]["assembly_warranty"] = wm
                 else:
-                    items[item_idx]["warranty_months"] = int(body.get("warranty_months", 12))
+                    items[item_idx]["warranty_months"] = wm
                 cur.execute("UPDATE orders SET items=%s, updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
 
@@ -1314,7 +1403,22 @@ def handler(event: dict, context) -> dict:
                     target["qty"] = new_qty
                     cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
                                 (json.dumps(comps), build_id))
-                    cur.execute("UPDATE orders SET updated_at=NOW() WHERE id=%s", (order_id,))
+                    # orders.items — источник истины: меняем quantity в строке по
+                    # slot (или product_id), пересчитываем total, затем сохраняем.
+                    t_slot = target.get("slot")
+                    for it in items:
+                        if it.get("item_type") != "product":
+                            continue
+                        if (t_slot and it.get("slot") == t_slot) or (pid and it.get("id") == pid and not t_slot):
+                            it["quantity"] = new_qty
+                    total = sum(
+                        (it.get("final_price") if it.get("final_price") is not None
+                         else it.get("price", 0)) * it.get("quantity", 1)
+                        for it in items
+                        if it.get("item_status") != "returned"
+                    )
+                    cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                                (json.dumps(items), total, order_id))
                     conn.commit()
                     return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

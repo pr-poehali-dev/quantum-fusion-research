@@ -207,12 +207,59 @@ def handler(event: dict, context) -> dict:
                         q = float(total_qty or 0)
                         unit_cost_by_pid[pid] = (float(total_cost or 0) / q) if q else 0.0
 
-                # Компоненты из pc_builds (цена продажи). Себестоимость берём по
-                # source_id (product_id) * qty компонента.
+                # Цена ПРОДАЖИ (sale) — из orders.items (снимок, источник истины).
+                # Себестоимость (cost) — из резервов по product_id * qty.
+                # Если у заказа ещё старый формат items (нет product-строк со slot)
+                # — фолбэк на расчёт из pc_builds.components.
                 comps_out = []
                 sum_sale = 0.0
                 sum_cost = 0.0
-                if bid:
+                assembly_fee = 0.0
+
+                order_items = []
+                if oid:
+                    cur.execute(f"SELECT items FROM {SCHEMA}.orders WHERE id = %s", (oid,))
+                    oir = cur.fetchone()
+                    if oir and oir[0]:
+                        order_items = oir[0] if isinstance(oir[0], list) else json.loads(oir[0])
+                # Новый формат: есть хотя бы одна product-строка со slot
+                has_snapshot = any(
+                    it.get("item_type") == "product" and it.get("slot")
+                    for it in order_items
+                )
+
+                if has_snapshot:
+                    for it in order_items:
+                        itype = it.get("item_type")
+                        if itype == "assembly":
+                            assembly_fee = round(
+                                float(it.get("final_price") if it.get("final_price") is not None
+                                      else it.get("price", 0) or 0)
+                                * int(it.get("quantity", 1) or 1), 2)
+                            continue
+                        if itype != "product":
+                            continue
+                        if it.get("item_status") == "returned":
+                            continue
+                        slot = it.get("slot")
+                        qty = int(it.get("quantity", 1) or 1)
+                        unit = float(it.get("final_price") if it.get("final_price") is not None
+                                     else it.get("price", 0) or 0)
+                        sale = unit * qty
+                        pid = it.get("id")
+                        cost = unit_cost_by_pid.get(pid, 0.0) * qty if pid else 0.0
+                        comps_out.append({
+                            "slot": slot, "name": it.get("name", ""), "qty": qty,
+                            "sale": round(sale, 2), "cost": round(cost, 2),
+                            "margin": round(sale - cost, 2),
+                        })
+                        sum_sale += sale
+                        sum_cost += cost
+                    # Фолбэк fee, если строки assembly нет, но в total осталась разница
+                    if not assembly_fee and total > sum_sale:
+                        assembly_fee = round(total - sum_sale, 2)
+                elif bid:
+                    # Старый формат: считаем из pc_builds.components (фолбэк)
                     cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (bid,))
                     pbr = cur.fetchone()
                     comps = []
@@ -231,8 +278,8 @@ def handler(event: dict, context) -> dict:
                         })
                         sum_sale += sale
                         sum_cost += cost
-                # Если итог заказа больше суммы компонентов — разница это работа/сборка
-                assembly_fee = round(total - sum_sale, 2) if total > sum_sale else 0.0
+                    # Если итог заказа больше суммы компонентов — разница это работа/сборка
+                    assembly_fee = round(total - sum_sale, 2) if total > sum_sale else 0.0
 
                 # Оплата сборщику: процент сотрудника × сумма заказа. Это затраты,
                 # вычитаются из общей маржи.
@@ -313,6 +360,7 @@ def handler(event: dict, context) -> dict:
                     return resp(404, {"error": "Карточка сборки не найдена"})
                 build_name, total_price, asm_type, asm_fee, components = pb
                 total_price = float(total_price or 0)
+                asm_fee = float(asm_fee or 0)
 
                 # контакты из строки contact: "Имя, +7..." → имя/телефон
                 contact = (contact or "").strip()
@@ -325,15 +373,63 @@ def handler(event: dict, context) -> dict:
                 if not cust_phone:
                     cust_phone = "-"
 
-                items = [{
-                    "id": build_id, "name": build_name or "Сборка ПК",
-                    "price": total_price, "quantity": 1, "item_type": "config",
-                }]
+                # Снимок позиций (источник истины) из pc_builds.components:
+                # по каждому компоненту — строка product, плюс строка услуги сборки.
+                _slot_labels = {
+                    "cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
+                    "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
+                    "case": "Корпус", "case_name": "Корпус", "cooling": "Охлаждение",
+                    "fan": "Вентилятор", "extra": "Доп.", "other": "Прочее",
+                }
+                comps = []
+                if components:
+                    comps = components if isinstance(components, list) else json.loads(components)
+                items = []
+                for comp in comps:
+                    name = comp.get("name")
+                    if not name or not str(name).strip():
+                        continue
+                    slot = comp.get("slot")
+                    src_id = None
+                    if comp.get("source") == "catalog" and comp.get("source_id"):
+                        src_id = int(comp["source_id"])
+                    # build_qty = 1 для ensure_order по умолчанию → qty компонента как есть
+                    items.append({
+                        "id": src_id,
+                        "name": name,
+                        "slot": slot,
+                        "slot_label": _slot_labels.get(slot, slot),
+                        "price": float(comp.get("price", 0) or 0),
+                        "final_price": None,
+                        "quantity": int(comp.get("qty", 1) or 1),
+                        "item_type": "product",
+                        "warranty_months": None,
+                        "serial_numbers": [],
+                        "item_status": None,
+                    })
+                # Строка услуги сборки
+                items.append({
+                    "id": None,
+                    "name": "Работа по сборке и настройке ПК",
+                    "slot": "assembly",
+                    "price": asm_fee,
+                    "final_price": None,
+                    "quantity": 1,
+                    "item_type": "assembly",
+                    "warranty_months": 12,
+                    "serial_numbers": [],
+                })
+                # total = сумма (final_price or price)*quantity по всем строкам снимка
+                total_snapshot = sum(
+                    (it.get("final_price") if it.get("final_price") is not None else it.get("price", 0))
+                    * it.get("quantity", 1)
+                    for it in items
+                )
                 cur.execute(
                     f"""INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type,
                         items, total, status, created_at, updated_at)
                         VALUES (%s, %s, 'pc_build', %s, %s, 'new', NOW(), NOW()) RETURNING id""",
-                    (cust_name[:255], cust_phone[:50], json.dumps(items), total_price)
+                    (cust_name[:255], cust_phone[:50], json.dumps(items), total_snapshot)
                 )
                 new_order_id = cur.fetchone()[0]
                 # Номер заказа-сборки: всегда префикс PC (отдельная нумерация от HW)
@@ -362,7 +458,7 @@ def handler(event: dict, context) -> dict:
                     from tg_notify import notify_managers
                     _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
                     _link_line = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>" if _base else ""
-                    _sum_str = f"{float(total_price):,.0f}".replace(",", " ")
+                    _sum_str = f"{float(total_snapshot):,.0f}".replace(",", " ")
                     notify_managers(
                         f"🖥 <b>Новый заказ-сборка {_display_number}</b>\n"
                         f"Сборка: {build_name or 'Сборка ПК'}\n"
@@ -374,7 +470,7 @@ def handler(event: dict, context) -> dict:
                 except Exception as _e:
                     print(f"TG_NOTIFY wip ensure_order: {_e}")
 
-                return resp(201, {"order_id": new_order_id, "total": total_price, "ok": True})
+                return resp(201, {"order_id": new_order_id, "total": total_snapshot, "ok": True})
 
             # Автогенерация номера заказа сборки, если не задан вручную:
             # отдельная нумерация PC: берём MAX среди PC-номеров и +1, формат PC00001

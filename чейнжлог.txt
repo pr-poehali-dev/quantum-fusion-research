@@ -3,6 +3,66 @@
 
 ---
 
+## v5.49 | 2026-06-25 | ПК-заказы: модель «снимок позиций» (orders.items = источник истины)
+
+### Суть
+- Раньше orders.items для ПК-заказа хранил ОДНУ строку item_type="config",
+  а реальные позиции (цена/кол-во) жили в pc_builds.components и
+  реконструировались на лету в orders GET → правки рассинхронялись.
+- Теперь orders.items — это полный СНИМОК позиций (по строке на компонент +
+  строка услуги сборки), а pc_builds.components — зеркало. Старые заказы
+  авто-мигрируются при первом открытии.
+
+### Формат строки снимка (pc_build)
+- product: {id(source_id|null), name, slot, slot_label, price, final_price,
+  quantity (qty*build_qty), item_type="product", warranty_months,
+  serial_numbers[], item_status}.
+- assembly: {id:null, name:"Работа по сборке и настройке ПК", slot:"assembly",
+  price=assembly_fee, final_price, quantity:1, item_type:"assembly",
+  warranty_months, serial_numbers[]}.
+
+### backend/wip-builds
+- ensure_order: вместо строки config строит полный снимок из pc_builds.components
+  (build_qty=1) + строку assembly (price=assembly_fee, warranty 12). total =
+  сумма (final_price or price)*quantity. Резервы (ensure_order_reserves) — без
+  изменений.
+- action=margin: цены ПРОДАЖИ берём из orders.items (product-строки), assembly_fee
+  из строки assembly; себестоимость по-прежнему из warehouse_reserves по
+  product_id. Для старого формата (нет product-строк) — фолбэк на pc_builds.
+
+### backend/orders
+- Новый хелпер build_pc_snapshot(cur, schema, order_id, order_items, build_id,
+  wip_row, build_qty) — строит «чистый» снимок из pc_builds.components + полей
+  из существующих items (serials/final_price/item_status/warranty по slot).
+- GET by id (pc_build): если старый формат (нет product-строк со slot) →
+  строим снимок и СОХРАНЯЕМ (UPDATE items+total) — авто-миграция. Если новый →
+  используем items как есть. В обоих случаях обогащаем _supplies/reserved_for_order
+  по product_id. total пересчитываем из items (исключая returned). Старый блок
+  реконструкции удалён. В позиции добавляется wip_status (статус слота из
+  wip_builds для подсветки), для строки assembly — slot_label="Услуга".
+- PUT set_price (pc_build): пишем final_price в orders.items по slot, пересчёт
+  total, зеркалим в pc_builds.components (assembly → assembly_fee). Проверка НДС
+  (sell_with_vat: нельзя понижать) сохранена, текущая цена берётся из items.
+- PUT change_qty (pc_build): резервы склада по дельте (как было) + зеркалим
+  quantity в orders.items по slot/product_id + пересчёт total + pc_builds.
+- PUT set_warranty (pc_build): slot=="assembly"/нет slot → строка assembly
+  (warranty_months + items[0].assembly_warranty для совместимости); есть slot →
+  product-строка warranty_months.
+- PUT set_serial (pc_build): пишем serial_numbers в product-строку по slot +
+  дублируем в items[0].slot_serials[slot] (обратная совместимость чтения).
+
+### backend/generate-warranty
+- pc_build: если orders.items уже в новом формате (есть product-строки со slot) —
+  чек строится прямо из orders.items (name, qty, final_price or price, serials,
+  warranty_months; строка assembly отдельно). Старый формат — фолбэк на разворот
+  из pc_builds.components. «Стоимость заказа» = сумма строк чека.
+
+### Совместимость
+- Старые заказы (одна строка config) продолжают открываться: при первом GET
+  by id авто-мигрируются в снимок. Все ветки имеют фолбэк на старый формат.
+
+---
+
 ## v5.48 | 2026-06-25 | Стресс-тесты: Telegram-уведомления (ошибки + завершение)
 
 ### backend/stress

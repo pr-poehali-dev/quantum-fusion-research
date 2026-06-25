@@ -295,8 +295,63 @@ def handler(event: dict, context) -> dict:
 
     enriched = []
 
-    if order_type == "pc_build":
-        # Для ПК-заказов берём компоненты из wip_build
+    # Новый формат снимка: есть product-строки со slot → чек строим прямо из orders.items
+    pc_snapshot_new = order_type == "pc_build" and any(
+        it.get("item_type") == "product" and it.get("slot") for it in items
+    )
+
+    if pc_snapshot_new:
+        # ПК-заказ в новом формате: orders.items — источник истины.
+        for it in items:
+            itype = it.get("item_type")
+            if it.get("item_status") == "returned":
+                continue
+            if itype == "product":
+                name = it.get("name") or ""
+                if not str(name).strip():
+                    continue
+                pid = it.get("id")
+                serials = it.get("serial_numbers") or []
+                if not serials and it.get("serial_number"):
+                    serials = [it["serial_number"]]
+                serials = [s for s in serials if s and str(s).strip()]
+                # Гарантия: из строки снимка, иначе со склада, иначе 12
+                warranty = it.get("warranty_months")
+                if warranty is None and pid:
+                    cur.execute(
+                        f"SELECT wg.warranty_months FROM {SCHEMA}.warehouse_groups wg WHERE wg.product_id = %s LIMIT 1",
+                        (int(pid),)
+                    )
+                    wr = cur.fetchone()
+                    if wr and wr[0]:
+                        warranty = wr[0]
+                if warranty is None:
+                    warranty = 12
+                price = float(it.get("final_price") if it.get("final_price") is not None else it.get("price", 0) or 0)
+                store_code = store_code_by_serials(cur, serials, pid)
+                enriched.append({
+                    "name": name + (f" [{store_code}]" if store_code else ""),
+                    "qty": int(it.get("quantity", 1) or 1),
+                    "price": price,
+                    "warranty": warranty,
+                    "serials": serials,
+                })
+            elif itype == "assembly":
+                fee = float(it.get("final_price") if it.get("final_price") is not None else it.get("price", 0) or 0)
+                if not fee:
+                    continue
+                a_sn = it.get("serial_numbers") or []
+                if not a_sn and it.get("serial_number"):
+                    a_sn = [it["serial_number"]]
+                enriched.append({
+                    "name": it.get("name") or "Работа по сборке и настройке ПК",
+                    "qty": int(it.get("quantity", 1) or 1),
+                    "price": fee,
+                    "warranty": int(it.get("warranty_months") or 12),
+                    "serials": [s for s in a_sn if s and str(s).strip()],
+                })
+    elif order_type == "pc_build":
+        # СТАРЫЙ формат (фолбэк): берём компоненты из wip_build / pc_builds
         cur.execute(
             f"SELECT wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, "
             f"wb.psu, wb.case_name, wb.cooling, wb.extra, wb.build_id "

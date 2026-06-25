@@ -299,6 +299,25 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   начисляет % сотрудника × total на employee_accounts + employee_account_tx.
 - changeStage: переход в «Забрали» переводит заказ в done (и начисляет).
 
+### ПК-заказы: модель «снимок позиций» (v5.49)
+- orders.items для pc_build — ИСТОЧНИК ИСТИНЫ (снимок): по строке на компонент
+  (item_type="product": id=source_id|null, name, slot, slot_label, price,
+  final_price, quantity=qty*build_qty, warranty_months, serial_numbers[],
+  item_status) + строка услуги (item_type="assembly", slot="assembly",
+  price=assembly_fee, warranty_months). pc_builds.components — ЗЕРКАЛО.
+- wip-builds ensure_order: пишет полный снимок (раньше была 1 строка config).
+- orders GET by id: старый формат (нет product-строк со slot) авто-мигрируется
+  в снимок (UPDATE items+total) при первом открытии; новый — используется как
+  есть. _supplies/reserved_for_order обогащаются по product_id. total = сумма
+  (final_price or price)*quantity без returned.
+- orders PUT: set_price/change_qty/set_warranty/set_serial пишут в orders.items
+  (по slot), пересчитывают total и зеркалят в pc_builds.components
+  (assembly→assembly_fee). Проверка НДС (нельзя понижать) сохранена.
+- wip-builds margin: цены продажи из orders.items, себестоимость из
+  warehouse_reserves по product_id. Фолбэк на pc_builds — для старого формата.
+- generate-warranty: чек из orders.items (новый формат) либо разворот из
+  pc_builds.components (старый, фолбэк). Стоимость = сумма строк чека.
+
 ### articles
 Статьи/обзоры/тесты. Таблица articles (title, slug, excerpt, content,
 cover_url, category, is_published, image_urls, html_attachment, views, toc).
