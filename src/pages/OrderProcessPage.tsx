@@ -875,6 +875,21 @@ export default function OrderProcessPage() {
 }
 
 // ── Компонент ввода серийного номера ──────────────────────────────────────────
+// Звук подтверждения сохранения
+function playConfirmSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as {webkitAudioContext: typeof AudioContext}).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.frequency.setValueAtTime(880, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.15, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
+    osc.start(); osc.stop(ctx.currentTime + 0.15)
+  } catch (_) { /* AudioContext недоступен */ }
+}
+
 function SerialInput({ value, saving, onSave, label }: {
   value: string
   saving: boolean
@@ -886,18 +901,7 @@ function SerialInput({ value, saving, onSave, label }: {
   useEffect(() => setV(value), [value])
 
   const handleSave = (val: string) => {
-    // Звук
-    try {
-      const ctx = new (window.AudioContext || (window as unknown as {webkitAudioContext: typeof AudioContext}).webkitAudioContext)()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.frequency.setValueAtTime(880, ctx.currentTime)
-      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.08)
-      gain.gain.setValueAtTime(0.15, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
-      osc.start(); osc.stop(ctx.currentTime + 0.15)
-    } catch (_) { /* AudioContext недоступен */ }
+    playConfirmSound()
     // Анимация кнопки
     setFlash(true)
     setTimeout(() => setFlash(false), 400)
@@ -965,7 +969,18 @@ function PriceInput({ value, saving, onSave }: {
   onSave: (v: number) => void
 }) {
   const [v, setV] = useState(String(value))
+  const [flash, setFlash] = useState(false)
   useEffect(() => setV(String(value)), [value])
+
+  const dirty = Number(v) !== value && v.trim() !== ""
+
+  const handleSave = () => {
+    if (!dirty) return
+    playConfirmSound()
+    setFlash(true)
+    setTimeout(() => setFlash(false), 400)
+    onSave(Number(v))
+  }
 
   return (
     <div>
@@ -974,16 +989,25 @@ function PriceInput({ value, saving, onSave }: {
         <input
           value={v}
           onChange={e => setV(e.target.value.replace(/[^0-9.]/g, ""))}
-          onKeyDown={e => e.key === "Enter" && onSave(Number(v))}
+          onKeyDown={e => e.key === "Enter" && handleSave()}
           placeholder="0"
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
+          className={`flex-1 rounded-lg border bg-background px-3 py-1.5 text-sm focus:outline-none transition-colors ${
+            dirty ? "border-amber-400 focus:border-amber-400" : "border-border focus:border-primary"
+          }`}
         />
-        <button onClick={() => onSave(Number(v))} disabled={saving || Number(v) === value}
+        <button onClick={handleSave} disabled={saving || !dirty}
           style={{ cursor: "pointer" }}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
+          className={`rounded-lg border px-3 py-1.5 text-xs transition-all duration-200 ${
+            flash
+              ? "border-green-400 bg-green-400/15 text-green-400 scale-110"
+              : dirty
+                ? "border-green-400 bg-green-400/10 text-green-400 animate-pulse"
+                : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+          } disabled:opacity-30`}>
           {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
         </button>
       </div>
+      {dirty && <p className="text-[10px] text-amber-400/80 mt-1">Нажмите Enter или ✓ для сохранения</p>}
     </div>
   )
 }
