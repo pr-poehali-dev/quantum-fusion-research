@@ -65,28 +65,77 @@ function SingleBarTooltip({ active, payload }: { active?: boolean; payload?: Too
 
 const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false }
 
+// Процент разницы относительно базы. >0 — больше базы (зелёный), <0 — меньше (красный).
+function diffPct(value: number, base: number): number | null {
+  if (!base || base === 0 || value === null || value === undefined) return null
+  return Math.round(((value - base) / base) * 100)
+}
+
+interface RowItem { id: string; name: string; value: number | null; _color: string }
+
+// Кастомная подпись над столбцом: само значение + бейдж % разницы от базы.
+function BarTopLabel(props: {
+  x?: number; y?: number; width?: number; value?: number | null
+  index?: number; items: RowItem[]; baseId: string | null; showValues?: boolean
+}) {
+  const { x = 0, y = 0, width = 0, value, index = 0, items, baseId, showValues } = props
+  const item = items[index]
+  if (!item) return null
+  const cx = x + width / 2
+  const base = baseId ? items.find(it => it.id === baseId) : null
+  const pct = base && base.value != null && item.value != null && item.id !== baseId
+    ? diffPct(item.value, base.value) : null
+  const isBase = baseId === item.id
+
+  return (
+    <g>
+      {showValues && value != null && (
+        <text x={cx} y={y - (pct != null || isBase ? 16 : 4)} textAnchor="middle"
+          fontSize={12} fontWeight={600} fill="hsl(var(--foreground))">{value}</text>
+      )}
+      {isBase && (
+        <text x={cx} y={y - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="hsl(var(--primary))">база</text>
+      )}
+      {pct != null && (
+        <text x={cx} y={y - 3} textAnchor="middle" fontSize={11} fontWeight={700}
+          fill={pct >= 0 ? "#22c55e" : "#ef4444"}>
+          {pct >= 0 ? "▲" : "▼"} {Math.abs(pct)}%
+        </text>
+      )}
+    </g>
+  )
+}
+
 // ─── Один график для одной СТРОКИ данных (ось X = предметы/серии) ──────────────
 // Каждая строка («Время», «Цена») получает свою шкалу Y — большие значения
-// одной метрики не давят мелкие другой.
-function RowChart({ title, items, showValues, height }: {
+// одной метрики не давят мелкие другой. Клик по столбцу → база сравнения.
+function RowChart({ title, items, showValues, height, baseId, onPickBase }: {
   title: string | null
-  items: { name: string; value: number | null; _color: string }[]
+  items: RowItem[]
   showValues?: boolean
   height: number
+  baseId: string | null
+  onPickBase: (id: string) => void
 }) {
   return (
     <div>
       {title && <p className="mb-1 text-sm font-medium text-foreground/80">{title}</p>}
       <div style={{ width: "100%", height }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={items} margin={{ top: 18, right: 12, left: 8, bottom: 8 }}>
+          <BarChart data={items} margin={{ top: 26, right: 12, left: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
             <XAxis dataKey="name" {...AXIS} interval={0} angle={-25} textAnchor="end" height={64} />
             <YAxis {...AXIS} domain={[0, "auto"]} />
             <Tooltip cursor={{ fill: "hsl(var(--muted) / 0.4)" }} content={<SingleBarTooltip />} />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-              {items.map((d, i) => <Cell key={i} fill={d._color} />)}
-              {showValues && <LabelList dataKey="value" position="top" fontSize={11} fill="hsl(var(--foreground))" />}
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}
+              onClick={(_, i) => onPickBase(items[i].id)} style={{ cursor: "pointer" }}>
+              {items.map((d, i) => (
+                <Cell key={i} fill={d._color}
+                  stroke={baseId === d.id ? "hsl(var(--foreground))" : undefined}
+                  strokeWidth={baseId === d.id ? 2 : 0}
+                  fillOpacity={baseId && baseId !== d.id ? 0.85 : 1} />
+              ))}
+              <LabelList dataKey="value" content={(p) => <BarTopLabel {...p} items={items} baseId={baseId} showValues={showValues} />} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -150,6 +199,10 @@ export default function ArticleChart({ config, compact }: Props) {
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(config.series.filter(s => s.hidden).map(s => s.id))
   )
+  // База сравнения: id предмета. Клик по столбцу → его % разницы = 0, остальные
+  // показывают разницу относительно него. Повторный клик — сброс.
+  const [baseId, setBaseId] = useState<string | null>(null)
+  const pickBase = (id: string) => setBaseId(prev => prev === id ? null : id)
 
   const toggle = (id: string) =>
     setHidden(prev => {
@@ -175,7 +228,7 @@ export default function ArticleChart({ config, compact }: Props) {
       title: pt.x,
       items: config.series
         .filter(s => !hidden.has(s.id))
-        .map(s => ({ name: s.name, value: pt.values[s.id] ?? null, _color: s.color })),
+        .map(s => ({ id: s.id, name: s.name, value: pt.values[s.id] ?? null, _color: s.color })),
     }))
   }, [splitByRows, config.points, config.series, hidden])
 
@@ -192,11 +245,17 @@ export default function ArticleChart({ config, compact }: Props) {
       )}
 
       {splitByRows ? (
-        <div className="space-y-5">
-          {rows.map((r, i) => (
-            <RowChart key={i} title={r.title} items={r.items} showValues={config.showValues} height={height} />
-          ))}
-        </div>
+        <>
+          <p className="mb-2 text-center text-[11px] text-foreground/40">
+            Нажмите на столбец — увидите разницу остальных в процентах относительно него.
+          </p>
+          <div className="space-y-5">
+            {rows.map((r, i) => (
+              <RowChart key={i} title={r.title} items={r.items} showValues={config.showValues}
+                height={height} baseId={baseId} onPickBase={pickBase} />
+            ))}
+          </div>
+        </>
       ) : (
         <SeriesChart config={config} hidden={hidden} height={height} seriesNames={seriesNames} />
       )}
