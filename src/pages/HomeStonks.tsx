@@ -40,7 +40,7 @@ interface CatalogBuild {
 
 const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
 const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/369e76c4-c4a6-46da-ab1d-843219204c9a.jpg"
-const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/d3b7e0bd-0618-49c3-8bcc-17de2c6bd3cd.png"
+const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/f82bffa1-7f93-4254-a9de-5233117cf6be.jpg"
 
 const fmtPrice = (n?: number) => (n ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
