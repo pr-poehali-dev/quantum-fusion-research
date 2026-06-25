@@ -163,8 +163,8 @@ export default function Service() {
           ))}
         </div>
 
-        {/* Как сдать в ремонт — гайд из 4 шагов */}
-        <div className="mt-12">
+        {/* Как сдать в ремонт — гайд из 4 шагов. Скрыто визуально, оставлено для SEO. */}
+        <div className="sr-only mt-12" aria-hidden="false">
           <h2 className="text-2xl font-bold">Как сдать в ремонт</h2>
           <p className="mt-1 text-foreground/55">4 простых шага — от заявки до готового устройства с гарантией.</p>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
