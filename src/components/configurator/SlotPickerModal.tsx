@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
+import { platformFromSocket, SOCKET_CODE } from "@/lib/platformFilter"
 
 // ── Типы данных из бэкенда ────────────────────────────────────────────────────
 interface SpecAttr {
@@ -165,18 +166,36 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
     return coolerKindFromValue(Array.from(sel)[0])
   }, [attributes, attrFilters])
 
+  // Выбранная в фильтре платформа (по сокету) → amd/intel, для скрытия чужого чипсета
+  const platformKind = useMemo(() => {
+    const socketA = attributes.find(a => a.code === SOCKET_CODE)
+    if (!socketA) return null
+    const sel = attrFilters[socketA.id]
+    if (!sel || sel.size === 0) return null
+    const kinds = new Set(Array.from(sel).map(platformFromSocket).filter(Boolean))
+    return kinds.size === 1 ? (Array.from(kinds)[0] as "amd" | "intel") : null
+  }, [attributes, attrFilters])
+
   const filterableAttrs = useMemo(() => {
     return attributes.filter(a => {
       // показываем ВСЕ характеристики (включая числовые/bool) как список значений; кроме служебного text
       if (a.field_type === "text") return false
+      // служебные/скрытые характеристики не показываем (напр. старый общий «Чипсет»)
+      if (a.applies_to === "hidden") return false
       // скрываем характеристики чужого подтипа охлаждения, когда тип выбран
       if (coolingKind !== null && (a.applies_to === "air" || a.applies_to === "liquid") && a.applies_to !== coolingKind) return false
+      // скрываем чипсет чужой платформы: если выбрана платформа — показываем только её,
+      // если не выбрана — прячем оба «Чипсет AMD/Intel», пока не выбран сокет
+      if (a.applies_to === "amd" || a.applies_to === "intel") {
+        if (platformKind === null) return false
+        if (a.applies_to !== platformKind) return false
+      }
       return products.some(p => {
         const v = p.values[String(a.id)]
         return v !== undefined && v !== null && (Array.isArray(v) ? v.length > 0 : String(v).length > 0)
       })
     })
-  }, [attributes, products, coolingKind])
+  }, [attributes, products, coolingKind, platformKind])
 
   // Уникальные значения по каждому фильтр-атрибуту
   const attrValues = useMemo(() => {

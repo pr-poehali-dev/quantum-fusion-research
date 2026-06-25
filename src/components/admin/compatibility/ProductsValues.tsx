@@ -5,6 +5,7 @@ import { SpecSchema, SpecProduct, SpecAttribute } from "./types"
 import { Modal, Field } from "./AttributesBuilder"
 import { buildCsv, parseCsv, downloadCsv } from "./specCsv"
 import { attrVisibleForKind, coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
+import { platformFromSocket, SOCKET_CODE } from "@/lib/platformFilter"
 
 interface Props { schema: SpecSchema }
 
@@ -176,13 +177,26 @@ function ValuesEditor({ row, schema, onClose, onSaved }:
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Управляющий тип охлаждения: показываем поля только нужного подтипа (air/liquid)
+  // Управляющий тип охлаждения (air/liquid) + платформа материнки (amd/intel по сокету):
+  // показываем поля только нужного подтипа/платформы. Скрытые (hidden) не показываем.
   const attrs = useMemo(() => {
-    const hasTyped = allAttrs.some(a => a.applies_to === "air" || a.applies_to === "liquid")
-    if (!hasTyped) return allAttrs
-    const typeAttr = allAttrs.find(a => a.code === COOLER_TYPE_CODE)
-    const kind = typeAttr ? coolerKindFromValue(values[typeAttr.id]) : null
-    return allAttrs.filter(a => attrVisibleForKind(a, kind))
+    let list = allAttrs.filter(a => a.applies_to !== "hidden")
+    // Охлаждение
+    if (list.some(a => a.applies_to === "air" || a.applies_to === "liquid")) {
+      const typeAttr = list.find(a => a.code === COOLER_TYPE_CODE)
+      const kind = typeAttr ? coolerKindFromValue(values[typeAttr.id]) : null
+      list = list.filter(a => attrVisibleForKind(a, kind))
+    }
+    // Платформа материнки (чипсет AMD/Intel) — по выбранному сокету
+    if (list.some(a => a.applies_to === "amd" || a.applies_to === "intel")) {
+      const socketAttr = list.find(a => a.code === SOCKET_CODE)
+      const platform = socketAttr ? platformFromSocket(values[socketAttr.id]) : null
+      list = list.filter(a => {
+        if (a.applies_to !== "amd" && a.applies_to !== "intel") return true
+        return platform !== null && a.applies_to === platform
+      })
+    }
+    return list
   }, [allAttrs, values])
 
   useEffect(() => {

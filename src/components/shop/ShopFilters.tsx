@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import Icon from "@/components/ui/icon"
 import { attrVisibleForKind, coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
+import { platformFromSocket, SOCKET_CODE } from "@/lib/platformFilter"
 
 // Характеристика категории (из spec_attributes)
 export interface ShopAttr {
@@ -148,19 +149,37 @@ export default function ShopFilters({ attributes, products, state, setState, ope
     return coolerKindFromValue(Array.from(sel)[0])
   }, [attributes, state.attrs])
 
+  // Выбранная в фильтре платформа по сокету (amd/intel) → прячем чужой чипсет.
+  const platformKind = useMemo(() => {
+    const socketA = attributes.find(a => a.code === SOCKET_CODE)
+    if (!socketA) return null
+    const sel = state.attrs[socketA.id]
+    if (!sel || sel.size === 0) return null
+    const kinds = new Set(Array.from(sel).map(platformFromSocket).filter(Boolean))
+    return kinds.size === 1 ? (Array.from(kinds)[0] as "amd" | "intel") : null
+  }, [attributes, state.attrs])
+
   // Фильтруемые характеристики — ВСЕ типы (кроме служебных text), у которых есть заполненные значения.
   // Числовые тоже показываем как список конкретных значений-чекбоксов.
   const filterableAttrs = useMemo(() =>
     attributes
       .filter(a => a.field_type !== "text")
+      // служебные/скрытые характеристики (старый общий «Чипсет») не показываем
+      .filter(a => a.applies_to !== "hidden")
       // скрываем характеристики чужого подтипа охлаждения, когда тип выбран
       .filter(a => coolingKind === null ? true : attrVisibleForKind(a, coolingKind))
+      // чипсет показываем только для выбранной платформы (по сокету); пока платформа
+      // не выбрана — оба «Чипсет AMD/Intel» скрыты
+      .filter(a => {
+        if (a.applies_to !== "amd" && a.applies_to !== "intel") return true
+        return platformKind !== null && a.applies_to === platformKind
+      })
       .filter(a => products.some(p => {
         const v = p.values[String(a.id)]
         return v !== undefined && v !== null && (Array.isArray(v) ? v.length > 0 : String(v).length > 0)
       }))
       .sort((a, b) => a.sort_order - b.sort_order),
-  [attributes, products, coolingKind])
+  [attributes, products, coolingKind, platformKind])
 
   const attrValues = useMemo(() => {
     const m: Record<number, string[]> = {}

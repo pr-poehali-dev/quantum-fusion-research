@@ -3,6 +3,25 @@
 
 ---
 
+## v5.53 | 2026-06-25 | Разделение чипсета материнки на AMD / Intel (по образцу СЖО)
+
+### БД (V0160)
+- Новые spec_attributes для motherboard: chipset_amd (applies_to=amd) и
+  chipset_intel (applies_to=intel) с раздельными списками чипсетов.
+- Значения перенесены из общего chipset (id=9) по платформе; старый chipset
+  скрыт (applies_to=hidden, sort_order=99).
+
+### Фронт
+- Новый src/lib/platformFilter.ts: platformFromSocket() (AM*→amd, LGA*→intel),
+  attrVisibleForPlatform(), filterAttrsByPlatform() — аналог coolingFilter.
+- SlotPickerModal (конфигуратор): платформа по выбранному сокету, скрытие чужого
+  чипсета и hidden-атрибутов.
+- ShopFilters (каталог на сайте): то же разделение AMD/Intel по сокету.
+- ProductsValues (редактор товара в админке): чипсет AMD/Intel показывается по
+  выбранному сокету, hidden скрыт.
+
+---
+
 ## v5.52 | 2026-06-25 | Улучшенная браузерная озвучка (выбор голоса, скорость, тон)
 
 ### Фронт (OrderProcessPage)
