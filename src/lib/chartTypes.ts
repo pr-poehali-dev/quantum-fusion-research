@@ -4,18 +4,13 @@
 
 export type ChartType = "line" | "bar"
 
-// Одна серия (линия на линейном графике или цвет столбца в группе).
+// Одна серия (линия на линейном графике или предмет/столбец).
 export interface ChartSeries {
   id: string
   name: string      // подпись в легенде ("Arctic LF III PRO")
   color: string     // hex цвет
   hidden?: boolean  // скрыта по умолчанию
-  group?: string    // категория/группа: серии одной группы рисуются на отдельном
-                    // графике со своей шкалой Y (напр. "Время (сек)" и "Цена (руб)")
 }
-
-// Подпись группы по умолчанию (когда у серии не задана группа)
-export const DEFAULT_GROUP = "Основной"
 
 // Точка по оси категорий (X). values: { [seriesId]: число | null }
 export interface ChartPoint {

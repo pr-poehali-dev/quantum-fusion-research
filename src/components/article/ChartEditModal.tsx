@@ -25,7 +25,7 @@ export default function ChartEditModal({ initial, onSave, onClose }: Props) {
     series: c.series.filter(s => s.id !== id),
     points: c.points.map(p => { const v = { ...p.values }; delete v[id]; return { ...p, values: v } }),
   }))
-  const updSeries = (id: string, patch: Partial<{ name: string; color: string; group: string }>) => setCfg(c => ({
+  const updSeries = (id: string, patch: Partial<{ name: string; color: string }>) => setCfg(c => ({
     ...c,
     series: c.series.map(s => s.id === id ? { ...s, ...patch } : s),
   }))
@@ -132,26 +132,18 @@ export default function ChartEditModal({ initial, onSave, onClose }: Props) {
                   <input value={s.name} onChange={e => updSeries(s.id, { name: e.target.value })}
                     placeholder="Название серии"
                     className="flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm focus:border-primary focus:outline-none" />
-                  <input value={s.group || ""} onChange={e => updSeries(s.id, { group: e.target.value })}
-                    placeholder="Категория"
-                    list="chart-groups"
-                    title="Серии одной категории рисуются на отдельном графике со своей шкалой"
-                    className="w-32 shrink-0 rounded-lg border border-border bg-card px-3 py-1.5 text-sm focus:border-primary focus:outline-none" />
                   <button type="button" onClick={() => removeSeries(s.id)} style={{ cursor: "pointer" }}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-foreground/40 hover:text-destructive">
                     <Icon name="Trash2" size={14} />
                   </button>
                 </div>
               ))}
-              <datalist id="chart-groups">
-                {Array.from(new Set(cfg.series.map(s => (s.group || "").trim()).filter(Boolean))).map(g => (
-                  <option key={g} value={g} />
-                ))}
-              </datalist>
             </div>
-            <p className="mt-1.5 text-[11px] text-foreground/40">
-              «Категория» делит серии на отдельные графики со своей шкалой высоты (напр. «Время» и «Цена» не будут давить друг друга). Пусто — общий график.
-            </p>
+            {cfg.type === "bar" && cfg.points.length > 1 && (
+              <p className="mt-1.5 text-[11px] text-foreground/40">
+                Каждая строка данных ниже («{cfg.points.map(p => p.x).filter(Boolean).join("», «")}») рисуется отдельным графиком со своей шкалой — большие значения одной строки не давят мелкие другой.
+              </p>
+            )}
           </div>
 
           {/* Таблица точек */}

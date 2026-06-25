@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react"
 import {
-  ResponsiveContainer, LineChart, Line, BarChart, Bar,
+  ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, LabelList,
 } from "recharts"
-import { ChartConfig, ChartSeries, DEFAULT_GROUP } from "@/lib/chartTypes"
+import { ChartConfig } from "@/lib/chartTypes"
 
 interface Props {
   config: ChartConfig
@@ -15,11 +15,11 @@ interface TooltipPayloadItem {
   value: number | null
   color: string
   name: string
+  payload?: { _color?: string; name?: string }
 }
 
-// Кастомный тултип — показывает значения ВСЕХ видимых серий в выбранной точке,
-// отсортированные по убыванию (как на референсе с кулерами).
-function ChartTooltip({ active, payload, label, seriesNames, axisLabel }: {
+// ─── Тултип «по сериям» (линейный): значения всех серий в точке ───────────────
+function MultiSeriesTooltip({ active, payload, label, seriesNames, axisLabel }: {
   active?: boolean
   payload?: TooltipPayloadItem[]
   label?: string
@@ -32,9 +32,7 @@ function ChartTooltip({ active, payload, label, seriesNames, axisLabel }: {
     .sort((a, b) => Number(b.value) - Number(a.value))
   return (
     <div className="rounded-lg border border-border bg-background/95 backdrop-blur px-3 py-2 shadow-xl text-xs max-w-[260px]">
-      <div className="mb-1.5 font-medium text-foreground">
-        {axisLabel ? `${axisLabel}: ` : ""}{label}
-      </div>
+      <div className="mb-1.5 font-medium text-foreground">{axisLabel ? `${axisLabel}: ` : ""}{label}</div>
       <div className="space-y-1">
         {rows.map(p => (
           <div key={p.dataKey} className="flex items-center justify-between gap-3">
@@ -50,77 +48,105 @@ function ChartTooltip({ active, payload, label, seriesNames, axisLabel }: {
   )
 }
 
-// Один график для одной группы серий (своя шкала Y).
-function ChartCanvas({ config, groupTitle, groupSeries, hidden, height, seriesNames }: {
-  config: ChartConfig
-  groupTitle: string | null
-  groupSeries: ChartSeries[]
-  hidden: Set<string>
-  height: number
-  seriesNames: Record<string, string>
-}) {
-  const visible = groupSeries.filter(s => !hidden.has(s.id))
-
-  const data = useMemo(
-    () => config.points.map(pt => {
-      const row: Record<string, string | number | null> = { x: pt.x }
-      groupSeries.forEach(s => { row[s.id] = pt.values[s.id] ?? null })
-      return row
-    }),
-    [config.points, groupSeries]
-  )
-
-  const axisProps = {
-    stroke: "hsl(var(--muted-foreground))",
-    fontSize: 11,
-    tickLine: false,
-  }
-
+// ─── Тултип «по строкам» (один столбец = один предмет) ────────────────────────
+function SingleBarTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayloadItem[] }) {
+  if (!active || !payload || !payload.length) return null
+  const p = payload[0]
   return (
-    <div className="mb-1">
-      {groupTitle && (
-        <p className="mb-1 text-sm font-medium text-foreground/80">{groupTitle}</p>
-      )}
+    <div className="rounded-lg border border-border bg-background/95 backdrop-blur px-3 py-2 shadow-xl text-xs">
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ background: p.payload?._color }} />
+        <span className="text-foreground/70">{p.payload?.name}</span>
+        <span className="ml-2 font-medium text-foreground tabular-nums">{p.value}</span>
+      </span>
+    </div>
+  )
+}
+
+const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false }
+
+// ─── Один график для одной СТРОКИ данных (ось X = предметы/серии) ──────────────
+// Каждая строка («Время», «Цена») получает свою шкалу Y — большие значения
+// одной метрики не давят мелкие другой.
+function RowChart({ title, items, showValues, height }: {
+  title: string | null
+  items: { name: string; value: number | null; _color: string }[]
+  showValues?: boolean
+  height: number
+}) {
+  return (
+    <div>
+      {title && <p className="mb-1 text-sm font-medium text-foreground/80">{title}</p>}
       <div style={{ width: "100%", height }}>
         <ResponsiveContainer width="100%" height="100%">
-          {config.type === "line" ? (
-            <LineChart data={data} margin={{ top: 12, right: 16, left: 8, bottom: 24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="x" {...axisProps}
-                label={config.xLabel ? { value: config.xLabel, position: "insideBottom", offset: -12, fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
-              <YAxis {...axisProps} domain={["auto", "auto"]}
-                label={config.yLabel ? { value: config.yLabel, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
-              <Tooltip content={<ChartTooltip seriesNames={seriesNames} axisLabel={config.xLabel} />} />
-              {visible.map(s => (
-                <Line key={s.id} type="monotone" dataKey={s.id} name={s.name}
-                  stroke={s.color} strokeWidth={2}
-                  dot={config.showDots ? { r: 3, fill: s.color } : false}
-                  activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
-              ))}
-            </LineChart>
-          ) : (
-            <BarChart data={data} margin={{ top: 18, right: 16, left: 8, bottom: 24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="x" {...axisProps}
-                label={config.xLabel ? { value: config.xLabel, position: "insideBottom", offset: -12, fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
-              <YAxis {...axisProps} domain={[0, "auto"]}
-                label={config.yLabel ? { value: config.yLabel, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
-              <Tooltip cursor={{ fill: "hsl(var(--muted) / 0.4)" }} content={<ChartTooltip seriesNames={seriesNames} axisLabel={config.xLabel} />} />
-              {visible.map(s => (
-                <Bar key={s.id} dataKey={s.id} name={s.name} fill={s.color} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                  {config.showValues && <LabelList dataKey={s.id} position="top" fontSize={11} fill="hsl(var(--foreground))" />}
-                </Bar>
-              ))}
-            </BarChart>
-          )}
+          <BarChart data={items} margin={{ top: 18, right: 12, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <XAxis dataKey="name" {...AXIS} interval={0} angle={-25} textAnchor="end" height={64} />
+            <YAxis {...AXIS} domain={[0, "auto"]} />
+            <Tooltip cursor={{ fill: "hsl(var(--muted) / 0.4)" }} content={<SingleBarTooltip />} />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              {items.map((d, i) => <Cell key={i} fill={d._color} />)}
+              {showValues && <LabelList dataKey="value" position="top" fontSize={11} fill="hsl(var(--foreground))" />}
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
   )
 }
 
+// ─── График «по сериям» (ось X = точки данных, серии = линии/столбцы) ──────────
+// Линейный график и столбчатый с одной строкой данных.
+function SeriesChart({ config, hidden, height, seriesNames }: {
+  config: ChartConfig
+  hidden: Set<string>
+  height: number
+  seriesNames: Record<string, string>
+}) {
+  const visible = config.series.filter(s => !hidden.has(s.id))
+  const data = useMemo(
+    () => config.points.map(pt => ({ x: pt.x, ...pt.values })),
+    [config.points]
+  )
+  return (
+    <div style={{ width: "100%", height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        {config.type === "line" ? (
+          <LineChart data={data} margin={{ top: 12, right: 16, left: 8, bottom: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <XAxis dataKey="x" {...AXIS}
+              label={config.xLabel ? { value: config.xLabel, position: "insideBottom", offset: -12, fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
+            <YAxis {...AXIS} domain={["auto", "auto"]}
+              label={config.yLabel ? { value: config.yLabel, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
+            <Tooltip content={<MultiSeriesTooltip seriesNames={seriesNames} axisLabel={config.xLabel} />} />
+            {visible.map(s => (
+              <Line key={s.id} type="monotone" dataKey={s.id} name={s.name}
+                stroke={s.color} strokeWidth={2}
+                dot={config.showDots ? { r: 3, fill: s.color } : false}
+                activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
+            ))}
+          </LineChart>
+        ) : (
+          <BarChart data={data} margin={{ top: 18, right: 16, left: 8, bottom: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <XAxis dataKey="x" {...AXIS}
+              label={config.xLabel ? { value: config.xLabel, position: "insideBottom", offset: -12, fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
+            <YAxis {...AXIS} domain={[0, "auto"]}
+              label={config.yLabel ? { value: config.yLabel, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
+            <Tooltip cursor={{ fill: "hsl(var(--muted) / 0.4)" }} content={<MultiSeriesTooltip seriesNames={seriesNames} axisLabel={config.xLabel} />} />
+            {visible.map(s => (
+              <Bar key={s.id} dataKey={s.id} name={s.name} fill={s.color} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                {config.showValues && <LabelList dataKey={s.id} position="top" fontSize={11} fill="hsl(var(--foreground))" />}
+              </Bar>
+            ))}
+          </BarChart>
+        )}
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 export default function ArticleChart({ config, compact }: Props) {
-  // Локально скрытые серии (клик по легенде). Стартуем со скрытых из конфига.
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(config.series.filter(s => s.hidden).map(s => s.id))
   )
@@ -138,21 +164,24 @@ export default function ArticleChart({ config, compact }: Props) {
     return m
   }, [config.series])
 
-  // Группируем серии: каждая группа = отдельный график со своей шкалой Y.
-  const groups = useMemo(() => {
-    const order: string[] = []
-    const map = new Map<string, ChartSeries[]>()
-    config.series.forEach(s => {
-      const g = (s.group || "").trim() || DEFAULT_GROUP
-      if (!map.has(g)) { map.set(g, []); order.push(g) }
-      map.get(g)!.push(s)
-    })
-    return order.map(g => ({ name: g, series: map.get(g)! }))
-  }, [config.series])
+  // Столбчатый график с НЕСКОЛЬКИМИ строками данных рисуем построчно:
+  // каждая строка («Время», «Цена») = отдельный график со своей шкалой Y,
+  // по оси X — предметы (серии).
+  const splitByRows = config.type === "bar" && config.points.length > 1
 
-  const multiGroup = groups.length > 1
-  // При нескольких группах каждый график пониже, чтобы суммарно не растягивать.
-  const height = compact ? (multiGroup ? 200 : 260) : (multiGroup ? 300 : 420)
+  const rows = useMemo(() => {
+    if (!splitByRows) return []
+    return config.points.map(pt => ({
+      title: pt.x,
+      items: config.series
+        .filter(s => !hidden.has(s.id))
+        .map(s => ({ name: s.name, value: pt.values[s.id] ?? null, _color: s.color })),
+    }))
+  }, [splitByRows, config.points, config.series, hidden])
+
+  const height = compact
+    ? (splitByRows ? 240 : 260)
+    : (splitByRows ? 320 : 420)
 
   return (
     <figure className="my-5 rounded-xl border border-border bg-card p-4">
@@ -162,15 +191,17 @@ export default function ArticleChart({ config, compact }: Props) {
         </figcaption>
       )}
 
-      <div className="space-y-4">
-        {groups.map(g => (
-          <ChartCanvas key={g.name} config={config}
-            groupTitle={multiGroup ? g.name : null}
-            groupSeries={g.series} hidden={hidden} height={height} seriesNames={seriesNames} />
-        ))}
-      </div>
+      {splitByRows ? (
+        <div className="space-y-5">
+          {rows.map((r, i) => (
+            <RowChart key={i} title={r.title} items={r.items} showValues={config.showValues} height={height} />
+          ))}
+        </div>
+      ) : (
+        <SeriesChart config={config} hidden={hidden} height={height} seriesNames={seriesNames} />
+      )}
 
-      {/* Легенда-фильтр: клик скрывает/показывает серию */}
+      {/* Легенда-фильтр: клик скрывает/показывает предмет на всех графиках */}
       <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
         {config.series.map(s => {
           const off = hidden.has(s.id)
