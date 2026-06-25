@@ -419,7 +419,8 @@ def handler(event: dict, context) -> dict:
                         slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
                         slot_labels = {"cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
                                        "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
-                                       "case_name": "Корпус", "cooling": "Охлаждение", "extra": "Доп."}
+                                       "case_name": "Корпус", "case": "Корпус", "cooling": "Охлаждение",
+                                       "fan": "Вентилятор", "extra": "Доп.", "other": "Прочее"}
                         # Кол-во ПК из заказа
                         build_qty = 1
                         for oi in (order.get("items") or []):
@@ -490,23 +491,43 @@ def handler(event: dict, context) -> dict:
                                 if it.get("item_status"):
                                     slot_item_status[s] = it["item_status"]
 
+                        # Маппинг статусов по слотам wip_builds (для отображения статуса сборки)
+                        wip_status_by_slot = {}
+                        wip_name_by_slot = {}
+                        for i, sn_slot in enumerate(slot_names):
+                            wip_status_by_slot[sn_slot] = wip[11 + i] or "pending"
+                            wip_name_by_slot[sn_slot] = wip[2 + i]
+
+                        # Источник истины по составу — pc_builds.components (там верные slot/qty/price,
+                        # включая нестандартные слоты вроде "fan"). wip_builds — только статусы.
+                        build_components = []
+                        if build_id:
+                            cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1", (build_id,))
+                            bc_row = cur.fetchone()
+                            if bc_row and bc_row[0]:
+                                build_components = bc_row[0] if isinstance(bc_row[0], list) else json.loads(bc_row[0])
+
                         wip_items = []
-                        for i, slot in enumerate(slot_names):
-                            name = wip[2 + i]
-                            wip_status = wip[11 + i] or "pending"
-                            if not name or not name.strip():
+                        for comp in build_components:
+                            slot = comp.get("slot")
+                            name = comp.get("name")
+                            if not name or not str(name).strip():
                                 continue
-                            product_id = slot_product_map.get(slot)
-                            # Ищем product_id по имени если нет маппинга
+                            # Статус берём из wip по слоту (case_name для слота case, extra для прочих)
+                            wip_key = "case_name" if slot == "case" else slot
+                            wip_status = wip_status_by_slot.get(wip_key) or wip_status_by_slot.get("extra") or "pending"
+                            product_id = None
+                            if comp.get("source") == "catalog" and comp.get("source_id"):
+                                product_id = int(comp["source_id"])
                             if not product_id:
                                 cur.execute(f"SELECT id FROM {schema}.products p WHERE p.name = %s LIMIT 1", (name,))
                                 pr = cur.fetchone()
                                 if pr:
                                     product_id = pr[0]
-                            # Кол-во для этого слота
-                            slot_qty = slot_qty_map.get(slot, build_qty)
-                            # Цена за 1 шт: финальная → из pc_builds.components (цена уже за 1 шт) → из warehouse
-                            raw_price = slot_price_map.get(slot, 0)
+                            # Кол-во для этого слота (qty компонента × кол-во ПК)
+                            slot_qty = int(comp.get("qty", 1)) * build_qty
+                            # Цена за 1 шт: финальная (по slot) → из components → из warehouse
+                            raw_price = float(comp.get("price", 0) or 0)
                             price_per_unit = slot_final_price.get(slot) or raw_price
                             if not price_per_unit and product_id:
                                 cur.execute(f"SELECT price_retail FROM {schema}.warehouse_groups WHERE product_id = %s LIMIT 1", (product_id,))
