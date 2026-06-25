@@ -9,6 +9,7 @@ import { useAuth } from "@/store/auth"
 // Фото наших работ
 const REPAIR_PHOTOS = [
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/808b8b3c-9619-472f-a9a3-097decedec20.jpeg",
+  "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/67eef1e4-07a9-4cff-b1da-ff045a75b61f.jpg",
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/5d4da50e-c287-4b2b-98d3-732c0e5fa7b9.jpg",
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/2ecd28b0-5720-465d-9e1a-1e15239f2b34.jpg",
   "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/cd91f011-25b9-4aa9-9de5-5741a2511beb.jpg",
