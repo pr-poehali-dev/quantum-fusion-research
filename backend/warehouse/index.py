@@ -906,16 +906,10 @@ def handler(event: dict, context) -> dict:
             old_store, old_date = (old_row[0], old_row[1]) if old_row else (None, None)
             old_cost = float(old_row[2]) if old_row and old_row[2] is not None else 0.0
             old_has_vat = bool(old_row[3]) if old_row and old_row[3] is not None else False
-            # НДС-товары: цену (себестоимость) можно только ПОВЫШАТЬ.
-            if old_has_vat and "cost_price" in body:
-                try:
-                    if float(body["cost_price"]) < old_cost:
-                        return {"statusCode": 400, "headers": cors, "body": json.dumps({
-                            "error": "vat_no_discount",
-                            "message": "Товар с НДС: цену можно только повысить, понижение недоступно.",
-                        })}
-                except (TypeError, ValueError):
-                    pass
+            # ВАЖНО: здесь редактируется ЦЕНА ЗАКУПКИ (cost_price) поставки —
+            # себестоимость, а не цена продажи клиенту. Закупочную цену можно
+            # менять свободно (в т.ч. понижать), правило «НДС нельзя удешевлять»
+            # относится только к цене ПРОДАЖИ в заказе, а не к поставке.
             fields = []
             for f in ["cell"]:
                 if f in body:
