@@ -306,15 +306,16 @@ def handler(event: dict, context) -> dict:
         wip = cur.fetchone()
         slot_names = ["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling", "extra"]
 
-        # Маппинг slot -> product_id и slot -> цена из pc_builds.components
+        # Состав сборки — источник истины (верные slot/qty/price, включая нестандартные слоты).
         slot_product_map = {}
         slot_build_price = {}  # цена компонента из состава сборки (фолбэк для гарантийки)
+        build_components = []
         if wip and wip[9]:
             cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (wip[9],))
             pc_row = cur.fetchone()
             if pc_row and pc_row[0]:
-                raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
-                for comp in raw:
+                build_components = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                for comp in build_components:
                     s = comp.get("slot")
                     if not s:
                         continue
@@ -347,18 +348,22 @@ def handler(event: dict, context) -> dict:
                 if price:
                     slot_item_price[slot] = price
 
-        if wip:
-            for i, slot in enumerate(slot_names):
-                name = wip[i]
-                if not name or not name.strip():
+        if build_components:
+            for comp in build_components:
+                slot = comp.get("slot")
+                name = comp.get("name")
+                if not name or not str(name).strip():
                     continue
+                qty = int(comp.get("qty", 1))
                 # Возвращённый на склад компонент в гарантийку не попадает
                 slot_alias = "case" if slot == "case_name" else slot
                 if slot_status_map.get(slot) == "returned" or slot_status_map.get(slot_alias) == "returned":
                     continue
                 # Гарантия из склада
                 warranty = 12
-                pid = slot_product_map.get(slot) or slot_product_map.get(slot_alias)
+                pid = None
+                if comp.get("source") == "catalog" and comp.get("source_id"):
+                    pid = int(comp["source_id"])
                 if not pid:
                     # Устойчиво к лишним пробелам и регистру (имена в каталоге
                     # бывают с хвостовым пробелом → точное сравнение не находило товар)
@@ -383,6 +388,8 @@ def handler(event: dict, context) -> dict:
                 # иначе актуальная цена каталога по товару.
                 price = slot_item_price.get(slot, 0)
                 if not price:
+                    price = float(comp.get("current_price") or comp.get("price") or 0)
+                if not price:
                     price = slot_build_price.get(slot) or slot_build_price.get(slot_alias) or 0
                 if not price and pid:
                     cur.execute(f"SELECT price FROM {SCHEMA}.products WHERE id = %s LIMIT 1", (pid,))
@@ -393,7 +400,7 @@ def handler(event: dict, context) -> dict:
                 store_code = store_code_by_serials(cur, serials, pid)
                 enriched.append({
                     "name": name + (f" [{store_code}]" if store_code else ""),
-                    "qty": 1,
+                    "qty": qty,
                     "price": price,
                     "warranty": warranty,
                     "serials": serials,
@@ -465,7 +472,10 @@ def handler(event: dict, context) -> dict:
     cur.close(); conn.close()
 
     date_str  = created_at.strftime("%d.%m.%Y") if created_at else datetime.now().strftime("%d.%m.%Y")
-    total_fmt = f"{float(total):,.2f}".replace(",", " ") + " руб."
+    # Стоимость считаем как сумму строк чека (цена × кол-во) — это всегда соответствует
+    # тому, что напечатано в таблице. orders.total для ПК-сборок может быть устаревшим.
+    computed_total = sum(float(it.get("price", 0) or 0) * int(it.get("qty", 1) or 1) for it in enriched)
+    total_fmt = f"{computed_total:,.2f}".replace(",", " ") + " руб."
 
     buf = io.BytesIO()
     p = PDFWriter(buf)
