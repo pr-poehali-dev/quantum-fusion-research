@@ -406,29 +406,30 @@ def handler(event: dict, context) -> dict:
                     "serials": serials,
                 })
 
-        # Строка стоимости сборки
+        # Строка стоимости сборки.
+        # ВАЖНО: цену работы берём ТОЛЬКО из pc_builds.assembly_fee — это источник истины.
+        # Строку item_type="config" из orders.items НЕ используем как fee (там может лежать
+        # мусорное final_price), иначе работа задваивается/искажается.
         assembly_fee = 0
         assembly_warranty = 12
         assembly_serials = []
-        # assembly_warranty хранится в items[0].assembly_warranty для любого pc_build
         for it in items:
             if it.get("assembly_warranty"):
                 assembly_warranty = int(it["assembly_warranty"])
-            if it.get("item_type") == "assembly" or it.get("assembly") or "сборк" in str(it.get("name", "")).lower():
-                assembly_fee = float(it.get("final_price") or it.get("price", 0))
+            # Явная строка услуги сборки (не config) — берём её данные
+            if it.get("item_type") == "assembly":
                 if it.get("warranty_months"):
                     assembly_warranty = int(it["warranty_months"])
                 sn = it.get("serial_numbers") or []
                 if not sn and it.get("serial_number"):
                     sn = [it["serial_number"]]
                 assembly_serials = [s for s in sn if s and str(s).strip()]
-        if not assembly_fee:
-            # Пробуем из pc_builds
-            if wip and wip[9]:
-                cur.execute(f"SELECT assembly_fee FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (wip[9],))
-                af = cur.fetchone()
-                if af and af[0]:
-                    assembly_fee = float(af[0])
+        # Цена работы — всегда из состава сборки
+        if wip and wip[9]:
+            cur.execute(f"SELECT assembly_fee FROM {SCHEMA}.pc_builds WHERE id = %s LIMIT 1", (wip[9],))
+            af = cur.fetchone()
+            if af and af[0]:
+                assembly_fee = float(af[0])
         if assembly_fee:
             enriched.append({
                 "name": "Работа по сборке и настройке ПК",
