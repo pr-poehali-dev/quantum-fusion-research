@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 import { api } from "@/lib/api"
+import { getAdminKey } from "@/pages/admin/types"
 import Icon from "@/components/ui/icon"
 
 interface Component {
@@ -45,7 +46,7 @@ export default function OrderSheet() {
 
   useEffect(() => {
     if (!id) return
-    api.builds.getById(Number(id))
+    api.builds.getById(Number(id), getAdminKey())
       .then(data => {
         if (data.error || !data.id) { setError("Заказ не найден"); setLoading(false); return }
         setBuild(data)

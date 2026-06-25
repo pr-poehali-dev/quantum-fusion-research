@@ -91,7 +91,7 @@ export const api = {
     getByShortCode: (code: string) => fetch(`${URLS.builds}?short_code=${encodeURIComponent(code)}`).then(r => r.json()),
     getVariants: (parentId: number) => fetch(`${URLS.builds}?parent_id=${parentId}`).then(r => r.json()),
     getByUserId: (userId: number) => fetch(`${URLS.builds}?user_id=${userId}`).then(r => r.json()),
-    getById: (id: number) => fetch(`${URLS.builds}?id=${id}`).then(r => r.json()),
+    getById: (id: number, adminKey?: string | null) => fetch(`${URLS.builds}?id=${id}`, { headers: adminKey ? { "X-Admin-Token": adminKey } : {} }).then(r => r.json()),
     create: (data: unknown) => fetch(URLS.builds, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     update: (data: unknown) => fetch(URLS.builds, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     patch: (data: unknown) => fetch(URLS.builds, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),

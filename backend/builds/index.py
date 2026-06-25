@@ -9,7 +9,7 @@ def get_conn():
 CORS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
+    "Access-Control-Allow-Headers": "Content-Type, X-Session-Id, X-Admin-Token",
 }
 
 def resp(status, data):
@@ -146,6 +146,8 @@ def handler(event: dict, context) -> dict:
     params = event.get("queryStringParameters") or {}
     headers = event.get("headers") or {}
     session_id = headers.get("X-Session-Id") or headers.get("x-session-id")
+    admin_token = headers.get("X-Admin-Token") or headers.get("x-admin-token")
+    is_admin = bool(admin_token) and admin_token == os.environ.get("ADMIN_KEY")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -185,8 +187,8 @@ def handler(event: dict, context) -> dict:
                         pr = cur.fetchone()
                         if pr and pr[0] == "catalog":
                             allowed = True
-                    # авторизованный сотрудник видит любую сборку
-                    if not allowed and get_user_by_session(cur, session_id):
+                    # админ (X-Admin-Token) или авторизованный сотрудник видит любую сборку
+                    if not allowed and (is_admin or get_user_by_session(cur, session_id)):
                         allowed = True
                     if not allowed:
                         return resp(404, {"error": "Не найдено"})
