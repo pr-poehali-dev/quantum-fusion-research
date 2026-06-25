@@ -34,6 +34,7 @@ export default function ChartEditModal({ initial, onSave, onClose }: Props) {
   const addPoint = () => setCfg(c => ({ ...c, points: [...c.points, { x: String(c.points.length + 1), values: {} }] }))
   const removePoint = (i: number) => setCfg(c => ({ ...c, points: c.points.filter((_, idx) => idx !== i) }))
   const updPointX = (i: number, x: string) => setCfg(c => ({ ...c, points: c.points.map((p, idx) => idx === i ? { ...p, x } : p) }))
+  const toggleBetter = (i: number) => setCfg(c => ({ ...c, points: c.points.map((p, idx) => idx === i ? { ...p, betterIsLower: !p.betterIsLower } : p) }))
   const updPointVal = (i: number, sid: string, raw: string) => setCfg(c => ({
     ...c,
     points: c.points.map((p, idx) => {
@@ -168,6 +169,7 @@ export default function ChartEditModal({ initial, onSave, onClose }: Props) {
                         </span>
                       </th>
                     ))}
+                    <th className="px-2 py-1.5 text-center text-xs font-medium text-foreground/50 min-w-[110px]">Что лучше</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -185,6 +187,17 @@ export default function ChartEditModal({ initial, onSave, onClose }: Props) {
                             className="w-full rounded border border-border bg-card px-2 py-1 text-xs tabular-nums focus:border-primary focus:outline-none" />
                         </td>
                       ))}
+                      <td className="px-1.5 py-1">
+                        <button type="button" onClick={() => toggleBetter(i)} style={{ cursor: "pointer" }}
+                          title="Влияет на цвет % при сравнении: что считать улучшением"
+                          className={`w-full rounded border px-2 py-1 text-[11px] transition-colors ${
+                            p.betterIsLower
+                              ? "border-amber-400/50 bg-amber-400/10 text-amber-500"
+                              : "border-green-500/40 bg-green-500/10 text-green-500"
+                          }`}>
+                          {p.betterIsLower ? "↓ меньше лучше" : "↑ больше лучше"}
+                        </button>
+                      </td>
                       <td className="px-1 py-1 text-center">
                         <button type="button" onClick={() => removePoint(i)} style={{ cursor: "pointer" }}
                           className="text-foreground/40 hover:text-destructive">
@@ -196,7 +209,9 @@ export default function ChartEditModal({ initial, onSave, onClose }: Props) {
                 </tbody>
               </table>
             </div>
-            <p className="mt-1.5 text-[11px] text-foreground/40">Пустая ячейка — нет данных в этой точке (линия не прервётся).</p>
+            <p className="mt-1.5 text-[11px] text-foreground/40">
+              Пустая ячейка — нет данных в этой точке. «Что лучше» задаёт, какой % при сравнении красить зелёным (улучшение) или красным (ухудшение) — напр. для времени/цены «меньше лучше».
+            </p>
           </div>
 
           {/* Превью */}

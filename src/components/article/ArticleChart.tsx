@@ -74,11 +74,13 @@ function diffPct(value: number, base: number): number | null {
 interface RowItem { id: string; name: string; value: number | null; _color: string }
 
 // Кастомная подпись над столбцом: само значение + бейдж % разницы от базы.
+// betterIsLower: если для метрики меньше = лучше, то рост значения = красный.
 function BarTopLabel(props: {
   x?: number; y?: number; width?: number; value?: number | null
   index?: number; items: RowItem[]; baseId: string | null; showValues?: boolean
+  betterIsLower?: boolean
 }) {
-  const { x = 0, y = 0, width = 0, value, index = 0, items, baseId, showValues } = props
+  const { x = 0, y = 0, width = 0, value, index = 0, items, baseId, showValues, betterIsLower } = props
   const item = items[index]
   if (!item) return null
   const cx = x + width / 2
@@ -86,6 +88,10 @@ function BarTopLabel(props: {
   const pct = base && base.value != null && item.value != null && item.id !== baseId
     ? diffPct(item.value, base.value) : null
   const isBase = baseId === item.id
+
+  // pct>0 — значение больше базы. «Хорошо», если (больше лучше и pct>0) или
+  // (меньше лучше и pct<0). Цвет: зелёный=хорошо, красный=плохо.
+  const isGood = pct != null && (betterIsLower ? pct < 0 : pct > 0)
 
   return (
     <g>
@@ -96,11 +102,14 @@ function BarTopLabel(props: {
       {isBase && (
         <text x={cx} y={y - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="hsl(var(--primary))">база</text>
       )}
-      {pct != null && (
+      {pct != null && pct !== 0 && (
         <text x={cx} y={y - 3} textAnchor="middle" fontSize={11} fontWeight={700}
-          fill={pct >= 0 ? "#22c55e" : "#ef4444"}>
+          fill={isGood ? "#22c55e" : "#ef4444"}>
           {pct >= 0 ? "▲" : "▼"} {Math.abs(pct)}%
         </text>
+      )}
+      {pct === 0 && (
+        <text x={cx} y={y - 3} textAnchor="middle" fontSize={11} fontWeight={700} fill="hsl(var(--muted-foreground))">0%</text>
       )}
     </g>
   )
@@ -109,17 +118,25 @@ function BarTopLabel(props: {
 // ─── Один график для одной СТРОКИ данных (ось X = предметы/серии) ──────────────
 // Каждая строка («Время», «Цена») получает свою шкалу Y — большие значения
 // одной метрики не давят мелкие другой. Клик по столбцу → база сравнения.
-function RowChart({ title, items, showValues, height, baseId, onPickBase }: {
+function RowChart({ title, items, showValues, height, baseId, onPickBase, betterIsLower }: {
   title: string | null
   items: RowItem[]
   showValues?: boolean
   height: number
   baseId: string | null
   onPickBase: (id: string) => void
+  betterIsLower?: boolean
 }) {
   return (
     <div>
-      {title && <p className="mb-1 text-sm font-medium text-foreground/80">{title}</p>}
+      {title && (
+        <p className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground/80">
+          {title}
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-foreground/50">
+            {betterIsLower ? "↓ меньше — лучше" : "↑ больше — лучше"}
+          </span>
+        </p>
+      )}
       <div style={{ width: "100%", height }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={items} margin={{ top: 26, right: 12, left: 8, bottom: 8 }}>
@@ -135,7 +152,7 @@ function RowChart({ title, items, showValues, height, baseId, onPickBase }: {
                   strokeWidth={baseId === d.id ? 2 : 0}
                   fillOpacity={baseId && baseId !== d.id ? 0.85 : 1} />
               ))}
-              <LabelList dataKey="value" content={(p) => <BarTopLabel {...p} items={items} baseId={baseId} showValues={showValues} />} />
+              <LabelList dataKey="value" content={(p) => <BarTopLabel {...p} items={items} baseId={baseId} showValues={showValues} betterIsLower={betterIsLower} />} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -226,6 +243,7 @@ export default function ArticleChart({ config, compact }: Props) {
     if (!splitByRows) return []
     return config.points.map(pt => ({
       title: pt.x,
+      betterIsLower: !!pt.betterIsLower,
       items: config.series
         .filter(s => !hidden.has(s.id))
         .map(s => ({ id: s.id, name: s.name, value: pt.values[s.id] ?? null, _color: s.color })),
@@ -252,7 +270,7 @@ export default function ArticleChart({ config, compact }: Props) {
           <div className="space-y-5">
             {rows.map((r, i) => (
               <RowChart key={i} title={r.title} items={r.items} showValues={config.showValues}
-                height={height} baseId={baseId} onPickBase={pickBase} />
+                height={height} baseId={baseId} onPickBase={pickBase} betterIsLower={r.betterIsLower} />
             ))}
           </div>
         </>

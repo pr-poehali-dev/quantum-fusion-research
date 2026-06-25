@@ -13,9 +13,12 @@ export interface ChartSeries {
 }
 
 // Точка по оси категорий (X). values: { [seriesId]: число | null }
+// betterIsLower: для этой метрики меньше = лучше (Время, Цена, t°). По умолчанию
+// больше = лучше (FPS, баллы). Влияет на цвет % разницы при сравнении.
 export interface ChartPoint {
   x: string                              // подпись по оси X ("32", "Время (Сек)")
   values: Record<string, number | null>
+  betterIsLower?: boolean
 }
 
 export interface ChartConfig {
