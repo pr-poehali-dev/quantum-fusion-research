@@ -6,6 +6,9 @@ import TextAlign from "@tiptap/extension-text-align"
 import { useEffect, useCallback, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Icon from "@/components/ui/icon"
+import ArticleChart from "@/components/article/ArticleChart"
+import ChartEditModal from "@/components/article/ChartEditModal"
+import { ChartConfig, parseChartConfig } from "@/lib/chartTypes"
 
 const UPLOAD_URL = "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81"
 
@@ -292,6 +295,71 @@ const SingleImageExtension = Node.create({
   addNodeView() { return ReactNodeViewRenderer(SingleImageNodeView) },
 })
 
+// ─── График как NodeView ──────────────────────────────────────────────────────
+function ChartNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
+  const config: ChartConfig | null = parseChartConfig(
+    typeof node.attrs.config === "string" ? node.attrs.config : JSON.stringify(node.attrs.config || null)
+  )
+  const [editing, setEditing] = useState(false)
+
+  const handleDelete = () => { if (window.confirm("Удалить график?")) deleteNode() }
+  const handleSave = (c: ChartConfig) => { updateAttributes({ config: JSON.stringify(c) }); setEditing(false) }
+
+  return (
+    <NodeViewWrapper>
+      <div contentEditable={false} className="group relative my-3 rounded-xl border-2 border-primary/40 bg-card select-none overflow-visible">
+        <div className="absolute -top-4 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div data-drag-handle
+            className="flex h-7 w-7 cursor-grab items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-foreground hover:border-primary/40 transition-colors active:cursor-grabbing"
+            title="Перетащить">
+            <Icon name="GripVertical" size={14} />
+          </div>
+          <button type="button" onMouseDown={e => { e.preventDefault(); setEditing(true) }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-primary hover:border-primary/40 transition-colors"
+            style={{ cursor: "pointer" }} title="Редактировать график">
+            <Icon name="Pencil" size={13} />
+          </button>
+          <button type="button" onMouseDown={e => { e.preventDefault(); handleDelete() }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-destructive hover:border-destructive/40 transition-colors"
+            style={{ cursor: "pointer" }} title="Удалить график">
+            <Icon name="Trash2" size={13} />
+          </button>
+        </div>
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 rounded-full bg-primary/80 px-2 py-0.5 text-[11px] text-white">
+          <Icon name="ChartLine" size={11} />
+          График
+        </div>
+        {config
+          ? <ArticleChart config={config} compact />
+          : <div className="py-10 text-center text-sm text-foreground/40">Нажмите «карандаш», чтобы настроить график</div>}
+      </div>
+
+      {editing && (
+        <ChartEditModal initial={config || undefined} onSave={handleSave} onClose={() => setEditing(false)} />
+      )}
+    </NodeViewWrapper>
+  )
+}
+
+const ChartExtension = Node.create({
+  name: "articleChart",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      config: {
+        default: null,
+        parseHTML: el => el.getAttribute("data-chart-config") || null,
+        renderHTML: attrs => ({ "data-chart-config": typeof attrs.config === "string" ? attrs.config : JSON.stringify(attrs.config) }),
+      },
+    }
+  },
+  parseHTML() { return [{ tag: "div[data-chart]" }] },
+  renderHTML({ HTMLAttributes }) { return ["div", mergeAttributes({ "data-chart": "true" }, HTMLAttributes)] },
+  addNodeView() { return ReactNodeViewRenderer(ChartNodeView) },
+})
+
 // ─── Модальное окно добавления фото ──────────────────────────────────────────
 type ModalMode = "image" | "carousel" | null
 
@@ -470,6 +538,7 @@ interface RichTextEditorProps {
 
 export default function RichTextEditor({ value, onChange, placeholder, className, folder = "articles" }: RichTextEditorProps) {
   const [modal, setModal] = useState<ModalMode>(null)
+  const [chartModal, setChartModal] = useState(false)
   const isInternalUpdate = useRef(false)
 
   const editor = useEditor({
@@ -480,6 +549,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       CarouselExtension,
       SingleImageExtension,
+      ChartExtension,
     ],
     content: value,
     editorProps: {
@@ -524,6 +594,14 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         }).run()
       }
     }
+  }, [editor])
+
+  const insertChart = useCallback((config: ChartConfig) => {
+    if (!editor) return
+    editor.chain().focus().insertContent({
+      type: "articleChart",
+      attrs: { config: JSON.stringify(config) },
+    }).run()
   }, [editor])
 
   if (!editor) return null
@@ -579,6 +657,9 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         <button type="button" onClick={() => setModal("carousel")} className={btn(modal === "carousel")} title="Вставить карусель">
           <Icon name="GalleryHorizontal" size={13} />
         </button>
+        <button type="button" onClick={() => setChartModal(true)} className={btn(chartModal)} title="Вставить график">
+          <Icon name="ChartLine" size={13} />
+        </button>
 
         <div className="mx-1 h-5 w-px bg-border" />
 
@@ -605,6 +686,13 @@ export default function RichTextEditor({ value, onChange, placeholder, className
           folder={folder}
           onInsert={handleInsert}
           onClose={() => setModal(null)}
+        />
+      )}
+      {/* Модалка добавления графика */}
+      {chartModal && (
+        <ChartEditModal
+          onSave={c => { insertChart(c); setChartModal(false) }}
+          onClose={() => setChartModal(false)}
         />
       )}
     </div>

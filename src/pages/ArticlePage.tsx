@@ -6,6 +6,8 @@ import Icon from "@/components/ui/icon"
 import CommentSection from "@/components/CommentSection"
 import { useAuth } from "@/store/auth"
 import { isAdminAuthed } from "@/components/admin/AdminGuard"
+import ArticleChart from "@/components/article/ArticleChart"
+import { ChartConfig, parseChartConfig } from "@/lib/chartTypes"
 
 interface Article {
   id: number
@@ -441,7 +443,7 @@ function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.Rea
       : html
     const parser = new DOMParser()
     const doc = parser.parseFromString(cleanHtml, "text/html")
-    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] } | { type: "tierlist" }> = []
+    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] } | { type: "tierlist" } | { type: "chart"; config: ChartConfig }> = []
     let buf = ""
     const flush = () => { if (buf) { result.push({ type: "html", content: buf }); buf = "" } }
     doc.body.childNodes.forEach(node => {
@@ -455,6 +457,12 @@ function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.Rea
             images = Array.from(el.querySelectorAll("img")).map(img => img.getAttribute("src") || "").filter(Boolean)
           }
           if (images.length) result.push({ type: "carousel", images })
+          return
+        }
+        if (el.getAttribute("data-chart") === "true") {
+          flush()
+          const cfg = parseChartConfig(el.getAttribute("data-chart-config"))
+          if (cfg) result.push({ type: "chart", config: cfg })
           return
         }
       }
@@ -487,6 +495,8 @@ function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.Rea
             dangerouslySetInnerHTML={{ __html: injectAnchors(block.content) }} />
         ) : block.type === "tierlist" ? (
           <div key={i}>{tierSlot}</div>
+        ) : block.type === "chart" ? (
+          <ArticleChart key={i} config={block.config} />
         ) : (
           <div key={i} className="my-4">
             <ArticleCarousel images={block.images} onOpenLightbox={(images, idx) => setLightboxState({ images, idx })} />
