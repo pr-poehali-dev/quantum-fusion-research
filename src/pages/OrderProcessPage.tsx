@@ -171,10 +171,18 @@ export default function OrderProcessPage() {
     if (res.ok) {
       if (action === "set_serial") {
         // set_serial не перезагружает — SerialInput сам отражает новое значение
+      } else if (order?.order_type === "pc_build" && action === "set_price") {
+        // ПК-заказ: цена компонента сохранена на бэке по slot. Обновляем ТОЧЕЧНО
+        // только нужную позицию по индексу — без рефетча и без потери остальных.
+        const newPrice = Number(extra.price)
+        setOrder(prev => {
+          if (!prev) return prev
+          const items = prev.items.map((it, i) => i === itemIdx ? { ...it, final_price: newPrice } : it)
+          const total = items.reduce((s, it) => it.item_status === "returned" ? s : s + (it.final_price ?? it.price) * it.quantity, 0)
+          return { ...prev, items, total }
+        })
       } else if (order?.order_type === "pc_build") {
-        // ПК-заказ: items на фронте развёрнуты из wip_build (~9 позиций),
-        // а бэкенд возвращает сырой orders.items (1 строка-конфиг) — поэтому
-        // подменять список нельзя, иначе позиции "исчезают". Делаем полный рефетч.
+        // Прочие ПК-действия меняют состав сборки — нужен полный рефетч.
         await load()
       } else if (res.items) {
         // Обычный заказ: обновляем локально без перезагрузки — цена/сумма налету
@@ -980,7 +988,7 @@ function PriceInput({ value, saving, onSave }: {
     if (!dirty) return
     playConfirmSound()
     setFlash(true)
-    setTimeout(() => setFlash(false), 400)
+    setTimeout(() => setFlash(false), 150)
     onSave(Number(v))
   }
 
@@ -999,12 +1007,12 @@ function PriceInput({ value, saving, onSave }: {
         />
         <button onClick={handleSave} disabled={saving || !dirty}
           style={{ cursor: "pointer" }}
-          className={`rounded-lg border px-3 py-1.5 text-xs transition-all duration-200 ${
-            flash
-              ? "border-green-400 bg-green-400/15 text-green-400 scale-110"
-              : dirty
-                ? "border-green-400 bg-green-400/10 text-green-400 animate-pulse"
-                : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+          className={`rounded-lg border px-3 py-1.5 text-xs transition-transform duration-100 ${
+            flash ? "scale-90" : ""
+          } ${
+            dirty
+              ? "border-amber-400 bg-amber-400/15 text-amber-400 hover:bg-amber-400/25"
+              : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
           } disabled:opacity-30`}>
           {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
         </button>
