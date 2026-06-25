@@ -1224,6 +1224,79 @@ def handler(event: dict, context) -> dict:
                 new_qty = int(body.get("quantity", 1))
                 if new_qty < 1:
                     return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Количество должно быть >= 1"})}
+
+                # Для ПК-сборок кол-во компонента хранится в pc_builds.components[].qty,
+                # а не в orders.items (там 1 строка-конфиг). Меняем по slot/product_id.
+                slot = body.get("slot")
+                req_pid = body.get("product_id")
+                cur.execute(
+                    "SELECT pb.id FROM pc_builds pb JOIN wip_builds wb ON wb.build_id = pb.id "
+                    "WHERE wb.order_id = %s LIMIT 1",
+                    (order_id,),
+                )
+                pcb = cur.fetchone()
+                build_id = pcb[0] if pcb else None
+
+                if build_id and (slot or req_pid):
+                    pid = int(req_pid) if req_pid else None
+                    cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id,))
+                    pc_row = cur.fetchone()
+                    comps = []
+                    if pc_row and pc_row[0]:
+                        comps = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                    target = None
+                    if slot:
+                        target = next((c for c in comps if c.get("slot") == slot), None)
+                    if target is None and pid:
+                        target = next((c for c in comps if int(c.get("source_id", 0)) == pid), None)
+                    if target is None:
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Компонент сборки не найден"})}
+                    old_qty = int(target.get("qty", 1))
+                    delta = new_qty - old_qty
+                    if pid is None:
+                        pid = int(target.get("source_id", 0))
+                    if pid and delta != 0:
+                        if delta > 0:
+                            cur.execute(
+                                f"SELECT COALESCE(SUM(s.qty - s.qty_reserved), 0) FROM {schema}.warehouse_supplies s "
+                                f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id WHERE g.product_id = %s",
+                                (pid,))
+                            r = cur.fetchone()
+                            available = int(r[0]) if r else 0
+                            if available < delta:
+                                return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                                    "error": f"Недостаточно товара на складе. Свободно: {available} шт."})}
+                            left = delta
+                            cur.execute(
+                                f"SELECT s.id, s.qty - s.qty_reserved FROM {schema}.warehouse_supplies s "
+                                f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                                f"WHERE g.product_id = %s AND s.qty - s.qty_reserved > 0 ORDER BY s.id ASC",
+                                (pid,))
+                            for (sid, sfree) in cur.fetchall():
+                                if left <= 0: break
+                                reserve = min(left, int(sfree))
+                                cur.execute(f"UPDATE {schema}.warehouse_supplies SET qty_reserved = qty_reserved + %s WHERE id = %s",
+                                            (reserve, sid))
+                                left -= reserve
+                        else:
+                            left = abs(delta)
+                            cur.execute(
+                                f"SELECT s.id FROM {schema}.warehouse_supplies s "
+                                f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                                f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
+                                (pid,))
+                            for (sid,) in cur.fetchall():
+                                if left <= 0: break
+                                cur.execute(f"UPDATE {schema}.warehouse_supplies SET qty_reserved = GREATEST(0, qty_reserved - %s) WHERE id = %s",
+                                            (left, sid))
+                                left = 0
+                    target["qty"] = new_qty
+                    cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
+                                (json.dumps(comps), build_id))
+                    cur.execute("UPDATE orders SET updated_at=NOW() WHERE id=%s", (order_id,))
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
                 pid = items[item_idx].get("id")
                 old_qty = int(items[item_idx].get("quantity", 1))
                 delta = new_qty - old_qty  # положительный = добавляем, отрицательный = убираем

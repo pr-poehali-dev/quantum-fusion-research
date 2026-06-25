@@ -181,6 +181,15 @@ export default function OrderProcessPage() {
           const total = items.reduce((s, it) => it.item_status === "returned" ? s : s + (it.final_price ?? it.price) * it.quantity, 0)
           return { ...prev, items, total }
         })
+      } else if (action === "change_qty") {
+        // Кол-во меняем точечно по позиции — без рефетча (и для ПК, и для обычных).
+        const newQty = Number(extra.quantity)
+        setOrder(prev => {
+          if (!prev) return prev
+          const items = prev.items.map((it, i) => i === itemIdx ? { ...it, quantity: newQty } : it)
+          const total = items.reduce((s, it) => it.item_status === "returned" ? s : s + (it.final_price ?? it.price) * it.quantity, 0)
+          return { ...prev, items, total }
+        })
       } else if (order?.order_type === "pc_build") {
         // Прочие ПК-действия меняют состав сборки — нужен полный рефетч.
         await load()
@@ -604,7 +613,7 @@ export default function OrderProcessPage() {
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-foreground/40">Кол-во:</span>
                           <button
-                            onClick={async () => { if (item.quantity > 1) { await callPut("change_qty", idx, { quantity: item.quantity - 1 }); load() } }}
+                            onClick={() => { if (item.quantity > 1) callPut("change_qty", idx, { quantity: item.quantity - 1, slot: item.slot || null, product_id: item.id }) }}
                             disabled={item.quantity <= 1 || saving === `change_qty-${idx}`}
                             style={{ cursor: "pointer" }}
                             className="flex h-5 w-5 items-center justify-center rounded border border-border text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
@@ -614,7 +623,7 @@ export default function OrderProcessPage() {
                             {saving === `change_qty-${idx}` ? <Icon name="Loader" size={10} className="animate-spin mx-auto" /> : item.quantity}
                           </span>
                           <button
-                            onClick={async () => { await callPut("change_qty", idx, { quantity: item.quantity + 1 }); load() }}
+                            onClick={() => callPut("change_qty", idx, { quantity: item.quantity + 1, slot: item.slot || null, product_id: item.id })}
                             disabled={saving === `change_qty-${idx}`}
                             style={{ cursor: "pointer" }}
                             className="flex h-5 w-5 items-center justify-center rounded border border-border text-foreground/50 hover:text-foreground hover:border-primary transition-colors disabled:opacity-30">
