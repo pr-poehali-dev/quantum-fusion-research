@@ -169,13 +169,15 @@ export default function OrderProcessPage() {
     setSaving(null)
     if (res.error) { alert(res.message || res.error); return res }
     if (res.ok) {
-      // set_serial не перезагружает — просто обновляем локально
+      // Действия, меняющие состав сборки ПК — нужен полный рефетч
+      const needsReload = order?.order_type === "pc_build"
+        && !["set_serial", "set_price", "set_warranty"].includes(action)
       if (action === "set_serial") {
         // ничего, SerialInput сам отражает новое значение
-      } else if (order?.order_type === "pc_build") {
-        // Для ПК-заказов items перестраиваются из wip_build — перезагружаем
+      } else if (needsReload) {
         await load()
       } else if (res.items) {
+        // Обновляем локально без перезагрузки — цена/гарантия применяются налету
         setOrder(prev => prev ? { ...prev, items: res.items, total: res.items.reduce((s: number, it: OrderItem) => s + (it.final_price ?? it.price) * it.quantity, 0) } : prev)
       }
     }
