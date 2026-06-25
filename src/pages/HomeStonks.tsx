@@ -40,7 +40,7 @@ interface CatalogBuild {
 
 const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
 const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/369e76c4-c4a6-46da-ab1d-843219204c9a.jpg"
-const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/e35ab6a2-61d0-4119-b4ec-9af9d5ebf592.png"
+const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/f82bffa1-7f93-4254-a9de-5233117cf6be.jpg"
 
 const fmtPrice = (n?: number) => (n ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
@@ -158,7 +158,7 @@ export default function HomeStonks() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Banner img={BANNER_PODBOR} title="Покупка комплектующих" to="/shop" />
           <Banner img={BANNER_SBORKA} title="Заказать сборку ПК" to="/builds" />
-          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/service" imgPos="center 40%" />
+          <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/service" imgPos="center 80%" />
         </div>
 
         {/* Основной грид: контент слева + сайдбар справа */}
