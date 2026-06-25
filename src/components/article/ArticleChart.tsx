@@ -3,7 +3,7 @@ import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, LabelList,
 } from "recharts"
-import { ChartConfig } from "@/lib/chartTypes"
+import { ChartConfig, ChartSeries, DEFAULT_GROUP } from "@/lib/chartTypes"
 
 interface Props {
   config: ChartConfig
@@ -50,33 +50,25 @@ function ChartTooltip({ active, payload, label, seriesNames, axisLabel }: {
   )
 }
 
-export default function ArticleChart({ config, compact }: Props) {
-  // Локально скрытые серии (клик по легенде). Стартуем со скрытых из конфига.
-  const [hidden, setHidden] = useState<Set<string>>(
-    () => new Set(config.series.filter(s => s.hidden).map(s => s.id))
-  )
+// Один график для одной группы серий (своя шкала Y).
+function ChartCanvas({ config, groupTitle, groupSeries, hidden, height, seriesNames }: {
+  config: ChartConfig
+  groupTitle: string | null
+  groupSeries: ChartSeries[]
+  hidden: Set<string>
+  height: number
+  seriesNames: Record<string, string>
+}) {
+  const visible = groupSeries.filter(s => !hidden.has(s.id))
 
-  const toggle = (id: string) =>
-    setHidden(prev => {
-      const n = new Set(prev)
-      if (n.has(id)) n.delete(id); else n.add(id)
-      return n
-    })
-
-  // Данные для recharts: [{ x, [seriesId]: value, ... }]
   const data = useMemo(
-    () => config.points.map(pt => ({ x: pt.x, ...pt.values })),
-    [config.points]
+    () => config.points.map(pt => {
+      const row: Record<string, string | number | null> = { x: pt.x }
+      groupSeries.forEach(s => { row[s.id] = pt.values[s.id] ?? null })
+      return row
+    }),
+    [config.points, groupSeries]
   )
-
-  const seriesNames = useMemo(() => {
-    const m: Record<string, string> = {}
-    config.series.forEach(s => { m[s.id] = s.name })
-    return m
-  }, [config.series])
-
-  const visible = config.series.filter(s => !hidden.has(s.id))
-  const height = compact ? 260 : 420
 
   const axisProps = {
     stroke: "hsl(var(--muted-foreground))",
@@ -85,13 +77,10 @@ export default function ArticleChart({ config, compact }: Props) {
   }
 
   return (
-    <figure className="my-5 rounded-xl border border-border bg-card p-4">
-      {config.title && (
-        <figcaption className="mb-3 text-center text-base font-semibold text-foreground">
-          {config.title}
-        </figcaption>
+    <div className="mb-1">
+      {groupTitle && (
+        <p className="mb-1 text-sm font-medium text-foreground/80">{groupTitle}</p>
       )}
-
       <div style={{ width: "100%", height }}>
         <ResponsiveContainer width="100%" height="100%">
           {config.type === "line" ? (
@@ -99,7 +88,7 @@ export default function ArticleChart({ config, compact }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis dataKey="x" {...axisProps}
                 label={config.xLabel ? { value: config.xLabel, position: "insideBottom", offset: -12, fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
-              <YAxis {...axisProps}
+              <YAxis {...axisProps} domain={["auto", "auto"]}
                 label={config.yLabel ? { value: config.yLabel, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
               <Tooltip content={<ChartTooltip seriesNames={seriesNames} axisLabel={config.xLabel} />} />
               {visible.map(s => (
@@ -114,7 +103,7 @@ export default function ArticleChart({ config, compact }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis dataKey="x" {...axisProps}
                 label={config.xLabel ? { value: config.xLabel, position: "insideBottom", offset: -12, fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
-              <YAxis {...axisProps}
+              <YAxis {...axisProps} domain={[0, "auto"]}
                 label={config.yLabel ? { value: config.yLabel, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))" } : undefined} />
               <Tooltip cursor={{ fill: "hsl(var(--muted) / 0.4)" }} content={<ChartTooltip seriesNames={seriesNames} axisLabel={config.xLabel} />} />
               {visible.map(s => (
@@ -125,6 +114,60 @@ export default function ArticleChart({ config, compact }: Props) {
             </BarChart>
           )}
         </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+export default function ArticleChart({ config, compact }: Props) {
+  // Локально скрытые серии (клик по легенде). Стартуем со скрытых из конфига.
+  const [hidden, setHidden] = useState<Set<string>>(
+    () => new Set(config.series.filter(s => s.hidden).map(s => s.id))
+  )
+
+  const toggle = (id: string) =>
+    setHidden(prev => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+
+  const seriesNames = useMemo(() => {
+    const m: Record<string, string> = {}
+    config.series.forEach(s => { m[s.id] = s.name })
+    return m
+  }, [config.series])
+
+  // Группируем серии: каждая группа = отдельный график со своей шкалой Y.
+  const groups = useMemo(() => {
+    const order: string[] = []
+    const map = new Map<string, ChartSeries[]>()
+    config.series.forEach(s => {
+      const g = (s.group || "").trim() || DEFAULT_GROUP
+      if (!map.has(g)) { map.set(g, []); order.push(g) }
+      map.get(g)!.push(s)
+    })
+    return order.map(g => ({ name: g, series: map.get(g)! }))
+  }, [config.series])
+
+  const multiGroup = groups.length > 1
+  // При нескольких группах каждый график пониже, чтобы суммарно не растягивать.
+  const height = compact ? (multiGroup ? 200 : 260) : (multiGroup ? 300 : 420)
+
+  return (
+    <figure className="my-5 rounded-xl border border-border bg-card p-4">
+      {config.title && (
+        <figcaption className="mb-3 text-center text-base font-semibold text-foreground">
+          {config.title}
+        </figcaption>
+      )}
+
+      <div className="space-y-4">
+        {groups.map(g => (
+          <ChartCanvas key={g.name} config={config}
+            groupTitle={multiGroup ? g.name : null}
+            groupSeries={g.series} hidden={hidden} height={height} seriesNames={seriesNames} />
+        ))}
       </div>
 
       {/* Легенда-фильтр: клик скрывает/показывает серию */}

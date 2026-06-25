@@ -10,7 +10,12 @@ export interface ChartSeries {
   name: string      // подпись в легенде ("Arctic LF III PRO")
   color: string     // hex цвет
   hidden?: boolean  // скрыта по умолчанию
+  group?: string    // категория/группа: серии одной группы рисуются на отдельном
+                    // графике со своей шкалой Y (напр. "Время (сек)" и "Цена (руб)")
 }
+
+// Подпись группы по умолчанию (когда у серии не задана группа)
+export const DEFAULT_GROUP = "Основной"
 
 // Точка по оси категорий (X). values: { [seriesId]: число | null }
 export interface ChartPoint {
