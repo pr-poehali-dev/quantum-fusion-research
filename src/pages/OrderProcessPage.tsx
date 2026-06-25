@@ -122,11 +122,22 @@ export default function OrderProcessPage() {
 
   // Голосовое сопровождение при сканировании серийников (по умолчанию выкл, состояние в localStorage)
   const [voiceOn, setVoiceOn] = useState(isVoiceEnabled())
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [voiceName, setVoiceNameState] = useState(getVoiceName())
+  const [voiceRate, setVoiceRateState] = useState(getVoiceRate())
+  const [voicePitch, setVoicePitchState] = useState(getVoicePitch())
+
+  useEffect(() => {
+    warmUpVoices(() => setVoices(getRussianVoices()))
+    setVoices(getRussianVoices())
+  }, [])
+
   const toggleVoice = () => {
     const next = !voiceOn
     setVoiceOn(next)
     setVoiceEnabled(next)
-    if (next) speak("Озвучка включена")
+    if (next) { setVoices(getRussianVoices()); speak("Озвучка включена") }
   }
 
   const syncOrder = async () => {
@@ -525,18 +536,81 @@ export default function OrderProcessPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-medium">Позиции заказа</h2>
-            <button
-              onClick={toggleVoice}
-              style={{ cursor: "pointer" }}
-              title="Озвучивать название железки при сканировании серийников"
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-                voiceOn
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
-              }`}>
-              <Icon name={voiceOn ? "Volume2" : "VolumeX"} size={14} />
-              Озвучка {voiceOn ? "вкл" : "выкл"}
-            </button>
+            <div className="relative flex items-center gap-1.5">
+              <button
+                onClick={toggleVoice}
+                style={{ cursor: "pointer" }}
+                title="Озвучивать название железки при сканировании серийников"
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                  voiceOn
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+                }`}>
+                <Icon name={voiceOn ? "Volume2" : "VolumeX"} size={14} />
+                Озвучка {voiceOn ? "вкл" : "выкл"}
+              </button>
+              <button
+                onClick={() => setVoiceSettingsOpen(o => !o)}
+                style={{ cursor: "pointer" }}
+                title="Настройки голоса"
+                className={`inline-flex items-center justify-center rounded-lg border h-[30px] w-[30px] transition-colors ${
+                  voiceSettingsOpen ? "border-primary text-primary" : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+                }`}>
+                <Icon name="Settings2" size={14} />
+              </button>
+
+              {voiceSettingsOpen && (
+                <div className="absolute right-0 top-full mt-2 z-30 w-72 rounded-xl border border-border bg-background p-4 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Настройки голоса</p>
+                    <button onClick={() => setVoiceSettingsOpen(false)} style={{ cursor: "pointer" }} className="text-foreground/40 hover:text-foreground">
+                      <Icon name="X" size={15} />
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-foreground/50 mb-1 block">Голос</label>
+                    <select
+                      value={voiceName}
+                      onChange={e => { setVoiceNameState(e.target.value); setVoiceSetting("name", e.target.value) }}
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm focus:border-primary focus:outline-none">
+                      <option value="">Авто (лучший)</option>
+                      {voices.map(v => (
+                        <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " ☁"}</option>
+                      ))}
+                    </select>
+                    {voices.length === 0 && (
+                      <p className="text-[10px] text-foreground/40 mt-1">Голоса не найдены — включите озвучку и обновите страницу.</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-foreground/50 mb-1 flex justify-between">
+                      <span>Скорость</span><span className="text-foreground/40">{voiceRate.toFixed(2)}×</span>
+                    </label>
+                    <input type="range" min={0.5} max={2} step={0.05} value={voiceRate}
+                      onChange={e => { const n = Number(e.target.value); setVoiceRateState(n); setVoiceSetting("rate", n) }}
+                      className="w-full accent-primary" style={{ cursor: "pointer" }} />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-foreground/50 mb-1 flex justify-between">
+                      <span>Тон</span><span className="text-foreground/40">{voicePitch.toFixed(2)}</span>
+                    </label>
+                    <input type="range" min={0.5} max={2} step={0.05} value={voicePitch}
+                      onChange={e => { const n = Number(e.target.value); setVoicePitchState(n); setVoiceSetting("pitch", n) }}
+                      className="w-full accent-primary" style={{ cursor: "pointer" }} />
+                  </div>
+
+                  <button
+                    onClick={() => { setVoiceEnabled(true); setVoiceOn(true); speak("Проверка голоса. Процессор, видеокарта, оперативная память.") }}
+                    style={{ cursor: "pointer" }}
+                    className="w-full rounded-lg border border-primary bg-primary/15 text-primary px-3 py-1.5 text-xs hover:bg-primary/25 transition-colors inline-flex items-center justify-center gap-1.5">
+                    <Icon name="Play" size={13} /> Прослушать
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {order.items.map((item, idx) => {
@@ -942,14 +1016,73 @@ function playConfirmSound() {
   } catch (_) { /* AudioContext недоступен */ }
 }
 
-// ── Голосовое сопровождение (Web Speech API) ──────────────────────────────────
+// ── Голосовое сопровождение (Web Speech API, улучшенное) ──────────────────────
 const VOICE_KEY = "serial_voice_enabled"
+const VOICE_NAME_KEY = "serial_voice_name"   // выбранный голос (по имени)
+const VOICE_RATE_KEY = "serial_voice_rate"   // скорость 0.5–2
+const VOICE_PITCH_KEY = "serial_voice_pitch" // тон 0.5–2
+
 export function isVoiceEnabled(): boolean {
   try { return localStorage.getItem(VOICE_KEY) === "1" } catch { return false }
 }
 export function setVoiceEnabled(on: boolean) {
   try { localStorage.setItem(VOICE_KEY, on ? "1" : "0") } catch { /* недоступно */ }
 }
+export function getVoiceRate(): number {
+  try { return Number(localStorage.getItem(VOICE_RATE_KEY)) || 1 } catch { return 1 }
+}
+export function getVoicePitch(): number {
+  try { return Number(localStorage.getItem(VOICE_PITCH_KEY)) || 1 } catch { return 1 }
+}
+export function getVoiceName(): string {
+  try { return localStorage.getItem(VOICE_NAME_KEY) || "" } catch { return "" }
+}
+export function setVoiceSetting(key: "name" | "rate" | "pitch", val: string | number) {
+  try {
+    const k = key === "name" ? VOICE_NAME_KEY : key === "rate" ? VOICE_RATE_KEY : VOICE_PITCH_KEY
+    localStorage.setItem(k, String(val))
+  } catch { /* недоступно */ }
+}
+
+// Список доступных русских голосов (с «прогревом» — голоса грузятся асинхронно)
+export function getRussianVoices(): SpeechSynthesisVoice[] {
+  try {
+    const synth = window.speechSynthesis
+    if (!synth) return []
+    return synth.getVoices().filter(v => v.lang.toLowerCase().startsWith("ru"))
+  } catch { return [] }
+}
+
+// Выбор «лучшего» русского голоса: приоритет качественным движкам
+function pickBestVoice(): SpeechSynthesisVoice | undefined {
+  const voices = getRussianVoices()
+  if (!voices.length) return undefined
+  const saved = getVoiceName()
+  if (saved) {
+    const found = voices.find(v => v.name === saved)
+    if (found) return found
+  }
+  // Приоритет: Google → Yandex/Alyona → Microsoft → онлайн (не localService) → любой
+  const score = (v: SpeechSynthesisVoice) => {
+    const n = v.name.toLowerCase()
+    let s = 0
+    if (n.includes("google")) s += 100
+    if (n.includes("yandex") || n.includes("alyona") || n.includes("milena")) s += 90
+    if (n.includes("microsoft") || n.includes("irina") || n.includes("pavel") || n.includes("svetlana")) s += 70
+    if (!v.localService) s += 30   // облачные обычно качественнее
+    return s
+  }
+  return [...voices].sort((a, b) => score(b) - score(a))[0]
+}
+
+// Чистим название железки для более естественного произношения
+function cleanForSpeech(text: string): string {
+  return text
+    .replace(/[_/|]+/g, " ")        // подчёркивания и слэши → пробел
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 // Озвучить текст голосом (только если озвучка включена)
 export function speak(text: string) {
   if (!text || !isVoiceEnabled()) return
@@ -957,13 +1090,28 @@ export function speak(text: string) {
     const synth = window.speechSynthesis
     if (!synth) return
     synth.cancel()
-    const u = new SpeechSynthesisUtterance(text)
+    const u = new SpeechSynthesisUtterance(cleanForSpeech(text))
     u.lang = "ru-RU"
-    u.rate = 1.05
-    const ru = synth.getVoices().find(v => v.lang.startsWith("ru"))
-    if (ru) u.voice = ru
+    u.rate = Math.min(2, Math.max(0.5, getVoiceRate()))
+    u.pitch = Math.min(2, Math.max(0.5, getVoicePitch()))
+    u.volume = 1
+    const v = pickBestVoice()
+    if (v) u.voice = v
     synth.speak(u)
   } catch (_) { /* speechSynthesis недоступен */ }
+}
+
+// Прогрев голосов: вызываем заранее, чтобы getVoices() вернул список
+export function warmUpVoices(cb?: () => void) {
+  try {
+    const synth = window.speechSynthesis
+    if (!synth) return
+    if (synth.getVoices().length === 0) {
+      synth.onvoiceschanged = () => { cb?.() }
+    } else {
+      cb?.()
+    }
+  } catch { /* недоступно */ }
 }
 
 // Переход к следующему пустому полю серийника по всему списку позиций + озвучка его железки.
