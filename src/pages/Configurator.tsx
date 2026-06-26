@@ -1315,13 +1315,6 @@ export default function Configurator() {
 
           </div>
         </div>
-
-        {/* Комментарии к сборке (в режиме просмотра расшаренной сборки) */}
-        {buildToken && (
-          <div className="mx-auto max-w-3xl px-4 pb-12">
-            <CommentSection buildToken={buildToken} highlightId={highlightCommentId} />
-          </div>
-        )}
       </div>
 
       {/* Окно выбора с фильтрами совместимости */}
