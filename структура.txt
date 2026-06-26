@@ -7,6 +7,13 @@
 - DB: PostgreSQL, схема t_p72635010_quantum_fusion_resea
 - Хранилище: S3 (bucket.poehali.dev), CDN (cdn.poehali.dev)
 
+## Раскладочный поиск (v5.70)
+- Все поисковики понимают обе раскладки в обе стороны (тпвз⇄ngdp).
+- Фронт: src/lib/keyboardLayout.ts (matchesSearch/searchVariants/switchLayout) —
+  конфигуратор, статьи, бренды (GroupWizardModal), хар-ки (ProductsValues).
+- Бэкенд: backend/{products,warehouse,sn-archive,b2b-prices}/layout.py
+  (search_variants) — SQL-поиск через OR по вариантам (ILIKE).
+
 ## АДРЕС САЙТА ДЛЯ ССЫЛОК В TELEGRAM-УВЕДОМЛЕНИЯХ  ← переключается одной отмашкой
 - Управляется ТОЛЬКО секретом SITE_BASE_URL (значение без слэша в конце).
 - Код менять НЕ нужно — все уведомления читают этот секрет через os.environ.

@@ -55,12 +55,17 @@ def handler(event: dict, context) -> dict:
         if category:
             where_parts.append(f"g.category = {esc(category)}")
         if search:
-            like = esc('%' + search + '%')
-            where_parts.append(
-                f"(LOWER(g.name) LIKE LOWER({like}) "
-                f"OR LOWER(COALESCE(g.part_number, '')) LIKE LOWER({like}) "
-                f"OR LOWER(COALESCE(g.sku, '')) LIKE LOWER({like}))"
-            )
+            # Раскладочный поиск: учитываем альтернативную раскладку запроса
+            from layout import search_variants
+            ors = []
+            for v in search_variants(search):
+                like = esc('%' + v + '%')
+                ors.append(
+                    f"(g.name ILIKE {like} "
+                    f"OR COALESCE(g.part_number, '') ILIKE {like} "
+                    f"OR COALESCE(g.sku, '') ILIKE {like})"
+                )
+            where_parts.append("(" + " OR ".join(ors) + ")")
 
         where_sql = " AND ".join(where_parts)
 

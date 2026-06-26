@@ -4,6 +4,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
+import { matchesSearch } from "@/lib/keyboardLayout"
 
 interface Article {
   id: number
@@ -74,10 +75,8 @@ export default function Articles() {
     if (category !== "all") list = list.filter(a => articleCats(a).includes(category))
 
     if (query.trim()) {
-      const q = query.toLowerCase()
       list = list.filter(a =>
-        a.title.toLowerCase().includes(q) ||
-        (a.excerpt || "").toLowerCase().includes(q)
+        matchesSearch(a.title, query) || matchesSearch(a.excerpt || "", query)
       )
     }
 

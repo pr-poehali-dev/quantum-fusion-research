@@ -120,9 +120,13 @@ def list_serials(cur, params):
 
     where = ["1=1"]
     if q:
-        like = "%" + q.replace("'", "''") + "%"
-        where.append(
-            f"(a.serial ILIKE '{like}' OR a.product_name ILIKE '{like}')")
+        # Раскладочный поиск: учитываем альтернативную раскладку запроса
+        from layout import search_variants
+        ors = []
+        for v in search_variants(q):
+            like = "%" + v.replace("'", "''") + "%"
+            ors.append(f"(a.serial ILIKE '{like}' OR a.product_name ILIKE '{like}')")
+        where.append("(" + " OR ".join(ors) + ")")
     if category:
         where.append(f"a.category = {esc(category)}")
     if store_id and str(store_id).isdigit():

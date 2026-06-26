@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import {
   NameBlock, templateForSlug, buildName, blockVisible,
 } from "./groupNameTemplates"
+import { matchesSearch } from "@/lib/keyboardLayout"
 
 interface Group {
   id?: number
@@ -183,7 +184,7 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
   const [brandSearch, setBrandSearch] = useState("")
   const [creatingBrand, setCreatingBrand] = useState(false)
   const brandResults = brandSearch.trim()
-    ? brands.filter(b => b.name.toLowerCase().includes(brandSearch.trim().toLowerCase())).slice(0, 40)
+    ? brands.filter(b => matchesSearch(b.name, brandSearch)).slice(0, 40)
     : brands.slice(0, 40)
   // Точное совпадение по имени (без учёта регистра) — чтобы не дублировать бренд
   const brandExact = brands.some(b => b.name.toLowerCase() === brandSearch.trim().toLowerCase())

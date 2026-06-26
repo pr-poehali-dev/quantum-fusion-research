@@ -3,6 +3,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
 import { platformFromSocket, SOCKET_CODE } from "@/lib/platformFilter"
+import { matchesSearch } from "@/lib/keyboardLayout"
 
 // ── Типы данных из бэкенда ────────────────────────────────────────────────────
 interface SpecAttr {
@@ -408,7 +409,7 @@ export default function SlotPickerModal({ slotCode, slotLabel, selectedSpec, sel
     return products
       .map(p => ({ p, reason: incompatReason(p), warn: psuWarn(p) }))
       .filter(({ p }) => {
-        if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
+        if (search && !matchesSearch(p.name, search)) return false
         if (onlyStock && !p.in_stock) return false
         if (recommended && (p.margin || 0) < marginThreshold) return false
         if (pmin !== null && p.price < pmin) return false

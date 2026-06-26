@@ -3,6 +3,23 @@
 
 ---
 
+## v5.70 | 2026-06-27 | Раскладочный поиск во всех поисковиках
+
+Если забыл переключить язык — поиск понимает обе раскладки в обе стороны
+(тпвз ⇄ ngdp, 1stplayer ⇄ 1ыездфнук).
+
+### Фронт
+- src/lib/keyboardLayout.ts — switchLayout / searchVariants / matchesSearch.
+- Внедрено в фильтрацию: конфигуратор (SlotPickerModal), статьи (Articles),
+  бренды (GroupWizardModal), характеристики (ProductsValues).
+
+### Бэкенд (layout.py в каждую функцию)
+- products (каталог Shop), warehouse (группы), sn-archive (серийники),
+  b2b-prices (прайс) — SQL-поиск дополнен альтернативной раскладкой (OR по
+  вариантам, ILIKE). Заодно убраны небезопасные подстановки search в warehouse.
+
+---
+
 ## v5.69 | 2026-06-27 | Видеокарта: чип ↔ исполнение в характеристиках
 
 - groupNameTemplates (gpu): блок «Модель GPU (чип)» сохраняется в «Серия / чип»

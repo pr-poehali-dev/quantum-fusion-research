@@ -6,6 +6,7 @@ import { Modal, Field } from "./AttributesBuilder"
 import { buildCsv, parseCsv, downloadCsv } from "./specCsv"
 import { attrVisibleForKind, coolerKindFromValue, COOLER_TYPE_CODE } from "@/lib/coolingFilter"
 import { platformFromSocket, SOCKET_CODE } from "@/lib/platformFilter"
+import { matchesSearch } from "@/lib/keyboardLayout"
 
 interface Props { schema: SpecSchema }
 
@@ -62,7 +63,7 @@ export default function ProductsValues({ schema }: Props) {
     if (catFilter !== "all" && r.spec_category_code !== catFilter) return false
     if (statusFilter === "new" && r.ready) return false
     if (statusFilter === "ready" && !r.ready) return false
-    if (search && !r.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (search && !matchesSearch(r.name, search)) return false
     return true
   }), [rows, catFilter, statusFilter, search])
 

@@ -390,7 +390,13 @@ def handler(event: dict, context) -> dict:
 
             where = [f"g.is_archived = {'TRUE' if archived == 'true' else 'FALSE'}"]
             if search:
-                where.append(f"(LOWER(g.name) LIKE LOWER('%{search}%') OR g.sku LIKE UPPER('%{search}%') OR g.part_number ILIKE '%{search}%')")
+                # Раскладочный поиск: учитываем альтернативную раскладку запроса
+                from layout import search_variants
+                ors = []
+                for v in search_variants(search):
+                    like = esc(f"%{v}%")
+                    ors.append(f"(g.name ILIKE {like} OR g.sku ILIKE {like} OR g.part_number ILIKE {like})")
+                where.append("(" + " OR ".join(ors) + ")")
             if category:
                 where.append(f"g.category = {esc(category)}")
             where_sql = "WHERE " + " AND ".join(where)

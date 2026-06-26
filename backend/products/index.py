@@ -428,8 +428,13 @@ def handler(event: dict, context) -> dict:
                 if featured == "true":
                     where_clauses.append("p.is_featured = TRUE")
                 if search:
-                    where_clauses.append("LOWER(p.name) LIKE %s")
-                    args.append(f"%{search.lower()}%")
+                    # Раскладочный поиск: учитываем альтернативную раскладку запроса
+                    from layout import search_variants
+                    variants = search_variants(search)
+                    ors = " OR ".join(["LOWER(p.name) LIKE %s"] * len(variants))
+                    where_clauses.append(f"({ors})")
+                    for v in variants:
+                        args.append(f"%{v}%")
                 where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
                 cur.execute(sel + f" {where_sql} ORDER BY p.sort_order ASC, p.id ASC", args)
                 rows = cur.fetchall()
