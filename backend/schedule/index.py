@@ -159,7 +159,11 @@ def handler(event: dict, context) -> dict:
         # ── Утренний автопинг (11:00) — вызывается планировщиком ──────────────────
         # Доступ по admin-паролю панели (ak) ИЛИ по сессии админа.
         if action == "morning_ping":
-            if require_admin(cur, session_id, admin_key) is None:
+            # Доступ: admin (пароль/сессия) ИЛИ секретный CRON-токен (?cron_key=).
+            _cron_key = params.get("cron_key") or ""
+            _cron_secret = os.environ.get("CRON_SECRET") or ""
+            _is_cron = bool(_cron_secret) and _cron_key == _cron_secret
+            if not _is_cron and require_admin(cur, session_id, admin_key) is None:
                 return err("Нет доступа", 403)
             from tg_notify import notify_managers, notify_tasks
 

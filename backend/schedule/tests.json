@@ -6,6 +6,13 @@
       "path": "/?action=employees",
       "expectedStatus": 403,
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Morning ping rejects without cron key",
+      "method": "GET",
+      "path": "/?action=morning_ping",
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
     }
   ]
 }
