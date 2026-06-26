@@ -43,9 +43,9 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
   {
     slug: "gpu",
     blocks: [
-      { key: "model", label: "Модель GPU", hint: "RTX 5070 Ti", input: "text", attrCode: "model", required: true, suggest: true },
+      { key: "model", label: "Модель GPU (чип)", hint: "RX 9070 XT", input: "text", attrCode: "series", required: true },
       { key: "vram", label: "Видеопамять", hint: "16", input: "text", attrCode: "vram_gb", nameSuffix: "Gb", required: true },
-      { key: "edition", label: "Исполнение", hint: "Gaming OC", input: "text" },
+      { key: "edition", label: "Исполнение", hint: "Predator BiFrost OC", input: "text", attrCode: "model" },
     ],
   },
   // ⚡ Блок питания → 1stPlayer NGDP 1000W Gold ATX3.1 Black
