@@ -15,6 +15,7 @@ interface CommunityBuild {
   username?: string
   total_price?: number
   share_token?: string
+  short_code?: string
   created_at: string
 }
 interface Article {
@@ -249,7 +250,7 @@ export default function HomeStonks() {
                 {builds.length === 0 ? (
                   <p className="py-4 text-center text-sm text-foreground/40">Пока нет сборок</p>
                 ) : builds.map(b => (
-                  <button key={b.id} onClick={() => navigate("/community-builds")} style={{ cursor: "pointer" }}
+                  <button key={b.id} onClick={() => navigate(b.short_code ? `/s/${b.short_code}` : `/configurator?build=${b.share_token}`)} style={{ cursor: "pointer" }}
                     className="flex w-full items-center justify-between gap-3 rounded-lg border-b border-border/60 pb-2.5 text-left last:border-0 last:pb-0 hover:text-primary transition-colors">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{b.name || b.username || "Сборка"}</p>
