@@ -188,6 +188,7 @@ export const api = {
       return fetch(URLS.warehouse + qs).then(r => r.json())
     },
     getGroup: (id: number) => fetch(`${URLS.warehouse}?action=group_get&id=${id}`).then(r => r.json()),
+    oldestSupplies: (productIds: number[]) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "oldest_supplies", product_ids: productIds }) }).then(r => r.json()),
     getOrderList: () => fetch(`${URLS.warehouse}?action=order_list`).then(r => r.json()),
     createGroup: (data: unknown) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_create", ...data as object }) }).then(r => r.json()),
     updateGroup: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_update", ...data as object }) }).then(r => r.json()),

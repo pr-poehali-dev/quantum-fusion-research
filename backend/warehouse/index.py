@@ -350,7 +350,10 @@ def handler(event: dict, context) -> dict:
     params = event.get("queryStringParameters") or {}
     body = {}
     if event.get("body"):
-        body = json.loads(event["body"])
+        try:
+            body = json.loads(event["body"])
+        except (ValueError, TypeError):
+            body = {}
 
     action = params.get("action") or body.get("action", "")
     conn = get_conn()
@@ -442,6 +445,51 @@ def handler(event: dict, context) -> dict:
                     g["price_history"] = ph_map.get(g["id"], [])
 
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"groups": groups, "total": total})}
+
+        if action == "oldest_supplies" and method == "POST":
+            # Для списка product_id возвращает по каждому самую ДАВНЮЮ партию
+            # (FIFO по purchase_date/created_at) с каким-либо наличием или
+            # резервом, плюс один серийник из неё (если есть).
+            pids = body.get("product_ids") or []
+            pids = [int(x) for x in pids if str(x).isdigit() or isinstance(x, int)]
+            result = {}
+            for pid in pids:
+                # группа товара по product_id (обе связи)
+                cur.execute(
+                    f"SELECT id, name, sku FROM {SCHEMA}.warehouse_groups "
+                    f"WHERE product_id = {pid} OR id = (SELECT warehouse_group_id FROM {SCHEMA}.products WHERE id = {pid}) "
+                    f"LIMIT 1"
+                )
+                grow = cur.fetchone()
+                if not grow:
+                    continue
+                gid, gname, gsku = grow
+                # самая давняя партия с наличием/резервом
+                cur.execute(
+                    f"SELECT id, qty, qty_reserved, COALESCE(qty_negative,0), "
+                    f"purchase_date, created_at "
+                    f"FROM {SCHEMA}.warehouse_supplies "
+                    f"WHERE group_id = {gid} AND (qty > 0 OR qty_reserved > 0) "
+                    f"ORDER BY COALESCE(purchase_date, created_at::date) ASC, id ASC LIMIT 1"
+                )
+                srow = cur.fetchone()
+                if not srow:
+                    continue
+                sid, sqty, sres, sneg, pdate, cdate = srow
+                # один серийник из этой партии (в наличии)
+                cur.execute(
+                    f"SELECT serial FROM {SCHEMA}.sn_archive "
+                    f"WHERE supply_id = {sid} AND status = 'in_stock' "
+                    f"ORDER BY id ASC LIMIT 1"
+                )
+                snrow = cur.fetchone()
+                result[str(pid)] = {
+                    "group_id": gid, "name": gname, "sku": gsku,
+                    "supply_id": sid, "qty": sqty, "qty_reserved": sres,
+                    "purchase_date": serial(pdate) if pdate else (serial(cdate)[:10] if cdate else None),
+                    "serial": snrow[0] if snrow else None,
+                }
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"items": result})}
 
         if action == "group_get" and method == "GET":
             gid = params.get("id")

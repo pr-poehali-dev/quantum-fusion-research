@@ -36,12 +36,32 @@ const SLOT_NAMES: Record<string, string> = {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
+// Самая давняя партия товара (FIFO) с остатком/резервом — «залежавшийся»
+interface OldestSupply {
+  group_id: number
+  name: string
+  sku: string
+  supply_id: number
+  qty: number
+  qty_reserved: number
+  purchase_date: string | null
+  serial: string | null
+}
+
+const fmtDate = (s: string | null) => {
+  if (!s) return ""
+  const d = new Date(s.length <= 10 ? s + "T00:00:00" : s)
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("ru-RU")
+}
+
 export default function OrderSheet() {
   const { id } = useParams<{ id: string }>()
   const [build, setBuild] = useState<Build | null>(null)
   const [checked, setChecked] = useState<Record<number, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  // Залежавшийся товар: product_id → самая давняя партия с серийником
+  const [oldest, setOldest] = useState<Record<string, OldestSupply>>({})
   const isParts = build?.name?.startsWith("Заказ комплектующих")
 
   useEffect(() => {
@@ -51,6 +71,15 @@ export default function OrderSheet() {
         if (data.error || !data.id) { setError("Заказ не найден"); setLoading(false); return }
         setBuild(data)
         setLoading(false)
+        // Подтягиваем самую давнюю партию по каждому товару листа
+        const pids = (data.components || [])
+          .map((c: Component) => c.source_id)
+          .filter((x: number | undefined): x is number => !!x)
+        if (pids.length) {
+          api.warehouse.oldestSupplies(pids)
+            .then(r => setOldest(r.items || {}))
+            .catch(() => {})
+        }
       })
       .catch(() => { setError("Не удалось загрузить"); setLoading(false) })
   }, [id])
@@ -147,6 +176,18 @@ export default function OrderSheet() {
                   <p className={`text-sm font-medium leading-snug transition-colors ${isChecked ? "text-foreground/50 line-through" : "text-foreground"}`}>
                     {comp.name}
                   </p>
+                  {/* Бейдж залежавшегося товара: самая давняя партия + серийник */}
+                  {comp.source_id && oldest[String(comp.source_id)] && (() => {
+                    const o = oldest[String(comp.source_id)]
+                    return (
+                      <div className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600 dark:text-amber-400">
+                        <Icon name="Clock" size={12} />
+                        <span className="font-medium">Залежался</span>
+                        {o.purchase_date && <span className="text-amber-600/70 dark:text-amber-400/70">с {fmtDate(o.purchase_date)}</span>}
+                        {o.serial && <span className="font-mono">S/N: {o.serial}</span>}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 {/* Цена */}
