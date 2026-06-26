@@ -489,9 +489,10 @@ def handler(event: dict, context) -> dict:
 
             # Автоматически создаём карточку товара если не привязана
             if not product_id:
-                # Ищем category_id по названию категории
-                cat_id = None
-                if category:
+                # category_id может прийти явно (выбор категории из каталога),
+                # иначе ищем по текстовому названию категории
+                cat_id = body.get("category_id")
+                if not cat_id and category:
                     cur.execute(
                         f"SELECT id FROM {SCHEMA}.categories WHERE LOWER(name) = LOWER({esc(category)}) LIMIT 1"
                     )
@@ -499,9 +500,10 @@ def handler(event: dict, context) -> dict:
                     if cat_row:
                         cat_id = cat_row[0]
 
+                cat_id_sql = int(cat_id) if cat_id else 'NULL'
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.products (name, category_id, price, in_stock, created_at) "
-                    f"VALUES ({esc(name)}, {cat_id if cat_id else 'NULL'}, {price_retail or 0}, FALSE, NOW()) "
+                    f"VALUES ({esc(name)}, {cat_id_sql}, {price_retail or 0}, FALSE, NOW()) "
                     f"RETURNING id"
                 )
                 product_id = cur.fetchone()[0]
@@ -528,7 +530,7 @@ def handler(event: dict, context) -> dict:
 
             log_movement(cur, new_id, None, None, None, "group_created", 0, note=f"Создана группа: {name}")
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": new_id, "sku": sku})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": new_id, "sku": sku, "product_id": product_id})}
 
         if action == "group_update" and method == "PUT":
             gid = body.get("id")
@@ -568,8 +570,10 @@ def handler(event: dict, context) -> dict:
                     wc.recalc_builds_for_product(cur, int(_pid_row[0]), float(body["price_retail"]))
 
             log_movement(cur, gid, None, None, None, "group_updated", 0, note="Обновлена карточка группы")
+            cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid}")
+            _pidr = cur.fetchone()
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "product_id": _pidr[0] if _pidr else None})}
 
         if action == "category_rename" and method == "PUT":
             old_name = body.get("old_name", "").strip()

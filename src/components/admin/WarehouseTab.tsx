@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { playScanOk, playScanError } from "@/lib/scanSound"
 import { getAdminKey } from "@/pages/admin/types"
 import BrandsManager from "./BrandsManager"
+import ProductSpecWizard, { SpecValue } from "./ProductSpecWizard"
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -131,9 +132,26 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
   const [selectedBrand, setSelectedBrand] = useState("")
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerSearch, setPickerSearch] = useState("")
+
+  // Категории каталога (id/name/slug) — для выбора и привязки характеристик
+  const [catalogCats, setCatalogCats] = useState<{ id: number; name: string; slug: string }[]>([])
+  // Значения характеристик (мастер): { attribute_id: value | [..] }
+  const [specValues, setSpecValues] = useState<Record<string, SpecValue>>({})
+
   useEffect(() => {
     api.brands.getAll().then(d => setBrands(d.brands || [])).catch(() => {})
+    api.products.getAll().then(d => setCatalogCats(d.categories || [])).catch(() => {})
   }, [])
+
+  // Подгружаем сохранённые характеристики при редактировании группы
+  useEffect(() => {
+    if (group?.product_id) {
+      api.warehouse.specValuesGet(group.product_id).then(d => setSpecValues(d.values || {})).catch(() => {})
+    }
+  }, [group?.product_id])
+
+  // slug выбранной категории — по ней мастер строит шаги характеристик
+  const selectedCatSlug = catalogCats.find(c => c.name === form.category)?.slug || null
   const brandResults = pickerSearch.trim()
     ? brands.filter(b => b.name.toLowerCase().includes(pickerSearch.trim().toLowerCase())).slice(0, 30)
     : brands.slice(0, 30)
@@ -156,13 +174,20 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
     const fullName = selectedBrand && !baseName.toLowerCase().startsWith(selectedBrand.toLowerCase())
       ? `${selectedBrand} ${baseName}`
       : baseName
-    const payload = { ...form, name: fullName }
+    // category_id из выбранной категории каталога (для привязки характеристик)
+    const catId = catalogCats.find(c => c.name === form.category)?.id
+    const payload = { ...form, name: fullName, category_id: catId }
     setLoading(true)
     const data = isNew
       ? await api.warehouse.createGroup(payload)
       : await api.warehouse.updateGroup({ id: group!.id, ...payload })
+    if (data.error) { setLoading(false); setError(data.error); return }
+    // Сохраняем характеристики из мастера к товару каталога (product_id)
+    const pid = data.product_id || group?.product_id
+    if (pid && Object.keys(specValues).length > 0) {
+      await api.warehouse.specValuesSave(pid, specValues)
+    }
     setLoading(false)
-    if (data.error) { setError(data.error); return }
     onSaved()
     onClose()
   }
@@ -174,7 +199,7 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onDoubleClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl" onDoubleClick={e => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl" onDoubleClick={e => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{isNew ? "Новая группа товара" : "Редактировать группу"}</h2>
           <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
@@ -217,16 +242,19 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Категория *</label>
-            <input
-              list="group-categories"
+            <select
               value={form.category}
-              onChange={f("category")}
-              placeholder="Выберите или введите..."
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <datalist id="group-categories">
-              {categories.map(c => <option key={c} value={c} />)}
-            </datalist>
+              onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              style={{ cursor: "pointer" }}
+            >
+              <option value="">Выберите категорию</option>
+              {catalogCats.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {/* устаревшие текстовые категории, которых нет в каталоге */}
+              {categories.filter(c => !catalogCats.some(cc => cc.name === c)).map(c => (
+                <option key={c} value={c}>{c} (без характеристик)</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-xs text-foreground/50">Партнамбер</label>
@@ -261,6 +289,13 @@ function GroupModal({ group, stores, categories, onClose, onSaved }: {
             <Input value={form.url_supplier} onChange={f("url_supplier")} placeholder="https://..." />
           </div>
         </div>
+
+        {/* Пошаговый мастер характеристик по выбранной категории */}
+        {form.category && (
+          <div className="mt-4">
+            <ProductSpecWizard categorySlug={selectedCatSlug} values={specValues} onChange={setSpecValues} />
+          </div>
+        )}
 
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
 
