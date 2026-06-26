@@ -43,7 +43,7 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
   {
     slug: "gpu",
     blocks: [
-      { key: "model", label: "Модель GPU (чип)", hint: "RX 9070 XT", input: "text", attrCode: "series", required: true },
+      { key: "model", label: "Модель GPU (чип)", hint: "RX 9070 XT", input: "text", attrCode: "series", required: true, suggest: true },
       { key: "vram", label: "Видеопамять", hint: "16", input: "text", attrCode: "vram_gb", nameSuffix: "Gb", required: true },
       { key: "edition", label: "Исполнение", hint: "Predator BiFrost OC", input: "text", attrCode: "model" },
     ],
