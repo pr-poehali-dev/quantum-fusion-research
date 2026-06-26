@@ -24,7 +24,7 @@ interface CommunityBuild {
 }
 
 function CommunityBuildCard({ build: b, fmt, onLoad, onAuthor }: { build: CommunityBuild; fmt: (n: number) => string; onLoad: () => void; onAuthor: () => void }) {
-  const slotNames: Record<string, string> = { cpu: "CPU", gpu: "GPU", ram: "RAM", storage: "SSD", psu: "БП", case: "Корпус" }
+  const slotNames: Record<string, string> = { cpu: "CPU", gpu: "GPU", ram: "RAM", storage: "SSD", psu: "БП", case: "Корпус", motherboard: "mobo", mobo: "mobo", cooling: "Кулер", cooler: "Кулер" }
   return (
     <div className="rounded-xl border border-border bg-card p-5 hover:border-primary/40 transition-all">
       <div className="mb-3 flex items-start justify-between">
