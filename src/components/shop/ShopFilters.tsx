@@ -35,10 +35,12 @@ export interface ShopFilterState {
   priceMax: string
   brands: Set<string>
   attrs: Record<number, Set<string>>
+  // Диапазон (вилка) от/до для числовых характеристик
+  attrRange: Record<number, { min: string; max: string }>
 }
 
 export const emptyFilterState = (): ShopFilterState => ({
-  onlyStock: false, priceMin: "", priceMax: "", brands: new Set(), attrs: {},
+  onlyStock: false, priceMin: "", priceMax: "", brands: new Set(), attrs: {}, attrRange: {},
 })
 
 // ─── Сортировка ───────────────────────────────────────────────────────────
@@ -124,6 +126,16 @@ export function applyShopFilters(products: ShopSpecProduct[], f: ShopFilterState
       const v = p.values[String(aid)]
       const vals = Array.isArray(v) ? v.map(String) : [String(v)]
       if (!vals.some(x => set.has(x))) return false
+    }
+    // Диапазон (вилка) для числовых характеристик
+    for (const [aid, range] of Object.entries(f.attrRange || {})) {
+      const rmin = range.min ? parseFloat(range.min) : null
+      const rmax = range.max ? parseFloat(range.max) : null
+      if (rmin === null && rmax === null) continue
+      const n = attrNum(p, Number(aid))
+      if (isNaN(n)) return false
+      if (rmin !== null && n < rmin) return false
+      if (rmax !== null && n > rmax) return false
     }
     return true
   })
@@ -224,30 +236,51 @@ export default function ShopFilters({ attributes, products, state, setState, ope
     if (cur.has(val)) cur.delete(val); else cur.add(val)
     return { ...s, attrs: { ...s.attrs, [aid]: cur } }
   })
+  const setRange = (aid: number, key: "min" | "max", val: string) => setState(s => {
+    const cur = s.attrRange[aid] || { min: "", max: "" }
+    return { ...s, attrRange: { ...s.attrRange, [aid]: { ...cur, [key]: val } } }
+  })
   const reset = () => setState(() => emptyFilterState())
 
   const hasActive = state.onlyStock || state.priceMin || state.priceMax || state.brands.size > 0
     || Object.values(state.attrs).some(s => s.size > 0)
+    || Object.values(state.attrRange || {}).some(r => r.min || r.max)
 
   // Рендер одного блока-характеристики. defaultOpen — раскрыт, пока пользователь
   // явно не свернул (когда openAttr[id] ещё undefined).
   const renderAttr = (a: ShopAttr, defaultOpen = false) => {
     const isOpen = openAttr[a.id] === undefined ? defaultOpen : openAttr[a.id]
+    // Вилка «от/до» — только для числовых характеристик
+    const isNumeric = a.field_type === "number"
+    const range = state.attrRange[a.id]
+    const rangeActive = !!(range?.min || range?.max)
+    const cnt = (state.attrs[a.id]?.size || 0) + (rangeActive ? 1 : 0)
     return (
       <div key={a.id} className="border-t border-border py-2">
         <button onClick={() => setOpenAttr(o => ({ ...o, [a.id]: !(o[a.id] === undefined ? defaultOpen : o[a.id]) }))}
           className="flex w-full items-center justify-between text-sm font-medium text-foreground/80" style={{ cursor: "pointer" }}>
-          <span>{a.name}{state.attrs[a.id]?.size ? ` (${state.attrs[a.id].size})` : ""}</span>
+          <span>{a.name}{cnt ? ` (${cnt})` : ""}</span>
           <Icon name={isOpen ? "ChevronUp" : "ChevronDown"} size={14} className="text-foreground/40" />
         </button>
         {isOpen && (
-          <div className="mt-2 space-y-1">
-            {attrValues[a.id]?.map(val => (
-              <label key={val} className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
-                <input type="checkbox" checked={state.attrs[a.id]?.has(val) || false} onChange={() => toggleAttr(a.id, val)} style={{ cursor: "pointer" }} />
-                {val}{a.unit ? ` ${a.unit}` : ""}
-              </label>
-            ))}
+          <div className="mt-2 space-y-2">
+            {isNumeric && (
+              <div className="flex items-center gap-2">
+                <input value={range?.min || ""} onChange={e => setRange(a.id, "min", e.target.value)} placeholder="от" inputMode="numeric"
+                  className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
+                <span className="text-foreground/30">—</span>
+                <input value={range?.max || ""} onChange={e => setRange(a.id, "max", e.target.value)} placeholder="до" inputMode="numeric"
+                  className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary" style={{ cursor: "text" }} />
+              </div>
+            )}
+            <div className="space-y-1">
+              {attrValues[a.id]?.map(val => (
+                <label key={val} className="flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
+                  <input type="checkbox" checked={state.attrs[a.id]?.has(val) || false} onChange={() => toggleAttr(a.id, val)} style={{ cursor: "pointer" }} />
+                  {val}{a.unit ? ` ${a.unit}` : ""}
+                </label>
+              ))}
+            </div>
           </div>
         )}
       </div>
