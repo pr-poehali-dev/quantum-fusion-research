@@ -225,6 +225,15 @@ warehouse actions (DATA-DRIVEN):
 - spec_values_get/spec_values_save — значения характеристик товара.
 api.warehouse.specSchema/specCat*/specAttr*/specLink*/specProducts/specValues*.
 
+Мастер характеристик товара (v5.65): src/components/admin/ProductSpecWizard.tsx —
+пошаговый мастер в форме товара (AdminCatalogTab, таб add_product). После выбора
+категории берёт её атрибуты (spec_schema, по product_category_slug), по одному
+шагу на характеристику (select/multiselect/number/bool/text). Значения
+автопривязываются: spec_values_save после create (id из ответа) или update;
+при редактировании подгружаются через spec_values_get.
+Доп. атрибуты (V0166): серия, цвет, тип накопителя (SSD/HDD), форм-фактор
+накопителя — описательные, affects_compat=false.
+
 СТАРАЯ модель (product_specs, V0140) — оставлена, но фронт переведён на новую.
 warehouse group_create по-прежнему вызывает ensure_product_specs (product_specs).
 

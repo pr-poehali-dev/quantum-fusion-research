@@ -10,6 +10,7 @@ import {
 } from "@/pages/admin/types"
 import { BuildRow, BuildsList } from "./BuildsList"
 import BrandsManager from "./BrandsManager"
+import ProductSpecWizard, { SpecValue } from "./ProductSpecWizard"
 
 // Зарезервированный якорь оглавления для блока тир-листа статьи
 const TIER_ANCHOR = "__tierlist__"
@@ -109,6 +110,8 @@ export function AdminCatalogTab({
     category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0",
     image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0",
   })
+  // Значения характеристик (мастер) текущего товара: { attribute_id: value | [..] }
+  const [specValues, setSpecValues] = useState<Record<string, SpecValue>>({})
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
   // Справочник брендов (для выпадающего списка в форме товара)
@@ -141,6 +144,9 @@ export function AdminCatalogTab({
       specs: JSON.stringify(p.specs || {}),
       in_stock: p.in_stock, is_featured: p.is_featured, is_used: !!p.is_used, sort_order: String(p.sort_order || 0),
     })
+    // Загружаем сохранённые характеристики товара для мастера
+    setSpecValues({})
+    api.warehouse.specValuesGet(p.id).then(d => setSpecValues(d.values || {})).catch(() => {})
     setTab("add_product")
   }
   const submitProduct = async (e: React.FormEvent) => {
@@ -167,10 +173,20 @@ export function AdminCatalogTab({
       is_featured: productForm.is_featured, is_used: productForm.is_used,
       sort_order: Number(productForm.sort_order),
     }
-    if (productForm.id) await api.products.update(payload)
-    else await api.products.create(payload)
+    let productId = productForm.id
+    if (productForm.id) {
+      await api.products.update(payload)
+    } else {
+      const res = await api.products.create(payload)
+      productId = res?.id || null
+    }
+    // Сохраняем характеристики из мастера (автопривязка к товару)
+    if (productId && Object.keys(specValues).length > 0) {
+      await api.warehouse.specValuesSave(productId, specValues)
+    }
     setTab("products")
     setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
+    setSpecValues({})
   }
   const handleExportExcel = async () => {
     setExportLoading(true)
@@ -532,7 +548,7 @@ export function AdminCatalogTab({
                 <Icon name={importLoading ? "Loader" : "Upload"} size={14} />Импорт
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = "" }} />
               </label>
-              <button onClick={() => setTab("add_product")} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+              <button onClick={() => { setSpecValues({}); setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }); setTab("add_product") }} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={16} />Добавить
               </button>
             </div>
@@ -706,8 +722,16 @@ export function AdminCatalogTab({
           <label className="mb-1 block text-xs text-foreground/60">Фото товара</label>
           <ImageUploader images={productForm.image_urls} onChange={urls => setProductForm(f => ({ ...f, image_urls: urls }))} folder="products" maxImages={8} />
         </div>
+        {/* Пошаговый мастер характеристик по выбранной категории */}
+        {productForm.category_id && (
+          <ProductSpecWizard
+            categorySlug={categories.find(c => String(c.id) === productForm.category_id)?.slug || null}
+            values={specValues}
+            onChange={setSpecValues}
+          />
+        )}
         <div>
-          <label className="mb-1 block text-xs text-foreground/60">Характеристики (JSON)</label>
+          <label className="mb-1 block text-xs text-foreground/60">Характеристики (JSON) <span className="text-foreground/30">(доп., необязательно)</span></label>
           <textarea rows={2} value={productForm.specs} onChange={e => setProductForm(f => ({ ...f, specs: e.target.value }))}
             className="w-full rounded-lg border border-border bg-card px-3 py-2.5 font-mono text-xs text-foreground focus:border-primary focus:outline-none resize-none" placeholder='{"vram":"16GB"}' style={{ cursor: "text" }} />
         </div>
@@ -723,7 +747,7 @@ export function AdminCatalogTab({
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {productForm.id ? "Сохранить" : "Добавить"}
           </button>
-          <button type="button" onClick={() => { setTab("products"); setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }) }}
+          <button type="button" onClick={() => { setTab("products"); setSpecValues({}); setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }) }}
             className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
