@@ -181,9 +181,25 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
 
   // ── Бренд-пикер ───────────────────────────────────────────────────────────────
   const [brandSearch, setBrandSearch] = useState("")
+  const [creatingBrand, setCreatingBrand] = useState(false)
   const brandResults = brandSearch.trim()
     ? brands.filter(b => b.name.toLowerCase().includes(brandSearch.trim().toLowerCase())).slice(0, 40)
     : brands.slice(0, 40)
+  // Точное совпадение по имени (без учёта регистра) — чтобы не дублировать бренд
+  const brandExact = brands.some(b => b.name.toLowerCase() === brandSearch.trim().toLowerCase())
+
+  // Создать новый бренд из строки поиска и сразу выбрать его
+  const createBrand = async () => {
+    const name = brandSearch.trim()
+    if (!name) return
+    setCreatingBrand(true)
+    const res = await api.brands.create({ name })
+    setCreatingBrand(false)
+    if (res?.error) return
+    const created = { id: res.id ?? Date.now(), name }
+    setBrands(bs => [...bs, created].sort((a, b) => a.name.localeCompare(b.name)))
+    setBrand(name)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onDoubleClick={onClose}>
@@ -240,6 +256,14 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
               ))}
               {brandResults.length === 0 && <p className="px-3 py-3 text-center text-xs text-foreground/40">Ничего не найдено</p>}
             </div>
+            {/* Если бренда нет в списке — предлагаем создать его */}
+            {brandSearch.trim() && !brandExact && (
+              <button type="button" onClick={createBrand} disabled={creatingBrand} style={{ cursor: "pointer" }}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/50 px-3 py-2 text-sm text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors">
+                <Icon name={creatingBrand ? "Loader" : "Plus"} size={15} />
+                {creatingBrand ? "Создание..." : <>Создать бренд «{brandSearch.trim()}»</>}
+              </button>
+            )}
           </div>
         )}
 
