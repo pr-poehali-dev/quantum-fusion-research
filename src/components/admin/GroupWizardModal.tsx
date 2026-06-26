@@ -246,7 +246,13 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
         {step === STEP_BRAND && (
           <div>
             <label className="mb-2 block text-sm font-medium">Бренд</label>
-            <Input autoFocus value={brandSearch} onChange={e => setBrandSearch(e.target.value)} placeholder="Поиск бренда..." className="mb-2" />
+            <Input autoFocus value={brandSearch} onChange={e => setBrandSearch(e.target.value)} placeholder="Поиск бренда..." className="mb-2"
+              onKeyDown={e => {
+                if (e.key !== "Enter") return
+                e.preventDefault()
+                if (brandResults.length > 0) setBrand(brandResults[0].name)
+                else if (brandSearch.trim() && !brandExact) createBrand()
+              }} />
             {brand && <p className="mb-2 text-sm">Выбран: <span className="font-medium text-primary">{brand}</span></p>}
             <div className="max-h-52 overflow-y-auto rounded-lg border border-border">
               {brandResults.map(b => (
