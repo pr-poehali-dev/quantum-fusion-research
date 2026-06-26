@@ -52,7 +52,7 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
   {
     slug: "psu",
     blocks: [
-      { key: "series", label: "Серия", hint: "NGDP", input: "text" },
+      { key: "series", label: "Серия", hint: "NGDP", input: "text", attrCode: "series", suggest: true },
       { key: "watt", label: "Мощность", input: "select", attrCode: "watt", required: true,
         options: ["500 Вт","550 Вт","600 Вт","650 Вт","700 Вт","750 Вт","800 Вт","850 Вт","1000 Вт","1200 Вт","1300 Вт","1600 Вт","2000 Вт","2800 Вт"] },
       { key: "cert", label: "Сертификат 80+", input: "select", attrCode: "80plus", required: true,
@@ -80,7 +80,7 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
       { key: "chipset", label: "Чипсет", input: "select", attrCode: "chipset", required: true,
         options: ["X870E","X870","X670E","X670","B850","B650","B840","A620","A520",
                   "Z890","Z790","B860","B760","H810","Z690","B660"] },
-      { key: "series", label: "Серия", hint: "TUF Gaming", input: "text" },
+      { key: "series", label: "Серия", hint: "TUF Gaming", input: "text", attrCode: "series", suggest: true },
       { key: "model", label: "Модель", hint: "PLUS WIFI", input: "text", attrCode: "model", suggest: true },
       { key: "form", label: "Форм-фактор", input: "select", attrCode: "form_factor", required: true,
         options: ["ATX","mATX","Mini-ITX","E-ATX"], excludeFromName: true },
@@ -90,7 +90,7 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
   {
     slug: "ram",
     blocks: [
-      { key: "series", label: "Серия", hint: "Fury", input: "text" },
+      { key: "series", label: "Серия", hint: "Fury", input: "text", attrCode: "series", suggest: true },
       { key: "mem_type", label: "Тип памяти", input: "select", attrCode: "mem_type", required: true,
         options: ["DDR5","DDR4"] },
       { key: "modules", label: "Кол-во планок", input: "select", attrCode: "modules", required: true,
