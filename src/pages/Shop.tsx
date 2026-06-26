@@ -69,6 +69,7 @@ interface CommunityBuild {
   assembly_fee: number
   total_price: number
   share_token: string
+  short_code?: string
   created_at: string
 }
 
@@ -820,7 +821,7 @@ export default function Shop() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {communityBuilds.map(b => (
-                  <CommunityBuildCard key={b.id} build={b} fmt={fmt} onLoad={() => navigate(`/configurator?build=${b.share_token}`)} />
+                  <CommunityBuildCard key={b.id} build={b} fmt={fmt} onLoad={() => navigate(b.short_code ? `/s/${b.short_code}` : `/configurator?build=${b.share_token}`)} />
                 ))}
               </div>
             )}

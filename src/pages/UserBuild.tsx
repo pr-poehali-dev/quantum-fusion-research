@@ -32,6 +32,7 @@ interface BuildData {
   assembly_fee: number
   total_price: number
   share_token: string
+  short_code?: string
   is_public: boolean
   created_at: string
   username: string
@@ -244,7 +245,7 @@ export default function UserBuild() {
             <Icon name={copied ? "Check" : "Link"} size={14} />
             <span className="hidden sm:inline">{copied ? "Скопировано!" : "Поделиться"}</span>
           </button>
-          <button onClick={() => navigate(`/configurator?build=${build.share_token}`)} style={{ cursor: "pointer" }}
+          <button onClick={() => navigate(build.short_code ? `/s/${build.short_code}` : `/configurator?build=${build.share_token}`)} style={{ cursor: "pointer" }}
             className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-all">
             <Icon name="Copy" size={14} />
             <span className="hidden sm:inline">В конфигуратор</span>
@@ -478,7 +479,7 @@ export default function UserBuild() {
                   <Icon name="ShoppingCart" size={16} />
                   Заказать
                 </button>
-                <button onClick={() => navigate(`/configurator?build=${build.share_token}`)} style={{ cursor: "pointer" }}
+                <button onClick={() => navigate(build.short_code ? `/s/${build.short_code}` : `/configurator?build=${build.share_token}`)} style={{ cursor: "pointer" }}
                   className="flex items-center justify-center gap-2 rounded-2xl border border-border py-3.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground transition-colors">
                   <Icon name="Copy" size={16} />
                   В конфигуратор

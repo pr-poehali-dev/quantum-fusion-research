@@ -151,6 +151,7 @@ export const api = {
     getBuilds: (session: string) => fetch(`${URLS.auth}?action=builds`, { headers: authHeaders(session) }).then(r => r.json()),
     getCommunityBuilds: () => fetch(`${URLS.auth}?action=community`).then(r => r.json()),
     getBuildByToken: (token: string) => fetch(`${URLS.auth}?action=build&token=${token}`).then(r => r.json()),
+    getBuildByCode: (code: string) => fetch(`${URLS.auth}?action=build&code=${encodeURIComponent(code)}`).then(r => r.json()),
     saveUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=save_build`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     updateUserBuild: (data: unknown, session: string) => fetch(`${URLS.auth}?action=update_build`, { method: "PUT", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     deleteUserBuild: (id: number, session: string) => fetch(`${URLS.auth}?action=delete_build`, { method: "DELETE", headers: authHeaders(session), body: JSON.stringify({ id }) }).then(r => r.json()),

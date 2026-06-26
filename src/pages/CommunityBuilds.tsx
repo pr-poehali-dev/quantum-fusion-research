@@ -19,6 +19,7 @@ interface CommunityBuild {
   assembly_fee: number
   total_price: number
   share_token: string
+  short_code?: string
   created_at: string
 }
 
@@ -154,7 +155,7 @@ export default function CommunityBuilds() {
                 key={b.id}
                 build={b}
                 fmt={fmt}
-                onLoad={() => navigate(`/configurator?build=${b.share_token}`)}
+                onLoad={() => navigate(b.short_code ? `/s/${b.short_code}` : `/configurator?build=${b.share_token}`)}
                 onAuthor={() => b.author_tag && navigate(`/profile/${b.author_tag}`)}
               />
             ))}

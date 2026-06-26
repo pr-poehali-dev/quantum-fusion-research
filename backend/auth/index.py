@@ -24,6 +24,21 @@ def esc(val):
     return "'" + str(val).replace("'", "''") + "'"
 
 
+_SHORT_ALPHABET = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def gen_short_code(cur, length=6):
+    """Генерирует уникальный короткий код для user_builds.short_code."""
+    for _ in range(20):
+        code = "".join(secrets.choice(_SHORT_ALPHABET) for _ in range(length))
+        cur.execute(
+            f"SELECT 1 FROM {SCHEMA}.user_builds WHERE short_code = {esc(code)}"
+        )
+        if not cur.fetchone():
+            return code
+    return secrets.token_urlsafe(6)
+
+
 def get_user(cur, session_id):
     if not session_id:
         return None
@@ -162,7 +177,7 @@ def handler(event: dict, context) -> dict:
             if not is_public:
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Профиль закрыт"})}
             cur.execute(
-                f"SELECT id, name, components, parts_total, assembly_fee, total_price, share_token, created_at "
+                f"SELECT id, name, components, parts_total, assembly_fee, total_price, share_token, created_at, short_code "
                 f"FROM {SCHEMA}.user_builds WHERE user_id = {user_id} AND is_public = TRUE ORDER BY created_at DESC LIMIT 20"
             )
             builds = []
@@ -175,6 +190,7 @@ def handler(event: dict, context) -> dict:
                     "total_price": float(b[5]) if b[5] else 0,
                     "share_token": b[6],
                     "created_at": b[7].isoformat() if b[7] else None,
+                    "short_code": b[8] or "",
                 })
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
                 "id": user_id, "username": username, "bio": bio or "",
@@ -242,7 +258,7 @@ def handler(event: dict, context) -> dict:
 
         elif action == "community" and method == "GET":
             cur.execute(
-                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag, b.short_code FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.is_public = TRUE ORDER BY b.created_at DESC LIMIT 50"
             )
             rows = cur.fetchall()
             builds = []
@@ -251,13 +267,16 @@ def handler(event: dict, context) -> dict:
                 b["username"] = row[10]
                 b["author_avatar"] = row[11] or ""
                 b["author_tag"] = row[12] or ""
+                b["short_code"] = row[13] or ""
                 builds.append(b)
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": builds})}
 
         elif action == "build" and method == "GET":
             token = params.get("token")
+            code = params.get("code")
+            where = f"b.short_code = {esc(code)}" if code else f"b.share_token = {esc(token)}"
             cur.execute(
-                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE b.share_token = {esc(token)}"
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag, b.short_code FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id WHERE {where}"
             )
             row = cur.fetchone()
             if not row:
@@ -266,6 +285,7 @@ def handler(event: dict, context) -> dict:
             b["username"] = row[10]
             b["author_avatar"] = row[11] or ""
             b["author_tag"] = row[12] or ""
+            b["short_code"] = row[13] or ""
             return {"statusCode": 200, "headers": cors, "body": json.dumps(b)}
 
         elif action == "builds" and method == "GET":
@@ -273,9 +293,14 @@ def handler(event: dict, context) -> dict:
             if not u:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             cur.execute(
-                f"SELECT id, user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at FROM {SCHEMA}.user_builds WHERE user_id = {u[0]} ORDER BY created_at DESC"
+                f"SELECT id, user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, created_at, short_code FROM {SCHEMA}.user_builds WHERE user_id = {u[0]} ORDER BY created_at DESC"
             )
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": [fmt_build(r) for r in cur.fetchall()]})}
+            out = []
+            for r in cur.fetchall():
+                b = fmt_build(r)
+                b["short_code"] = r[10] or ""
+                out.append(b)
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": out})}
 
         elif action == "save_build" and method == "POST":
             u = get_user(cur, session_id)
@@ -283,6 +308,7 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             body = json.loads(event.get("body") or "{}")
             share_token = secrets.token_hex(16)
+            short_code = gen_short_code(cur)
             name = body.get("name", "Моя сборка")
             components = json.dumps(body.get("components", []))
             parts_total = float(body.get("parts_total", 0))
@@ -293,12 +319,12 @@ def handler(event: dict, context) -> dict:
             raw_urls = body.get("image_urls", []) or []
             image_urls = esc(json.dumps(raw_urls[:3]))
             cur.execute(
-                f"INSERT INTO {SCHEMA}.user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, is_public, description, image_urls, created_at, updated_at) "
-                f"VALUES ({u[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {is_public}, {description}, {image_urls}, NOW(), NOW()) RETURNING id"
+                f"INSERT INTO {SCHEMA}.user_builds (user_id, name, components, parts_total, assembly_fee, total_price, share_token, short_code, is_public, description, image_urls, created_at, updated_at) "
+                f"VALUES ({u[0]}, {esc(name)}, {esc(components)}, {parts_total}, {assembly_fee}, {total_price}, {esc(share_token)}, {esc(short_code)}, {is_public}, {description}, {image_urls}, NOW(), NOW()) RETURNING id"
             )
             new_id = cur.fetchone()[0]
             conn.commit()
-            return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "share_token": share_token, "ok": True})}
+            return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": new_id, "share_token": share_token, "short_code": short_code, "ok": True})}
 
         elif action == "update_build" and method == "PUT":
             u = get_user(cur, session_id)
@@ -332,12 +358,14 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
         elif action == "user-build" and method == "GET":
-            # Публичная страница сборки по токену — полная информация
+            # Публичная страница сборки по токену или короткому коду — полная информация
             token = params.get("token")
+            code = params.get("code")
+            where = f"b.short_code = {esc(code)}" if code else f"b.share_token = {esc(token)}"
             cur.execute(
-                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag, b.description, b.image_urls "
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, b.total_price, b.share_token, b.is_public, b.created_at, u.username, u.avatar_url, u.user_tag, b.description, b.image_urls, b.short_code "
                 f"FROM {SCHEMA}.user_builds b JOIN {SCHEMA}.users u ON b.user_id = u.id "
-                f"WHERE b.share_token = {esc(token)}"
+                f"WHERE {where}"
             )
             row = cur.fetchone()
             if not row:
@@ -354,6 +382,7 @@ def handler(event: dict, context) -> dict:
                 "author_tag": row[12] or "",
                 "description": row[13] or "",
                 "image_urls": row[14] or [],
+                "short_code": row[15] or "",
             })}
 
         # ── ADMIN: проверка пароля входа в админку ──

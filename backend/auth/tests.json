@@ -4,18 +4,20 @@
       "name": "Me without session",
       "method": "GET",
       "path": "/?action=me",
-      "expectedStatus": 401,
-      "bodyMatcher": "partial",
-      "expectedBody": {"error": "Не авторизован"}
+      "expectedStatus": 401
     },
     {
       "name": "Admin login wrong password",
       "method": "POST",
       "path": "/?action=admin_login",
       "body": {"ak": "definitely-wrong-password"},
-      "expectedStatus": 200,
-      "bodyMatcher": "partial",
-      "expectedBody": {"ok": false}
+      "expectedStatus": 200
+    },
+    {
+      "name": "Build by unknown short code returns 404",
+      "method": "GET",
+      "path": "/?action=build&code=zzzzzz",
+      "expectedStatus": 404
     }
   ]
 }

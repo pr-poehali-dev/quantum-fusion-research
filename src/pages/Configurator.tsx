@@ -4,7 +4,7 @@ import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams, useParams } from "react-router-dom"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 import { ImageUploader } from "@/components/image-uploader"
 import CommentSection from "@/components/CommentSection"
@@ -273,7 +273,7 @@ export default function Configurator() {
   const [buildName, setBuildName] = useState(draft0.buildName || "Моя сборка")
   const [isPublic, setIsPublic] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [saveResult, setSaveResult] = useState<{ token: string } | null>(null)
+  const [saveResult, setSaveResult] = useState<{ token: string; code?: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
 
@@ -289,7 +289,9 @@ export default function Configurator() {
   const { isAuthed, sessionId, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { code: routeCode } = useParams<{ code: string }>()
   const [buildToken, setBuildToken] = useState<string | null>(null)
+  const [buildShortCode, setBuildShortCode] = useState<string | null>(null)
   const [buildCopied, setBuildCopied] = useState(false)
   const [isReadOnly, setIsReadOnly] = useState(false)
   const highlightCommentId = (() => {
@@ -329,32 +331,40 @@ export default function Configurator() {
       return
     }
 
-    // Загрузка сборки по токену из URL
+    // Загрузка сборки: новый короткий код /s/:code или старая ссылка ?build=token
     const token = searchParams.get("build")
     const editMode = searchParams.get("edit") === "1"
-    if (token) {
-      setBuildToken(editMode ? null : token)
-      setIsReadOnly(!editMode)
-      api.auth.getBuildByToken(token).then(b => {
-        if (b?.components) {
-          const loaded: Record<string, SelectedComp | null> = {}
-          const extras: Record<string, SlotExtra> = {}
-          for (const c of b.components) {
-            if (c.slot) {
-              loaded[c.slot] = { ...c, qty: c.qty || 1 }
-              if (c.description || c.image_urls?.length) {
-                extras[c.slot] = { description: c.description || "", image_urls: c.image_urls || [] }
-              }
-            }
-          }
-          setSelected(loaded)
-          setSlotExtras(extras)
-          setBuildName(b.name || "Загруженная сборка")
-          if (b.username) {
-            setBuildAuthor({ username: b.username, avatar: b.author_avatar || "", tag: b.author_tag || "" })
+
+    const applyBuild = (b: { components?: SelectedComp[]; name?: string; username?: string; author_avatar?: string; author_tag?: string; share_token?: string; short_code?: string }) => {
+      if (!b?.components) return
+      const loaded: Record<string, SelectedComp | null> = {}
+      const extras: Record<string, SlotExtra> = {}
+      for (const c of b.components) {
+        if (c.slot) {
+          loaded[c.slot] = { ...c, qty: c.qty || 1 }
+          if (c.description || c.image_urls?.length) {
+            extras[c.slot] = { description: c.description || "", image_urls: c.image_urls || [] }
           }
         }
-      }).catch(() => {})
+      }
+      setSelected(loaded)
+      setSlotExtras(extras)
+      setBuildName(b.name || "Загруженная сборка")
+      if (b.short_code) setBuildShortCode(b.short_code)
+      if (b.share_token && !editMode) setBuildToken(b.share_token)
+      if (b.username) {
+        setBuildAuthor({ username: b.username, avatar: b.author_avatar || "", tag: b.author_tag || "" })
+      }
+    }
+
+    if (routeCode) {
+      setIsReadOnly(true)
+      setBuildShortCode(routeCode)
+      api.auth.getBuildByCode(routeCode).then(applyBuild).catch(() => {})
+    } else if (token) {
+      setBuildToken(editMode ? null : token)
+      setIsReadOnly(!editMode)
+      api.auth.getBuildByToken(token).then(applyBuild).catch(() => {})
     }
   }, [])
 
@@ -619,17 +629,19 @@ export default function Configurator() {
       image_urls: buildImageUrls,
     }, sessionId)
     setSaving(false)
-    if (res?.share_token) setSaveResult({ token: res.share_token })
+    if (res?.share_token) setSaveResult({ token: res.share_token, code: res.short_code })
   }
 
-  const buildShareUrl = (token: string) =>
-    user?.is_premium
-      ? `${window.location.origin}/user-build/${token}`
-      : `${window.location.origin}/configurator?build=${token}`
+  const buildShareUrl = (token: string, code?: string) =>
+    code
+      ? `${window.location.origin}/s/${code}`
+      : user?.is_premium
+        ? `${window.location.origin}/user-build/${token}`
+        : `${window.location.origin}/configurator?build=${token}`
 
   const copyLink = () => {
     if (!saveResult) return
-    navigator.clipboard.writeText(buildShareUrl(saveResult.token))
+    navigator.clipboard.writeText(buildShareUrl(saveResult.token, saveResult.code))
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
   }
@@ -734,7 +746,9 @@ export default function Configurator() {
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => {
-                        const url = `${window.location.origin}/configurator?build=${buildToken}`
+                        const url = buildShortCode
+                          ? `${window.location.origin}/s/${buildShortCode}`
+                          : `${window.location.origin}/configurator?build=${buildToken}`
                         navigator.clipboard.writeText(url)
                         setBuildCopied(true)
                         setTimeout(() => setBuildCopied(false), 2500)
@@ -1158,7 +1172,7 @@ export default function Configurator() {
 
                       <button
                         onClick={() => {
-                          const url = buildShareUrl(saveResult.token)
+                          const url = buildShareUrl(saveResult.token, saveResult.code)
                           const text = `Смотри мою сборку на PCPRO: ${url}`
                           if (navigator.share) {
                             navigator.share({ title: buildName, text, url })

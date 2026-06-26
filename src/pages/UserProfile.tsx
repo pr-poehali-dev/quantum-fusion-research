@@ -11,6 +11,7 @@ interface Build {
   assembly_fee: number
   total_price: number
   share_token: string
+  short_code?: string
   created_at: string
 }
 
@@ -124,7 +125,7 @@ export default function UserProfile() {
               {profile.builds.map(b => (
                 <div
                   key={b.id}
-                  onClick={() => navigate(`/configurator?build=${b.share_token}`)}
+                  onClick={() => navigate(b.short_code ? `/s/${b.short_code}` : `/configurator?build=${b.share_token}`)}
                   className="rounded-xl border border-border bg-card p-5 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer group"
                 >
                   <div className="mb-3 flex items-start justify-between gap-2">

@@ -16,6 +16,7 @@ interface UserBuild {
   assembly_fee: number
   total_price: number
   share_token: string
+  short_code?: string
   is_public: boolean
   created_at: string
 }
@@ -131,8 +132,11 @@ export default function Profile() {
     ]).finally(() => setLoading(false))
   }, [])
 
-  const copyLink = (token: string, id: number) => {
-    navigator.clipboard.writeText(`${window.location.origin}/configurator?build=${token}`)
+  const copyLink = (token: string, id: number, code?: string) => {
+    const url = code
+      ? `${window.location.origin}/s/${code}`
+      : `${window.location.origin}/configurator?build=${token}`
+    navigator.clipboard.writeText(url)
     setCopied(id)
     setTimeout(() => setCopied(null), 2000)
   }
@@ -631,13 +635,13 @@ export default function Profile() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => navigate(`/configurator?build=${b.share_token}`)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                        <button onClick={() => navigate(b.short_code ? `/s/${b.short_code}` : `/configurator?build=${b.share_token}`)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name="Eye" size={13} />Открыть
                         </button>
                         <button onClick={() => navigate(`/configurator?build=${b.share_token}&edit=1`)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name="Pencil" size={13} />Редактировать
                         </button>
-                        <button onClick={() => copyLink(b.share_token, b.id)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                        <button onClick={() => copyLink(b.share_token, b.id, b.short_code)} className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                           <Icon name={copied === b.id ? "Check" : "Share2"} size={13} />
                           {copied === b.id ? "Скопировано!" : "Поделиться"}
                         </button>
