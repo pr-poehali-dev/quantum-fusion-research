@@ -408,19 +408,31 @@ export default function Configurator() {
 
   // «Добавить все товары в корзину» — кладёт КАЖДЫЙ выбранный товар из каталога
   // отдельной позицией (пустые слоты и «своё железо» пропускаем).
-  const addAllProductsToCart = () => {
+  const addAllProductsToCart = async () => {
     const fromCatalog = Object.values(selected)
       .filter(Boolean)
-      .filter(c => c!.source === "catalog" && c!.source_id)
+      .filter(c => c!.source === "catalog" && c!.source_id) as SelectedComp[]
     if (!fromCatalog.length) return
+
+    // Для товаров без сохранённого фото подтягиваем актуальную картинку из каталога
+    const needImage = fromCatalog.filter(c => !c.image_urls?.[0] && c.source_id)
+    const imageById: Record<number, string | null> = {}
+    await Promise.all(needImage.map(async c => {
+      try {
+        const p = await api.products.getById(c.source_id!)
+        imageById[c.source_id!] = p?.image_url || p?.image_urls?.[0] || null
+      } catch { imageById[c.source_id!] = null }
+    }))
+
     fromCatalog.forEach(c => {
-      for (let i = 0; i < (c!.qty || 1); i++) {
+      const image_url = c.image_urls?.[0] || imageById[c.source_id!] || null
+      for (let i = 0; i < (c.qty || 1); i++) {
         addItem({
-          id: c!.source_id!,
-          name: c!.name,
-          price: c!.price,
-          image_url: c!.image_urls?.[0] || null,
-          description: c!.description || null,
+          id: c.source_id!,
+          name: c.name,
+          price: c.price,
+          image_url,
+          description: c.description || null,
           type: "product",
         })
       }
@@ -618,8 +630,8 @@ export default function Configurator() {
     setSaving(true)
     const components = (Object.values(selected).filter(Boolean) as SelectedComp[]).map(c => ({
       ...c,
-      description: slotExtras[c.slot]?.description || "",
-      image_urls: slotExtras[c.slot]?.image_urls || [],
+      description: slotExtras[c.slot]?.description || c.description || "",
+      image_urls: (slotExtras[c.slot]?.image_urls?.length ? slotExtras[c.slot].image_urls : c.image_urls) || [],
     }))
     const res = await api.auth.saveUserBuild({
       name: buildName, components,
