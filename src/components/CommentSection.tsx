@@ -12,6 +12,9 @@ interface Comment {
   user_id: number
   username: string
   avatar_url: string
+  likes: number
+  dislikes: number
+  my_vote: number
 }
 
 function timeAgo(iso: string) {
@@ -43,13 +46,13 @@ export default function CommentSection({ buildToken, articleId, highlightId }: P
 
   useEffect(() => {
     const fetch = articleId
-      ? api.comments.getByArticle(articleId)
-      : api.comments.getByToken(buildToken!)
+      ? api.comments.getByArticle(articleId, sessionId || undefined)
+      : api.comments.getByToken(buildToken!, sessionId || undefined)
     fetch.then(d => {
       setComments(d.comments || [])
       setLoading(false)
     })
-  }, [buildToken, articleId])
+  }, [buildToken, articleId, sessionId])
 
   useEffect(() => {
     if (highlightId && highlightRef.current) {
@@ -60,9 +63,14 @@ export default function CommentSection({ buildToken, articleId, highlightId }: P
   const send = async () => {
     if (!text.trim() || !sessionId) return
     setSending(true)
+    let body = text.trim()
+    // При ответе на ответ добавляем @упоминание адресата для контекста
+    if (replyTo && replyTo.parent_id && !body.startsWith("@")) {
+      body = `@${replyTo.username}, ${body}`
+    }
     const payload = articleId
-      ? { article_id: articleId, text: text.trim(), parent_id: replyTo?.id }
-      : { token: buildToken!, text: text.trim(), parent_id: replyTo?.id }
+      ? { article_id: articleId, text: body, parent_id: replyTo?.id }
+      : { token: buildToken!, text: body, parent_id: replyTo?.id }
     const res = await api.comments.add(payload, sessionId)
     if (res.id) {
       setComments(prev => [...prev, res])
@@ -78,9 +86,31 @@ export default function CommentSection({ buildToken, articleId, highlightId }: P
     setComments(prev => prev.map(c => c.id === id ? { ...c, text: "[удалено]" } : c))
   }
 
-  // Строим дерево: top-level + ответы
+  const vote = async (c: Comment, dir: 1 | -1) => {
+    if (!sessionId) { navigate("/auth"); return }
+    const next = c.my_vote === dir ? 0 : dir
+    // Оптимистичное обновление
+    setComments(prev => prev.map(x => {
+      if (x.id !== c.id) return x
+      let likes = x.likes, dislikes = x.dislikes
+      if (x.my_vote === 1) likes -= 1
+      if (x.my_vote === -1) dislikes -= 1
+      if (next === 1) likes += 1
+      if (next === -1) dislikes += 1
+      return { ...x, likes, dislikes, my_vote: next }
+    }))
+    const res = await api.comments.vote(c.id, next as -1 | 0 | 1, sessionId)
+    if (res && typeof res.likes === "number") {
+      setComments(prev => prev.map(x => x.id === c.id
+        ? { ...x, likes: res.likes, dislikes: res.dislikes, my_vote: res.my_vote }
+        : x))
+    }
+  }
+
+  // Дерево: корневые + все ответы под корнем (плоско, но визуально с отступом)
   const topLevel = comments.filter(c => !c.parent_id)
-  const replies = (parentId: number) => comments.filter(c => c.parent_id === parentId)
+  const replies = (parentId: number) =>
+    comments.filter(c => c.parent_id === parentId).sort((a, b) => a.id - b.id)
 
   function Avatar({ c }: { c: Comment }) {
     return c.avatar_url
@@ -108,6 +138,25 @@ export default function CommentSection({ buildToken, articleId, highlightId }: P
           </p>
           {!isDeleted && (
             <div className="mt-1.5 flex items-center gap-3">
+              {/* Лайк / дизлайк (без раскрытия авторов) */}
+              <button
+                onClick={() => vote(c, 1)}
+                className={`flex items-center gap-1 text-xs transition-colors ${c.my_vote === 1 ? "text-primary font-medium" : "text-foreground/40 hover:text-primary"}`}
+                style={{ cursor: "pointer" }}
+                title="Нравится"
+              >
+                <Icon name="ThumbsUp" size={13} />
+                {c.likes > 0 && c.likes}
+              </button>
+              <button
+                onClick={() => vote(c, -1)}
+                className={`flex items-center gap-1 text-xs transition-colors ${c.my_vote === -1 ? "text-red-400 font-medium" : "text-foreground/40 hover:text-red-400"}`}
+                style={{ cursor: "pointer" }}
+                title="Не нравится"
+              >
+                <Icon name="ThumbsDown" size={13} />
+                {c.dislikes > 0 && c.dislikes}
+              </button>
               {isAuthed() && (
                 <button
                   onClick={() => { setReplyTo(c); textareaRef.current?.focus() }}

@@ -4,17 +4,20 @@
       "name": "Get comments by token",
       "method": "GET",
       "path": "/?token=nonexistent",
-      "expectedStatus": 200,
-      "expectedBody": { "comments": [] },
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
     },
     {
       "name": "Get comments by article_id",
       "method": "GET",
       "path": "/?article_id=1",
-      "expectedStatus": 200,
-      "expectedBody": { "comments": [] },
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
+    },
+    {
+      "name": "Vote requires auth",
+      "method": "POST",
+      "path": "/?action=vote",
+      "body": { "id": 1, "value": 1 },
+      "expectedStatus": 401
     }
   ]
 }

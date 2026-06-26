@@ -302,12 +302,16 @@ export const api = {
       fetch(`${URLS.finance}?action=confirm_remaining`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
   },
   comments: {
-    getByToken: (token: string) => fetch(`${URLS.comments}?token=${token}`).then(r => r.json()),
-    getByArticle: (articleId: number) => fetch(`${URLS.comments}?article_id=${articleId}`).then(r => r.json()),
+    getByToken: (token: string, session?: string) =>
+      fetch(`${URLS.comments}?token=${token}`, { headers: session ? authHeaders(session) : undefined }).then(r => r.json()),
+    getByArticle: (articleId: number, session?: string) =>
+      fetch(`${URLS.comments}?article_id=${articleId}`, { headers: session ? authHeaders(session) : undefined }).then(r => r.json()),
     add: (data: { token?: string; article_id?: number; text: string; parent_id?: number }, session: string) =>
       fetch(`${URLS.comments}?action=add`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(data) }).then(r => r.json()),
     delete: (id: number, session: string) =>
       fetch(`${URLS.comments}?action=delete`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ id }) }).then(r => r.json()),
+    vote: (id: number, value: -1 | 0 | 1, session: string) =>
+      fetch(`${URLS.comments}?action=vote`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ id, value }) }).then(r => r.json()),
   },
   notifications: {
     getAll: (session: string) => fetch(URLS.notifications, { headers: authHeaders(session) }).then(r => r.json()),

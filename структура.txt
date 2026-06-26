@@ -486,6 +486,14 @@ CRUD тегов для сборок ПК. Простая справочная т
 
 ### comments
 Комментарии к сборкам и статьям. Управление по сессиям.
+- Таблицы: build_comments (id, build_token, user_id, parent_id, text, created_at),
+  comment_votes (comment_id, user_id, value=±1, UNIQUE на пару — анонимные лайки/дизлайки).
+- GET ?token= / ?article_id= — список комментариев (с likes/dislikes/my_vote;
+  my_vote читается по X-Session-Id).
+- POST ?action=add — добавить; parent_id нормализуется к корню ветки (ответ на
+  ответ работает), адресату ответа — уведомление.
+- POST ?action=delete — мягкое удаление (text='[удалено]'), только свои.
+- POST ?action=vote — лайк/дизлайк (value=1|-1|0). Кто голосовал — не раскрывается.
 
 ### articles
 Статьи и тесты: CRUD, категории, публикация, slugи.
