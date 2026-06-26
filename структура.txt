@@ -225,16 +225,22 @@ warehouse actions (DATA-DRIVEN):
 - spec_values_get/spec_values_save — значения характеристик товара.
 api.warehouse.specSchema/specCat*/specAttr*/specLink*/specProducts/specValues*.
 
-Мастер характеристик товара (v5.66): src/components/admin/ProductSpecWizard.tsx —
-пошаговый мастер в форме ГРУППЫ СКЛАДА (WarehouseTab → GroupModal). Категория
-группы выбирается из списка категорий каталога (id/name/slug); по slug мастер
-берёт атрибуты (spec_schema, по product_category_slug), по одному шагу на
-характеристику (select/multiselect/number/bool/text). Значения автопривязываются
-к товару группы (warehouse_groups.product_id): spec_values_save после
-group_create (product_id в ответе) / group_update; при редактировании
-подгружаются через spec_values_get. group_create принимает category_id.
-Доп. атрибуты (V0166): серия, цвет, тип накопителя (SSD/HDD), форм-фактор
-накопителя — описательные, affects_compat=false.
+Слайдер «Новая группа товара» (v5.67): WarehouseTab → GroupWizardModal.tsx +
+groupNameTemplates.ts. Пошаговая сборка КРАСИВОГО НАЗВАНИЯ из блоков по шаблону
+категории: Категория → Бренд → блоки названия (Модель/Мощность/Цвет и т.п.) →
+Финал (партномер, ячейка, гарантия, цена, опт1/2, ссылки). Значения блоков
+складываются в имя И сохраняются в характеристики (spec_values_save по
+product_id из ответа group_create/update). Спецправила: буква чипсета по
+форм-фактору (B650m/B650i), ОЗУ «2x16Gb» + авто capacity_gb, ветвление СЖО.
+Подсказки Модели — action spec_attr_suggest (distinct значений атрибута).
+
+Привязка характеристик к товару группы: group_create возвращает product_id
+(в ответе) и принимает category_id; group_update возвращает product_id.
+spec_values_save сохраняет значения к warehouse_groups.product_id.
+Доп. атрибуты: V0166 (серия, цвет, тип/форм-фактор накопителя), V0167
+(Модель, Видеопамять, Линейка, Исполнение, Стандарт БП, Объём 1 планки) —
+описательные, affects_compat=false. (ProductSpecWizard удалён, заменён
+пошаговым GroupWizardModal — см. выше.)
 
 СТАРАЯ модель (product_specs, V0140) — оставлена, но фронт переведён на новую.
 warehouse group_create по-прежнему вызывает ensure_product_specs (product_specs).

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { playScanOk, playScanError } from "@/lib/scanSound"
 import { getAdminKey } from "@/pages/admin/types"
 import BrandsManager from "./BrandsManager"
-import ProductSpecWizard, { SpecValue } from "./ProductSpecWizard"
+import GroupWizardModal from "./GroupWizardModal"
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -98,214 +98,6 @@ function PriceHistoryBadge({ history, currentRetail, currentCost }: {
       {retailDelta === 0 && costDelta === 0 && (
         <span className="text-foreground/30 text-xs">= без изм.</span>
       )}
-    </div>
-  )
-}
-
-// ─── Модалка группы ──────────────────────────────────────────────────────────
-
-function GroupModal({ group, stores, categories, onClose, onSaved }: {
-  group: Partial<Group> | null
-  stores: Store[]
-  categories: string[]
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const isNew = !group?.id
-  const [form, setForm] = useState({
-    name: group?.name || "",
-    category: group?.category || "",
-    part_number: group?.part_number || "",
-    warranty_months: group?.warranty_months ?? 0,
-    price_retail: group?.price_retail ?? 0,
-    price_opt1: group?.price_opt1 ?? 0,
-    price_opt2: group?.price_opt2 ?? 0,
-    url_site: group?.url_site || "",
-    url_supplier: group?.url_supplier || "",
-    cell: group?.cell || "",
-  })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-
-  // Выбор бренда — добавляется в начало названия при сохранении товара
-  const [brands, setBrands] = useState<{ id: number; name: string }[]>([])
-  const [selectedBrand, setSelectedBrand] = useState("")
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [pickerSearch, setPickerSearch] = useState("")
-
-  // Категории каталога (id/name/slug) — для выбора и привязки характеристик
-  const [catalogCats, setCatalogCats] = useState<{ id: number; name: string; slug: string }[]>([])
-  // Значения характеристик (мастер): { attribute_id: value | [..] }
-  const [specValues, setSpecValues] = useState<Record<string, SpecValue>>({})
-
-  useEffect(() => {
-    api.brands.getAll().then(d => setBrands(d.brands || [])).catch(() => {})
-    api.products.getAll().then(d => setCatalogCats(d.categories || [])).catch(() => {})
-  }, [])
-
-  // Подгружаем сохранённые характеристики при редактировании группы
-  useEffect(() => {
-    if (group?.product_id) {
-      api.warehouse.specValuesGet(group.product_id).then(d => setSpecValues(d.values || {})).catch(() => {})
-    }
-  }, [group?.product_id])
-
-  // slug выбранной категории — по ней мастер строит шаги характеристик
-  const selectedCatSlug = catalogCats.find(c => c.name === form.category)?.slug || null
-  const brandResults = pickerSearch.trim()
-    ? brands.filter(b => b.name.toLowerCase().includes(pickerSearch.trim().toLowerCase())).slice(0, 30)
-    : brands.slice(0, 30)
-  // Только запоминаем выбранный бренд — в название добавим при сохранении
-  const pickBrand = (b: { name: string }) => {
-    setSelectedBrand(b.name)
-    setPickerOpen(false)
-    setPickerSearch("")
-  }
-
-  const save = async () => {
-    if (!form.name.trim()) { setError("Название обязательно"); return }
-    if (!form.category.trim()) { setError("Укажите категорию"); return }
-    if (!(form.price_retail > 0)) { setError("Укажите цену продажи"); return }
-    if (form.warranty_months === null || form.warranty_months === undefined || Number.isNaN(form.warranty_months)) {
-      setError("Укажите гарантию (можно 0)"); return
-    }
-    // Добавляем бренд в начало названия (если он выбран и его там ещё нет)
-    const baseName = form.name.trim()
-    const fullName = selectedBrand && !baseName.toLowerCase().startsWith(selectedBrand.toLowerCase())
-      ? `${selectedBrand} ${baseName}`
-      : baseName
-    // category_id из выбранной категории каталога (для привязки характеристик)
-    const catId = catalogCats.find(c => c.name === form.category)?.id
-    const payload = { ...form, name: fullName, category_id: catId }
-    setLoading(true)
-    const data = isNew
-      ? await api.warehouse.createGroup(payload)
-      : await api.warehouse.updateGroup({ id: group!.id, ...payload })
-    if (data.error) { setLoading(false); setError(data.error); return }
-    // Сохраняем характеристики из мастера к товару каталога (product_id)
-    const pid = data.product_id || group?.product_id
-    if (pid && Object.keys(specValues).length > 0) {
-      await api.warehouse.specValuesSave(pid, specValues)
-    }
-    setLoading(false)
-    onSaved()
-    onClose()
-  }
-
-  const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(p => ({ ...p, [field]: e.target.value }))
-  const fNum = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(p => ({ ...p, [field]: parseFloat(e.target.value) || 0 }))
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onDoubleClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl" onDoubleClick={e => e.stopPropagation()}>
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{isNew ? "Новая группа товара" : "Редактировать группу"}</h2>
-          <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className="mb-1 block text-xs text-foreground/50">Наименование *</label>
-            <div className="flex gap-2">
-              {/* Слева — выбор бренда (подставляется в начало названия) */}
-              <div className="relative w-1/2">
-                <button type="button" onClick={() => setPickerOpen(v => !v)}
-                  className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm text-foreground/70 hover:border-primary transition-colors"
-                  style={{ cursor: "pointer" }}>
-                  <span className="flex items-center gap-1.5 truncate">
-                    <Icon name="Tag" size={13} className="shrink-0 text-foreground/40" />
-                    {selectedBrand || "Выбрать бренд"}
-                  </span>
-                  <Icon name={pickerOpen ? "ChevronUp" : "ChevronDown"} size={14} className="shrink-0 text-foreground/40" />
-                </button>
-                {pickerOpen && (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-[140%] rounded-lg border border-border bg-card p-2 shadow-2xl">
-                    <Input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} placeholder="Поиск бренда..." className="mb-2 h-8" />
-                    <div className="max-h-60 overflow-y-auto">
-                      {brandResults.length === 0 ? (
-                        <p className="px-2 py-3 text-center text-xs text-foreground/40">Ничего не найдено</p>
-                      ) : brandResults.map(b => (
-                        <button key={b.id} type="button" onClick={() => pickBrand(b)}
-                          className="flex w-full items-center rounded-md px-2 py-1.5 text-left hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
-                          <span className="text-sm text-foreground line-clamp-1">{b.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Справа — ручной ввод названия (бренд + модель) */}
-              <Input value={form.name} onChange={f("name")} placeholder="1stPlayer NGDP 1000W Platinum White" className="w-1/2" />
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Категория *</label>
-            <select
-              value={form.category}
-              onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              style={{ cursor: "pointer" }}
-            >
-              <option value="">Выберите категорию</option>
-              {catalogCats.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-              {/* устаревшие текстовые категории, которых нет в каталоге */}
-              {categories.filter(c => !catalogCats.some(cc => cc.name === c)).map(c => (
-                <option key={c} value={c}>{c} (без характеристик)</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Партнамбер</label>
-            <Input value={form.part_number} onChange={f("part_number")} placeholder="BX8071514900K" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Ячейка</label>
-            <Input value={form.cell} onChange={f("cell")} placeholder="A1-2" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Гарантия (мес.) *</label>
-            <Input type="number" value={form.warranty_months || ""} onChange={fNum("warranty_months")} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Цена продажи *</label>
-            <Input type="number" value={form.price_retail || ""} onChange={fNum("price_retail")} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Опт 1</label>
-            <Input type="number" value={form.price_opt1 || ""} onChange={fNum("price_opt1")} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/50">Опт 2</label>
-            <Input type="number" value={form.price_opt2 || ""} onChange={fNum("price_opt2")} />
-          </div>
-          <div className="col-span-2">
-            <label className="mb-1 block text-xs text-foreground/50">Ссылка на сайте</label>
-            <Input value={form.url_site} onChange={f("url_site")} placeholder="https://..." />
-          </div>
-          <div className="col-span-2">
-            <label className="mb-1 block text-xs text-foreground/50">Ссылка у поставщика</label>
-            <Input value={form.url_supplier} onChange={f("url_supplier")} placeholder="https://..." />
-          </div>
-        </div>
-
-        {/* Пошаговый мастер характеристик по выбранной категории */}
-        {form.category && (
-          <div className="mt-4">
-            <ProductSpecWizard categorySlug={selectedCatSlug} values={specValues} onChange={setSpecValues} />
-          </div>
-        )}
-
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Отмена</Button>
-          <Button onClick={save} disabled={loading}>
-            {loading ? "Сохранение..." : isNew ? "Создать" : "Сохранить"}
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -1459,10 +1251,8 @@ export default function WarehouseTab() {
 
       {/* Модалки */}
       {groupModal !== false && (
-        <GroupModal
+        <GroupWizardModal
           group={groupModal}
-          stores={stores}
-          categories={categories}
           onClose={() => setGroupModal(false)}
           onSaved={load}
         />

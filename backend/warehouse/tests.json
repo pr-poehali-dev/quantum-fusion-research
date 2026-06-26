@@ -29,6 +29,12 @@
       "method": "GET",
       "path": "/?action=spec_export_values",
       "expectedStatus": 200
+    },
+    {
+      "name": "Spec attr suggest",
+      "method": "GET",
+      "path": "/?action=spec_attr_suggest&attribute_id=67",
+      "expectedStatus": 200
     }
   ]
 }

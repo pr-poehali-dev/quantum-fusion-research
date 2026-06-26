@@ -233,6 +233,7 @@ export const api = {
     specLinkUpdate: (data: unknown) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_link_update", ...data as object }) }).then(r => r.json()),
     specLinkDelete: (id: number) => fetch(`${URLS.warehouse}?action=spec_link_delete&id=${id}`, { method: "DELETE" }).then(r => r.json()),
     specProducts: () => fetch(`${URLS.warehouse}?action=spec_products`).then(r => r.json()),
+    specAttrSuggest: (attributeId: number) => fetch(`${URLS.warehouse}?action=spec_attr_suggest&attribute_id=${attributeId}`).then(r => r.json()),
     specValuesGet: (productId: number) => fetch(`${URLS.warehouse}?action=spec_values_get&product_id=${productId}`).then(r => r.json()),
     specValuesSave: (productId: number, values: Record<string, unknown>) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_values_save", product_id: productId, values }) }).then(r => r.json()),
     specSlotProducts: (slot: string) => fetch(`${URLS.warehouse}?action=spec_slot_products&slot=${encodeURIComponent(slot)}`).then(r => r.json()),

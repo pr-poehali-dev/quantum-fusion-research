@@ -1939,6 +1939,17 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": cors, "body": json.dumps(
                 {"spec_category_id": spec_cat_id, "attributes": attributes, "products": products}, default=str)}
 
+        # ── ПОДСКАЗКИ: уникальные значения характеристики (для автодополнения) ─
+        if action == "spec_attr_suggest" and method == "GET":
+            aid = int(params.get("attribute_id") or 0)
+            cur.execute(
+                f"SELECT DISTINCT value FROM {SCHEMA}.product_spec_values "
+                f"WHERE attribute_id = {aid} AND value IS NOT NULL AND value <> '' "
+                f"ORDER BY value LIMIT 200"
+            )
+            vals = [r[0] for r in cur.fetchall()]
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"values": vals}, default=str)}
+
         # ── ЗНАЧЕНИЯ ХАРАКТЕРИСТИК ОДНОГО ТОВАРА ─────────────────────────────
         if action == "spec_values_get" and method == "GET":
             pid = int(params.get("product_id") or 0)
