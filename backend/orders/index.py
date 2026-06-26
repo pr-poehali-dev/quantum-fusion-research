@@ -159,7 +159,7 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
 
-    def fmt_order(row, disp=None, for_sale=None, is_stock_sale=None):
+    def fmt_order(row, disp=None, for_sale=None, is_stock_sale=None, quiz_request_id=None):
         total = float(row[6])
         # Предоплата (опц. поля в конце выборки одиночного заказа)
         pct = float(row[13]) if len(row) > 13 and row[13] is not None else 30.0
@@ -187,22 +187,31 @@ def handler(event: dict, context) -> dict:
             "remaining_paid_amount": float(row[17]) if len(row) > 17 and row[17] is not None else 0,
             "for_sale": bool(for_sale) if for_sale is not None else False,
             "is_stock_sale": bool(is_stock_sale) if is_stock_sale is not None else False,
+            "quiz_request_id": quiz_request_id,
         }
 
     try:
         if method == "POST":
             body = json.loads(event.get("body") or "{}")
             user_id = get_user_by_session(cur, session_id)
+            quiz_request_id = body.get("quiz_request_id")  # привязка к заявке (опц.)
             cur.execute(
                 """INSERT INTO orders (customer_name, customer_phone, customer_email, order_type,
-                   items, total, comment, status, user_id, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'new', %s, NOW(), NOW()) RETURNING id""",
+                   items, total, comment, status, user_id, quiz_request_id, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, NOW(), NOW()) RETURNING id""",
                 (body["customer_name"], body["customer_phone"],
                  body.get("customer_email"), body.get("order_type", "cart"),
                  json.dumps(body["items"]), body["total"],
-                 body.get("comment"), user_id)
+                 body.get("comment"), user_id, quiz_request_id)
             )
             order_id = cur.fetchone()[0]
+
+            # Если заказ создан из заявки — помечаем заявку обработанной
+            if quiz_request_id:
+                cur.execute(
+                    "UPDATE quiz_requests SET status='done' WHERE id=%s AND status <> 'done'",
+                    (quiz_request_id,)
+                )
 
             # Отдельная нумерация по типу заказа: PC — сборки, HW — заказы железа
             prefix = "PC" if body.get("order_type") == "pc_build" else "HW"
@@ -474,6 +483,45 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 201, "headers": cors, "body": json.dumps({"id": order_id, "ok": True})}
 
         elif method == "GET":
+            # Аналитика по заявкам (квиз): конверсия в заказы, источники, средний чек и срок.
+            # Вызов: GET ?action=quiz_analytics
+            if params.get("action") == "quiz_analytics":
+                # Всего заявок и по источникам
+                cur.execute("SELECT COALESCE(source,'quiz') AS src, COUNT(*) FROM quiz_requests GROUP BY src")
+                by_source = [{"source": r[0], "count": int(r[1])} for r in cur.fetchall()]
+                cur.execute("SELECT COUNT(*) FROM quiz_requests")
+                total_leads = int(cur.fetchone()[0] or 0)
+
+                # Заявки, ставшие заказами (есть связанный заказ)
+                cur.execute("SELECT COUNT(DISTINCT quiz_request_id) FROM orders WHERE quiz_request_id IS NOT NULL")
+                converted = int(cur.fetchone()[0] or 0)
+
+                # Сумма и средний чек заказов из заявок
+                cur.execute("SELECT COALESCE(SUM(total),0), COALESCE(AVG(total),0), COUNT(*) FROM orders WHERE quiz_request_id IS NOT NULL")
+                rev_row = cur.fetchone()
+                revenue = float(rev_row[0] or 0)
+                avg_check = float(rev_row[1] or 0)
+                orders_from_leads = int(rev_row[2] or 0)
+
+                # Средний срок от заявки до заказа (в часах)
+                cur.execute(
+                    "SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (o.created_at - q.created_at))/3600.0), 0) "
+                    "FROM orders o JOIN quiz_requests q ON q.id = o.quiz_request_id"
+                )
+                avg_hours = float(cur.fetchone()[0] or 0)
+
+                conversion = round(converted / total_leads * 100, 1) if total_leads else 0.0
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({
+                    "total_leads": total_leads,
+                    "converted_leads": converted,
+                    "conversion_percent": conversion,
+                    "orders_from_leads": orders_from_leads,
+                    "revenue": revenue,
+                    "avg_check": round(avg_check, 2),
+                    "avg_hours_to_order": round(avg_hours, 1),
+                    "by_source": by_source,
+                })}
+
             # Тестовая отправка уведомления «Покупка ПК из наличия» по заказу
             # (ничего не меняет в БД). Вызов: GET ?action=test_stock_notify&id=N
             if params.get("action") == "test_stock_notify" and params.get("id"):
@@ -504,14 +552,14 @@ def handler(event: dict, context) -> dict:
                               items, total, comment, status, created_at, updated_at, user_id,
                               NULL, prepayment_percent, prepayment_amount,
                               prepayment_confirmed, remaining_paid, remaining_paid_amount,
-                              display_number
+                              display_number, quiz_request_id
                        FROM orders WHERE id = %s""",
                     (int(params["id"]),)
                 )
                 row = cur.fetchone()
                 if not row:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
-                order = fmt_order(row, row[18])
+                order = fmt_order(row, row[18], quiz_request_id=row[19])
                 schema = "t_p72635010_quantum_fusion_resea"
 
                 # Признак «сборка из свободной продажи» (привязанный pc_build.status='catalog')
@@ -690,14 +738,14 @@ def handler(event: dict, context) -> dict:
                            wb.stage as wip_stage, o.prepayment_percent, o.prepayment_amount,
                            o.prepayment_confirmed, o.remaining_paid, o.remaining_paid_amount,
                            o.display_number, wb.for_sale,
-                           (pb.status = 'catalog') AS is_stock_sale
+                           (pb.status = 'catalog') AS is_stock_sale, o.quiz_request_id
                     FROM orders o
                     LEFT JOIN wip_builds wb ON wb.order_id = o.id
                     LEFT JOIN pc_builds pb ON pb.id = wb.build_id
                     {where} ORDER BY o.created_at DESC LIMIT 200""",
                 args
             )
-            orders = [fmt_order(r, r[18], r[19], r[20]) for r in cur.fetchall()]
+            orders = [fmt_order(r, r[18], r[19], r[20], r[21]) for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"orders": orders})}
 
         elif method == "PUT":
@@ -714,6 +762,21 @@ def handler(event: dict, context) -> dict:
             items = row[0] if isinstance(row[0], list) else json.loads(row[0])
 
             item_idx = body.get("item_idx")  # индекс позиции в items
+
+            if action == "link_quiz":
+                # Ручная привязка заявки к существующему заказу
+                qid = body.get("quiz_request_id")
+                cur.execute("UPDATE orders SET quiz_request_id=%s, updated_at=NOW() WHERE id=%s", (qid, order_id))
+                if qid:
+                    cur.execute("UPDATE quiz_requests SET status='done' WHERE id=%s AND status='new'", (qid,))
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "quiz_request_id": qid})}
+
+            if action == "unlink_quiz":
+                # Отвязать заявку от заказа
+                cur.execute("UPDATE orders SET quiz_request_id=NULL, updated_at=NOW() WHERE id=%s", (order_id,))
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
             if action == "set_prepayment":
                 # Предоплата: по проценту или по сумме (второе пересчитывается)

@@ -170,6 +170,7 @@ export interface Order {
   remaining_paid?: boolean
   for_sale?: boolean
   is_stock_sale?: boolean
+  quiz_request_id?: number | null
 }
 
 export interface Product {

@@ -464,6 +464,11 @@ POST action=add_type — новый тип. DELETE del_tx / del_type.
 Заказы: создание с привязкой к пользователю, список, смена статусов.
 Статусы: new (по умолчанию при создании), done, archived, cancelled.
 cancelled/archived считаются "мёртвыми" — приёмка игнорирует их резервы.
+Привязка к заявке: orders.quiz_request_id (FK на quiz_requests).
+- POST принимает quiz_request_id (создание заказа из заявки, помечает заявку done).
+- PUT action=link_quiz / unlink_quiz — ручная привязка/отвязка заявки.
+- GET ?action=quiz_analytics — конверсия заявка→заказ, выручка, средний чек,
+  срок до заказа, разбивка по источникам (quiz_requests.source).
 
 ### reserves
 HTTP-обёртка над ядром складских резервов (warehouse_core.py).

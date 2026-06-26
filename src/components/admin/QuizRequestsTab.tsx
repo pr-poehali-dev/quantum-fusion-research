@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import RichTextEditor from "@/components/ui/rich-text-editor"
@@ -61,16 +62,44 @@ const fmtDate = (s: string) => {
 }
 
 export default function QuizRequestsTab() {
+  const navigate = useNavigate()
   const [view, setView] = useState<"requests" | "questions">("requests")
   const [requests, setRequests] = useState<QuizRequest[]>([])
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [editQ, setEditQ] = useState<Question | null>(null)
+  const [creatingOrder, setCreatingOrder] = useState<number | null>(null)
+  const [analytics, setAnalytics] = useState<{
+    total_leads: number; converted_leads: number; conversion_percent: number
+    orders_from_leads: number; revenue: number; avg_check: number; avg_hours_to_order: number
+    by_source: Array<{ source: string; count: number }>
+  } | null>(null)
+
+  // Создать заказ из заявки: переносим имя+телефон, привязываем заявку к заказу
+  const createOrderFromRequest = async (r: QuizRequest) => {
+    setCreatingOrder(r.id)
+    const res = await api.orders.create({
+      customer_name: r.name || "Из заявки",
+      customer_phone: r.phone || "",
+      customer_email: "",
+      order_type: "pc_build",
+      comment: r.extra_wishes || "",
+      items: [],
+      total: 0,
+      quiz_request_id: r.id,
+    })
+    setCreatingOrder(null)
+    if (res?.id) {
+      setRequests(rs => rs.map(x => x.id === r.id ? { ...x, status: "done" } : x))
+      navigate(`/admin/order/${res.id}`)
+    }
+  }
 
   const loadRequests = () => {
     setLoading(true)
     api.quiz.getRequests().then(d => { setRequests(d.requests || []); setLoading(false) }).catch(() => setLoading(false))
+    api.orders.quizAnalytics().then(setAnalytics).catch(() => {})
   }
   const loadQuestions = () => {
     setLoading(true)
@@ -127,6 +156,33 @@ export default function QuizRequestsTab() {
 
       {loading && <p className="py-10 text-center text-sm text-foreground/40">Загрузка...</p>}
 
+      {/* ─────────── АНАЛИТИКА ПО ЗАЯВКАМ ─────────── */}
+      {view === "requests" && analytics && (
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-xs text-foreground/50">Конверсия в заказы</p>
+            <p className="mt-0.5 text-xl font-bold text-primary">{analytics.conversion_percent}%</p>
+            <p className="text-[11px] text-foreground/40">{analytics.converted_leads} из {analytics.total_leads} заявок</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-xs text-foreground/50">Выручка из заявок</p>
+            <p className="mt-0.5 text-xl font-bold">{analytics.revenue.toLocaleString("ru-RU")} ₽</p>
+            <p className="text-[11px] text-foreground/40">{analytics.orders_from_leads} заказ(ов)</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-xs text-foreground/50">Средний чек</p>
+            <p className="mt-0.5 text-xl font-bold">{Math.round(analytics.avg_check).toLocaleString("ru-RU")} ₽</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-xs text-foreground/50">Срок до заказа</p>
+            <p className="mt-0.5 text-xl font-bold">{analytics.avg_hours_to_order < 48 ? `${analytics.avg_hours_to_order} ч` : `${Math.round(analytics.avg_hours_to_order / 24)} дн`}</p>
+            {analytics.by_source.length > 0 && (
+              <p className="text-[11px] text-foreground/40 truncate">{analytics.by_source.map(s => `${s.source}: ${s.count}`).join(", ")}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ─────────── ЗАЯВКИ ─────────── */}
       {!loading && view === "requests" && (
         requests.length === 0 ? (
@@ -148,6 +204,11 @@ export default function QuizRequestsTab() {
                       </div>
                     </button>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${st.cls}`}>{st.label}</span>
+                    <button onClick={() => createOrderFromRequest(r)} disabled={creatingOrder === r.id} style={{ cursor: "pointer" }}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                      <Icon name={creatingOrder === r.id ? "Loader" : "FilePlus"} size={14} />
+                      Создать заказ
+                    </button>
                     <select value={r.status} onChange={e => setStatus(r.id, e.target.value)} style={{ cursor: "pointer" }}
                       className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs">
                       {STATUS_OPTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}

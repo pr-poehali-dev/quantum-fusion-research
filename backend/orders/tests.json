@@ -5,6 +5,12 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200
+    },
+    {
+      "name": "Quiz analytics",
+      "method": "GET",
+      "path": "/?action=quiz_analytics",
+      "expectedStatus": 200
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
@@ -29,6 +29,23 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
   const [warrantyLoadingId, setWarrantyLoadingId] = useState<number | null>(null)
   const [syncingId, setSyncingId] = useState<number | null>(null)
   const [syncResultId, setSyncResultId] = useState<number | null>(null)
+
+  // Заявки из квиза — для ручной привязки к заказу
+  const [leads, setLeads] = useState<Array<{ id: number; name: string | null; phone: string | null; created_at: string }>>([])
+  const [linkingOrderId, setLinkingOrderId] = useState<number | null>(null)
+  useEffect(() => {
+    api.quiz.getRequests().then(d => setLeads(d.requests || [])).catch(() => {})
+  }, [])
+
+  const linkQuiz = async (orderId: number, quizId: number) => {
+    await api.orders.linkQuiz(orderId, quizId)
+    setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, quiz_request_id: quizId } : ord))
+    setLinkingOrderId(null)
+  }
+  const unlinkQuiz = async (orderId: number) => {
+    await api.orders.unlinkQuiz(orderId)
+    setOrders(o => o.map(ord => ord.id === orderId ? { ...ord, quiz_request_id: null } : ord))
+  }
 
   const syncOrder = async (orderId: number) => {
     setSyncingId(orderId)
@@ -194,6 +211,27 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       )}
                       {isReserved && (
                         <span className="rounded-full bg-orange-400/15 px-2.5 py-0.5 text-xs font-medium text-orange-400" title="Готовый ПК из наличия зарезервирован под этого клиента">В резерве</span>
+                      )}
+                      {order.quiz_request_id ? (
+                        <button onClick={() => unlinkQuiz(order.id)} style={{ cursor: "pointer" }}
+                          title="Заказ связан с заявкой. Нажмите, чтобы отвязать"
+                          className="flex items-center gap-1 rounded-full bg-blue-400/15 px-2.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-blue-400/25 transition-colors">
+                          Из заявки #{order.quiz_request_id}<Icon name="X" size={11} />
+                        </button>
+                      ) : linkingOrderId === order.id ? (
+                        <select autoFocus defaultValue="" onChange={e => e.target.value && linkQuiz(order.id, Number(e.target.value))}
+                          onBlur={() => setLinkingOrderId(null)} style={{ cursor: "pointer" }}
+                          className="rounded-full border border-border bg-background px-2 py-0.5 text-xs">
+                          <option value="" disabled>Выберите заявку…</option>
+                          {leads.map(l => (
+                            <option key={l.id} value={l.id}>#{l.id} {l.name || "—"} · {l.phone || "—"}</option>
+                          ))}
+                        </select>
+                      ) : leads.length > 0 && (
+                        <button onClick={() => setLinkingOrderId(order.id)} style={{ cursor: "pointer" }}
+                          className="flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
+                          <Icon name="Link2" size={11} />Привязать заявку
+                        </button>
                       )}
                       {/* Предоплата неактуальна для сборок из свободной продажи (catalog) */}
                       {order.status !== "cancelled" && !order.is_stock_sale && (
