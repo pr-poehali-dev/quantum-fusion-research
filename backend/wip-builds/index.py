@@ -432,13 +432,8 @@ def handler(event: dict, context) -> dict:
                     (cust_name[:255], cust_phone[:50], json.dumps(items), total_snapshot)
                 )
                 new_order_id = cur.fetchone()[0]
-                # Номер заказа-сборки: всегда префикс PC (отдельная нумерация от HW)
-                cur.execute(
-                    f"SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(display_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
-                    f"FROM {SCHEMA}.orders WHERE display_number LIKE 'PC%'"
-                )
-                _disp_num = (cur.fetchone()[0] or 0) + 1
-                _display_number = "PC" + str(_disp_num).zfill(5)
+                # Сквозная нумерация: номер заказа-сборки = PC + внутренний id
+                _display_number = "PC" + str(new_order_id).zfill(5)
                 cur.execute(
                     f"UPDATE {SCHEMA}.orders SET display_number = %s WHERE id = %s",
                     (_display_number, new_order_id)

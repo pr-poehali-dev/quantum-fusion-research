@@ -213,15 +213,10 @@ def handler(event: dict, context) -> dict:
                     (quiz_request_id,)
                 )
 
-            # Отдельная нумерация по типу заказа: PC — сборки, HW — заказы железа
+            # Сквозная нумерация: номер = внутренний id. Префикс PC — сборки,
+            # HW — заказы железа (RMA-замены нумеруются в rma).
             prefix = "PC" if body.get("order_type") == "pc_build" else "HW"
-            cur.execute(
-                "SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(display_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
-                "FROM orders WHERE display_number LIKE %s",
-                (prefix + "%",)
-            )
-            disp_num = (cur.fetchone()[0] or 0) + 1
-            display_number = prefix + str(disp_num).zfill(5)
+            display_number = prefix + str(order_id).zfill(5)
             cur.execute("UPDATE orders SET display_number=%s WHERE id=%s", (display_number, order_id))
 
             # Общее уведомление — только для НЕ-сборок (железо/корзина).

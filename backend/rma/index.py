@@ -344,6 +344,11 @@ def handler(event: dict, context) -> dict:
                         (orig_name, orig_phone, orig_email, item_payload, order_total, new_comment),
                     )
                     replacement_order_id = cur.fetchone()[0]
+                    # Сквозная нумерация: заказ-замена по гарантии → RMA + id
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.orders SET display_number = %s WHERE id = %s",
+                        ("RMA" + str(replacement_order_id).zfill(5), replacement_order_id),
+                    )
 
                     # ── Сразу резервируем товар замены в рамках той же транзакции ──
                     if rep_pid:

@@ -556,11 +556,9 @@ def menu(cur, chat_id, greeting=False):
 
 # ─────────────────────────── ОФОРМЛЕНИЕ ЗАКАЗА ───────────────────────────
 
-def gen_display_number(cur):
-    cur.execute(
-        "SELECT COALESCE(MAX(CAST(NULLIF(regexp_replace(display_number, '\\D', '', 'g'), '') AS INTEGER)), 0) "
-        f"FROM {SCHEMA}.orders WHERE display_number LIKE %s", ("HW%",))
-    return "HW" + str((cur.fetchone()[0] or 0) + 1).zfill(5)
+def gen_display_number(cur, order_id):
+    # Сквозная нумерация: номер = внутренний id, заказы из бота — всегда HW
+    return "HW" + str(order_id).zfill(5)
 
 
 def create_order(cur, chat_id, name, phone, username):
@@ -578,7 +576,7 @@ def create_order(cur, chat_id, name, phone, username):
             VALUES (%s,%s,%s,'parts',%s,%s,%s,'new',NOW(),NOW()) RETURNING id""",
         (name, phone, contact, json.dumps(items), total, comment))
     order_id = cur.fetchone()[0]
-    display_number = gen_display_number(cur)
+    display_number = gen_display_number(cur, order_id)
     cur.execute(f"UPDATE {SCHEMA}.orders SET display_number=%s WHERE id=%s",
                 (display_number, order_id))
 
