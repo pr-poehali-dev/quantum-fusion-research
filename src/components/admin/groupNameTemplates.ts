@@ -131,11 +131,11 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
       { key: "type", label: "Тип охлаждения", input: "select", attrCode: "cooler_type", required: true,
         options: ["Воздушное","СЖО"] },
       { key: "model", label: "Модель", hint: "AK620 / LS720", input: "text", attrCode: "model", required: true, suggest: true },
-      // Размер радиатора — только для СЖО (ветвление по type)
-      { key: "rad", label: "Размер радиатора (СЖО)", input: "select", attrCode: "rad_size",
-        options: ["240","280","360","420"] },
       { key: "color", label: "Цвет", input: "select", attrCode: "color",
         options: ["Чёрный","Белый","Серебристый","RGB"] },
+      // Размер радиатора — только для СЖО (ветвление по type), в названии идёт последним
+      { key: "rad", label: "Размер радиатора (СЖО)", input: "select", attrCode: "rad_size",
+        options: ["240","280","360","420"] },
     ],
   },
 ]
