@@ -78,6 +78,12 @@ const EMPTY_FORM = {
   reason: "",
   source_type: "order",
   replace_from_stock: false,
+  // Замена на ДРУГОЙ товар + ручная доплата
+  replace_other: false,
+  replacement_group_id: null as number | null,
+  replacement_product_id: null as number | null,
+  replacement_name: "",
+  surcharge: 0,
 }
 
 export default function RmaTab() {
@@ -101,6 +107,12 @@ export default function RmaTab() {
   const [searchResults, setSearchResults] = useState<WhGroup[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // Поиск + остатки для товара ЗАМЕНЫ (другой товар)
+  const [replSearchQ, setReplSearchQ] = useState("")
+  const [replSearchResults, setReplSearchResults] = useState<WhGroup[]>([])
+  const [replSearchLoading, setReplSearchLoading] = useState(false)
+  const [replSearchOpen, setReplSearchOpen] = useState(false)
+  const [replStockQty, setReplStockQty] = useState<{ on_hand: number; reserved: number; free: number } | null>(null)
   // Уведомление после создания
   const [successNotice, setSuccessNotice] = useState<{ rma_id: number; replacement_order_id: number | null } | null>(null)
 
@@ -197,6 +209,35 @@ export default function RmaTab() {
     if (checked && form.group_id) loadStockQty(form.group_id)
   }
 
+  // ── Замена на ДРУГОЙ товар ──
+  // Поиск группы-замены по складу
+  useEffect(() => {
+    if (!replSearchOpen) return
+    if (!replSearchQ || replSearchQ.length < 2) { setReplSearchResults([]); return }
+    let cancelled = false
+    setReplSearchLoading(true)
+    api.warehouse.getGroups({ search: replSearchQ, limit: "10", offset: "0" })
+      .then(d => { if (!cancelled) { setReplSearchResults(d.groups || []); setReplSearchLoading(false) } })
+      .catch(() => { if (!cancelled) setReplSearchLoading(false) })
+    return () => { cancelled = true }
+  }, [replSearchQ, replSearchOpen])
+
+  const selectReplacementGroup = async (g: WhGroup) => {
+    setForm(f => ({ ...f, replacement_group_id: g.id, replacement_product_id: g.product_id, replacement_name: g.name }))
+    setReplSearchQ(g.name)
+    setReplSearchOpen(false)
+    setReplSearchResults([])
+    setReplStockQty(null)
+    const res = await api.rma.stockQty(g.id)
+    if (!res.error) setReplStockQty(res)
+  }
+
+  const toggleReplaceOther = (checked: boolean) => {
+    setForm(f => ({ ...f, replace_other: checked,
+      ...(checked ? {} : { replacement_group_id: null, replacement_product_id: null, replacement_name: "", surcharge: 0 }) }))
+    if (!checked) { setReplSearchQ(""); setReplStockQty(null) }
+  }
+
   const resetForm = () => {
     setForm({ ...EMPTY_FORM })
     setOrderComponents([])
@@ -206,6 +247,10 @@ export default function RmaTab() {
     setSearchQ("")
     setSearchResults([])
     setSearchOpen(false)
+    setReplSearchQ("")
+    setReplSearchResults([])
+    setReplSearchOpen(false)
+    setReplStockQty(null)
   }
 
   const submitCreate = async () => {
@@ -221,6 +266,11 @@ export default function RmaTab() {
       reason: form.reason,
       source_type: form.source_type,
       replace_from_stock: form.replace_from_stock,
+      // Замена на другой товар + доплата (только если включено)
+      replacement_group_id: form.replace_other ? form.replacement_group_id : null,
+      replacement_product_id: form.replace_other ? form.replacement_product_id : null,
+      replacement_name: form.replace_other ? form.replacement_name : "",
+      surcharge: form.replace_other ? form.surcharge : 0,
     })
     setSaving(false)
     if (res.ok) {
@@ -609,11 +659,96 @@ export default function RmaTab() {
                     )}
                   </div>
                 )}
+
+                {/* ── Заменить на ДРУГОЙ товар + доплата ── */}
+                {form.replace_from_stock && (
+                  <div className="mt-3 border-t border-border/60 pt-3">
+                    <label className="flex items-center gap-3 cursor-pointer" style={{ cursor: "pointer" }}>
+                      <input type="checkbox" checked={form.replace_other}
+                        onChange={e => toggleReplaceOther(e.target.checked)}
+                        className="h-4 w-4 rounded border-border accent-primary" />
+                      <div>
+                        <span className="text-sm font-medium text-foreground">Заменить на другой товар</span>
+                        <p className="text-xs text-foreground/50 mt-0.5">Выдать клиенту другую позицию с доплатой или без</p>
+                      </div>
+                    </label>
+
+                    {form.replace_other && (
+                      <div className="mt-3 pl-7 space-y-3">
+                        {/* Поиск товара замены */}
+                        <div className="relative">
+                          <label className="mb-1 block text-xs text-foreground/60">Товар на замену</label>
+                          <input
+                            value={replSearchQ}
+                            onChange={e => { setReplSearchQ(e.target.value); setReplSearchOpen(true) }}
+                            onFocus={() => setReplSearchOpen(true)}
+                            placeholder="Поиск по складу..."
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                            style={{ cursor: "text" }}
+                          />
+                          {replSearchOpen && replSearchQ.length >= 2 && (
+                            <div className="absolute z-20 mt-1 w-full rounded-xl border border-border bg-card shadow-lg overflow-hidden">
+                              {replSearchLoading ? (
+                                <div className="flex items-center gap-2 px-4 py-3 text-foreground/40 text-sm">
+                                  <Icon name="Loader" size={14} className="animate-spin" /> Ищу...
+                                </div>
+                              ) : replSearchResults.length > 0 ? (
+                                <div className="max-h-60 overflow-y-auto divide-y divide-border/50">
+                                  {replSearchResults.map(g => (
+                                    <button key={g.id} type="button" onClick={() => selectReplacementGroup(g)}
+                                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors"
+                                      style={{ cursor: "pointer" }}>
+                                      <div className="min-w-0">
+                                        <p className="font-medium truncate">{g.name}</p>
+                                        <p className="text-xs text-foreground/40 font-mono truncate">{g.sku}{g.category ? ` · ${g.category}` : ""}</p>
+                                      </div>
+                                      <span className="shrink-0 text-xs text-foreground/50">в наличии: {g.qty_total - g.qty_reserved}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="px-4 py-3 text-center text-sm text-foreground/40">Ничего не найдено</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Остатки товара замены */}
+                        {form.replacement_group_id && replStockQty && (
+                          <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${replStockQty.free > 0 ? "border-green-400/30 bg-green-400/5 text-green-400" : "border-red-400/30 bg-red-400/5 text-red-400"}`}>
+                            <Icon name={replStockQty.free > 0 ? "PackageCheck" : "PackageX"} size={14} />
+                            {replStockQty.free > 0
+                              ? `На складе: ${replStockQty.free} шт. свободно`
+                              : `Нет свободных единиц (всего ${replStockQty.on_hand}, все в резерве)`}
+                          </div>
+                        )}
+
+                        {/* Доплата */}
+                        <div>
+                          <label className="mb-1 block text-xs text-foreground/60">Доплата клиента, ₽ <span className="text-foreground/30">(0 — бесплатно)</span></label>
+                          <input
+                            type="number" min={0} value={form.surcharge}
+                            onChange={e => setForm(f => ({ ...f, surcharge: Math.max(0, Number(e.target.value)) }))}
+                            className="w-40 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                            style={{ cursor: "text" }}
+                          />
+                        </div>
+
+                        {form.replacement_name && (
+                          <p className="text-xs text-foreground/50">
+                            На замену: <span className="font-medium text-foreground">{form.replacement_name}</span>
+                            {form.surcharge > 0 ? ` · доплата ${form.surcharge.toLocaleString("ru-RU")} ₽` : " · без доплаты"}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button onClick={submitCreate}
-                  disabled={saving || !form.item_name.trim() || !form.reason.trim()}
+                  disabled={saving || !form.item_name.trim() || !form.reason.trim() || (form.replace_other && !form.replacement_product_id)}
                   className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   style={{ cursor: "pointer" }}>
                   {saving ? "Создание..." : "Создать RMA"}

@@ -292,6 +292,20 @@ def handler(event: dict, context) -> dict:
             replace_from_stock = bool(body.get("replace_from_stock", False))
             replacement_order_id = None
 
+            # Замена на ДРУГОЙ товар (опц.): свой product_id/group_id/название +
+            # ручная доплата. Если товар замены не задан — меняем на тот же товар.
+            repl_product_id = body.get("replacement_product_id")
+            repl_group_id = body.get("replacement_group_id")
+            repl_name = (body.get("replacement_name") or "").strip()
+            repl_slot = body.get("replacement_slot") or ""
+            surcharge = float(body.get("surcharge") or 0)
+
+            # Что реально пойдёт в заказ-замену: товар замены или исходный товар.
+            rep_pid = repl_product_id if repl_product_id else product_id
+            rep_name = repl_name if repl_name else item_name
+            rep_slot = repl_slot if repl_product_id else slot
+            rep_price = surcharge if repl_product_id else 0
+
             # ── Замена со склада: создаём новый заказ-«замена по гарантии» ──
             if replace_from_stock and order_id:
                 # Берём данные исходного заказа
@@ -304,35 +318,36 @@ def handler(event: dict, context) -> dict:
                 if orig:
                     orig_name, orig_phone, orig_email, orig_comment = orig
                     padded = str(order_id).zfill(5)
-                    new_comment = f"Замена по гарантии (заказ #{padded}). {orig_comment or ''}".strip()
-                    new_name = f"Заказ #{padded} — замена по гарантии"
+                    note_extra = f" → {rep_name}" if repl_product_id else ""
+                    new_comment = f"Замена по гарантии (заказ #{padded}){note_extra}. {orig_comment or ''}".strip()
                     item_payload = json.dumps([{
                         "item_type": "product",
-                        "id": product_id,
-                        "name": item_name,
+                        "id": rep_pid,
+                        "name": rep_name,
                         "quantity": qty,
-                        "price": 0,
-                    }]) if product_id else json.dumps([])
+                        "price": rep_price,
+                    }]) if rep_pid else json.dumps([])
+                    order_total = rep_price * qty
 
                     cur.execute(
                         f"INSERT INTO {SCHEMA}.orders "
                         f"(customer_name, customer_phone, customer_email, order_type, "
                         f"items, total, comment, status, created_at, updated_at) "
-                        f"VALUES (%s, %s, %s, 'parts', %s, 0, %s, 'processing', NOW(), NOW()) "
+                        f"VALUES (%s, %s, %s, 'parts', %s, %s, %s, 'processing', NOW(), NOW()) "
                         f"RETURNING id",
-                        (orig_name, orig_phone, orig_email, item_payload, new_comment),
+                        (orig_name, orig_phone, orig_email, item_payload, order_total, new_comment),
                     )
                     replacement_order_id = cur.fetchone()[0]
 
-                    # ── Сразу резервируем товар в рамках той же транзакции ──
-                    if product_id:
+                    # ── Сразу резервируем товар замены в рамках той же транзакции ──
+                    if rep_pid:
                         import warehouse_core as wc
                         wc.handle_reserve_and_purchase(cur, replacement_order_id, [{
-                            "product_id": int(product_id),
+                            "product_id": int(rep_pid),
                             "qty": int(qty),
-                            "slot": slot or "product",
+                            "slot": rep_slot or "product",
                         }])
-                        print(f"RMA: резерв по заказу-замене #{replacement_order_id}, product={product_id}, qty={qty}")
+                        print(f"RMA: резерв по заказу-замене #{replacement_order_id}, product={rep_pid}, qty={qty}, доплата={rep_price}")
 
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_rma "
