@@ -294,6 +294,13 @@ export default function RmaTab() {
     setDetailLoading(false)
   }
 
+  // Автооткрытие RMA по ?id= в URL (переход из карточки заказа)
+  useEffect(() => {
+    const qid = new URLSearchParams(window.location.search).get("id")
+    if (qid && !isNaN(Number(qid))) openDetail(Number(qid))
+     
+  }, [])
+
   const updateStatus = async (id: number, status: string) => {
     await api.rma.update({ id, status })
     setItems(prev => prev.map(r => r.id === id

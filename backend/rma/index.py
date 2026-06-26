@@ -103,7 +103,13 @@ def handler(event: dict, context) -> dict:
         # ── Список RMA-записей ───────────────────────────────────────────────
         if action == "list" and method == "GET":
             status_filter = params.get("status", "")
-            where = f"WHERE r.status = '{status_filter}'" if status_filter else ""
+            order_filter = params.get("order_id", "")
+            conds = []
+            if status_filter:
+                conds.append("r.status = %s" % ("'" + status_filter.replace("'", "''") + "'"))
+            if order_filter and str(order_filter).isdigit():
+                conds.append(f"r.order_id = {int(order_filter)}")
+            where = ("WHERE " + " AND ".join(conds)) if conds else ""
             cur.execute(
                 f"SELECT r.id, r.order_id, r.group_id, r.product_id, r.slot, r.item_name, "
                 f"r.qty, r.reason, r.source_type, r.status, r.supplier_note, r.resolution, "

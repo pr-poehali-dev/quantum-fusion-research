@@ -328,6 +328,7 @@ export const api = {
   },
   rma: {
     list: (status?: string) => fetch(`${URLS.rma}?action=list${status ? `&status=${status}` : ""}`).then(r => r.json()),
+    listByOrder: (orderId: number) => fetch(`${URLS.rma}?action=list&order_id=${orderId}`).then(r => r.json()),
     get: (id: number) => fetch(`${URLS.rma}?action=get&id=${id}`).then(r => r.json()),
     stats: () => fetch(`${URLS.rma}?action=stats`).then(r => r.json()),
     orderComponents: (orderId: number) => fetch(`${URLS.rma}?action=order_components&order_id=${orderId}`).then(r => r.json()),

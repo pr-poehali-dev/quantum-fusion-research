@@ -16,6 +16,11 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   cancelled: { label: "Отменён", color: "text-foreground/50 bg-muted" },
 }
 
+const RMA_STATUS_LABELS: Record<string, string> = {
+  new: "Новый", to_supplier: "У поставщика", in_progress: "В работе",
+  resolved: "Решён", closed: "Закрыт",
+}
+
 const ITEM_STATUS: Record<string, { label: string; color: string; icon: string }> = {
   reserved:  { label: "В резерве",  color: "text-yellow-400 bg-yellow-400/10", icon: "Clock" },
   issued:    { label: "Выдан",      color: "text-green-400 bg-green-400/10",   icon: "CheckCircle" },
@@ -99,6 +104,8 @@ export default function OrderProcessPage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  // Гарантийные случаи (RMA) по этому заказу
+  const [rmaList, setRmaList] = useState<Array<{ id: number; item_name: string; status: string; status_label?: string; qty: number; created_at: string }>>([])
 
   // Модалка выдачи заказа
   const [showWriteoff, setShowWriteoff] = useState(false)
@@ -183,6 +190,12 @@ export default function OrderProcessPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Подгружаем гарантийные случаи (RMA) по этому заказу
+  useEffect(() => {
+    if (!id) return
+    api.rma.listByOrder(Number(id)).then(d => setRmaList(d.rma || [])).catch(() => {})
+  }, [id])
 
   const callPut = async (action: string, itemIdx: number, extra: Record<string, unknown> = {}) => {
     setSaving(`${action}-${itemIdx}`)
@@ -473,6 +486,31 @@ export default function OrderProcessPage() {
             </div>
           </div>
         </div>
+
+        {/* Баннер: гарантийные случаи (RMA) по заказу */}
+        {rmaList.length > 0 && (
+          <div className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Icon name="ShieldAlert" size={16} className="text-orange-400" />
+              <span className="text-sm font-medium text-foreground">Гарантийные случаи по заказу ({rmaList.length})</span>
+            </div>
+            <div className="space-y-1.5">
+              {rmaList.map(r => (
+                <button key={r.id} onClick={() => navigate(`/admin/rma?id=${r.id}`)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-orange-400/20 bg-card/40 px-3 py-2 text-left text-sm hover:bg-orange-400/10 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground truncate">{r.item_name}{r.qty > 1 ? ` ×${r.qty}` : ""}</p>
+                    <p className="text-xs text-foreground/40">
+                      RMA #{r.id} · {r.status_label || RMA_STATUS_LABELS[r.status] || r.status} · {new Date(r.created_at).toLocaleDateString("ru-RU")}
+                    </p>
+                  </div>
+                  <Icon name="ChevronRight" size={15} className="shrink-0 text-orange-400/60" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Панель добавления товара */}
         {showAddItem && (
