@@ -36,7 +36,7 @@ const SLOT_NAMES: Record<string, string> = {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
-// Самая давняя партия товара (FIFO) с остатком/резервом — «залежавшийся»
+// Самая давняя партия с серийниками в SN-архиве — «залежавшийся» товар
 interface OldestSupply {
   group_id: number
   name: string
@@ -45,7 +45,7 @@ interface OldestSupply {
   qty: number
   qty_reserved: number
   purchase_date: string | null
-  serial: string | null
+  serials: string[]
 }
 
 const fmtDate = (s: string | null) => {
@@ -60,8 +60,10 @@ export default function OrderSheet() {
   const [checked, setChecked] = useState<Record<number, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  // Залежавшийся товар: product_id → самая давняя партия с серийником
+  // Залежавшийся товар: product_id → самая давняя партия с серийниками
   const [oldest, setOldest] = useState<Record<string, OldestSupply>>({})
+  // Раскрытый список серийников по индексу позиции
+  const [openSerials, setOpenSerials] = useState<Record<number, boolean>>({})
   const isParts = build?.name?.startsWith("Заказ комплектующих")
 
   useEffect(() => {
@@ -176,15 +178,36 @@ export default function OrderSheet() {
                   <p className={`text-sm font-medium leading-snug transition-colors ${isChecked ? "text-foreground/50 line-through" : "text-foreground"}`}>
                     {comp.name}
                   </p>
-                  {/* Бейдж залежавшегося товара: самая давняя партия + серийник */}
-                  {comp.source_id && oldest[String(comp.source_id)] && (() => {
+                  {/* Бейдж залежавшегося товара: самая давняя партия с серийниками */}
+                  {comp.source_id && oldest[String(comp.source_id)]?.serials?.length > 0 && (() => {
                     const o = oldest[String(comp.source_id)]
+                    const isOpen = !!openSerials[i]
                     return (
-                      <div className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600 dark:text-amber-400">
-                        <Icon name="Clock" size={12} />
-                        <span className="font-medium">Залежался</span>
-                        {o.purchase_date && <span className="text-amber-600/70 dark:text-amber-400/70">с {fmtDate(o.purchase_date)}</span>}
-                        {o.serial && <span className="font-mono">S/N: {o.serial}</span>}
+                      <div className="mt-1">
+                        <span role="button" tabIndex={0}
+                          onClick={e => { e.stopPropagation(); setOpenSerials(s => ({ ...s, [i]: !s[i] })) }}
+                          onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); setOpenSerials(s => ({ ...s, [i]: !s[i] })) } }}
+                          className="inline-flex flex-wrap items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                          style={{ cursor: "pointer" }}>
+                          <Icon name="Clock" size={12} />
+                          <span className="font-medium">Залежался</span>
+                          {o.purchase_date && <span className="text-amber-600/70 dark:text-amber-400/70">с {fmtDate(o.purchase_date)}</span>}
+                          <span className="font-mono">S/N: {o.serials[0]}</span>
+                          {o.serials.length > 1 && <span className="text-amber-600/70 dark:text-amber-400/70">+{o.serials.length - 1}</span>}
+                          <Icon name={isOpen ? "ChevronUp" : "ChevronDown"} size={12} />
+                        </span>
+                        {isOpen && (
+                          <div className="mt-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+                            <p className="mb-1 text-[10px] uppercase tracking-wide text-amber-600/70 dark:text-amber-400/70">
+                              Серийники партии от {fmtDate(o.purchase_date)} · {o.serials.length} шт.
+                            </p>
+                            <div className="flex flex-col gap-0.5">
+                              {o.serials.map((sn, j) => (
+                                <span key={j} className="font-mono text-[11px] text-foreground/70">{j + 1}. {sn}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })()}
