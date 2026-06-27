@@ -773,6 +773,19 @@ def handler(event: dict, context) -> dict:
                 conn.commit()
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
+            if action == "set_customer":
+                # Редактирование данных клиента: имя и телефон
+                name = (body.get("customer_name") or "").strip()
+                phone = (body.get("customer_phone") or "").strip()
+                if not name or not phone:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Имя и телефон обязательны"})}
+                cur.execute(
+                    "UPDATE orders SET customer_name=%s, customer_phone=%s, updated_at=NOW() WHERE id=%s",
+                    (name[:255], phone[:50], order_id),
+                )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "customer_name": name, "customer_phone": phone})}
+
             if action == "set_prepayment":
                 # Предоплата: по проценту или по сумме (второе пересчитывается)
                 total = float(row[1]) if row[1] else 0

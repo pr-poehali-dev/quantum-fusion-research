@@ -170,8 +170,9 @@ class Doc:
 
 
 def build_contract(d, order, company):
-    order_id, cust_name, cust_phone, created_at = order["id"], order["name"], order["phone"], order["created_at"]
-    year_end = created_at.year if created_at else datetime.now().year
+    order_id, cust_name, cust_phone = order["id"], order["name"], order["phone"]
+    doc_date = order["doc_date"]   # сегодняшняя дата документа
+    year_end = doc_date.year
 
     # ── Шапка ──
     d.space(2)
@@ -183,7 +184,7 @@ def build_contract(d, order, company):
     d.y -= 10
     d.c.setFont("dj", 9.5); d.c.setFillGray(0.2)
     d.c.drawString(d.lm, d.y, f"г. {company['city']}")
-    d.c.drawRightString(d.W - d.rm, d.y, date_ru(created_at))
+    d.c.drawRightString(d.W - d.rm, d.y, date_ru(doc_date))
     d.c.setFillGray(0)
     d.y -= 14
     d.text(f"{company['supplier_name']}, в лице {company['supplier_person']}, именуемый в дальнейшем "
@@ -328,16 +329,16 @@ def build_contract(d, order, company):
 
 def build_spec(d, order, company):
     d._newpage()
-    order_id, created_at = order["id"], order["created_at"]
+    order_id, doc_date = order["id"], order["doc_date"]
     d.c.setFont("dj", 9.5); d.c.setFillGray(0.2)
     d.c.drawRightString(d.W - d.rm, d.y, "Приложение №1")
     d.y -= 13
     d.c.drawRightString(d.W - d.rm, d.y, f"к Договору поставки компьютеров № {order_id}")
     d.y -= 13
-    d.c.drawRightString(d.W - d.rm, d.y, f"от {date_ru(created_at)}")
+    d.c.drawRightString(d.W - d.rm, d.y, f"от {date_ru(doc_date)}")
     d.c.setFillGray(0)
     d.space(10)
-    ds = created_at.strftime("%d.%m.%Y") if created_at else datetime.now().strftime("%d.%m.%Y")
+    ds = doc_date.strftime("%d.%m.%Y")
     d.text(f"СПЕЦИФИКАЦИЯ №1 от {ds}г.", font="djB", size=12)
     d.space(4)
 
@@ -507,7 +508,7 @@ def handler(event: dict, context) -> dict:
 
     order = {
         "id": int(order_id), "name": cust_name or "—", "phone": cust_phone or "",
-        "created_at": created_at, "spec_rows": spec_rows, "total": total_val,
+        "doc_date": datetime.now(), "spec_rows": spec_rows, "total": total_val,
         "prepay": prepay_val, "remaining": remaining_val,
     }
 

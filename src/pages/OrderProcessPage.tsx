@@ -121,6 +121,11 @@ export default function OrderProcessPage() {
   // Договор поставки — выбор юрлица
   const [contractLoading, setContractLoading] = useState(false)
   const [contractEntities, setContractEntities] = useState<{ id: number; title: string; is_default: boolean }[] | null>(null)
+  // Редактирование данных клиента (имя/телефон)
+  const [editCustomer, setEditCustomer] = useState(false)
+  const [custName, setCustName] = useState("")
+  const [custPhone, setCustPhone] = useState("")
+  const [custSaving, setCustSaving] = useState(false)
 
   // Синхронизация заказа ПК
   const [syncLoading, setSyncLoading] = useState(false)
@@ -191,6 +196,22 @@ export default function OrderProcessPage() {
     const list = d?.entities || []
     if (list.length <= 1) downloadContract(list[0]?.id)
     else setContractEntities(list)
+  }
+
+  // Редактирование данных клиента
+  const startEditCustomer = () => {
+    setCustName(order?.customer_name || "")
+    setCustPhone(order?.customer_phone || "")
+    setEditCustomer(true)
+  }
+  const saveCustomer = async () => {
+    if (!custName.trim() || !custPhone.trim()) { alert("Имя и телефон обязательны"); return }
+    setCustSaving(true)
+    const res = await api.orders.updateItem({ id: Number(id), action: "set_customer", customer_name: custName.trim(), customer_phone: custPhone.trim() })
+    setCustSaving(false)
+    if (res?.error) { alert(res.error); return }
+    setEditCustomer(false)
+    await load()
   }
 
   // Поиск товаров для замены
@@ -448,9 +469,34 @@ export default function OrderProcessPage() {
           <div className="flex flex-wrap gap-6">
             <div>
               <p className="text-xs text-foreground/40 mb-1">Покупатель</p>
-              <p className="font-medium">{order.customer_name}</p>
-              <p className="text-sm text-foreground/60">{order.customer_phone}</p>
-              {order.customer_email && <p className="text-sm text-foreground/50">{order.customer_email}</p>}
+              {editCustomer ? (
+                <div className="flex flex-col gap-1.5">
+                  <input value={custName} onChange={e => setCustName(e.target.value)} placeholder="Имя клиента"
+                    className="w-56 rounded border border-border bg-background px-2 py-1 text-sm focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                  <input value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="Телефон"
+                    className="w-56 rounded border border-border bg-background px-2 py-1 text-sm focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={saveCustomer} disabled={custSaving}
+                      className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50" style={{ cursor: "pointer" }}>
+                      <Icon name={custSaving ? "Loader" : "Check"} size={12} className={custSaving ? "animate-spin" : ""} />Сохранить
+                    </button>
+                    <button onClick={() => setEditCustomer(false)}
+                      className="rounded border border-border px-2.5 py-1 text-xs text-foreground/60 hover:text-foreground" style={{ cursor: "pointer" }}>Отмена</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="group flex items-start gap-2">
+                  <div>
+                    <p className="font-medium">{order.customer_name}</p>
+                    <p className="text-sm text-foreground/60">{order.customer_phone}</p>
+                    {order.customer_email && <p className="text-sm text-foreground/50">{order.customer_email}</p>}
+                  </div>
+                  <button onClick={startEditCustomer} title="Изменить данные клиента"
+                    className="mt-0.5 rounded p-1 text-foreground/30 hover:bg-muted hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Pencil" size={13} />
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <p className="text-xs text-foreground/40 mb-1">Тип заказа</p>
