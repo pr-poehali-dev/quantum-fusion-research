@@ -67,18 +67,37 @@ def is_admin(cur, headers, params, body):
     return False
 
 
+# Кэшируем S3-клиент между файлами/вызовами (создание клиента дорогое — экономим время ingest)
+_S3 = None
+
+
+def _s3():
+    global _S3
+    if _S3 is None:
+        _S3 = boto3.client(
+            "s3",
+            endpoint_url="https://bucket.poehali.dev",
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            config=Config(signature_version="s3v4"),
+        )
+    return _S3
+
+
+_CONTENT_TYPES = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
+    "gif": "image/gif", "html": "text/html; charset=utf-8", "htm": "text/html; charset=utf-8",
+    "txt": "text/plain; charset=utf-8", "log": "text/plain; charset=utf-8",
+    "csv": "text/csv; charset=utf-8", "json": "application/json",
+}
+
+
 def upload_report(file_name, b64):
     raw = base64.b64decode(b64)
-    ext = (file_name.rsplit(".", 1)[-1] if "." in file_name else "bin")[:12]
+    ext = (file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "bin")[:12]
     key = f"stress_reports/{uuid.uuid4().hex}.{ext}"
-    s3 = boto3.client(
-        "s3",
-        endpoint_url="https://bucket.poehali.dev",
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        config=Config(signature_version="s3v4"),
-    )
-    s3.put_object(Bucket="files", Key=key, Body=raw, ContentType="application/octet-stream")
+    content_type = _CONTENT_TYPES.get(ext, "application/octet-stream")
+    _s3().put_object(Bucket="files", Key=key, Body=raw, ContentType=content_type)
     url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
     return url, len(raw)
 
