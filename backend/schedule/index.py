@@ -197,38 +197,58 @@ def handler(event: dict, context) -> dict:
                 notify_managers("\n".join(lines) + _cal_link)
                 sent.append("pickups")
 
-            # 2) ЗАДАЧИ НА СЕГОДНЯ (calendar_events kind='task', не done) + ответственные
+            # 2) ВСЕ СОБЫТИЯ И ЗАДАЧИ КАЛЕНДАРЯ НА СЕГОДНЯ (kind='task' и 'event').
+            # Задачи показываем без выполненных (status='done'); события — всегда.
             cur.execute(
-                f"SELECT ce.id, ce.title, ce.description, ce.origin_date, ce.event_date, "
+                f"SELECT ce.id, ce.title, ce.description, ce.origin_date, ce.event_date, ce.kind, "
                 f"COALESCE(json_agg(json_build_object('name', e.name, 'tag', e.telegram_tag)) "
                 f"  FILTER (WHERE e.id IS NOT NULL), '[]') AS emps "
                 f"FROM {SCHEMA}.calendar_events ce "
                 f"LEFT JOIN {SCHEMA}.calendar_event_employees cee ON cee.event_id = ce.id "
                 f"LEFT JOIN {SCHEMA}.employees e ON e.id = cee.employee_id "
-                f"WHERE ce.kind='task' AND ce.status <> 'done' AND ce.event_date = CURRENT_DATE "
-                f"GROUP BY ce.id ORDER BY ce.id"
+                f"WHERE ce.event_date = CURRENT_DATE "
+                f"  AND NOT (ce.kind = 'task' AND ce.status = 'done') "
+                f"GROUP BY ce.id ORDER BY ce.kind, ce.id"
             )
-            tasks = cur.fetchall()
-            if tasks:
-                blocks = ["📋 <b>Задачи на сегодня</b>"]
-                for _id, title, descr, origin_date, event_date, emps_json in tasks:
+            cal_rows = cur.fetchall()
+            if cal_rows:
+                blocks = ["📋 <b>События и задачи на сегодня</b>"]
+                for _id, title, descr, origin_date, event_date, kind, emps_json in cal_rows:
                     emps = json.loads(emps_json) if isinstance(emps_json, str) else (emps_json or [])
                     resp = fmt_resp([(e.get("name"), e.get("tag")) for e in emps])
                     # Дни простоя задачи (xN) — если переносилась с прошлых дней
                     days_idle = 0
-                    if origin_date and event_date:
+                    if kind == "task" and origin_date and event_date:
                         days_idle = (event_date - origin_date).days + 1
                     _x = f" <b>×{days_idle}</b>" if days_idle > 1 else ""
-                    block = f"\n━━━━━━━━━━\n• <b>{title}</b>{_x}"
+                    _ico = "📅" if kind == "event" else "•"
+                    block = f"\n━━━━━━━━━━\n{_ico} <b>{title}</b>{_x}"
                     if descr:
                         block += f"\n{descr}"
                     if resp:
                         block += f"\nОтветственные: {resp}"
                     blocks.append(block)
                 notify_tasks("\n".join(blocks) + _cal_link)
-                sent.append("tasks")
+                sent.append("calendar")
 
-            # 3) КОРЗИНА ЗАКУПКИ: есть железо для заказа (status=NEW) — в основной чат
+            # 3) ВЫДАЧА ПК НА СЕГОДНЯ (wip_builds.issued_at)
+            cur.execute(
+                f"SELECT wb.order_number, COALESCE(o.customer_name, '') "
+                f"FROM {SCHEMA}.wip_builds wb "
+                f"LEFT JOIN {SCHEMA}.orders o ON o.id = wb.order_id "
+                f"WHERE wb.issued_at = CURRENT_DATE "
+                f"AND wb.stage NOT IN ('Архив', 'Отменён') "
+                f"ORDER BY wb.order_number"
+            )
+            handouts = cur.fetchall()
+            if handouts:
+                lines = ["🚀 <b>Выдача ПК сегодня</b>", ""]
+                for order_num, customer in handouts:
+                    lines.append(f"• Заказ <b>#{order_num}</b>" + (f" · {customer}" if customer else ""))
+                notify_tasks("\n".join(lines) + _cal_link)
+                sent.append("handouts")
+
+            # 4) КОРЗИНА ЗАКУПКИ: есть железо для заказа (status=NEW) — в основной чат
             cur.execute(
                 f"SELECT COUNT(*), COALESCE(SUM(required_qty), 0) "
                 f"FROM {SCHEMA}.warehouse_purchase_basket "
