@@ -144,10 +144,24 @@ class Doc:
             self.y -= (size + gap)
         self.c.setFillGray(0)
 
+    def center(self, s, font="djB", size=13, gap=4, color=0.1):
+        self._ensure(size * 0.6)
+        self.c.setFont(font, size); self.c.setFillGray(color)
+        self.c.drawCentredString(self.W / 2, self.y, s)
+        self.c.setFillGray(0)
+        self.y -= (size + gap)
+
     def heading(self, s):
         self.space(3)
-        self.text(s, font="djB", size=11, gap=2)
-        self.space(1)
+        # подложка-плашка под заголовком раздела
+        self._ensure(7)
+        self.c.setFillGray(0.93)
+        self.c.rect(self.lm, self.y - 2, self.maxw, 6 * mm, stroke=0, fill=1)
+        self.c.setFillGray(0)
+        self.c.setFont("djB", 10.5); self.c.setFillGray(0.1)
+        self.c.drawString(self.lm + 2 * mm, self.y + 1.2 * mm, s)
+        self.c.setFillGray(0)
+        self.y -= (6 * mm + 2)
 
     def save(self):
         self.c.showPage()
@@ -160,13 +174,17 @@ def build_contract(d, order, company):
     year_end = created_at.year if created_at else datetime.now().year
 
     # ── Шапка ──
-    d.text("ДОГОВОР", font="djB", size=13)
-    d.text(f"поставки компьютера № {order_id}", font="djB", size=13)
-    d.text(f"Покупатель: {cust_name} {cust_phone}", font="djB", size=12)
     d.space(2)
-    d.c.setFont("dj", 9.5)
+    d.center(f"Договор поставки компьютера № {order_id}", size=14, gap=5)
+    d.center(f"Покупатель: {cust_name} {cust_phone}", size=11.5, gap=6, color=0.2)
+    # тонкая разделительная линия под шапкой
+    d.c.setStrokeGray(0.8); d.c.setLineWidth(0.5)
+    d.c.line(d.lm, d.y, d.W - d.rm, d.y)
+    d.y -= 10
+    d.c.setFont("dj", 9.5); d.c.setFillGray(0.2)
     d.c.drawString(d.lm, d.y, f"г. {company['city']}")
     d.c.drawRightString(d.W - d.rm, d.y, date_ru(created_at))
+    d.c.setFillGray(0)
     d.y -= 14
     d.text(f"{company['supplier_name']}, в лице {company['supplier_person']}, именуемый в дальнейшем "
            f"Поставщик, с одной стороны.")
@@ -323,38 +341,72 @@ def build_spec(d, order, company):
     d.text(f"СПЕЦИФИКАЦИЯ №1 от {ds}г.", font="djB", size=12)
     d.space(4)
 
-    # таблица
-    rows = order["spec_rows"]   # [(slot_label, name, price)]
+    # таблица: Слот | Наименование | Кол-во | Цена
+    rows = order["spec_rows"]   # [(label, name, qty, line_sum)]
     col_x = d.lm
-    c1 = 28 * mm           # слот
-    c3 = 22 * mm           # цена
-    c2 = d.maxw - c1 - c3  # название
+    c1 = 32 * mm                       # слот
+    c3 = 16 * mm                       # кол-во
+    c4 = 24 * mm                       # цена
+    c2 = d.maxw - c1 - c3 - c4         # наименование
     rh = 9 * mm
-    d.c.setStrokeGray(0.55)
-    for label, name, price in rows:
-        d._ensure(rh / mm + 2)
-        y0 = d.y
-        d.c.rect(col_x, y0 - rh, c1, rh)
-        d.c.rect(col_x + c1, y0 - rh, c2, rh)
-        d.c.rect(col_x + c1 + c2, y0 - rh, c3, rh)
-        d.c.setFont("dj", 9); d.c.setFillGray(0.15)
-        d.c.drawString(col_x + 2 * mm, y0 - rh + 3 * mm, str(label)[:18])
-        # название по центру
-        nm = str(name)
-        while pdfmetrics.stringWidth(nm, "dj", 9) > c2 - 6 * mm and len(nm) > 4:
-            nm = nm[:-2]
-        d.c.drawCentredString(col_x + c1 + c2 / 2, y0 - rh + 3 * mm, nm)
-        d.c.drawRightString(col_x + c1 + c2 + c3 - 2 * mm, y0 - rh + 3 * mm, fmt_money(price))
+    x_qty = col_x + c1 + c2
+    x_price = col_x + c1 + c2 + c3
+
+    def cell_text(s, x, w, align="left", font="dj", size=9, color=0.15, pad=2.5):
+        d.c.setFont(font, size); d.c.setFillGray(color)
+        txt = str(s)
+        while pdfmetrics.stringWidth(txt, font, size) > w - 2 * pad * mm and len(txt) > 3:
+            txt = txt[:-2]
+        cy = d.y - rh + 3 * mm
+        if align == "center":
+            d.c.drawCentredString(x + w / 2, cy, txt)
+        elif align == "right":
+            d.c.drawRightString(x + w - pad * mm, cy, txt)
+        else:
+            d.c.drawString(x + pad * mm, cy, txt)
         d.c.setFillGray(0)
-        d.y -= rh
-    # ИТОГО
+
+    # ── Шапка таблицы (заливка) ──
     d._ensure(rh / mm + 2)
-    y0 = d.y
-    d.c.rect(col_x, y0 - rh, c1 + c2, rh)
-    d.c.rect(col_x + c1 + c2, y0 - rh, c3, rh)
-    d.c.setFont("djB", 9)
-    d.c.drawRightString(col_x + c1 + c2 - 2 * mm, y0 - rh + 3 * mm, "ИТОГО:")
-    d.c.drawRightString(col_x + c1 + c2 + c3 - 2 * mm, y0 - rh + 3 * mm, fmt_money(order["total"]))
+    d.c.setFillGray(0.92)
+    d.c.rect(col_x, d.y - rh, d.maxw, rh, stroke=0, fill=1)
+    d.c.setFillGray(0)
+    cell_text("Комплектующее", col_x, c1, "left", "djB", 8.5, 0.25)
+    cell_text("Наименование", col_x + c1, c2, "center", "djB", 8.5, 0.25)
+    cell_text("Кол-во", x_qty, c3, "center", "djB", 8.5, 0.25)
+    cell_text("Цена, ₽", x_price, c4, "right", "djB", 8.5, 0.25)
+    d.c.setStrokeGray(0.6); d.c.setLineWidth(0.6)
+    d.c.rect(col_x, d.y - rh, d.maxw, rh)
+    d.y -= rh
+
+    # ── Строки (чередование фона) ──
+    d.c.setStrokeGray(0.78); d.c.setLineWidth(0.4)
+    for i, (label, name, qty, line_sum) in enumerate(rows):
+        d._ensure(rh / mm + 2)
+        if i % 2 == 1:
+            d.c.setFillGray(0.97)
+            d.c.rect(col_x, d.y - rh, d.maxw, rh, stroke=0, fill=1)
+            d.c.setFillGray(0)
+        d.c.rect(col_x, d.y - rh, c1, rh)
+        d.c.rect(col_x + c1, d.y - rh, c2, rh)
+        d.c.rect(x_qty, d.y - rh, c3, rh)
+        d.c.rect(x_price, d.y - rh, c4, rh)
+        cell_text(label, col_x, c1, "left", "dj", 8.5, 0.2)
+        cell_text(name, col_x + c1, c2, "center", "dj", 9, 0.1)
+        cell_text(f"{qty} шт", x_qty, c3, "center", "dj", 8.5, 0.2)
+        cell_text(fmt_money(line_sum), x_price, c4, "right", "djB", 9, 0.1)
+        d.y -= rh
+
+    # ── ИТОГО ──
+    d._ensure(rh / mm + 2)
+    d.c.setFillGray(0.9)
+    d.c.rect(col_x, d.y - rh, d.maxw, rh, stroke=0, fill=1)
+    d.c.setFillGray(0)
+    d.c.setStrokeGray(0.6); d.c.setLineWidth(0.6)
+    d.c.rect(col_x, d.y - rh, c1 + c2 + c3, rh)
+    d.c.rect(x_price, d.y - rh, c4, rh)
+    cell_text("ИТОГО:", col_x, c1 + c2 + c3, "right", "djB", 10, 0.1)
+    cell_text(fmt_money(order["total"]), x_price, c4, "right", "djB", 10, 0.05)
     d.y -= rh
     d.space(8)
 
@@ -442,7 +494,7 @@ def handler(event: dict, context) -> dict:
         else:
             slot = it.get("slot") or "other"
             label = it.get("slot_label") or SLOT_LABELS.get(slot, "Прочее")
-        spec_rows.append((label, name, line_sum))
+        spec_rows.append((label, name, qty, line_sum))
         calc_total += line_sum
 
     total_val = float(total) if total else calc_total
