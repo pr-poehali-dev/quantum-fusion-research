@@ -35,6 +35,7 @@ const Service = lazy(() => import("./pages/Service"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contacts = lazy(() => import("./pages/Contacts"));
 const TierLists = lazy(() => import("./pages/TierLists"));
+const ProjectReport = lazy(() => import("./pages/ProjectReport"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -89,6 +90,7 @@ const App = () => (
               <Route path="/profile/:tag" element={<UserProfile />} />
               <Route path="/user-build/:token" element={<UserBuild />} />
               <Route path="/b2b" element={<B2B />} />
+              <Route path="/report" element={<ProjectReport />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
