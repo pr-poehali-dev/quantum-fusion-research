@@ -3,6 +3,20 @@
 
 ---
 
+## v5.84 | 2026-06-27 | Стресс-тесты: режим скриншота, компаньоны, UI-сценарий
+
+- StressProfilesTab: новые поля теста (хранятся в tests jsonb, бэкенд без правок):
+  • test_mode (process|screenshot) + screenshot_target + screenshot_delay_sec;
+  • companion_programs[] — параллельные программы (GPU-Z рядом с FurMark),
+    с флагом screenshot для снятия окна компаньона;
+  • ui_actions[] — пошаговый UI-сценарий (keys|click|wait|screenshot) с задержками,
+    расширение send_keys.
+- Встроенный быстрый пресет-кнопка «FurMark + GPU-Z (скрин)» в редакторе профиля.
+- документация-стресс-тесты.md §3: дописаны поля test_mode, screenshot_*,
+  companion_programs, ui_actions + пример FurMark+GPU-Z для разработки EXE (Cursor).
+
+---
+
 ## v5.83 | 2026-06-27 | Приёмка по счёту: жёлтые без автовыбора + защита кол-ва
 
 - matcher: жёлтые совпадения (55-90%) больше НЕ подставляются автоматически
