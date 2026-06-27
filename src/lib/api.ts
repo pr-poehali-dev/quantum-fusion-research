@@ -184,6 +184,7 @@ export const api = {
   upload: {
     avatar: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "avatars", compress: true }) }).then(r => r.json()),
     receipt: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "receipts", compress: true }) }).then(r => r.json()),
+    receiptFile: (file: string, compress = false) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "receipts", compress }) }).then(r => r.json()),
   },
   receiptScan: {
     createJob: (imageUrl: string, ak: string) =>

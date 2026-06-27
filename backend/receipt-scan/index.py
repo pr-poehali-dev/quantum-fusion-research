@@ -44,11 +44,46 @@ def load_memory(cur):
     return mem
 
 
+def match_store(cur, store_hint):
+    """Подбираем store_id из складских магазинов по названию из чека."""
+    if not store_hint:
+        return {"store_id": None, "store_name": None, "store_hint": None}
+    hint = normalize(str(store_hint))
+    cur.execute(f"SELECT id, name, code FROM {SCHEMA}.warehouse_stores ORDER BY id")
+    best = None
+    best_score = 0.0
+    for sid, name, code in cur.fetchall():
+        nname = normalize(name or "")
+        ncode = normalize(code or "")
+        score = 0.0
+        # точное вхождение названия/кода в подсказку или наоборот
+        if nname and (nname in hint or hint in nname):
+            score = 100.0
+        elif ncode and ncode and (ncode == hint or ncode in hint):
+            score = 95.0
+        else:
+            # пословное пересечение
+            hw = set(hint.split())
+            nw = set(nname.split())
+            if hw and nw:
+                inter = hw & nw
+                if inter:
+                    score = len(inter) / max(1, min(len(hw), len(nw))) * 90
+        if score > best_score:
+            best_score = score
+            best = (sid, name)
+    if best and best_score >= 60:
+        return {"store_id": best[0], "store_name": best[1], "store_hint": str(store_hint)}
+    return {"store_id": None, "store_name": None, "store_hint": str(store_hint)}
+
+
 def build_match(cur, raw_result):
-    """По сырому JSON модели строим список позиций с подобранными товарами."""
+    """По сырому JSON модели строим объект {store, rows[]} с подобранными товарами и магазином."""
     groups = load_groups(cur)
     memory = load_memory(cur)
     items = (raw_result or {}).get("items", []) if isinstance(raw_result, dict) else []
+    store_hint = (raw_result or {}).get("store")
+    store = match_store(cur, store_hint)
     rows = []
     for it in items:
         raw_name = (it.get("name") or "").strip()
@@ -67,9 +102,8 @@ def build_match(cur, raw_result):
             "confidence": m["confidence"],
             "level": m["level"],
             "candidates": m["candidates"],
-            "store_hint": (raw_result or {}).get("store"),
         })
-    return rows
+    return {"store": store, "rows": rows}
 
 
 def handler(event: dict, context) -> dict:

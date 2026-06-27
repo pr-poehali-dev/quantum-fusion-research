@@ -58,6 +58,14 @@ function levelColor(row: MatchRow): { cls: string; label: string } {
   return { cls: "border-yellow-500/40 bg-yellow-500/5", label: "Уточнить" }
 }
 
+interface StoreMatch { store_id: number | null; store_name: string | null; store_hint: string | null }
+// matched может прийти как массив (старый формат) или {store, rows} (новый)
+function normMatched(matched: unknown): { store: StoreMatch | null; rows: MatchRow[] } {
+  if (Array.isArray(matched)) return { store: null, rows: matched as MatchRow[] }
+  const m = (matched || {}) as { store?: StoreMatch; rows?: MatchRow[] }
+  return { store: m.store ?? null, rows: m.rows ?? [] }
+}
+
 export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted, onCreateProduct }: {
   stores: Store[]
   draftId?: number | null
@@ -74,6 +82,10 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const [curDraftId, setCurDraftId] = useState<number | null>(draftId || null)
   const [rows, setRows] = useState<MatchRow[]>([])
   const [storeId, setStoreId] = useState<number | null>(stores[0]?.id ?? null)
+  const [storeHint, setStoreHint] = useState<string | null>(null)      // что распознала модель ("ДНС")
+  const [storeAuto, setStoreAuto] = useState(false)                     // магазин подставлен автоматически
+  const [vatMode, setVatMode] = useState<"with" | "without">("with")   // НДС / без НДС
+  const [vatPercent, setVatPercent] = useState(20)                      // ставка НДС из настроек
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -94,14 +106,16 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
       // переподтянуть свежий матчинг (вдруг создали новый SKU)
       if (d.job_id) {
         const rm = await api.receiptScan.rematch(d.job_id, ak)
-        if (rm?.matched) {
+        const fresh = normMatched(rm?.matched)
+        if (fresh.rows.length) {
           // мержим: сохраняем введённые qty/price/skip, но обновляем group_id если был null
           setRows(prev => prev.map((r, i) => {
-            const fresh = rm.matched[i]
-            if (fresh && !r.group_id && fresh.group_id) return { ...r, ...fresh, qty: r.qty, price: r.price }
+            const f = fresh.rows[i]
+            if (f && !r.group_id && f.group_id) return { ...r, ...f, qty: r.qty, price: r.price }
             return r
           }))
         }
+        if (fresh.store?.store_hint) setStoreHint(fresh.store.store_hint)
       }
       setStage("review")
     }
@@ -112,15 +126,43 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [draftId, loadDraft])
 
+  // ставка НДС из настроек склада
+  useEffect(() => {
+    api.warehouse.getSettings().then(s => {
+      const v = parseFloat(String(s?.vat_percent ?? "20"))
+      if (!isNaN(v)) setVatPercent(v)
+    }).catch(() => {})
+  }, [])
+
+  // читаем любой файл (Excel/PDF) как data-url без сжатия
+  const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result as string)
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+
   const pickFile = async (file: File) => {
     setError("")
     setBusy(true)
     try {
-      const dataUrl = await fileToCompressedDataUrl(file)
-      setImgPreview(dataUrl)
-      const up = await api.upload.receipt(dataUrl)
-      if (!up?.url) { setError("Не удалось загрузить фото"); setBusy(false); return }
-      const job = await api.receiptScan.createJob(up.url, ak)
+      const name = file.name.toLowerCase()
+      const isImage = file.type.startsWith("image/")
+      let url = ""
+      if (isImage) {
+        const dataUrl = await fileToCompressedDataUrl(file)
+        setImgPreview(dataUrl)
+        const up = await api.upload.receipt(dataUrl)
+        url = up?.url
+      } else {
+        // Excel / PDF — грузим как есть, без сжатия
+        setImgPreview(null)
+        const dataUrl = await fileToDataUrl(file)
+        const up = await api.upload.receiptFile(dataUrl, false)
+        url = up?.url
+      }
+      if (!url) { setError("Не удалось загрузить файл"); setBusy(false); return }
+      const job = await api.receiptScan.createJob(url, ak)
       if (!job?.job_id) { setError(job?.error || "Ошибка создания задачи"); setBusy(false); return }
       setJobId(job.job_id)
       setStage("scanning")
@@ -138,10 +180,15 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
       const st = await api.receiptScan.jobStatus(jid, ak)
       if (st?.status === "DONE") {
         if (pollRef.current) clearInterval(pollRef.current)
-        const matched: MatchRow[] = (st.matched || []).map((m: MatchRow) => ({ ...m, warranty_until: "" }))
+        const m = normMatched(st.matched)
+        const matched: MatchRow[] = m.rows.map(r => ({ ...r, warranty_until: "" }))
         setRows(matched)
+        // авто-подстановка магазина из чека
+        let useStore = storeId
+        if (m.store?.store_id) { useStore = m.store.store_id; setStoreId(m.store.store_id); setStoreAuto(true) }
+        setStoreHint(m.store?.store_hint ?? null)
         // создаём черновик сразу — чтобы при «новый товар» не потерять прогресс
-        const dr = await api.receiptScan.draftSave({ job_id: jid, store_id: storeId, rows: matched }, ak)
+        const dr = await api.receiptScan.draftSave({ job_id: jid, store_id: useStore, rows: matched }, ak)
         if (dr?.draft_id) setCurDraftId(dr.draft_id)
         setStage("review")
       } else if (st?.status === "ERROR") {
@@ -191,11 +238,14 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     const unresolved = rows.filter(r => !r.skip && !r.group_id)
     if (unresolved.length && !confirm(`${unresolved.length} позиц. без товара будут пропущены. Принять остальные?`)) return
     setBusy(true)
+    // цена в чеке указана с НДС. Если выбрано «без НДС» — выделяем чистую себестоимость.
+    const vatK = vatMode === "without" ? (1 + vatPercent / 100) : 1
     let ok = 0
     for (const r of toAccept) {
+      const cost = vatK > 1 ? Math.round((r.price / vatK) * 100) / 100 : r.price
       const res = await api.warehouse.createSupply({
         group_id: r.group_id, store_id: storeId, qty: r.qty,
-        cost_price: r.price, purchase_date: new Date().toISOString().substring(0, 10),
+        cost_price: cost, purchase_date: new Date().toISOString().substring(0, 10),
         warranty_until: r.warranty_until || "",
       })
       if (!res?.error) ok++
@@ -238,13 +288,15 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
           {/* ШАГ 1: загрузка */}
           {stage === "upload" && (
             <div className="flex flex-col items-center gap-4 py-10">
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
+              <input ref={fileRef} type="file"
+                accept="image/*,.pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }} />
               <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ cursor: "pointer" }}
                 className="flex h-44 w-full max-w-md flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50">
-                <Icon name={busy ? "Loader" : "Camera"} size={40} className={busy ? "animate-spin" : ""} />
-                <span className="text-sm font-medium">{busy ? "Загрузка..." : "Сфотографировать или выбрать счёт"}</span>
-                <span className="text-xs text-foreground/40">JPG / PNG, можно с камеры</span>
+                <Icon name={busy ? "Loader" : "Upload"} size={40} className={busy ? "animate-spin" : ""} />
+                <span className="text-sm font-medium">{busy ? "Загрузка..." : "Выбрать или сфотографировать счёт"}</span>
+                <span className="text-xs text-foreground/40">Фото (JPG/PNG), PDF или Excel (XLSX/XLS)</span>
               </button>
               <p className="max-w-md text-center text-xs text-foreground/50">
                 Модель распознает позиции и подставит товары со склада. Перед приёмкой можно всё проверить и поправить.
@@ -265,14 +317,40 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
           {/* ШАГ 3: сверка */}
           {stage === "review" && (
             <>
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <div>
-                  <label className="mb-1 block text-xs text-foreground/50">Магазин / площадка</label>
-                  <select value={storeId ?? ""} onChange={e => setStoreId(Number(e.target.value))}
-                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm" style={{ cursor: "pointer" }}>
+              <div className="mb-4 flex flex-wrap items-end gap-3">
+                {/* Магазин — с акцентом, если подставлен автоматически */}
+                <div className={storeAuto ? "rounded-lg border-2 border-amber-400/60 bg-amber-400/10 p-2" : ""}>
+                  <label className="mb-1 flex items-center gap-1 text-xs text-foreground/50">
+                    Магазин / площадка
+                    {storeAuto && <span className="flex items-center gap-0.5 font-medium text-amber-600"><Icon name="Sparkles" size={11} /> проверьте!</span>}
+                  </label>
+                  <select value={storeId ?? ""} onChange={e => { setStoreId(Number(e.target.value)); setStoreAuto(false) }}
+                    className={`rounded-lg border bg-background px-3 py-2 text-sm ${storeAuto ? "border-amber-400/60" : "border-border"}`} style={{ cursor: "pointer" }}>
                     {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
+                  {storeHint && (
+                    <p className="mt-1 text-[11px] text-foreground/45">в чеке: «{storeHint}»</p>
+                  )}
                 </div>
+
+                {/* Переключатель НДС */}
+                <div>
+                  <label className="mb-1 block text-xs text-foreground/50">Цены в счёте</label>
+                  <div className="inline-flex overflow-hidden rounded-lg border border-border">
+                    <button onClick={() => setVatMode("with")} style={{ cursor: "pointer" }}
+                      className={`px-3 py-2 text-sm ${vatMode === "with" ? "bg-primary text-primary-foreground" : "bg-background text-foreground/60 hover:bg-muted"}`}>
+                      С НДС
+                    </button>
+                    <button onClick={() => setVatMode("without")} style={{ cursor: "pointer" }}
+                      className={`px-3 py-2 text-sm ${vatMode === "without" ? "bg-primary text-primary-foreground" : "bg-background text-foreground/60 hover:bg-muted"}`}>
+                      Без НДС
+                    </button>
+                  </div>
+                  {vatMode === "without" && (
+                    <p className="mt-1 text-[11px] text-foreground/45">себестоимость = цена ÷ {(1 + vatPercent / 100).toFixed(2)}</p>
+                  )}
+                </div>
+
                 <div className="flex gap-2 self-end text-xs">
                   <span className="rounded-full bg-green-500/15 px-2.5 py-1 text-green-500">🟢 {greenCount} совпало</span>
                   <span className="rounded-full bg-yellow-500/15 px-2.5 py-1 text-yellow-600">🟡 {yellowCount} уточнить</span>
@@ -331,14 +409,15 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
                           <button onClick={() => { setSearchIdx(searchIdx === i ? null : i); setSearchQ(row.raw_name) }}
                             style={{ cursor: "pointer" }}
                             className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors">
-                            <Icon name="Search" size={11} className="mr-1 inline" />Выбрать вручную
+                            <Icon name="Search" size={11} className="mr-1 inline" />Выбрать из существующих
                           </button>
-                          {!row.group_id && (
-                            <button onClick={() => createNew(i)} style={{ cursor: "pointer" }}
-                              className="rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-colors">
-                              <Icon name="Plus" size={11} className="mr-1 inline" />Создать новый товар
-                            </button>
-                          )}
+                          {/* Создать новую группу товаров — доступно в любой строке */}
+                          <button onClick={() => createNew(i)} style={{ cursor: "pointer" }}
+                            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${row.group_id
+                              ? "border-border text-foreground/60 hover:border-primary hover:text-primary"
+                              : "border-red-400/40 bg-red-500/10 text-red-400 hover:bg-red-500/20"}`}>
+                            <Icon name="Plus" size={11} className="mr-1 inline" />Создать новую группу
+                          </button>
                         </div>
                       )}
 

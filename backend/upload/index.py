@@ -64,7 +64,12 @@ def handler(event: dict, context) -> dict:
         image_bytes, mime = compress_image(image_bytes, mime)
         ext = "webp"
     else:
-        ext_map = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+        ext_map = {
+            "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+            "application/pdf": "pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+            "application/vnd.ms-excel": "xls",
+        }
         ext = ext_map.get(mime, "jpg")
 
     unique_name = f"{folder}/{uuid.uuid4().hex}.{ext}"
