@@ -23,7 +23,7 @@ interface Group {
   cell?: string | null
 }
 
-interface SpecAttr { id: number; category_id: number; code: string; options?: string[] }
+interface SpecAttr { id: number; category_id: number; code: string; options?: string[]; field_type?: string }
 interface SpecCat { id: number; product_category_slug?: string | null }
 interface CatalogCat { id: number; name: string; slug: string }
 
@@ -139,7 +139,10 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
       tpl.blocks.forEach(b => {
         if (b.attrCode && attrIdByCode[b.attrCode] !== undefined) {
           const v = vals[String(attrIdByCode[b.attrCode])]
-          if (v !== undefined && v !== null && !Array.isArray(v)) byCode[b.key] = String(v)
+          if (v === undefined || v === null) return
+          // multiselect возвращается массивом — берём первый элемент для блока
+          if (Array.isArray(v)) { if (v.length) byCode[b.key] = String(v[0]) }
+          else byCode[b.key] = String(v)
         }
       })
       // Фолбэк по названию: для select-блоков ищем вариант в старом имени
@@ -218,11 +221,14 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
     // Сохраняем характеристики (значения блоков по attrCode → attribute_id)
     const pid = data.product_id || group?.product_id
     if (pid && tpl) {
-      const specVals: Record<string, string> = {}
+      const specVals: Record<string, string | string[]> = {}
       tpl.blocks.forEach(b => {
         const v = (blockVals[b.key] || "").trim()
         if (b.attrCode && attrIdByCode[b.attrCode] !== undefined && v) {
-          specVals[String(attrIdByCode[b.attrCode])] = v
+          // multiselect-характеристики сохраняем массивом, чтобы значение
+          // корректно легло в совместимость (value_json), иначе — строкой.
+          const isMulti = attrByCode[b.attrCode]?.field_type === "multiselect"
+          specVals[String(attrIdByCode[b.attrCode])] = isMulti ? [v] : v
         }
       })
       // ОЗУ: авто «Объём комплекта» = планки × объём 1 планки
