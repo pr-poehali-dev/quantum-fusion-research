@@ -144,7 +144,7 @@ export const templateForSlug = (slug: string | null): CategoryTemplate | null =>
   slug ? NAME_TEMPLATES.find(t => t.slug === slug) || null : null
 
 // Цвет в названии — короткий латинский вариант для красоты
-const COLOR_NAME: Record<string, string> = {
+export const COLOR_NAME: Record<string, string> = {
   "Чёрный": "Black", "Белый": "White", "Серый": "Gray",
   "Серебристый": "Silver", "Серый/Чёрный": "Gray", "RGB": "RGB",
 }

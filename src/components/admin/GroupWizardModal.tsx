@@ -4,7 +4,7 @@ import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  NameBlock, templateForSlug, buildName, blockVisible,
+  NameBlock, templateForSlug, buildName, blockVisible, COLOR_NAME,
 } from "./groupNameTemplates"
 import { matchesSearch } from "@/lib/keyboardLayout"
 
@@ -99,7 +99,21 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
     }
   }, [curBlock?.key, attrIdByCode])
 
-  // Подгрузка имеющихся характеристик при редактировании (заполняем блоки)
+  // При редактировании восстанавливаем БРЕНД из начала старого названия
+  // (бренд в названии хранится первым словом/словами).
+  useEffect(() => {
+    if (isNew || brand || !group?.name || brands.length === 0) return
+    const nameLow = group.name.trim().toLowerCase()
+    // ищем самый длинный бренд, с которого начинается название
+    const match = brands
+      .filter(b => nameLow.startsWith(b.name.toLowerCase()))
+      .sort((a, b) => b.name.length - a.name.length)[0]
+    if (match) setBrand(match.name)
+  }, [isNew, group?.name, brands, brand])
+
+  // Подгрузка имеющихся характеристик при редактировании (заполняем блоки).
+  // Если характеристик нет (старый товар) — пытаемся восстановить select-блоки
+  // из старого названия, чтобы прошлый выбор не терялся.
   useEffect(() => {
     if (!group?.product_id || !tpl || specAttrs.length === 0) return
     api.warehouse.specValuesGet(group.product_id).then(d => {
@@ -111,6 +125,25 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
           if (v !== undefined && v !== null && !Array.isArray(v)) byCode[b.key] = String(v)
         }
       })
+      // Фолбэк по названию: для select-блоков ищем вариант в старом имени
+      const nameLow = (group.name || "").toLowerCase()
+      if (nameLow) {
+        tpl.blocks.forEach(b => {
+          if (byCode[b.key]) return
+          if (b.input === "select" && b.options) {
+            const found = b.options.find(opt => {
+              if (opt === "-" || !opt.trim()) return false
+              const en = (COLOR_NAME[opt] || opt).toLowerCase()
+              const ru = opt.toLowerCase()
+              // мощность "750 Вт" → "750w", стандарт "ATX 3.1" → "atx3.1"
+              const watt = ru.replace(/\s*вт\s*/i, "w")
+              const std = ru.replace(/\s+/g, "")
+              return nameLow.includes(en) || nameLow.includes(ru) || nameLow.includes(watt) || nameLow.includes(std)
+            })
+            if (found) byCode[b.key] = found
+          }
+        })
+      }
       setBlockVals(p => ({ ...byCode, ...p }))
     }).catch(() => {})
   }, [group?.product_id, tpl?.slug, attrIdByCode])
