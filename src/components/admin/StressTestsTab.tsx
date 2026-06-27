@@ -57,6 +57,19 @@ function fmtSize(b: number) {
   return `${(b / 1024 / 1024).toFixed(1)} МБ`
 }
 
+// Короткое имя планки ОЗУ из ключа ram_temp::{hardware}::{sensor}
+function ramDimmName(m: Metric): string {
+  const parts = (m.key || "").split("::")
+  if (parts.length >= 2 && parts[1].trim()) return parts[1].trim()  // hardware_name (с #0/#1)
+  // фолбэк: из label "RAM Temperature (G.Skill - ...)"
+  const mm = (m.label || "").match(/\(([^)]+)\)/)
+  return mm ? mm[1] : (m.label || "Планка ОЗУ")
+}
+// Только температуры планок (SPD): ram_temp:: + °C. Тайминги spd_timing:: игнорируем.
+function isRamTemp(m: Metric): boolean {
+  return (m.key || "").startsWith("ram_temp::") && (m.unit || "").includes("°C")
+}
+
 export default function StressTestsTab() {
   const adminKey = getAdminKey()
   const [view, setView] = useState<"runs" | "profiles" | "metrics">("runs")
@@ -197,10 +210,56 @@ export default function StressTestsTab() {
               </div>
             </div>
 
+            {/* Температура ОЗУ (SPD) — выделенный блок по каждой планке */}
+            {(() => {
+              const ram = (selected.metrics || []).filter(isRamTemp)
+              const hasAnyMetrics = (selected.metrics || []).length > 0
+              return (
+                <div className="mb-5">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">
+                    <Icon name="MemoryStick" size={13} /> Температура ОЗУ (SPD)
+                  </div>
+                  {ram.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-foreground/40">
+                      {hasAnyMetrics
+                        ? "Температура планок не передана (нет SPD-датчика на модулях или EXE без прав администратора)."
+                        : "Метрики мониторинга не передавались с этим прогоном."}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {ram.map((m, i) => {
+                        const hot = (m.max ?? 0) >= 60
+                        return (
+                          <div key={i} className={`rounded-xl border p-3 ${hot ? "border-orange-500/40 bg-orange-500/5" : "border-border bg-card"}`}>
+                            <div className="flex items-center gap-1.5 truncate text-[11px] text-foreground/50" title={m.label}>
+                              <Icon name="MemoryStick" size={12} className="shrink-0 text-foreground/30" />
+                              <span className="truncate">{ramDimmName(m)}</span>
+                            </div>
+                            <div className="mt-1 flex items-baseline gap-1">
+                              <span className={`text-2xl font-bold ${hot ? "text-orange-500" : "text-foreground"}`}>{m.max ?? "—"}</span>
+                              <span className="text-xs text-foreground/40">°C</span>
+                              <span className="ml-1 rounded bg-red-500/15 px-1 py-0.5 text-[9px] text-red-400">max</span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/50">
+                              <span>мин {m.min ?? "—"}</span>
+                              <span>·</span>
+                              <span>сред {m.avg ?? "—"}</span>
+                              {m.samples ? <><span>·</span><span className="text-foreground/30">{m.samples} замеров</span></> : null}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Метрики (датчики) с применением настроек из вкладки «Метрики» */}
             {(() => {
               const prefMap = new Map(prefs.map(p => [prefId(p.metric_key, p.label_orig), p]))
               const items = (selected.metrics || [])
+                .filter(m => !isRamTemp(m))   // RAM-температуры показаны отдельным блоком выше
                 .map(m => {
                   const pr = prefMap.get(prefId(m.key, m.label))
                   return {
@@ -219,7 +278,7 @@ export default function StressTestsTab() {
                 <div className="mb-5">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">
-                      <Icon name="Activity" size={13} /> Датчики (min / сред / max)
+                      <Icon name="Activity" size={13} /> Прочие датчики (min / сред / max)
                     </div>
                     {/* Фильтр по категориям */}
                     <div className="flex flex-wrap gap-1">
