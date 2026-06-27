@@ -116,6 +116,16 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
   }, [group?.product_id, tpl?.slug, attrIdByCode])
 
   const liveName = buildName(brand, tpl, tpl ? blockVals : { __manual__: manualName })
+  // Старое название (как сейчас в товаре) — для сравнения при редактировании
+  const oldName = (group?.name || "").trim()
+  // Разбиваем новое имя на токены; токены, которых нет в старом имени,
+  // подсвечиваем зелёным (то, что изменилось/добавилось).
+  const oldTokens = oldName.toLowerCase().split(/\s+/).filter(Boolean)
+  const nameDiff = liveName.split(/(\s+)/).map((tok, i) => {
+    if (/^\s+$/.test(tok) || !tok) return { text: tok, changed: false, key: i }
+    return { text: tok, changed: !oldTokens.includes(tok.toLowerCase()), key: i }
+  })
+  const nameChanged = !isNew && oldName !== "" && oldName !== liveName
 
   // ── Навигация ───────────────────────────────────────────────────────────────
   const canNext = (): boolean => {
@@ -213,8 +223,23 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
 
         {/* Превью названия */}
         <div className="mb-4 rounded-lg border border-border bg-muted/40 px-3 py-2">
-          <p className="text-[11px] text-foreground/40">Итоговое название</p>
-          <p className="text-sm font-medium text-foreground">{liveName || "—"}</p>
+          {/* При редактировании — старое название сверху */}
+          {!isNew && oldName && (
+            <div className="mb-1.5 border-b border-border/60 pb-1.5">
+              <p className="text-[11px] text-foreground/40">Было</p>
+              <p className={`text-sm ${nameChanged ? "text-foreground/50 line-through" : "text-foreground/70"}`}>{oldName}</p>
+            </div>
+          )}
+          <p className="text-[11px] text-foreground/40">{!isNew && oldName ? "Станет" : "Итоговое название"}</p>
+          <p className="text-sm font-medium text-foreground">
+            {liveName
+              ? nameDiff.map(t => (
+                  t.changed
+                    ? <span key={t.key} className="rounded bg-green-500/25 px-0.5 text-green-700 dark:text-green-300">{t.text}</span>
+                    : <span key={t.key}>{t.text}</span>
+                ))
+              : "—"}
+          </p>
         </div>
 
         {/* Прогресс-точки */}
