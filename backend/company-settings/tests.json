@@ -1,16 +1,16 @@
 {
   "tests": [
     {
-      "name": "Get company settings",
+      "name": "List entities",
       "method": "GET",
       "path": "/",
       "expectedStatus": 200
     },
     {
-      "name": "Save rejects without admin key",
+      "name": "Create rejects without admin key",
       "method": "POST",
       "path": "/",
-      "body": {"city": "Тест"},
+      "body": {"action": "create", "title": "Тест"},
       "expectedStatus": 403,
       "bodyMatcher": "partial"
     }

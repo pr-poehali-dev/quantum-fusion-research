@@ -282,9 +282,15 @@ export const api = {
       fetch(`${URLS.stress}?action=preset_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
   },
   companySettings: {
-    get: () => fetch(URLS.companySettings).then(r => r.json()),
-    save: (data: Record<string, unknown>, adminKey: string) =>
-      fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ ...data, ak: adminKey }) }).then(r => r.json()),
+    list: () => fetch(URLS.companySettings).then(r => r.json()),
+    create: (title: string, adminKey: string) =>
+      fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "create", title, ak: adminKey }) }).then(r => r.json()),
+    update: (data: Record<string, unknown>, adminKey: string) =>
+      fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "update", ...data, ak: adminKey }) }).then(r => r.json()),
+    setDefault: (id: number, adminKey: string) =>
+      fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "set_default", id, ak: adminKey }) }).then(r => r.json()),
+    remove: (id: number, adminKey: string) =>
+      fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "delete", id, ak: adminKey }) }).then(r => r.json()),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),

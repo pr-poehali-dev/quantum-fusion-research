@@ -118,8 +118,9 @@ export default function OrderProcessPage() {
 
   // Гарантийное письмо
   const [warrantyLoading, setWarrantyLoading] = useState(false)
-  // Договор поставки
+  // Договор поставки — выбор юрлица
   const [contractLoading, setContractLoading] = useState(false)
+  const [contractEntities, setContractEntities] = useState<{ id: number; title: string; is_default: boolean }[] | null>(null)
 
   // Синхронизация заказа ПК
   const [syncLoading, setSyncLoading] = useState(false)
@@ -169,15 +170,27 @@ export default function OrderProcessPage() {
     link.download = res.filename || `warranty_${id}.pdf`
     link.click()
   }
-  const downloadContract = async () => {
+  // Скачать договор для конкретного юрлица (или дефолтного)
+  const downloadContract = async (entityId?: number) => {
+    setContractEntities(null)
     setContractLoading(true)
-    const res = await fetch(`${CONTRACT_URL}?order_id=${id}`).then(r => r.json()).catch(() => null)
+    const qs = entityId ? `&entity_id=${entityId}` : ""
+    const res = await fetch(`${CONTRACT_URL}?order_id=${id}${qs}`).then(r => r.json()).catch(() => null)
     setContractLoading(false)
     if (!res?.pdf_b64) { alert("Не удалось создать договор"); return }
     const link = document.createElement("a")
     link.href = `data:application/pdf;base64,${res.pdf_b64}`
     link.download = res.filename || `contract_${id}.pdf`
     link.click()
+  }
+  // Клик «Договор поставки»: если юрлиц несколько — спросить какое
+  const openContract = async () => {
+    setContractLoading(true)
+    const d = await api.companySettings.list().catch(() => null)
+    setContractLoading(false)
+    const list = d?.entities || []
+    if (list.length <= 1) downloadContract(list[0]?.id)
+    else setContractEntities(list)
   }
 
   // Поиск товаров для замены
@@ -356,7 +369,7 @@ export default function OrderProcessPage() {
             Гарантийка
           </button>
           <button
-            onClick={downloadContract}
+            onClick={openContract}
             disabled={contractLoading}
             style={{ cursor: "pointer" }}
             className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary transition-colors disabled:opacity-50"
@@ -978,6 +991,37 @@ export default function OrderProcessPage() {
           <span className="text-2xl font-bold">{fmt(total)}</span>
         </div>
       </div>
+
+      {/* Модалка выбора юрлица для договора поставки */}
+      {contractEntities && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={e => { if (e.target === e.currentTarget) setContractEntities(null) }}>
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+                <Icon name="FileSignature" size={20} className="text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Выберите юрлицо</h3>
+                <p className="text-xs text-foreground/50">Реквизиты для договора поставки</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {contractEntities.map(e => (
+                <button key={e.id} onClick={() => downloadContract(e.id)} style={{ cursor: "pointer" }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm hover:border-primary hover:bg-primary/5 transition-colors">
+                  <span className="font-medium">{e.title}</span>
+                  {e.is_default && <Icon name="Star" size={14} className="text-yellow-500 shrink-0" />}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setContractEntities(null)} style={{ cursor: "pointer" }}
+              className="mt-4 w-full rounded-lg border border-border py-2 text-sm text-foreground/60 hover:text-foreground transition-colors">
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Модалка выдачи / списания */}
       {showWriteoff && order && (

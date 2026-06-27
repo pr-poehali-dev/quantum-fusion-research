@@ -376,10 +376,19 @@ def build_spec(d, order, company):
     d.c.setFillGray(0)
 
 
-def load_company(cur):
+def load_company(cur, entity_id=None):
     fields = ["supplier_name", "supplier_person", "sign_name", "rs", "bank", "ks",
               "bik", "inn", "ogrnip", "city", "delivery_days"]
-    cur.execute(f"SELECT {', '.join(fields)} FROM {SCHEMA}.company_settings WHERE id = 1")
+    cols = ", ".join(fields)
+    if entity_id:
+        cur.execute(f"SELECT {cols} FROM {SCHEMA}.company_entities WHERE id = %s", (int(entity_id),))
+        row = cur.fetchone()
+        if row:
+            return dict(zip(fields, row))
+    # по умолчанию: помеченное is_default, иначе первое
+    cur.execute(
+        f"SELECT {cols} FROM {SCHEMA}.company_entities ORDER BY is_default DESC, sort_order, id LIMIT 1"
+    )
     row = cur.fetchone()
     if not row:
         return {f: "" for f in fields} | {"city": "Москва", "delivery_days": 20}
@@ -393,6 +402,7 @@ def handler(event: dict, context) -> dict:
 
     params = event.get("queryStringParameters") or {}
     order_id = params.get("order_id")
+    entity_id = params.get("entity_id")
     if not order_id:
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "order_id required"})}
 
@@ -440,7 +450,7 @@ def handler(event: dict, context) -> dict:
     prepay_val = float(prepay) if prepay is not None else round(total_val * pct_val / 100, 2)
     remaining_val = round(total_val - prepay_val, 2)
 
-    company = load_company(cur)
+    company = load_company(cur, entity_id)
     cur.close(); conn.close()
 
     order = {
