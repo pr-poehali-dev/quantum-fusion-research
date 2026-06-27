@@ -250,7 +250,7 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-black/60 p-4" onDoubleClick={onClose}>
       {/* Подсказка из чека — копируемое название над окном мастера */}
       {receiptHint && (
-        <div className="w-full max-w-lg rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 shadow-lg" onDoubleClick={e => e.stopPropagation()}>
+        <div className="w-full max-w-lg rounded-xl border border-amber-400/50 bg-card px-3 py-2 shadow-lg" onDoubleClick={e => e.stopPropagation()}>
           <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
             <Icon name="ClipboardCopy" fallback="Copy" size={12} /> Название из счёта (выделите и скопируйте нужное):
           </p>
