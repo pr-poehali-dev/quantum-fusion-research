@@ -26,10 +26,12 @@ import os
 import time
 import json
 import base64
+import shutil
+import subprocess
 import requests
 
 # ─────────────────── НАСТРОЙКИ ───────────────────
-MODEL = "qwen2-vl:7b"                 # ← модель этого воркера (точная, 7B)
+MODEL = "qwen2.5vl:7b"                # ← модель этого воркера (точная, 7B)
 NUM_CTX = 8192                        # длина контекста
 KEEP_ALIVE = -1                       # -1 = держать модель в VRAM вечно
 
@@ -57,6 +59,46 @@ PROMPT = (
 
 def log(msg: str):
     print(f"[{time.strftime('%H:%M:%S')}] [{MODEL}] {msg}", flush=True)
+
+
+def ollama_alive() -> bool:
+    """Проверяем, отвечает ли сервер Ollama."""
+    try:
+        r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def ensure_ollama():
+    """Если Ollama не запущена — пробуем поднять `ollama serve` и ждём готовности.
+    Если поднять не вышло — не берём задачи, чтобы не сжигать их в ошибки."""
+    if ollama_alive():
+        log("Ollama на связи.")
+        return True
+
+    log("Ollama не отвечает. Пробую запустить `ollama serve`...")
+    exe = shutil.which("ollama")
+    if exe:
+        try:
+            flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+            subprocess.Popen([exe, "serve"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=flags)
+        except Exception as e:
+            log(f"Не смог запустить ollama serve: {e}")
+    else:
+        log("Команда 'ollama' не найдена в PATH. Установи Ollama: https://ollama.com/download")
+
+    # ждём до 30 сек, пока сервер поднимется
+    for _ in range(30):
+        if ollama_alive():
+            log("Ollama запущена и готова.")
+            return True
+        time.sleep(1)
+
+    log("ВНИМАНИЕ: Ollama так и не поднялась. Открой её вручную (ollama serve) и не закрывай окно.")
+    return False
 
 
 def warmup():
@@ -129,9 +171,21 @@ def send_result(job_id: int, result=None, error: str = None):
 
 
 def main():
-    log("Воркер запущен. Опрашиваю очередь...")
+    log("Воркер запущен.")
+    # Ждём, пока Ollama не поднимется — задачи не берём, чтобы не сжигать их в ошибки.
+    while not ensure_ollama():
+        log("Жду Ollama 10 сек и пробую снова...")
+        time.sleep(10)
     warmup()
+    log("Опрашиваю очередь...")
     while True:
+        # если Ollama вдруг отвалилась — не берём задачи, ждём её
+        if not ollama_alive():
+            log("Ollama пропала. Жду восстановления (задачи не беру)...")
+            ensure_ollama()
+            time.sleep(POLL_INTERVAL)
+            continue
+
         try:
             job = pull_job()
         except Exception as e:
