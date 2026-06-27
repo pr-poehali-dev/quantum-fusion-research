@@ -23,7 +23,7 @@ interface Group {
   cell?: string | null
 }
 
-interface SpecAttr { id: number; category_id: number; code: string }
+interface SpecAttr { id: number; category_id: number; code: string; options?: string[] }
 interface SpecCat { id: number; product_category_slug?: string | null }
 interface CatalogCat { id: number; name: string; slug: string }
 
@@ -81,6 +81,22 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
     if (sc) specAttrs.filter(a => a.category_id === sc.id).forEach(a => { m[a.code] = a.id })
     return m
   }, [specCats, specAttrs, catSlug])
+
+  // attrCode → характеристика совместимости (для подтягивания вариантов)
+  const attrByCode = useMemo(() => {
+    const m: Record<string, SpecAttr> = {}
+    const sc = specCats.find(c => c.product_category_slug === catSlug)
+    if (sc) specAttrs.filter(a => a.category_id === sc.id).forEach(a => { m[a.code] = a })
+    return m
+  }, [specCats, specAttrs, catSlug])
+
+  // Варианты для select-блока: сперва тянем из совместимости (spec_attributes.options),
+  // если там пусто — откатываемся на статичный список из шаблона.
+  const optionsFor = (block: NameBlock): string[] => {
+    const fromCompat = block.attrCode ? attrByCode[block.attrCode]?.options : undefined
+    if (fromCompat && fromCompat.length > 0) return fromCompat
+    return block.options || []
+  }
 
   // Шаги: 0 категория, 1 бренд, 2..(2+blocks-1) блоки, последний — финал
   const STEP_CATEGORY = 0
@@ -352,7 +368,7 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
             </label>
             {curBlock.input === "select" ? (
               <div className="flex flex-wrap gap-2">
-                {curBlock.options?.map(opt => (
+                {optionsFor(curBlock).map(opt => (
                   <button key={opt} type="button" onClick={() => setBlock(curBlock.key, blockVals[curBlock.key] === opt ? "" : opt)} style={{ cursor: "pointer" }}
                     className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${blockVals[curBlock.key] === opt ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/70 hover:border-primary"}`}>
                     {opt}
