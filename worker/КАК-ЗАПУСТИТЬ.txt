@@ -33,6 +33,17 @@
   - Если сам воркер упадёт — .bat перезапустит его через 5 секунд.
 
 
+EXCEL и PDF:
+
+  - Excel (.xlsx/.xls) и текстовые PDF разбираются автоматически —
+    библиотеки (openpyxl, pypdf, pdf2image) ставятся сами при первом запуске .bat.
+  - Если присылаешь PDF-СКАН (фото внутри PDF), для него нужен poppler:
+      1. Скачай poppler для Windows:
+         https://github.com/oschwartz10612/poppler-windows/releases
+      2. Распакуй и добавь папку \Library\bin в системный PATH.
+    Текстовые PDF и Excel работают БЕЗ poppler.
+
+
 ОСТАНОВИТЬ:
 
   Закрой окно воркера (крестиком) — он аккуратно погасит Ollama за собой.

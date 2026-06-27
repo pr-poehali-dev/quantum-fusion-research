@@ -17,8 +17,9 @@ echo   Folder: %cd%
 echo ============================================================
 echo.
 
-REM Install dependency (quiet, first run only)
-%PY% -m pip install --quiet --disable-pip-version-check requests
+REM Install dependencies (quiet, first run only)
+REM requests - HTTP; openpyxl - Excel; pypdf - PDF text; pdf2image - PDF scan to image
+%PY% -m pip install --quiet --disable-pip-version-check requests openpyxl pypdf pdf2image
 
 :loop
 echo [%date% %time%] Starting worker...

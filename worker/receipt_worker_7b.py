@@ -226,15 +226,24 @@ def _watchdog():
         _stop.wait(HEALTH_INTERVAL)
 
 
-def fetch_image_b64(image_url: str) -> str:
-    r = requests.get(image_url, timeout=60)
+def fetch_bytes(url: str) -> bytes:
+    r = requests.get(url, timeout=120)
     r.raise_for_status()
-    return base64.b64encode(r.content).decode("ascii")
+    return r.content
 
 
-def recognize(image_url: str) -> dict:
-    """Скачиваем фото счёта и отправляем в Ollama. Возвращаем распарсенный JSON-результат."""
-    img_b64 = fetch_image_b64(image_url)
+def _parse_json_response(text: str) -> dict:
+    text = (text or "").strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        cleaned = text.lstrip("`").replace("json", "", 1).strip().rstrip("`").strip()
+        return json.loads(cleaned)
+
+
+def recognize_image(img_bytes: bytes) -> dict:
+    """Распознаём счёт-картинку через визуальную модель Ollama."""
+    img_b64 = base64.b64encode(img_bytes).decode("ascii")
     payload = {
         "model": MODEL,
         "prompt": PROMPT,
@@ -246,12 +255,106 @@ def recognize(image_url: str) -> dict:
     }
     r = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
-    text = (r.json() or {}).get("response", "").strip()
+    return _parse_json_response((r.json() or {}).get("response", ""))
+
+
+def recognize_text(table_text: str) -> dict:
+    """Разбираем УЖЕ извлечённый текст счёта (из Excel/PDF) через модель — без картинки."""
+    prompt = (
+        PROMPT
+        + "\n\nНиже текст/таблица счёта, извлечённые из файла. "
+        + "Разбери их и верни JSON в указанном формате:\n\n"
+        + table_text[:24000]
+    )
+    payload = {
+        "model": MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
+        "keep_alive": KEEP_ALIVE,
+        "options": {"num_ctx": NUM_CTX, "temperature": 0},
+    }
+    r = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=REQUEST_TIMEOUT)
+    r.raise_for_status()
+    return _parse_json_response((r.json() or {}).get("response", ""))
+
+
+def excel_to_text(data: bytes) -> str:
+    """Читаем Excel как таблицу: каждая строка -> ячейки через | (без распознавания)."""
     try:
-        return json.loads(text)
+        import openpyxl
+    except ImportError:
+        raise RuntimeError("Нет библиотеки openpyxl. Установи: pip install openpyxl")
+    import io
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    lines = []
+    for ws in wb.worksheets:
+        for row in ws.iter_rows(values_only=True):
+            cells = ["" if c is None else str(c) for c in row]
+            if any(c.strip() for c in cells):
+                lines.append(" | ".join(cells))
+    return "\n".join(lines)
+
+
+def pdf_extract_text(data: bytes) -> str:
+    """Пытаемся вытащить текст из PDF (для текстовых счетов из 1С/Контура)."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        try:
+            from PyPDF2 import PdfReader  # запасной вариант
+        except ImportError:
+            return ""
+    import io
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
     except Exception:
-        cleaned = text.strip().lstrip("`").replace("json", "", 1).strip().rstrip("`").strip()
-        return json.loads(cleaned)
+        return ""
+
+
+def pdf_to_image_bytes(data: bytes) -> bytes:
+    """PDF-скан -> картинка первой страницы (нужен pdf2image + poppler)."""
+    try:
+        from pdf2image import convert_from_bytes
+    except ImportError:
+        raise RuntimeError(
+            "PDF-скан: нужна библиотека pdf2image и poppler. "
+            "Установи: pip install pdf2image, и распакуй poppler (добавь в PATH)."
+        )
+    import io
+    images = convert_from_bytes(data, dpi=200, first_page=1, last_page=1)
+    if not images:
+        raise RuntimeError("Не удалось отрендерить PDF в картинку.")
+    buf = io.BytesIO()
+    images[0].save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def recognize(image_url: str) -> dict:
+    """Главная точка: по типу файла из URL выбираем способ разбора."""
+    url_low = image_url.lower().split("?")[0]
+    data = fetch_bytes(image_url)
+
+    # Excel — читаем таблицу напрямую, потом разбираем текст моделью
+    if url_low.endswith((".xlsx", ".xls", ".xlsm")):
+        log("Файл Excel — читаю таблицу...")
+        table = excel_to_text(data)
+        if not table.strip():
+            raise RuntimeError("Excel пустой или не читается.")
+        return recognize_text(table)
+
+    # PDF — сперва пробуем текст, если пусто (скан) — рендерим в картинку
+    if url_low.endswith(".pdf"):
+        log("Файл PDF — пробую извлечь текст...")
+        text = pdf_extract_text(data)
+        if len(text) >= 30:
+            return recognize_text(text)
+        log("Текста в PDF мало (похоже скан) — рендерю в картинку для модели...")
+        return recognize_image(pdf_to_image_bytes(data))
+
+    # Иначе считаем, что это картинка
+    return recognize_image(data)
 
 
 def pull_job():

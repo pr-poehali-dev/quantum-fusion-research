@@ -3,6 +3,21 @@
 
 ---
 
+## v5.97 | 2026-06-27 | Воркеры: разбор Excel и PDF (фикс 500 на не-картинках)
+
+- receipt_worker_3b.py, receipt_worker_7b.py: recognize() теперь определяет тип
+  файла по URL и выбирает способ:
+    • Excel (.xlsx/.xls/.xlsm) → читается как таблица (openpyxl), затем текст
+      разбирается моделью в текстовом режиме (recognize_text).
+    • PDF текстовый → извлекается текст (pypdf/PyPDF2) и разбирается моделью.
+    • PDF-скан → рендерится в картинку (pdf2image+poppler) и идёт в модель.
+    • Картинки → как раньше (recognize_image).
+  Это устраняет 500 Internal Server Error при отправке Excel/PDF в визуальную модель.
+- start_worker_*.bat: авто-установка openpyxl, pypdf, pdf2image.
+- КАК-ЗАПУСТИТЬ.txt: раздел про Excel/PDF и установку poppler для PDF-сканов.
+
+---
+
 ## v5.96 | 2026-06-27 | Воркеры: проверка/догрузка модели (фикс 404 /api/generate)
 
 - receipt_worker_3b.py, receipt_worker_7b.py: добавлены installed_models() и
