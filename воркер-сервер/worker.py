@@ -33,7 +33,7 @@ BACKEND_URL = os.environ.get(
 WORKER_TOKEN = os.environ.get("RECEIPT_WORKER_TOKEN", "ВСТАВЬ_СЮДА_ТОКЕН")
 # Локальная Ollama
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-MODEL = os.environ.get("RECEIPT_MODEL", "qwen2-vl:7b")
+MODEL = os.environ.get("RECEIPT_MODEL", "qwen2.5vl:7b")
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "3"))
 
 # Промпт: жёстко требуем чистый JSON без лишнего текста
