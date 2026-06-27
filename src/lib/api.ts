@@ -22,6 +22,7 @@ const URLS = {
   priceMonitor: "https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab",
   stress: "https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c",
   companySettings: "https://functions.poehali.dev/9156c6f9-b7d3-42f2-9236-62ebc0347f02",
+  receiptScan: "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4",
 }
 
 function authHeaders(session?: string | null) {
@@ -182,6 +183,25 @@ export const api = {
   },
   upload: {
     avatar: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "avatars", compress: true }) }).then(r => r.json()),
+    receipt: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "receipts", compress: true }) }).then(r => r.json()),
+  },
+  receiptScan: {
+    createJob: (imageUrl: string, ak: string) =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "create_job", image_url: imageUrl, ak }) }).then(r => r.json()),
+    jobStatus: (jobId: number, ak: string) =>
+      fetch(`${URLS.receiptScan}?action=job_status&job_id=${jobId}`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
+    rematch: (jobId: number, ak: string) =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "rematch", job_id: jobId, ak }) }).then(r => r.json()),
+    rememberMatch: (rawName: string, groupId: number, ak: string) =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "remember_match", raw_name: rawName, group_id: groupId, ak }) }).then(r => r.json()),
+    draftSave: (data: { draft_id?: number; job_id?: number; store_id?: number | null; rows: unknown[] }, ak: string) =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "draft_save", ...data, ak }) }).then(r => r.json()),
+    draftGet: (draftId: number, ak: string) =>
+      fetch(`${URLS.receiptScan}?action=draft_get&draft_id=${draftId}`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
+    draftsOpen: (ak: string) =>
+      fetch(`${URLS.receiptScan}?action=drafts_open`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
+    draftClose: (draftId: number, status: string, ak: string) =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "draft_close", draft_id: draftId, status, ak }) }).then(r => r.json()),
   },
   warehouse: {
     getGroups: (params?: Record<string, string>) => {

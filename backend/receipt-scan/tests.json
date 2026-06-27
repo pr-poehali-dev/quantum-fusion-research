@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Worker pull rejects without token",
+      "method": "GET",
+      "path": "/?action=worker_pull",
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create job rejects without admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create_job", "image_url": "https://x/y.jpg"},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

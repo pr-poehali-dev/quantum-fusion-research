@@ -9,6 +9,7 @@ import { playScanOk, playScanError } from "@/lib/scanSound"
 import { getAdminKey } from "@/pages/admin/types"
 import BrandsManager from "./BrandsManager"
 import GroupWizardModal from "./GroupWizardModal"
+import ReceiptScanModal from "./ReceiptScanModal"
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -859,6 +860,10 @@ export default function WarehouseTab() {
   const [brandsModal, setBrandsModal] = useState(false)
   const [quickSupplyModal, setQuickSupplyModal] = useState(false)
   const [inventoryModal, setInventoryModal] = useState(false)
+  // Приёмка по счёту (OCR). receiptModal: false | {draftId?} ; resumeDraftId — возврат после создания SKU
+  const [receiptModal, setReceiptModal] = useState<false | { draftId?: number | null }>(false)
+  const [openDrafts, setOpenDrafts] = useState<{ draft_id: number; rows_count: number; updated_at: string }[]>([])
+  const [draftsPanel, setDraftsPanel] = useState(false)
   const [discountModal, setDiscountModal] = useState(false)
 
   // Ресайз колонок
@@ -906,6 +911,30 @@ export default function WarehouseTab() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(0) }, [search, filterCat, showArchived])
+
+  // Открытые черновики приёмки по счёту
+  const loadDrafts = useCallback(async () => {
+    const d = await api.receiptScan.draftsOpen(getAdminKey())
+    if (d?.drafts) setOpenDrafts(d.drafts)
+  }, [])
+  useEffect(() => { loadDrafts() }, [loadDrafts])
+
+  // Возврат к черновику после создания нового SKU
+  const resumeDraftId = useRef<number | null>(null)
+  const handleCreateProductFromReceipt = (rawName: string, draftId: number) => {
+    resumeDraftId.current = draftId
+    setReceiptModal(false)          // закрываем приёмку (черновик уже сохранён в БД)
+    setGroupModal({ name: rawName }) // открываем мастер нового товара с предзаполненным именем
+  }
+  const handleGroupSaved = () => {
+    load()
+    // если создавали SKU из приёмки — возвращаемся к незаконченному листу
+    if (resumeDraftId.current) {
+      const did = resumeDraftId.current
+      resumeDraftId.current = null
+      setReceiptModal({ draftId: did })
+    }
+  }
 
   const [recalcing, setRecalcing] = useState(false)
   const handleRecalcReserves = async () => {
@@ -1010,6 +1039,19 @@ export default function WarehouseTab() {
         <Button size="sm" onClick={() => setQuickSupplyModal(true)}>
           <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setReceiptModal({})} className="relative border-primary/50 text-primary hover:bg-primary/10">
+          <Icon name="ScanLine" size={14} className="mr-1.5" />Принять по счёту
+          {openDrafts.length > 0 && (
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); setDraftsPanel(v => !v) }}
+              title="Незаконченные листы приёмки"
+              className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white shadow"
+            >
+              {openDrafts.length}
+            </span>
+          )}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
           <Icon name="ClipboardList" size={14} className="mr-1.5" />Инвентаризация
         </Button>
@@ -1070,6 +1112,39 @@ export default function WarehouseTab() {
           <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
         </Button>
       </div>
+
+      {/* Панель незаконченных листов приёмки по счёту */}
+      {draftsPanel && openDrafts.length > 0 && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium text-amber-600 flex items-center gap-1.5">
+              <Icon name="FileClock" size={15} />Незаконченные листы приёмки
+            </p>
+            <button onClick={() => setDraftsPanel(false)} style={{ cursor: "pointer" }}>
+              <Icon name="X" size={15} className="text-foreground/40" />
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {openDrafts.map(d => (
+              <div key={d.draft_id} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                <span className="text-sm">Лист #{d.draft_id} · позиций: {d.rows_count}</span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setDraftsPanel(false); setReceiptModal({ draftId: d.draft_id }) }}
+                    style={{ cursor: "pointer" }}
+                    className="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                    Продолжить
+                  </button>
+                  <button onClick={async () => { await api.receiptScan.draftClose(d.draft_id, "CANCELED", getAdminKey()); loadDrafts() }}
+                    style={{ cursor: "pointer" }}
+                    className="rounded-lg border border-border px-2 py-1 text-xs text-foreground/50 hover:text-red-400">
+                    <Icon name="Trash2" size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Фильтры */}
       <div className="flex flex-wrap gap-2">
@@ -1253,8 +1328,16 @@ export default function WarehouseTab() {
       {groupModal !== false && (
         <GroupWizardModal
           group={groupModal}
-          onClose={() => setGroupModal(false)}
-          onSaved={load}
+          onClose={() => {
+            setGroupModal(false)
+            // закрытие крестиком (без сохранения) — всё равно возвращаем к черновику
+            if (resumeDraftId.current) {
+              const did = resumeDraftId.current
+              resumeDraftId.current = null
+              setReceiptModal({ draftId: did })
+            }
+          }}
+          onSaved={() => { setGroupModal(false); handleGroupSaved() }}
         />
       )}
       {storesModal && (
@@ -1272,6 +1355,15 @@ export default function WarehouseTab() {
           stores={stores}
           onClose={() => setQuickSupplyModal(false)}
           onSaved={load}
+        />
+      )}
+      {receiptModal !== false && (
+        <ReceiptScanModal
+          stores={stores}
+          draftId={receiptModal.draftId ?? null}
+          onClose={() => { setReceiptModal(false); loadDrafts() }}
+          onAccepted={() => { load(); loadDrafts() }}
+          onCreateProduct={handleCreateProductFromReceipt}
         />
       )}
       {inventoryModal && (

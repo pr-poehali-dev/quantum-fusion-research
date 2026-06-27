@@ -10,6 +10,25 @@
 - Фронт: кнопка «Договор поставки» в OrderProcessPage; вкладка админки
   «Реквизиты» (CompanySettings). api.companySettings.get/save.
 
+## Приёмка по счёту через локальную LLM / OCR (v5.81)
+- backend/receipt-scan (URL .../de7a55a6-...) — приёмка товара по фото счёта.
+  Очередь распознавания + матчинг позиций с товарами склада.
+  Actions:
+    • worker_pull / worker_result — для воркера на сервере с GPU (X-Worker-Token,
+      секрет RECEIPT_WORKER_TOKEN). Воркер сам забирает NEW-задачи и возвращает JSON.
+    • create_job / job_status — фронт создаёт задачу (image_url из S3) и опрашивает.
+    • draft_save / draft_get / drafts_open / draft_close — черновики листа приёмки
+      (чтобы не терять прогресс при создании нового SKU).
+    • remember_match — память ручных сопоставлений; rematch — пересчёт матчинга.
+  matcher.py — нормализация + нечёткое сравнение (артикул→память→fuzzy), без либ.
+- БД: receipt_jobs, receipt_drafts, receipt_match_memory (V0174).
+- Фронт: src/components/admin/ReceiptScanModal.tsx — загрузка фото, опрос статуса,
+  экран сверки (🟢/🟡/🔴), приёмка партий (supply_create). Интеграция в
+  WarehouseTab: кнопка «Принять по счёту», бейдж/панель незаконченных листов,
+  возврат к черновику после создания нового товара. api.receiptScan.* + upload.receipt.
+- воркер-сервер/worker.py + ИНСТРУКЦИЯ.txt — локальный FastAPI/Ollama-воркер
+  (модель qwen2-vl:7b), НЕ часть деплоя, ставится на сервер пользователя.
+
 ## Стек
 - Frontend: React + Vite + TypeScript (/src)
 - Backend: Python 3.11 Cloud Functions (/backend)
