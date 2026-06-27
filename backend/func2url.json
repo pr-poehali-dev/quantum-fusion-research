@@ -1,4 +1,6 @@
 {
+  "company-settings": "https://functions.poehali.dev/9156c6f9-b7d3-42f2-9236-62ebc0347f02",
+  "generate-contract": "https://functions.poehali.dev/7db163ee-2c8f-43e0-af32-d7c98db8f5e4",
   "stress": "https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c",
   "price-monitor": "https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab",
   "sn-archive": "https://functions.poehali.dev/147bf909-3e68-44c2-bd73-5c6dc9b11195",

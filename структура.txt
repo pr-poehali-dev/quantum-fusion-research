@@ -1,6 +1,15 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
+## Договор поставки (v5.77)
+- backend/generate-contract — PDF договора поставки + спецификация (Приложение №1)
+  по ?order_id. reportlab→base64. № договора = orders.id. Позиции из orders.items
+  по слотам, строка «Работа» (assembly), ИТОГО, предоплата/остаток.
+- backend/company-settings — реквизиты поставщика (таблица company_settings,
+  single-row V0172). GET публичный, POST под ADMIN_KEY (X-Admin-Key/ak).
+- Фронт: кнопка «Договор поставки» в OrderProcessPage; вкладка админки
+  «Реквизиты» (CompanySettings). api.companySettings.get/save.
+
 ## Стек
 - Frontend: React + Vite + TypeScript (/src)
 - Backend: Python 3.11 Cloud Functions (/backend)

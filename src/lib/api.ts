@@ -21,6 +21,7 @@ const URLS = {
   snArchive: "https://functions.poehali.dev/147bf909-3e68-44c2-bd73-5c6dc9b11195",
   priceMonitor: "https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab",
   stress: "https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c",
+  companySettings: "https://functions.poehali.dev/9156c6f9-b7d3-42f2-9236-62ebc0347f02",
 }
 
 function authHeaders(session?: string | null) {
@@ -279,6 +280,11 @@ export const api = {
       fetch(`${URLS.stress}?action=preset_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "preset_save", ...(data as object) }) }).then(r => r.json()),
     presetDelete: (id: number, adminKey: string) =>
       fetch(`${URLS.stress}?action=preset_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+  },
+  companySettings: {
+    get: () => fetch(URLS.companySettings).then(r => r.json()),
+    save: (data: Record<string, unknown>, adminKey: string) =>
+      fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ ...data, ak: adminKey }) }).then(r => r.json()),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),

@@ -16,6 +16,7 @@ import RmaTab from "@/components/admin/RmaTab"
 import QuizRequestsTab from "@/components/admin/QuizRequestsTab"
 import PriceMonitorTab from "@/components/admin/PriceMonitorTab"
 import StressTestsTab from "@/components/admin/StressTestsTab"
+import CompanySettings from "@/components/admin/CompanySettings"
 import {
   ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
@@ -179,6 +180,7 @@ export default function Admin() {
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
+    { key: "company_settings", label: "Реквизиты", icon: "Building2" },
     { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
   ]
@@ -312,6 +314,13 @@ export default function Admin() {
 
         {/* FINANCE */}
         {tab === "finance" && <FinanceTab />}
+
+        {/* COMPANY SETTINGS (реквизиты для договора) */}
+        {tab === "company_settings" && (
+          <div style={{ padding: "32px 50px 48px" }}>
+            <CompanySettings />
+          </div>
+        )}
 
         {/* USERS */}
         {tab === "users" && (

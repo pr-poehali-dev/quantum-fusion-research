@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Missing order_id returns 400",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 400,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Contract PDF for order",
+      "method": "GET",
+      "path": "/?order_id=360",
+      "expectedStatus": 200,
+      "expectedBody": {"pdf_b64": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -294,8 +294,8 @@ export const EMPTY_WIP: WipBuild = {
   order_id: null, for_sale: false,
 }
 
-export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "sn_archive" | "compatibility" | "users" | "schedule" | "calendar" | "finance" | "cables" | "rma" | "quiz_requests" | "price_monitor" | "stress"
-export const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "warehouse", "sn_archive", "compatibility", "users", "schedule", "calendar", "finance", "cables", "rma", "quiz_requests", "price_monitor", "stress"]
+export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "sn_archive" | "compatibility" | "users" | "schedule" | "calendar" | "finance" | "cables" | "rma" | "quiz_requests" | "price_monitor" | "stress" | "company_settings"
+export const VALID_TABS: AdminTab[] = ["orders", "orders_archive", "wip_builds", "wip_archive", "products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "warehouse", "sn_archive", "compatibility", "users", "schedule", "calendar", "finance", "cables", "rma", "quiz_requests", "price_monitor", "stress", "company_settings"]
 
 export function TagBadge({ tag }: { tag: Tag }) {
   const cls = TAG_COLOR_CLASSES[tag.color] || TAG_COLOR_CLASSES.primary
