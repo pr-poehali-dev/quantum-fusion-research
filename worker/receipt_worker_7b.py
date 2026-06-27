@@ -144,19 +144,60 @@ def ensure_ollama(wait_sec: int = 60) -> bool:
     return False
 
 
+def installed_models() -> list:
+    """Список моделей, которые реально видит этот сервер Ollama."""
+    try:
+        r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+        r.raise_for_status()
+        return [m.get("name", "") for m in (r.json() or {}).get("models", [])]
+    except Exception:
+        return []
+
+
+def ensure_model() -> bool:
+    """Проверяем, что нужная модель есть в этом сервере Ollama. Если нет — качаем."""
+    models = installed_models()
+    if MODEL in models:
+        return True
+
+    log(f"Модель {MODEL} не найдена в этом сервере Ollama. Доступны: {models or 'нет'}")
+    exe = shutil.which("ollama")
+    if not exe:
+        log("Не могу скачать: команда 'ollama' не найдена в PATH.")
+        return False
+
+    log(f"Качаю модель {MODEL} (`ollama pull`)... Это может занять несколько минут.")
+    try:
+        subprocess.run([exe, "pull", MODEL], check=True)
+    except Exception as e:
+        log(f"Не удалось скачать модель: {e}")
+        return False
+
+    if MODEL in installed_models():
+        log(f"Модель {MODEL} скачана.")
+        return True
+    log(f"Модель {MODEL} всё ещё не видна серверу. Проверь: ollama list")
+    return False
+
+
 def warmup():
     """Загружаем модель в VRAM сразу при старте, чтобы первая задача шла быстро."""
+    if not ensure_model():
+        return False
     log("Прогрев модели (загрузка в видеопамять)...")
     try:
-        requests.post(
+        r = requests.post(
             f"{OLLAMA_URL}/api/generate",
             json={"model": MODEL, "prompt": "ok", "stream": False,
                   "keep_alive": KEEP_ALIVE, "options": {"num_ctx": NUM_CTX}},
             timeout=REQUEST_TIMEOUT,
         )
+        r.raise_for_status()
         log("Модель загружена и закреплена в VRAM (keep_alive=-1).")
+        return True
     except Exception as e:
         log(f"Не удалось прогреть модель: {e}")
+        return False
 
 
 def _watchdog():
@@ -271,8 +312,12 @@ def main():
         log("Жду 10 сек и пробую снова поднять Ollama...")
         time.sleep(10)
 
-    # 2) Прогреваем модель и запускаем фонового сторожа.
-    warmup()
+    # 2) Проверяем/качаем модель и прогреваем. Без модели работать нет смысла.
+    while not warmup():
+        if _stop.is_set():
+            return
+        log("Модель недоступна. Жду 15 сек и пробую снова (проверь: ollama list)...")
+        time.sleep(15)
     threading.Thread(target=_watchdog, daemon=True).start()
     log("Сторож сервера активен. Опрашиваю очередь...")
 
