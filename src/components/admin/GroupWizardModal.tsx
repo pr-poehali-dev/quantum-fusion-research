@@ -27,10 +27,11 @@ interface SpecAttr { id: number; category_id: number; code: string }
 interface SpecCat { id: number; product_category_slug?: string | null }
 interface CatalogCat { id: number; name: string; slug: string }
 
-export default function GroupWizardModal({ group, onClose, onSaved }: {
+export default function GroupWizardModal({ group, onClose, onSaved, receiptHint }: {
   group: Group | null
   onClose: () => void
   onSaved: () => void
+  receiptHint?: string | null   // сырое название из чека (для приёмки по счёту)
 }) {
   const isNew = !group?.id
 
@@ -246,8 +247,19 @@ export default function GroupWizardModal({ group, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onDoubleClick={onClose}>
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl" onDoubleClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-black/60 p-4" onDoubleClick={onClose}>
+      {/* Подсказка из чека — копируемое название над окном мастера */}
+      {receiptHint && (
+        <div className="w-full max-w-lg rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 shadow-lg" onDoubleClick={e => e.stopPropagation()}>
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
+            <Icon name="ClipboardCopy" fallback="Copy" size={12} /> Название из счёта (выделите и скопируйте нужное):
+          </p>
+          <p className="select-text cursor-text break-words text-sm text-foreground" style={{ userSelect: "text" }}>
+            {receiptHint}
+          </p>
+        </div>
+      )}
+      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl" onDoubleClick={e => e.stopPropagation()}>
         {/* Заголовок + прогресс */}
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{isNew ? "Новая группа товара" : "Редактировать группу"}</h2>

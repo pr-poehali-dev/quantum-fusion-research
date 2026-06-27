@@ -921,10 +921,13 @@ export default function WarehouseTab() {
 
   // Возврат к черновику после создания нового SKU
   const resumeDraftId = useRef<number | null>(null)
+  // сырое название из чека — показываем копируемой подсказкой над мастером
+  const [receiptHint, setReceiptHint] = useState<string | null>(null)
   const handleCreateProductFromReceipt = (rawName: string, draftId: number) => {
     resumeDraftId.current = draftId
+    setReceiptHint(rawName)
     setReceiptModal(false)          // закрываем приёмку (черновик уже сохранён в БД)
-    setGroupModal({ name: rawName }) // открываем мастер нового товара с предзаполненным именем
+    setGroupModal({})               // открываем мастер нового товара (имя соберётся по шаблону)
   }
   const handleGroupSaved = () => {
     load()
@@ -1328,8 +1331,10 @@ export default function WarehouseTab() {
       {groupModal !== false && (
         <GroupWizardModal
           group={groupModal}
+          receiptHint={receiptHint}
           onClose={() => {
             setGroupModal(false)
+            setReceiptHint(null)
             // закрытие крестиком (без сохранения) — всё равно возвращаем к черновику
             if (resumeDraftId.current) {
               const did = resumeDraftId.current
@@ -1337,7 +1342,7 @@ export default function WarehouseTab() {
               setReceiptModal({ draftId: did })
             }
           }}
-          onSaved={() => { setGroupModal(false); handleGroupSaved() }}
+          onSaved={() => { setGroupModal(false); setReceiptHint(null); handleGroupSaved() }}
         />
       )}
       {storesModal && (
