@@ -5,6 +5,28 @@
 """
 import re
 
+# Упаковка в названии: «20 шт/кор», «(20 шт/уп)», «по 50 шт», «x10 шт», «уп. 24 шт»
+_PACK_RE = re.compile(
+    r"(\d+)\s*шт\s*[\\/]\s*(?:кор|короб|уп|упак|пал)",   # 20 шт/кор, 50 шт/уп
+    re.IGNORECASE,
+)
+_PACK_RE2 = re.compile(r"(?:по|x|х)\s*(\d+)\s*шт", re.IGNORECASE)  # по 20 шт, x10 шт
+
+
+def pack_size_in_name(name: str):
+    """Возвращает число упаковки из названия (сколько штук в коробке/упаковке) или None.
+    Нужно чтобы НЕ перепутать это с реальным количеством к приёмке."""
+    if not name:
+        return None
+    m = _PACK_RE.search(name) or _PACK_RE2.search(name)
+    if m:
+        try:
+            return int(m.group(1))
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
 # Мусорные слова, которые есть в чеках, но мешают сравнению
 STOPWORDS = {
     "видеокарта", "видеокарты", "процессор", "материнская", "плата", "оперативная",
@@ -90,5 +112,7 @@ def match_one(raw_name: str, article: str, groups: list, memory: dict) -> dict:
     if top and top[0]["score"] >= 90:
         return {"group_id": top[0]["group_id"], "confidence": top[0]["score"], "level": "fuzzy_high", "candidates": top}
     if top and top[0]["score"] >= 55:
-        return {"group_id": top[0]["group_id"], "confidence": top[0]["score"], "level": "fuzzy_mid", "candidates": top}
+        # ЖЁЛТЫЕ (60-90%): автовыбор НЕ делаем — group_id=None, только подсказки.
+        # Менеджер обязан выбрать вручную из кандидатов.
+        return {"group_id": None, "confidence": top[0]["score"], "level": "fuzzy_mid", "candidates": top}
     return {"group_id": None, "confidence": top[0]["score"] if top else 0.0, "level": "none", "candidates": top}

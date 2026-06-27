@@ -18,6 +18,8 @@ interface MatchRow {
   level: string
   candidates: Candidate[]
   store_hint?: string | null
+  qty_warn?: boolean        // кол-во подозрительно совпало с упаковкой из названия
+  pack_size?: number | null
   // локальные поля приёмки
   warranty_until?: string
   accepted?: boolean
@@ -52,10 +54,11 @@ function fileToCompressedDataUrl(file: File, maxSide = 1800): Promise<string> {
 
 function levelColor(row: MatchRow): { cls: string; label: string } {
   if (row.skip) return { cls: "border-border bg-muted/40", label: "Пропущено" }
-  if (!row.group_id) return { cls: "border-red-500/40 bg-red-500/5", label: "Новый товар" }
-  if (row.confidence >= 90 || row.level === "article" || row.level === "memory")
-    return { cls: "border-green-500/40 bg-green-500/5", label: "Совпадение" }
-  return { cls: "border-yellow-500/40 bg-yellow-500/5", label: "Уточнить" }
+  if (row.group_id) return { cls: "border-green-500/40 bg-green-500/5", label: "Совпадение" }
+  // group_id == null: жёлтый (есть похожие кандидаты) или красный (совсем нет)
+  if (row.level === "fuzzy_mid" || (row.candidates && row.candidates.length > 0))
+    return { cls: "border-yellow-500/40 bg-yellow-500/5", label: "Выберите товар" }
+  return { cls: "border-red-500/40 bg-red-500/5", label: "Новый товар" }
 }
 
 interface StoreMatch { store_id: number | null; store_name: string | null; store_hint: string | null }
@@ -262,9 +265,11 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     onClose()
   }
 
-  const greenCount = rows.filter(r => r.group_id && !r.skip && (r.confidence >= 90 || r.level === "article" || r.level === "memory")).length
-  const yellowCount = rows.filter(r => r.group_id && !r.skip && r.confidence < 90 && r.level !== "article" && r.level !== "memory").length
-  const redCount = rows.filter(r => !r.group_id && !r.skip).length
+  // зелёные — товар подставлен; жёлтые — есть похожие, нужен выбор; красные — совсем новые
+  const greenCount = rows.filter(r => r.group_id && !r.skip).length
+  const yellowCount = rows.filter(r => !r.group_id && !r.skip && (r.level === "fuzzy_mid" || (r.candidates && r.candidates.length > 0))).length
+  const redCount = rows.filter(r => !r.group_id && !r.skip && r.level !== "fuzzy_mid" && !(r.candidates && r.candidates.length > 0)).length
+  const qtyWarnCount = rows.filter(r => r.qty_warn && !r.skip).length
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={stage === "review" ? closeAndSave : onClose}>
@@ -351,10 +356,13 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
                   )}
                 </div>
 
-                <div className="flex gap-2 self-end text-xs">
+                <div className="flex flex-wrap gap-2 self-end text-xs">
                   <span className="rounded-full bg-green-500/15 px-2.5 py-1 text-green-500">🟢 {greenCount} совпало</span>
-                  <span className="rounded-full bg-yellow-500/15 px-2.5 py-1 text-yellow-600">🟡 {yellowCount} уточнить</span>
+                  <span className="rounded-full bg-yellow-500/15 px-2.5 py-1 text-yellow-600">🟡 {yellowCount} выбрать</span>
                   <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-red-400">🔴 {redCount} новых</span>
+                  {qtyWarnCount > 0 && (
+                    <span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-orange-500">⚠ {qtyWarnCount} проверить кол-во</span>
+                  )}
                 </div>
               </div>
 
@@ -373,15 +381,28 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
                               {row.matched_name}
                               <span className="text-xs text-foreground/40">({Math.round(row.confidence)}%)</span>
                             </p>
+                          ) : (row.level === "fuzzy_mid" || (row.candidates && row.candidates.length > 0)) ? (
+                            <p className="mt-0.5 text-sm text-yellow-600">
+                              есть похожие — выберите нужный ниже ({Math.round(row.confidence)}%)
+                            </p>
                           ) : (
                             <p className="mt-0.5 text-sm text-red-400/80">нет товара на складе</p>
+                          )}
+                          {row.qty_warn && (
+                            <p className="mt-1 text-[11px] text-orange-500">
+                              ⚠ в названии «{row.pack_size} шт/кор» — проверьте реальное количество к приёмке
+                            </p>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
                           <div>
-                            <label className="block text-[10px] text-foreground/40">кол-во</label>
-                            <Input type="number" min={1} value={row.qty} className="h-8 w-16 text-sm"
-                              onChange={e => updateRow(i, { qty: Math.max(1, parseInt(e.target.value) || 1) })} />
+                            <label className={`block text-[10px] ${row.qty_warn ? "text-orange-500 font-medium" : "text-foreground/40"}`}>
+                              кол-во {row.qty_warn && "⚠"}
+                            </label>
+                            <Input type="number" min={1} value={row.qty}
+                              className={`h-8 w-16 text-sm ${row.qty_warn ? "border-orange-500 ring-1 ring-orange-500/40" : ""}`}
+                              title={row.qty_warn ? `Проверьте! В названии указана упаковка ${row.pack_size} шт — возможно, это не реальное количество` : undefined}
+                              onChange={e => updateRow(i, { qty: Math.max(1, parseInt(e.target.value) || 1), qty_warn: false })} />
                           </div>
                           <div>
                             <label className="block text-[10px] text-foreground/40">цена ₽</label>

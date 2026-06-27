@@ -3,7 +3,7 @@ import os
 import psycopg2
 from datetime import datetime
 
-from matcher import normalize, match_one
+from matcher import normalize, match_one, pack_size_in_name
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -92,16 +92,23 @@ def build_match(cur, raw_result):
         article = (it.get("article") or "").strip()
         m = match_one(raw_name, article, groups, memory)
         g = next((x for x in groups if x["id"] == m["group_id"]), None) if m["group_id"] else None
+        qty = int(it.get("qty") or 1)
+        # Страховка от путаницы кол-ва: если в названии есть упаковка ("20 шт/кор")
+        # и распознанное qty совпало именно с ней — помечаем как подозрительное.
+        pack = pack_size_in_name(raw_name)
+        qty_warn = bool(pack and qty == pack)
         rows.append({
             "raw_name": raw_name,
             "article": article,
-            "qty": int(it.get("qty") or 1),
+            "qty": qty,
             "price": float(it.get("price") or 0),
             "group_id": m["group_id"],
             "matched_name": g["name"] if g else None,
             "confidence": m["confidence"],
             "level": m["level"],
             "candidates": m["candidates"],
+            "qty_warn": qty_warn,
+            "pack_size": pack,
         })
     return {"store": store, "rows": rows}
 
