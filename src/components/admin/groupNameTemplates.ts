@@ -156,6 +156,9 @@ export function blockNamePart(block: NameBlock, values: Record<string, string>):
   if (!v || v === "-") return ""
   if (block.excludeFromName) return ""
 
+  // Тип охлаждения: «Воздушное» в имя не пишем (подразумевается), СЖО — пишем
+  if (block.key === "type" && v === "Воздушное") return ""
+
   // Цвет → латиница
   if (block.key === "color") v = COLOR_NAME[v] || v
 
