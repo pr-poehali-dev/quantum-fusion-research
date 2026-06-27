@@ -48,15 +48,15 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
       { key: "edition", label: "Исполнение", hint: "Predator BiFrost OC", input: "text", attrCode: "model" },
     ],
   },
-  // ⚡ Блок питания → 1stPlayer NGDP 1000W Gold ATX3.1 Black
+  // ⚡ Блок питания → 1stPlayer ACK Silver 750W ATX3.1 Black
   {
     slug: "psu",
     blocks: [
-      { key: "series", label: "Серия", hint: "NGDP", input: "text", attrCode: "series", suggest: true },
-      { key: "watt", label: "Мощность", input: "select", attrCode: "watt", required: true,
-        options: ["500 Вт","550 Вт","600 Вт","650 Вт","700 Вт","750 Вт","800 Вт","850 Вт","1000 Вт","1200 Вт","1300 Вт","1600 Вт","2000 Вт","2800 Вт"] },
+      { key: "series", label: "Серия", hint: "ACK", input: "text", attrCode: "series", suggest: true },
       { key: "cert", label: "Сертификат 80+", input: "select", attrCode: "80plus", required: true,
         options: ["-","White","Bronze","Silver","Gold","Platinum","Titanium"] },
+      { key: "watt", label: "Мощность", input: "select", attrCode: "watt", required: true,
+        options: ["500 Вт","550 Вт","600 Вт","650 Вт","700 Вт","750 Вт","800 Вт","850 Вт","1000 Вт","1200 Вт","1300 Вт","1600 Вт","2000 Вт","2800 Вт"] },
       { key: "std", label: "Стандарт", input: "select", attrCode: "atx_standard",
         options: ["ATX 3.1","ATX 3.0","ATX 2.x","-"] },
       { key: "color", label: "Цвет", input: "select", attrCode: "color",
