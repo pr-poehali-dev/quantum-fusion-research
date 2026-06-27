@@ -44,8 +44,9 @@ KEEP_ALIVE = -1                       # -1 = держать модель в VRAM
 API_URL = "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4"
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
-# токен воркера: лучше задать через переменную окружения RECEIPT_WORKER_TOKEN
-WORKER_TOKEN = os.environ.get("RECEIPT_WORKER_TOKEN", "ВСТАВЬ_ТОКЕН_СЮДА")
+# токен воркера: лучше задать через переменную окружения RECEIPT_WORKER_TOKEN.
+# Чистим от случайных кавычек/пробелов, которые часто прилипают при вставке в .bat.
+WORKER_TOKEN = (os.environ.get("RECEIPT_WORKER_TOKEN", "ВСТАВЬ_ТОКЕН_СЮДА") or "").strip().strip('"').strip("'").strip()
 
 POLL_INTERVAL = 3                     # сек между опросами очереди, когда задач нет
 REQUEST_TIMEOUT = 300                 # таймаут запроса к Ollama (распознавание долгое)

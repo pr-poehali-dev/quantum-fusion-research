@@ -20,6 +20,13 @@
       "body": {"action": "create_job", "image_url": "https://x/y.jpg"},
       "expectedStatus": 403,
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Worker config rejects without admin",
+      "method": "GET",
+      "path": "/?action=worker_config",
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
     }
   ]
 }

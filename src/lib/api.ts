@@ -187,6 +187,8 @@ export const api = {
     receiptFile: (file: string, compress = false) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "receipts", compress }) }).then(r => r.json()),
   },
   receiptScan: {
+    workerConfig: (ak: string) =>
+      fetch(`${URLS.receiptScan}?action=worker_config`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
     createJob: (imageUrl: string, ak: string) =>
       fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "create_job", image_url: imageUrl, ak }) }).then(r => r.json()),
     jobStatus: (jobId: number, ak: string) =>

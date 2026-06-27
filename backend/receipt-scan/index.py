@@ -173,6 +173,33 @@ def handler(event: dict, context) -> dict:
         if not is_admin:
             return err("Нет доступа", 403)
 
+        # Настройка воркера: токен + готовая строка для .bat + статус очереди.
+        # Токен отдаётся только админу (проверен ADMIN_KEY выше).
+        if action == "worker_config":
+            token = os.environ.get("RECEIPT_WORKER_TOKEN") or ""
+            func_url = "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4"
+            cur.execute(
+                f"SELECT status, COUNT(*) FROM {SCHEMA}.receipt_jobs GROUP BY status"
+            )
+            counts = {r[0]: r[1] for r in cur.fetchall()}
+            cur.execute(
+                f"SELECT MAX(started_at) FROM {SCHEMA}.receipt_jobs WHERE started_at IS NOT NULL"
+            )
+            last_pull = cur.fetchone()[0]
+            return resp({
+                "token_set": bool(token),
+                "token": token,
+                "func_url": func_url,
+                "bat_line": f'set "RECEIPT_WORKER_TOKEN={token}"',
+                "queue": {
+                    "new": counts.get("NEW", 0),
+                    "processing": counts.get("PROCESSING", 0),
+                    "done": counts.get("DONE", 0),
+                    "error": counts.get("ERROR", 0),
+                },
+                "last_pull_at": last_pull,
+            })
+
         if action == "create_job":
             # фото счёта уже загружено в S3 (через upload), сюда приходит image_url
             image_url = body.get("image_url")
