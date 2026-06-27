@@ -309,9 +309,29 @@ def main():
                 log(f"Не смог отправить ошибку по задаче #{job_id}: {e2}")
 
 
+def check_token() -> bool:
+    """Токен должен быть задан и состоять только из ASCII (заголовки HTTP не умеют в кириллицу)."""
+    t = (WORKER_TOKEN or "").strip()
+    if not t or t == "ВСТАВЬ_ТОКЕН_СЮДА":
+        log("ОШИБКА: не задан токен воркера.")
+        log("  Открой start_worker_7b.bat в Блокноте и впиши токен в строку:")
+        log('  set "RECEIPT_WORKER_TOKEN=<твой_токен>"')
+        log("  Токен берётся из секрета проекта RECEIPT_WORKER_TOKEN.")
+        return False
+    try:
+        t.encode("ascii")
+    except UnicodeEncodeError:
+        log("ОШИБКА: в токене есть русские буквы/спецсимволы — так нельзя.")
+        log("  Скопируй токен заново (только латиница/цифры) в .bat.")
+        return False
+    return True
+
+
 if __name__ == "__main__":
-    if WORKER_TOKEN == "ВСТАВЬ_ТОКЕН_СЮДА":
-        log("ВНИМАНИЕ: не задан RECEIPT_WORKER_TOKEN. Укажи токен в env или в коде.")
+    if not check_token():
+        log("Воркер не запущен. Исправь токен и запусти снова.")
+        time.sleep(15)
+        raise SystemExit(1)
     signal.signal(signal.SIGINT, shutdown)
     try:
         signal.signal(signal.SIGTERM, shutdown)
