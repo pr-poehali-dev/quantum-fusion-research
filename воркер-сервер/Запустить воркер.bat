@@ -1,44 +1,43 @@
 @echo off
-chcp 65001 >nul
-title Воркер распознавания счетов
+title Receipt OCR worker
 
-REM ── Настройки (поменяй при необходимости) ───────────────────────────
+REM ===== Settings (change if needed) =====
 set "RECEIPT_WORKER_TOKEN=recv_8Kf3pZx9Qm2Lw7Bn4Vt6Hs1Dy0Rg5C"
 set "RECEIPT_MODEL=qwen2.5vl:3b"
 
-REM Папка, где лежит этот .bat (и worker.py рядом)
+REM Folder where this .bat is located (worker.py must be next to it)
 cd /d "%~dp0"
 
 echo ============================================================
-echo   Воркер распознавания счетов
-echo   Модель: %RECEIPT_MODEL%
-echo   Папка:  %cd%
+echo   Receipt OCR worker
+echo   Model: %RECEIPT_MODEL%
+echo   Folder: %cd%
 echo ============================================================
 echo.
 
-REM ── Проверка: установлен ли Python ──────────────────────────────────
+REM ===== Check Python =====
 where python >nul 2>nul
 if %errorlevel%==0 (
     set "PY=python"
-) else (
-    where py >nul 2>nul
-    if %errorlevel%==0 (
-        set "PY=py"
-    ) else (
-        echo [ОШИБКА] Python не найден. Установи с python.org и поставь галочку "Add Python to PATH".
-        echo.
-        pause
-        exit /b 1
-    )
+    goto found
 )
+where py >nul 2>nul
+if %errorlevel%==0 (
+    set "PY=py"
+    goto found
+)
+echo [ERROR] Python not found. Install from python.org with "Add Python to PATH".
+echo.
+pause
+exit /b 1
 
-REM ── Доустановка зависимостей (один раз, тихо) ────────────────────────
-echo Проверяю библиотеки...
+:found
+echo Installing libraries (first run only)...
 %PY% -m pip install --quiet requests openpyxl pypdf pymupdf
 
 echo.
-echo Запускаю воркер. Не закрывай это окно, пока работаешь со счетами.
-echo Для остановки нажми Ctrl+C или закрой окно.
+echo Worker is running. Keep this window open while processing receipts.
+echo Press Ctrl+C or close the window to stop.
 echo ------------------------------------------------------------
 echo.
 
@@ -46,5 +45,5 @@ echo.
 
 echo.
 echo ------------------------------------------------------------
-echo Воркер остановлен.
+echo Worker stopped.
 pause
