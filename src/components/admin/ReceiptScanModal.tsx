@@ -231,6 +231,8 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const startPolling = (jid: number) => {
     if (pollRef.current) clearInterval(pollRef.current)
     pollRef.current = setInterval(async () => {
+      // вкладка свёрнута — воркер всё равно работает, не дёргаем сервер впустую
+      if (document.hidden) return
       const st = await api.receiptScan.jobStatus(jid, ak)
       if (st?.status === "DONE") {
         if (pollRef.current) clearInterval(pollRef.current)
@@ -250,7 +252,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
         setError(st.error || "Ошибка распознавания")
         setStage("upload")
       }
-    }, 2500)
+    }, 5000)
   }
 
   // ── ПАКЕТНАЯ загрузка (2-20 файлов) ───────────────────────────────
@@ -304,6 +306,8 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     if (stage !== "batch") return
     if (batchPollRef.current) clearInterval(batchPollRef.current)
     batchPollRef.current = setInterval(async () => {
+      // вкладка свёрнута — не опрашиваем, воркер продолжит сам
+      if (document.hidden) return
       const active = batch.filter(b => (b.status === "queued" || b.status === "processing") && b.jobId)
       if (!active.length) return
       for (const b of active) {
@@ -323,7 +327,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
           patchBatch(b.id, { status: "error", progress: 100, error: st.error || "ошибка распознавания" })
         }
       }
-    }, 2500)
+    }, 5000)
     return () => { if (batchPollRef.current) clearInterval(batchPollRef.current) }
   }, [stage, batch, ak, storeId])
 
