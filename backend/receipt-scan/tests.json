@@ -35,6 +35,14 @@
       "body": {"action": "drafts_close_all"},
       "expectedStatus": 403,
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Jobs status batch rejects without admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "jobs_status", "job_ids": [1, 2]},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
     }
   ]
 }

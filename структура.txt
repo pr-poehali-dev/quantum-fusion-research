@@ -17,9 +17,15 @@
     • worker_pull / worker_result — для воркера на сервере с GPU (X-Worker-Token,
       секрет RECEIPT_WORKER_TOKEN). Воркер сам забирает NEW-задачи и возвращает JSON.
     • create_job / job_status — фронт создаёт задачу (image_url из S3) и опрашивает.
+    • jobs_status (POST, job_ids[]) — пакетный статус нескольких задач ОДНИМ
+      запросом (экономия вызовов при batch-приёмке нескольких файлов).
     • draft_save / draft_get / drafts_open / draft_close — черновики листа приёмки
-      (чтобы не терять прогресс при создании нового SKU).
+      (чтобы не терять прогресс при создании нового SKU). drafts_open отдаёт
+      total (полное число OPEN-листов) + до 200 листов.
+    • drafts_close_all (POST) — закрыть ВСЕ открытые листы одним UPDATE (CANCELED).
     • remember_match — память ручных сопоставлений; rematch — пересчёт матчинга.
+  ЭКОНОМИЯ ВЫЗОВОВ: одиночный опрос статуса — умный бэкофф (3с→5с→8с→12с→20с,
+    не дёргает при свёрнутой вкладке); batch — один jobs_status на всю пачку.
   matcher.py — нормализация + нечёткое сравнение (артикул→память→fuzzy), без либ.
 - БД: receipt_jobs, receipt_drafts, receipt_match_memory (V0174).
 - Фронт: src/components/admin/ReceiptScanModal.tsx — загрузка фото, опрос статуса,

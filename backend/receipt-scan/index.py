@@ -223,6 +223,30 @@ def handler(event: dict, context) -> dict:
                 return err("Задача не найдена", 404)
             return resp({"job_id": r[0], "status": r[1], "matched": r[2] or [], "error": r[3]})
 
+        # Пакетный статус: статус нескольких задач одним запросом (экономия вызовов при batch).
+        if action == "jobs_status":
+            raw_ids = body.get("job_ids") or params.get("job_ids") or []
+            if isinstance(raw_ids, str):
+                raw_ids = [x for x in raw_ids.split(",") if x.strip()]
+            ids = []
+            for x in raw_ids[:50]:
+                try:
+                    ids.append(int(x))
+                except (TypeError, ValueError):
+                    pass
+            if not ids:
+                return resp({"jobs": []})
+            placeholders = ",".join(["%s"] * len(ids))
+            cur.execute(
+                f"SELECT id, status, matched, error FROM {SCHEMA}.receipt_jobs WHERE id IN ({placeholders})",
+                tuple(ids),
+            )
+            jobs = [
+                {"job_id": r[0], "status": r[1], "matched": r[2] or [], "error": r[3]}
+                for r in cur.fetchall()
+            ]
+            return resp({"jobs": jobs})
+
         # черновик листа приёмки
         if action == "draft_save":
             draft_id = body.get("draft_id")

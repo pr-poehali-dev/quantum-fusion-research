@@ -193,6 +193,8 @@ export const api = {
       fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "create_job", image_url: imageUrl, ak }) }).then(r => r.json()),
     jobStatus: (jobId: number, ak: string) =>
       fetch(`${URLS.receiptScan}?action=job_status&job_id=${jobId}`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
+    jobsStatus: (jobIds: number[], ak: string) =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "jobs_status", job_ids: jobIds, ak }) }).then(r => r.json()),
     rematch: (jobId: number, ak: string) =>
       fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "rematch", job_id: jobId, ak }) }).then(r => r.json()),
     rememberMatch: (rawName: string, groupId: number, ak: string) =>

@@ -120,7 +120,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Поиск товара для ручного матча
   const [searchIdx, setSearchIdx] = useState<number | null>(null)
@@ -175,7 +175,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   useEffect(() => {
     if (draftId) loadDraft(draftId)
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+      if (pollRef.current) clearTimeout(pollRef.current)
       if (batchPollRef.current) clearInterval(batchPollRef.current)
     }
   }, [draftId, loadDraft])
@@ -228,14 +228,20 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     }
   }
 
+  // Умный бэкофф: опрашиваем часто в начале, затем всё реже — чтобы не дёргать
+  // функцию впустую при долгом распознавании. Шаги задержки (мс):
+  const POLL_STEPS = [3000, 3000, 5000, 5000, 8000, 12000, 20000]
   const startPolling = (jid: number) => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    pollRef.current = setInterval(async () => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+    let step = 0
+    const tick = async () => {
       // вкладка свёрнута — воркер всё равно работает, не дёргаем сервер впустую
-      if (document.hidden) return
+      if (document.hidden) {
+        pollRef.current = setTimeout(tick, 3000)
+        return
+      }
       const st = await api.receiptScan.jobStatus(jid, ak)
       if (st?.status === "DONE") {
-        if (pollRef.current) clearInterval(pollRef.current)
         const m = normMatched(st.matched)
         const matched: MatchRow[] = m.rows.map(r => ({ ...r, warranty_until: "" }))
         setRows(matched)
@@ -247,12 +253,18 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
         const dr = await api.receiptScan.draftSave({ job_id: jid, store_id: useStore, rows: matched }, ak)
         if (dr?.draft_id) setCurDraftId(dr.draft_id)
         setStage("review")
-      } else if (st?.status === "ERROR") {
-        if (pollRef.current) clearInterval(pollRef.current)
+        return
+      }
+      if (st?.status === "ERROR") {
         setError(st.error || "Ошибка распознавания")
         setStage("upload")
+        return
       }
-    }, 5000)
+      const delay = POLL_STEPS[Math.min(step, POLL_STEPS.length - 1)]
+      step++
+      pollRef.current = setTimeout(tick, delay)
+    }
+    pollRef.current = setTimeout(tick, POLL_STEPS[0])
   }
 
   // ── ПАКЕТНАЯ загрузка (2-20 файлов) ───────────────────────────────
@@ -310,11 +322,17 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
       if (document.hidden) return
       const active = batch.filter(b => (b.status === "queued" || b.status === "processing") && b.jobId)
       if (!active.length) return
+      // ОДИН запрос статуса на всю пачку вместо вызова по каждому файлу
+      const res = await api.receiptScan.jobsStatus(active.map(b => b.jobId!), ak)
+      const byId = new Map<number, { status: string; matched: unknown; error?: string }>(
+        (res?.jobs || []).map((j: { job_id: number; status: string; matched: unknown; error?: string }) => [j.job_id, j])
+      )
       for (const b of active) {
-        const st = await api.receiptScan.jobStatus(b.jobId!, ak)
-        if (st?.status === "PROCESSING") {
+        const st = byId.get(b.jobId!)
+        if (!st) continue
+        if (st.status === "PROCESSING") {
           patchBatch(b.id, { status: "processing", progress: 75 })
-        } else if (st?.status === "DONE") {
+        } else if (st.status === "DONE") {
           if (batchDoneJobs.current.has(b.jobId!)) continue  // уже сохранён — не дублируем
           batchDoneJobs.current.add(b.jobId!)
           const m = normMatched(st.matched)
@@ -323,7 +341,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
           // любой результат воркера складываем в черновик
           const dr = await api.receiptScan.draftSave({ job_id: b.jobId, store_id: useStore, rows: matched }, ak)
           patchBatch(b.id, { status: "done", progress: 100, itemsCount: matched.length, draftId: dr?.draft_id })
-        } else if (st?.status === "ERROR") {
+        } else if (st.status === "ERROR") {
           patchBatch(b.id, { status: "error", progress: 100, error: st.error || "ошибка распознавания" })
         }
       }
