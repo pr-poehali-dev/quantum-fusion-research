@@ -8,6 +8,13 @@ REM Put your worker token here (same as project secret RECEIPT_WORKER_TOKEN).
 REM Leave empty to use the system environment variable instead.
 set "RECEIPT_WORKER_TOKEN="
 
+REM ====== GPU SETTINGS (max load on videocard, min on CPU) ======
+REM Keep model in VRAM forever and never spill layers to CPU/RAM.
+set "OLLAMA_KEEP_ALIVE=-1"
+set "OLLAMA_NUM_PARALLEL=1"
+set "OLLAMA_MAX_LOADED_MODELS=1"
+set "OLLAMA_FLASH_ATTENTION=1"
+
 REM ====== CHOOSE PYTHON ======
 where py >nul 2>nul && (set "PY=py") || (set "PY=python")
 

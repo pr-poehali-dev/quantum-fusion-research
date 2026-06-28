@@ -3,6 +3,26 @@
 
 ---
 
+## v6.06 | 2026-06-28 | Воркер: вся нагрузка на GPU, минимум на CPU
+
+- worker/receipt_worker_7b.py, receipt_worker_3b.py:
+  - Добавлены NUM_GPU=999 (все слои модели на видеокарту) и NUM_THREAD=2
+    (ограничение нагрузки на слабый 2-ядерный CPU).
+  - Новый хелпер gpu_options() — единые опции Ollama для всех вызовов
+    (warmup, keepalive, recognize_image, recognize_text).
+  - NUM_CTX уменьшен: 7b 32768→8192, 3b 16384→8192. Меньше KV-кэша =
+    модель целиком влезает в VRAM, не сбрасывает слои на CPU.
+- worker/start_worker_7b.bat, start_worker_3b.bat:
+  - Переменные окружения Ollama: OLLAMA_KEEP_ALIVE=-1, NUM_PARALLEL=1,
+    MAX_LOADED_MODELS=1, FLASH_ATTENTION=1 — держать модель в VRAM,
+    не плодить параллельные расчёты на CPU.
+- Причина: на RTX 2080Ti 22GB + слабый 2-ядерный CPU счёт думал ~3 мин,
+  т.к. часть слоёв уходила на процессор. Теперь считает видеокарта.
+- ВАЖНО: изменения вступят в силу после копирования файлов на машину
+  воркера и перезапуска .bat.
+
+---
+
 ## v6.05 | 2026-06-28 | Экономия compute: реже поллим статус приёмки
 
 - ReceiptScanModal.tsx:

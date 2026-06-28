@@ -40,8 +40,10 @@ import requests
 
 # ─────────────────── НАСТРОЙКИ ───────────────────
 MODEL = "qwen2.5vl:3b"               # ← модель этого воркера (быстрая, 3B)
-NUM_CTX = 16384                      # длина контекста (увеличено для длинных счетов)
+NUM_CTX = 8192                       # длина контекста (8192 с запасом на счёт; больше = лишний KV-кэш и риск ухода на CPU)
 KEEP_ALIVE = -1                       # -1 = держать модель в VRAM вечно
+NUM_GPU = 999                        # сколько слоёв грузить на видеокарту. 999 = ВСЕ слои на GPU (минимум нагрузки на CPU)
+NUM_THREAD = 2                       # потоков CPU отдаём Ollama (у нас слабый 2-ядерный проц — больше не нужно)
 
 API_URL = "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4"
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
@@ -86,6 +88,16 @@ _ollama_proc = None          # subprocess.Popen запущенного нами 
 _ollama_log_fh = None        # файловый дескриптор лога сервера
 _stop = threading.Event()    # сигнал остановки всех потоков
 _proc_lock = threading.Lock()
+
+
+def gpu_options(extra: dict = None) -> dict:
+    """Опции Ollama с принудительной выгрузкой ВСЕХ слоёв на GPU.
+    num_gpu=999 — все слои на видеокарту, num_thread=2 — ограничиваем нагрузку
+    на слабый CPU. Так нейросеть считает видеокарта, а не двухядерный проц."""
+    opts = {"num_ctx": NUM_CTX, "num_gpu": NUM_GPU, "num_thread": NUM_THREAD}
+    if extra:
+        opts.update(extra)
+    return opts
 
 
 def log(msg: str):
@@ -205,7 +217,7 @@ def warmup():
         r = requests.post(
             f"{OLLAMA_URL}/api/generate",
             json={"model": MODEL, "prompt": "ok", "stream": False,
-                  "keep_alive": KEEP_ALIVE, "options": {"num_ctx": NUM_CTX}},
+                  "keep_alive": KEEP_ALIVE, "options": gpu_options()},
             timeout=REQUEST_TIMEOUT,
         )
         r.raise_for_status()
@@ -233,7 +245,7 @@ def _watchdog():
                     requests.post(
                         f"{OLLAMA_URL}/api/generate",
                         json={"model": MODEL, "prompt": "", "stream": False,
-                              "keep_alive": KEEP_ALIVE, "options": {"num_ctx": NUM_CTX}},
+                              "keep_alive": KEEP_ALIVE, "options": gpu_options()},
                         timeout=30,
                     )
                 except Exception:
@@ -321,7 +333,7 @@ def recognize_image(img_bytes: bytes) -> dict:
         "stream": False,
         "format": "json",
         "keep_alive": KEEP_ALIVE,
-        "options": {"num_ctx": NUM_CTX, "temperature": 0},
+        "options": gpu_options({"temperature": 0}),
     })
 
 
@@ -339,7 +351,7 @@ def recognize_text(table_text: str) -> dict:
         "stream": False,
         "format": "json",
         "keep_alive": KEEP_ALIVE,
-        "options": {"num_ctx": NUM_CTX, "temperature": 0},
+        "options": gpu_options({"temperature": 0}),
     })
 
 
