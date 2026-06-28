@@ -241,10 +241,23 @@ def _parse_json_response(text: str) -> dict:
         return json.loads(cleaned)
 
 
+def _ollama_generate(payload: dict) -> dict:
+    """Запрос в Ollama. При ошибке вытаскиваем тело ответа — там обычно понятная причина."""
+    r = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=REQUEST_TIMEOUT)
+    if r.status_code >= 400:
+        detail = ""
+        try:
+            detail = (r.json() or {}).get("error", "")
+        except Exception:
+            detail = (r.text or "")[:500]
+        raise RuntimeError(f"Ollama {r.status_code}: {detail or 'без подробностей'}")
+    return _parse_json_response((r.json() or {}).get("response", ""))
+
+
 def recognize_image(img_bytes: bytes) -> dict:
     """Распознаём счёт-картинку через визуальную модель Ollama."""
     img_b64 = base64.b64encode(img_bytes).decode("ascii")
-    payload = {
+    return _ollama_generate({
         "model": MODEL,
         "prompt": PROMPT,
         "images": [img_b64],
@@ -252,10 +265,7 @@ def recognize_image(img_bytes: bytes) -> dict:
         "format": "json",
         "keep_alive": KEEP_ALIVE,
         "options": {"num_ctx": NUM_CTX, "temperature": 0},
-    }
-    r = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=REQUEST_TIMEOUT)
-    r.raise_for_status()
-    return _parse_json_response((r.json() or {}).get("response", ""))
+    })
 
 
 def recognize_text(table_text: str) -> dict:
@@ -266,17 +276,14 @@ def recognize_text(table_text: str) -> dict:
         + "Разбери их и верни JSON в указанном формате:\n\n"
         + table_text[:24000]
     )
-    payload = {
+    return _ollama_generate({
         "model": MODEL,
         "prompt": prompt,
         "stream": False,
         "format": "json",
         "keep_alive": KEEP_ALIVE,
         "options": {"num_ctx": NUM_CTX, "temperature": 0},
-    }
-    r = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=REQUEST_TIMEOUT)
-    r.raise_for_status()
-    return _parse_json_response((r.json() or {}).get("response", ""))
+    })
 
 
 def excel_to_text(data: bytes) -> str:
@@ -331,13 +338,36 @@ def pdf_to_image_bytes(data: bytes) -> bytes:
     return buf.getvalue()
 
 
+def detect_kind(url_low: str, data: bytes) -> str:
+    """Определяем тип файла: 'excel' | 'pdf' | 'image'.
+    Сначала по содержимому (надёжно, т.к. файлы в S3 часто без расширения),
+    потом по расширению из URL как запасной вариант."""
+    head = data[:8]
+    if head[:4] == b"%PDF":
+        return "pdf"
+    if head[:2] == b"PK":
+        return "excel"
+    if head[:4] == b"\xd0\xcf\x11\xe0":  # старый .xls (OLE2)
+        return "excel"
+    if head[:2] == b"\xff\xd8" or head[:8] == b"\x89PNG\r\n\x1a\n" \
+            or head[:3] == b"GIF" or head[:2] == b"BM" or head[:4] == b"RIFF":
+        return "image"
+    if url_low.endswith((".xlsx", ".xls", ".xlsm")):
+        return "excel"
+    if url_low.endswith(".pdf"):
+        return "pdf"
+    return "image"
+
+
 def recognize(image_url: str) -> dict:
-    """Главная точка: по типу файла из URL выбираем способ разбора."""
+    """Главная точка: определяем тип файла и выбираем способ разбора."""
     url_low = image_url.lower().split("?")[0]
     data = fetch_bytes(image_url)
+    kind = detect_kind(url_low, data)
+    log(f"Тип файла: {kind} ({len(data)} байт)")
 
     # Excel — читаем таблицу напрямую, потом разбираем текст моделью
-    if url_low.endswith((".xlsx", ".xls", ".xlsm")):
+    if kind == "excel":
         log("Файл Excel — читаю таблицу...")
         table = excel_to_text(data)
         if not table.strip():
@@ -345,7 +375,7 @@ def recognize(image_url: str) -> dict:
         return recognize_text(table)
 
     # PDF — сперва пробуем текст, если пусто (скан) — рендерим в картинку
-    if url_low.endswith(".pdf"):
+    if kind == "pdf":
         log("Файл PDF — пробую извлечь текст...")
         text = pdf_extract_text(data)
         if len(text) >= 30:
