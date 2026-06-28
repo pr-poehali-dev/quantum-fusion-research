@@ -351,8 +351,23 @@ def excel_to_text(data: bytes) -> str:
     return "\n".join(lines)
 
 
+def _page_has_items(text: str) -> bool:
+    """Похоже ли, что на странице таблица товаров (а не юр.вода/реквизиты/оферта)?
+    Ищем заголовок таблицы ИЛИ строку с наименованием+количеством+ценой."""
+    low = text.lower()
+    header_hits = sum(k in low for k in ("наименование", "кол-во", "количество", "цена", "сумма", "товар"))
+    junk = any(k in low for k in (
+        "образец заполнения", "платёжного поручения", "платежного поручения",
+        "в отсутствии между сторонами", "акцептом", "директор филиал",
+    ))
+    if junk and header_hits < 3:
+        return False
+    return header_hits >= 2
+
+
 def pdf_extract_text(data: bytes) -> str:
-    """Пытаемся вытащить текст из PDF (для текстовых счетов из 1С/Контура)."""
+    """Вытаскиваем текст из PDF. Для многостраничных счетов (ДНС и т.п.) оставляем
+    только страницы с товарной таблицей — иначе модель тонет в юр.воде."""
     try:
         from pypdf import PdfReader
     except ImportError:
@@ -363,9 +378,21 @@ def pdf_extract_text(data: bytes) -> str:
     import io
     try:
         reader = PdfReader(io.BytesIO(data))
-        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+        pages = [(p.extract_text() or "") for p in reader.pages]
     except Exception:
         return ""
+
+    total = len(pages)
+    kept = [t for t in pages if _page_has_items(t)]
+    if kept:
+        log(f"PDF: страниц {total}, оставил с товарной таблицей — {len(kept)} "
+            f"(отброшено юр.воды — {total - len(kept)}).")
+        result = "\n".join(kept).strip()
+    else:
+        log(f"PDF: страниц {total}, товарную таблицу по маркерам не нашёл — беру весь текст.")
+        result = "\n".join(pages).strip()
+    log(f"PDF: извлечено символов текста — {len(result)}.")
+    return result
 
 
 def pdf_to_image_bytes(data: bytes) -> bytes:
