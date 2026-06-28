@@ -107,8 +107,13 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const [dragOver, setDragOver] = useState(false)
   // Очередь пакетной загрузки (2-20 файлов)
   const [batch, setBatch] = useState<BatchItem[]>([])
-  const batchPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const batchPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const batchDoneJobs = useRef<Set<number>>(new Set())  // защита от двойного сохранения черновика
+  // последовательная обработка пачки: храним файлы и индекс следующего к отправке
+  const batchFilesRef = useRef<{ item: BatchItem; file: File }[]>([])
+  const batchNextRef = useRef(0)
+  const batchStepRef = useRef(0)  // шаг бэкоффа опроса (10→15→20с)
+  const batchRef = useRef<BatchItem[]>([])  // актуальный batch для опроса (без пересоздания таймера)
   const [jobId, setJobId] = useState<number | null>(null)
   const [curDraftId, setCurDraftId] = useState<number | null>(draftId || null)
   const [rows, setRows] = useState<MatchRow[]>([])
@@ -176,7 +181,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     if (draftId) loadDraft(draftId)
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current)
-      if (batchPollRef.current) clearInterval(batchPollRef.current)
+      if (batchPollRef.current) clearTimeout(batchPollRef.current)
     }
   }, [draftId, loadDraft])
 
@@ -271,7 +276,11 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const MAX_BATCH = 20
 
   const patchBatch = (id: string, patch: Partial<BatchItem>) =>
-    setBatch(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b))
+    setBatch(prev => {
+      const next = prev.map(b => b.id === id ? { ...b, ...patch } : b)
+      batchRef.current = next
+      return next
+    })
 
   // загрузка одного файла очереди -> создание job (без открытия review)
   const uploadBatchItem = async (item: BatchItem, file: File) => {
@@ -298,7 +307,19 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     }
   }
 
-  // запуск пакетной обработки: грузим файлы по очереди, потом поллим статусы
+  // отправить на обработку СЛЕДУЮЩИЙ счёт из очереди (по одному за раз)
+  const uploadNextBatch = async () => {
+    const idx = batchNextRef.current
+    const list = batchFilesRef.current
+    if (idx >= list.length) return        // вся пачка отправлена
+    batchNextRef.current = idx + 1
+    batchStepRef.current = 0              // сбрасываем бэкофф для нового счёта
+    const { item, file } = list[idx]
+    await uploadBatchItem(item, file)
+  }
+
+  // запуск пакетной обработки: счета обрабатываем ПО ОЧЕРЕДИ —
+  // следующий отправляется только после готовности предыдущего.
   const startBatch = async (files: File[]) => {
     setError("")
     const items: BatchItem[] = files.map((f, i) => ({
@@ -306,27 +327,45 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
       name: f.name, size: f.size, progress: 0, status: "pending",
     }))
     setBatch(items)
+    batchRef.current = items
     setStage("batch")
-    // грузим последовательно, чтобы не забить сеть и воркер
-    for (let i = 0; i < items.length; i++) {
-      await uploadBatchItem(items[i], files[i])
-    }
+    batchFilesRef.current = items.map((it, i) => ({ item: it, file: files[i] }))
+    batchNextRef.current = 0
+    batchStepRef.current = 0
+    // отправляем только первый — остальные подхватятся по мере готовности
+    await uploadNextBatch()
   }
 
-  // поллинг статусов задач в режиме batch + сохранение результата в черновики
+  // Опрос статусов в batch: счета идут ПО ОЧЕРЕДИ, поэтому активна максимум
+  // одна задача. Бэкофф 10→15→20с. После готовности/ошибки — отправляем следующий.
+  const BATCH_POLL_STEPS = [10000, 10000, 15000, 20000]
   useEffect(() => {
     if (stage !== "batch") return
-    if (batchPollRef.current) clearInterval(batchPollRef.current)
-    batchPollRef.current = setInterval(async () => {
+    if (batchPollRef.current) clearTimeout(batchPollRef.current)
+    let stopped = false
+
+    const schedule = () => {
+      const delay = BATCH_POLL_STEPS[Math.min(batchStepRef.current, BATCH_POLL_STEPS.length - 1)]
+      batchStepRef.current++
+      batchPollRef.current = setTimeout(tick, delay)
+    }
+
+    const tick = async () => {
+      if (stopped) return
       // вкладка свёрнута — не опрашиваем, воркер продолжит сам
-      if (document.hidden) return
-      const active = batch.filter(b => (b.status === "queued" || b.status === "processing") && b.jobId)
-      if (!active.length) return
-      // ОДИН запрос статуса на всю пачку вместо вызова по каждому файлу
+      if (document.hidden) { schedule(); return }
+      const active = batchRef.current.filter(b => (b.status === "queued" || b.status === "processing") && b.jobId)
+      if (!active.length) {
+        // активных нет: если ещё остались неотправленные — отправляем следующий
+        if (batchNextRef.current < batchFilesRef.current.length) { await uploadNextBatch(); schedule() }
+        return  // всё обработано — таймер не перезапускаем
+      }
+      // один запрос статуса (по сути на одну активную задачу)
       const res = await api.receiptScan.jobsStatus(active.map(b => b.jobId!), ak)
       const byId = new Map<number, { status: string; matched: unknown; error?: string }>(
         (res?.jobs || []).map((j: { job_id: number; status: string; matched: unknown; error?: string }) => [j.job_id, j])
       )
+      let finishedOne = false
       for (const b of active) {
         const st = byId.get(b.jobId!)
         if (!st) continue
@@ -341,13 +380,23 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
           // любой результат воркера складываем в черновик
           const dr = await api.receiptScan.draftSave({ job_id: b.jobId, store_id: useStore, rows: matched }, ak)
           patchBatch(b.id, { status: "done", progress: 100, itemsCount: matched.length, draftId: dr?.draft_id })
+          finishedOne = true
         } else if (st.status === "ERROR") {
           patchBatch(b.id, { status: "error", progress: 100, error: st.error || "ошибка распознавания" })
+          finishedOne = true
         }
       }
-    }, 5000)
-    return () => { if (batchPollRef.current) clearInterval(batchPollRef.current) }
-  }, [stage, batch, ak, storeId])
+      // текущий счёт завершился — запускаем следующий из очереди
+      if (finishedOne && batchNextRef.current < batchFilesRef.current.length) {
+        await uploadNextBatch()
+      }
+      schedule()
+    }
+
+    batchStepRef.current = 0
+    schedule()
+    return () => { stopped = true; if (batchPollRef.current) clearTimeout(batchPollRef.current) }
+  }, [stage, ak, storeId])
 
   // общий вход выбора файлов: 1 файл -> обычный поток, 2+ -> очередь
   const handleFiles = (fileList: FileList | File[]) => {
