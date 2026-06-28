@@ -1128,10 +1128,10 @@ export default function WarehouseTab() {
                 onClick={async () => {
                   if (!confirm(`Удалить все незаконченные листы (${openDrafts.length})? Это действие нельзя отменить.`)) return
                   const ak = getAdminKey()
-                  for (const d of openDrafts) {
-                    await api.receiptScan.draftClose(d.draft_id, "CANCELED", ak)
-                  }
-                  loadDrafts()
+                  const toClose = openDrafts
+                  setOpenDrafts([])           // сразу убираем с экрана (оптимистично)
+                  await Promise.all(toClose.map(d => api.receiptScan.draftClose(d.draft_id, "CANCELED", ak)))
+                  loadDrafts()                // сверяемся с сервером
                 }}
                 style={{ cursor: "pointer" }}
                 className="flex items-center gap-1 rounded-lg border border-red-400/40 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-colors"
@@ -1153,7 +1153,10 @@ export default function WarehouseTab() {
                     className="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">
                     Продолжить
                   </button>
-                  <button onClick={async () => { await api.receiptScan.draftClose(d.draft_id, "CANCELED", getAdminKey()); loadDrafts() }}
+                  <button onClick={async () => {
+                      setOpenDrafts(prev => prev.filter(x => x.draft_id !== d.draft_id))  // сразу убираем с экрана
+                      await api.receiptScan.draftClose(d.draft_id, "CANCELED", getAdminKey())
+                    }}
                     style={{ cursor: "pointer" }}
                     className="rounded-lg border border-border px-2 py-1 text-xs text-foreground/50 hover:text-red-400">
                     <Icon name="Trash2" size={13} />
