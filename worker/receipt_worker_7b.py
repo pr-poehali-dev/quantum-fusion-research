@@ -241,6 +241,47 @@ def _parse_json_response(text: str) -> dict:
         return json.loads(cleaned)
 
 
+def friendly_error(e: Exception) -> str:
+    """Переводим техническую ошибку в понятную админу формулировку.
+    Возвращаем текст, который уходит и в лог, и в облако как причина провала задачи."""
+    name = type(e).__name__
+    raw = str(e)
+    low = raw.lower()
+
+    # 1) Ошибки локальной модели Ollama
+    if "model runner has unexpectedly stopped" in low or "resource limitation" in low:
+        return "Ошибка локальной ИИ, перезапустите сервер"
+    if "not found" in low and ("model" in low or "ollama" in low):
+        return "Модель не установлена. Скачайте: ollama pull qwen2.5vl:7b"
+    if "ollama 400" in low or "ollama 422" in low:
+        return "Файл повреждён или не читается. Пришлите счёт заново"
+    if "ollama 5" in low:  # 500/502/503 и т.п.
+        return "Ошибка локальной ИИ, перезапустите сервер"
+    if low.startswith("ollama ") or "ollama" in low:
+        return "Ошибка локальной ИИ, перезапустите сервер"
+
+    # 2) Ошибки разбора файлов
+    if "openpyxl" in low:
+        return "Не настроен разбор Excel. Перезапустите .bat — он доустановит библиотеки"
+    if "excel пустой" in low:
+        return "Excel-файл пустой или повреждён"
+    if "pdf-скан" in low or "poppler" in low or "pdf2image" in low:
+        return "Для PDF-сканов нужен poppler (см. инструкцию). Текстовые PDF и Excel работают без него"
+    if "отрендерить pdf" in low:
+        return "PDF повреждён или пустой"
+
+    # 3) Системные ошибки (сеть, JSON, скачивание)
+    if name in ("JSONDecodeError",) or "expecting value" in low:
+        return "Модель не смогла разобрать счёт. Попробуйте другое фото или более чёткий файл"
+    if name in ("ConnectionError", "Timeout", "ReadTimeout", "ConnectTimeout"):
+        return "Нет связи с локальной ИИ. Проверьте, что сервер Ollama запущен"
+    if name == "HTTPError" or "failed to establish" in low:
+        return "Не удалось скачать файл счёта из хранилища"
+
+    # Если не распознали — отдаём исходный текст (чтобы не потерять причину)
+    return f"{name}: {raw}"
+
+
 def _ollama_generate(payload: dict) -> dict:
     """Запрос в Ollama. При ошибке вытаскиваем тело ответа — там обычно понятная причина."""
     r = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=REQUEST_TIMEOUT)
@@ -480,8 +521,9 @@ def main():
             n = len(result.get("items", [])) if isinstance(result, dict) else 0
             log(f"Задача #{job_id} готова: позиций распознано — {n}.")
         except Exception as e:
-            msg = f"{type(e).__name__}: {e}"
-            log(f"Ошибка на задаче #{job_id}: {msg}")
+            msg = friendly_error(e)
+            # В лог пишем и понятный текст, и технический оригинал — для разбора.
+            log(f"Ошибка на задаче #{job_id}: {msg}  [тех: {type(e).__name__}: {e}]")
             try:
                 send_result(job_id, error=msg)
             except Exception as e2:
