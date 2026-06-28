@@ -53,6 +53,7 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   const [brand, setBrand] = useState("")
   const [blockVals, setBlockVals] = useState<Record<string, string>>({})
   const [manualName, setManualName] = useState("")          // для категорий без шаблона
+  const [nameOverride, setNameOverride] = useState("")      // ручная правка итогового названия
   const [fin, setFin] = useState({
     part_number: group?.part_number || "",
     cell: group?.cell || "",
@@ -169,6 +170,8 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   }, [group?.product_id, tpl?.slug, attrIdByCode])
 
   const liveName = buildName(brand, tpl, tpl ? blockVals : { __manual__: manualName })
+  // Итоговое название: ручная правка приоритетнее автосборки
+  const finalName = nameOverride.trim() ? nameOverride : liveName
   // Старое название (как сейчас в товаре) — для сравнения при редактировании
   const oldName = (group?.name || "").trim()
   // Разбиваем новое имя на токены; токены, которых нет в старом имени,
@@ -194,13 +197,13 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   // ── Сохранение ────────────────────────────────────────────────────────────────
   const save = async () => {
     setError("")
-    if (!liveName.trim()) { setError("Название не собрано"); return }
+    if (!finalName.trim()) { setError("Название не собрано"); return }
     if (!categoryName) { setError("Выберите категорию"); return }
     if (!(fin.price_retail > 0)) { setError("Укажите цену продажи"); return }
 
     const catId = catalogCats.find(c => c.name === categoryName)?.id
     const payload = {
-      name: liveName.trim(),
+      name: finalName.trim(),
       category: categoryName,
       category_id: catId,
       part_number: fin.part_number,
@@ -418,6 +421,28 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
         {/* ── Шаг: Финал ── */}
         {step === finStep && (
           <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-xs text-foreground/50">Наименование *</label>
+                {nameOverride.trim() && nameOverride.trim() !== liveName && (
+                  <button
+                    type="button"
+                    onClick={() => setNameOverride("")}
+                    className="text-[11px] text-amber-600 hover:underline"
+                  >
+                    Вернуть авто
+                  </button>
+                )}
+              </div>
+              <Input
+                value={nameOverride || liveName}
+                onChange={e => setNameOverride(e.target.value)}
+                placeholder="Полное наименование товара"
+              />
+              <p className="mt-1 text-[11px] text-foreground/40">
+                Можно дополнить или поправить вручную. Пусто = собранное автоматически.
+              </p>
+            </div>
             <div className="col-span-2">
               <label className="mb-1 block text-xs text-foreground/50">Партнамбер</label>
               <Input value={fin.part_number} onChange={e => setFin(p => ({ ...p, part_number: e.target.value }))} placeholder="BX8071514900K" />
