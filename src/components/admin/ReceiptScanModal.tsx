@@ -290,6 +290,11 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const yellowCount = rows.filter(r => !r.group_id && !r.skip && (r.level === "fuzzy_mid" || (r.candidates && r.candidates.length > 0))).length
   const redCount = rows.filter(r => !r.group_id && !r.skip && r.level !== "fuzzy_mid" && !(r.candidates && r.candidates.length > 0)).length
   const qtyWarnCount = rows.filter(r => r.qty_warn && !r.skip).length
+  // Итоговая сумма счёта: сумма (цена × кол-во) по всем непропущенным позициям
+  const invoiceTotal = rows.filter(r => !r.skip)
+    .reduce((sum, r) => sum + (Number(r.price) || 0) * (Number(r.qty) || 0), 0)
+  const fmtMoney = (n: number) =>
+    n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={stage === "review" ? closeAndSave : onClose}>
@@ -547,10 +552,16 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
               className="rounded-lg border border-border px-4 py-2 text-sm text-foreground/60 hover:text-foreground transition-colors">
               Сохранить черновик и закрыть
             </button>
-            <Button onClick={acceptAll} disabled={busy}>
-              <Icon name={busy ? "Loader" : "PackageCheck"} size={15} className={`mr-1.5 ${busy ? "animate-spin" : ""}`} />
-              {busy ? "Принимаю..." : `Принять (${greenCount + yellowCount})`}
-            </Button>
+            <div className="flex items-center gap-4">
+              <div className="text-right leading-tight">
+                <div className="text-[11px] uppercase tracking-wide text-foreground/40">Сумма счёта</div>
+                <div className="text-base font-semibold tabular-nums text-foreground">{fmtMoney(invoiceTotal)} ₽</div>
+              </div>
+              <Button onClick={acceptAll} disabled={busy}>
+                <Icon name={busy ? "Loader" : "PackageCheck"} size={15} className={`mr-1.5 ${busy ? "animate-spin" : ""}`} />
+                {busy ? "Принимаю..." : `Принять (${greenCount + yellowCount})`}
+              </Button>
+            </div>
           </div>
         )}
       </div>
