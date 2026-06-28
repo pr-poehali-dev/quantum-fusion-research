@@ -228,9 +228,9 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     }
   }
 
-  // Умный бэкофф: опрашиваем часто в начале, затем всё реже — чтобы не дёргать
-  // функцию впустую при долгом распознавании. Шаги задержки (мс):
-  const POLL_STEPS = [3000, 3000, 5000, 5000, 8000, 12000, 20000]
+  // Опрос статуса: первые 10с не спрашиваем — счёт всё равно ещё генерируется.
+  // Дальше опрашиваем каждые 10с, при затяжном распознавании — реже. Шаги (мс):
+  const POLL_STEPS = [10000, 10000, 10000, 15000, 20000]
   const startPolling = (jid: number) => {
     if (pollRef.current) clearTimeout(pollRef.current)
     let step = 0
