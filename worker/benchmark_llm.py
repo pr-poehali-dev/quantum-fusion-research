@@ -11,9 +11,14 @@
 ЗАПУСК:
     дважды кликни benchmark_llm.bat   (или: py benchmark_llm.py)
 
+При запуске покажет список СКАЧАННЫХ моделей — выбери номера через запятую
+(или 'all'). Прогонит каждую на GPU и на CPU и в конце выдаст «баллы»:
+    Процессор:       24352 баллов
+    Видеокарта 1:   245241 баллов
+Чем больше баллов — тем мощнее устройство. Запускай воркер там, где больше.
+
 Ollama должна быть установлена и в PATH. Скрипт сам поднимет сервер,
-если он не запущен. Модели, которых нет, будут пропущены (можно
-заранее: ollama pull qwen2.5vl:3b-q4_K_M  и т.д.).
+если он не запущен.
 """
 
 import os
@@ -154,6 +159,50 @@ def bench_model(model):
     return results
 
 
+# Баллы — «попугаи» для наглядности: скорость генерации × 1000.
+# Чем выше — тем мощнее связка (модель + устройство).
+def score(tps):
+    return int(round(tps * 1000))
+
+
+def choose_models(have):
+    """Интерактивный выбор моделей из реально скачанных."""
+    print("\nСкачанные модели на этом сервере:")
+    for i, m in enumerate(have, 1):
+        print(f"  {i}. {m}")
+    print("\nЧто тестируем? Введи номера через запятую (напр. 1,3),")
+    print("или 'all' — все, или впиши имя модели вручную.")
+    raw = input("Выбор: ").strip()
+
+    if not raw or raw.lower() in ("all", "все", "*"):
+        return have[:]
+
+    chosen = []
+    for part in raw.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        if p.isdigit():
+            idx = int(p) - 1
+            if 0 <= idx < len(have):
+                chosen.append(have[idx])
+            else:
+                print(f"  пропускаю номер {p} — нет такого")
+        else:
+            # имя модели вручную
+            if p in have:
+                chosen.append(p)
+            else:
+                print(f"  пропускаю '{p}' — не скачана (ollama pull {p})")
+    # уберём дубли, сохраним порядок
+    seen, uniq = set(), []
+    for m in chosen:
+        if m not in seen:
+            seen.add(m)
+            uniq.append(m)
+    return uniq
+
+
 def main():
     print("=" * 60)
     print("  БЕНЧМАРК LLM ДЛЯ РАСПОЗНАВАНИЯ СЧЕТОВ")
@@ -164,26 +213,29 @@ def main():
         sys.exit(1)
 
     have = installed_models()
-    to_test = [m.strip() for m in MODELS if m.strip() and m.strip() in have]
-    skipped = [m.strip() for m in MODELS if m.strip() and m.strip() not in have]
-    if skipped:
-        print(f"\nПропускаю (не скачаны): {', '.join(skipped)}")
-        print("  Чтобы добавить:  ollama pull <модель>")
-    if not to_test:
-        print("\nНет ни одной доступной модели из списка. Скачай хотя бы одну.")
+    if not have:
+        print("\nНа сервере нет ни одной модели Ollama. Скачай хотя бы одну:")
+        print("  ollama pull qwen2.5vl:3b-q4_K_M")
         sys.exit(1)
+
+    to_test = choose_models(have)
+    if not to_test:
+        print("\nНичего не выбрано — выхожу.")
+        sys.exit(0)
+
+    print(f"\nБудем тестировать: {', '.join(to_test)}")
 
     all_results = {}
     for m in to_test:
         all_results[m] = bench_model(m)
 
-    # Итоговая таблица
-    print("\n" + "=" * 70)
+    # Итоговая таблица: время / скорость
+    print("\n" + "=" * 72)
     print("  ИТОГ (среднее время ответа / скорость):")
-    print("=" * 70)
-    header = f"{'Модель':<24}{'GPU время':>12}{'GPU ток/с':>11}{'CPU время':>12}{'CPU ток/с':>11}"
+    print("=" * 72)
+    header = f"{'Модель':<26}{'GPU время':>12}{'GPU ток/с':>11}{'CPU время':>12}{'CPU ток/с':>11}"
     print(header)
-    print("-" * 70)
+    print("-" * 72)
     for m, res in all_results.items():
         g = res.get("GPU (всё на видеокарту)")
         c = res.get("CPU (всё на процессор)")
@@ -191,11 +243,29 @@ def main():
         gs = f"{g[1]:6.1f}" if g else "   —"
         ct = f"{c[0]:6.1f} c" if c else "   —"
         cs = f"{c[1]:6.1f}" if c else "   —"
-        print(f"{m:<24}{gt:>12}{gs:>11}{ct:>12}{cs:>11}")
-    print("-" * 70)
-    print("Чем МЕНЬШЕ время и БОЛЬШЕ ток/с — тем лучше.")
-    print("Сравни GPU и CPU по каждой модели: выбирай то, что быстрее у тебя.")
-    print("=" * 70)
+        print(f"{m:<26}{gt:>12}{gs:>11}{ct:>12}{cs:>11}")
+    print("-" * 72)
+
+    # Итог в БАЛЛАХ — берём лучший (максимальный) результат по каждому устройству
+    best_gpu = max(
+        (res["GPU (всё на видеокарту)"][1] for res in all_results.values()
+         if res.get("GPU (всё на видеокарту)")), default=0.0)
+    best_cpu = max(
+        (res["CPU (всё на процессор)"][1] for res in all_results.values()
+         if res.get("CPU (всё на процессор)")), default=0.0)
+
+    print("\n" + "=" * 72)
+    print("  РАССТАНОВКА СИЛ (баллы — чем больше, тем мощнее):")
+    print("=" * 72)
+    print(f"  Процессор:    {score(best_cpu):>10} баллов")
+    print(f"  Видеокарта 1: {score(best_gpu):>10} баллов")
+    print("=" * 72)
+    if best_gpu and best_cpu:
+        ratio = best_gpu / best_cpu if best_cpu else 0
+        faster = "видеокарта" if best_gpu >= best_cpu else "процессор"
+        print(f"  Быстрее: {faster}  (примерно в {max(ratio, 1/ratio if ratio else 1):.1f}x)")
+    print("  Совет: запускай воркер на том устройстве, где баллов больше.")
+    print("=" * 72)
 
 
 if __name__ == "__main__":
