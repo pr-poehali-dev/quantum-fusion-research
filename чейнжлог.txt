@@ -3,6 +3,18 @@
 
 ---
 
+## v6.16 | 2026-06-28 | Воркер: квантизованный 3B-q4 (когда даже 3B забивает VRAM)
+
+- worker/receipt_worker_3b.py: настройки MODEL/NUM_CTX/NUM_GPU/NUM_THREAD
+  теперь из переменных окружения (RECEIPT_MODEL и т.д.), дефолт — полная 3B.
+- worker/start_worker_3b_q4.bat (НОВЫЙ): тот же воркер с
+  RECEIPT_MODEL=qwen2.5vl:3b-q4_K_M (~2-3 ГБ вместо ~4-5). Освобождает VRAM,
+  вся модель на GPU = 100% GPU.
+- worker/КАК-ЗАПУСТИТЬ.txt: добавлен квант-3B вариант в список моделей и .bat.
+- НЕ часть веб-деплоя (локальный воркер на сервере пользователя).
+
+---
+
 ## v6.15 | 2026-06-28 | Воркер: квантизованный 7B-q4 для карт на 12 ГБ VRAM
 
 - worker/receipt_worker_7b.py: настройки MODEL/NUM_CTX/NUM_GPU/NUM_THREAD
