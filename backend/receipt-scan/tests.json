@@ -27,6 +27,14 @@
       "path": "/?action=worker_config",
       "expectedStatus": 403,
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Drafts close all rejects without admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "drafts_close_all"},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
     }
   ]
 }

@@ -256,12 +256,26 @@ def handler(event: dict, context) -> dict:
             return resp({"draft_id": r[0], "job_id": r[1], "store_id": r[2], "rows": r[3] or [], "status": r[4]})
 
         if action == "drafts_open":
+            # полное число открытых листов — для корректного счётчика-бейджа
+            cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.receipt_drafts WHERE status='OPEN'")
+            total = cur.fetchone()[0]
             cur.execute(
                 f"SELECT id, store_id, rows, updated_at FROM {SCHEMA}.receipt_drafts "
-                f"WHERE status='OPEN' ORDER BY updated_at DESC LIMIT 20"
+                f"WHERE status='OPEN' ORDER BY updated_at DESC LIMIT 200"
             )
             items = [{"draft_id": r[0], "store_id": r[1], "rows_count": len(r[2] or []), "updated_at": r[3]} for r in cur.fetchall()]
-            return resp({"drafts": items})
+            return resp({"drafts": items, "total": total})
+
+        if action == "drafts_close_all":
+            # массово закрыть ВСЕ открытые листы одним запросом (по умолчанию CANCELED)
+            new_status = body.get("status") or "CANCELED"
+            cur.execute(
+                f"UPDATE {SCHEMA}.receipt_drafts SET status=%s, updated_at=NOW() WHERE status='OPEN'",
+                (new_status,),
+            )
+            closed = cur.rowcount
+            conn.commit()
+            return resp({"ok": True, "closed": closed})
 
         if action == "draft_close":
             did = int(body.get("draft_id") or 0)

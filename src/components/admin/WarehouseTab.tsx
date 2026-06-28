@@ -863,6 +863,7 @@ export default function WarehouseTab() {
   // Приёмка по счёту (OCR). receiptModal: false | {draftId?} ; resumeDraftId — возврат после создания SKU
   const [receiptModal, setReceiptModal] = useState<false | { draftId?: number | null }>(false)
   const [openDrafts, setOpenDrafts] = useState<{ draft_id: number; rows_count: number; updated_at: string }[]>([])
+  const [draftsTotal, setDraftsTotal] = useState(0)
   const [draftsPanel, setDraftsPanel] = useState(false)
   const [discountModal, setDiscountModal] = useState(false)
 
@@ -916,6 +917,7 @@ export default function WarehouseTab() {
   const loadDrafts = useCallback(async () => {
     const d = await api.receiptScan.draftsOpen(getAdminKey())
     if (d?.drafts) setOpenDrafts(d.drafts)
+    if (typeof d?.total === "number") setDraftsTotal(d.total)
   }, [])
   useEffect(() => { loadDrafts() }, [loadDrafts])
 
@@ -1044,14 +1046,14 @@ export default function WarehouseTab() {
         </Button>
         <Button size="sm" variant="outline" onClick={() => setReceiptModal({})} className="relative border-primary/50 text-primary hover:bg-primary/10">
           <Icon name="ScanLine" size={14} className="mr-1.5" />Принять по счёту
-          {openDrafts.length > 0 && (
+          {draftsTotal > 0 && (
             <span
               role="button"
               onClick={(e) => { e.stopPropagation(); setDraftsPanel(v => !v) }}
               title="Незаконченные листы приёмки"
               className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white shadow"
             >
-              {openDrafts.length}
+              {draftsTotal > 99 ? "99+" : draftsTotal}
             </span>
           )}
         </Button>
@@ -1121,16 +1123,15 @@ export default function WarehouseTab() {
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-medium text-amber-600 flex items-center gap-1.5">
-              <Icon name="FileClock" size={15} />Незаконченные листы приёмки
+              <Icon name="FileClock" size={15} />Незаконченные листы приёмки ({draftsTotal})
             </p>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={async () => {
-                  if (!confirm(`Удалить все незаконченные листы (${openDrafts.length})? Это действие нельзя отменить.`)) return
-                  const ak = getAdminKey()
-                  const toClose = openDrafts
+                  if (!confirm(`Удалить ВСЕ незаконченные листы (${draftsTotal})? Это действие нельзя отменить.`)) return
                   setOpenDrafts([])           // сразу убираем с экрана (оптимистично)
-                  await Promise.all(toClose.map(d => api.receiptScan.draftClose(d.draft_id, "CANCELED", ak)))
+                  setDraftsTotal(0)
+                  await api.receiptScan.draftsCloseAll(getAdminKey())  // один запрос — закрывает все
                   loadDrafts()                // сверяемся с сервером
                 }}
                 style={{ cursor: "pointer" }}
@@ -1155,6 +1156,7 @@ export default function WarehouseTab() {
                   </button>
                   <button onClick={async () => {
                       setOpenDrafts(prev => prev.filter(x => x.draft_id !== d.draft_id))  // сразу убираем с экрана
+                      setDraftsTotal(t => Math.max(0, t - 1))
                       await api.receiptScan.draftClose(d.draft_id, "CANCELED", getAdminKey())
                     }}
                     style={{ cursor: "pointer" }}

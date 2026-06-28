@@ -205,6 +205,8 @@ export const api = {
       fetch(`${URLS.receiptScan}?action=drafts_open`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
     draftClose: (draftId: number, status: string, ak: string) =>
       fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "draft_close", draft_id: draftId, status, ak }) }).then(r => r.json()),
+    draftsCloseAll: (ak: string, status = "CANCELED") =>
+      fetch(URLS.receiptScan, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "drafts_close_all", status, ak }) }).then(r => r.json()),
   },
   warehouse: {
     getGroups: (params?: Record<string, string>) => {
