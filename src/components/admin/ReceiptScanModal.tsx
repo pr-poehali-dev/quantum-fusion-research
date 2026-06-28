@@ -7,6 +7,19 @@ import { getAdminKey } from "@/pages/admin/types"
 
 interface Store { id: number; name: string }
 interface Candidate { group_id: number; name: string; score: number }
+// Элемент очереди пакетной загрузки счетов
+type BatchStatus = "pending" | "uploading" | "queued" | "processing" | "done" | "error"
+interface BatchItem {
+  id: string
+  name: string
+  size: number
+  progress: number          // 0..100 — этап загрузки/обработки
+  status: BatchStatus
+  jobId?: number
+  draftId?: number
+  itemsCount?: number       // сколько позиций распознано
+  error?: string
+}
 interface MatchRow {
   raw_name: string
   article?: string
@@ -52,6 +65,16 @@ function fileToCompressedDataUrl(file: File, maxSide = 1800): Promise<string> {
   })
 }
 
+// Подписи/иконки статусов файла в очереди пакетной загрузки
+const BATCH_STATUS: Record<BatchStatus, { label: string; icon: string; cls: string }> = {
+  pending:    { label: "в очереди",   icon: "Clock",       cls: "text-foreground/40" },
+  uploading:  { label: "загрузка",    icon: "Loader",      cls: "text-blue-500" },
+  queued:     { label: "отправлен",   icon: "Send",        cls: "text-amber-500" },
+  processing: { label: "обработка",   icon: "Loader",      cls: "text-amber-500" },
+  done:       { label: "обработан",   icon: "CheckCircle2",cls: "text-green-500" },
+  error:      { label: "ошибка",      icon: "AlertCircle", cls: "text-red-500" },
+}
+
 function levelColor(row: MatchRow): { cls: string; label: string } {
   if (row.skip) return { cls: "border-border bg-muted/40", label: "Пропущено" }
   if (row.group_id) return { cls: "border-green-500/40 bg-green-500/5", label: "Совпадение" }
@@ -78,9 +101,14 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   onCreateProduct: (rawName: string, draftId: number) => void
 }) {
   const ak = getAdminKey()
-  // stage: upload -> scanning -> review
-  const [stage, setStage] = useState<"upload" | "scanning" | "review">("upload")
+  // stage: upload -> scanning -> review -> batch (очередь из нескольких файлов)
+  const [stage, setStage] = useState<"upload" | "scanning" | "review" | "batch">("upload")
   const [imgPreview, setImgPreview] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  // Очередь пакетной загрузки (2-20 файлов)
+  const [batch, setBatch] = useState<BatchItem[]>([])
+  const batchPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const batchDoneJobs = useRef<Set<number>>(new Set())  // защита от двойного сохранения черновика
   const [jobId, setJobId] = useState<number | null>(null)
   const [curDraftId, setCurDraftId] = useState<number | null>(draftId || null)
   const [rows, setRows] = useState<MatchRow[]>([])
@@ -146,7 +174,10 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
 
   useEffect(() => {
     if (draftId) loadDraft(draftId)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+      if (batchPollRef.current) clearInterval(batchPollRef.current)
+    }
   }, [draftId, loadDraft])
 
   // ставка НДС из настроек склада
@@ -222,6 +253,88 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     }, 2500)
   }
 
+  // ── ПАКЕТНАЯ загрузка (2-20 файлов) ───────────────────────────────
+  const MAX_BATCH = 20
+
+  const patchBatch = (id: string, patch: Partial<BatchItem>) =>
+    setBatch(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b))
+
+  // загрузка одного файла очереди -> создание job (без открытия review)
+  const uploadBatchItem = async (item: BatchItem, file: File) => {
+    try {
+      patchBatch(item.id, { status: "uploading", progress: 15 })
+      const isImage = file.type.startsWith("image/")
+      let url = ""
+      if (isImage) {
+        const dataUrl = await fileToCompressedDataUrl(file)
+        const up = await api.upload.receipt(dataUrl)
+        url = up?.url
+      } else {
+        const dataUrl = await fileToDataUrl(file)
+        const up = await api.upload.receiptFile(dataUrl, false)
+        url = up?.url
+      }
+      if (!url) { patchBatch(item.id, { status: "error", error: "не загрузился", progress: 100 }); return }
+      patchBatch(item.id, { progress: 45 })
+      const job = await api.receiptScan.createJob(url, ak)
+      if (!job?.job_id) { patchBatch(item.id, { status: "error", error: job?.error || "ошибка задачи", progress: 100 }); return }
+      patchBatch(item.id, { status: "queued", jobId: job.job_id, progress: 55 })
+    } catch {
+      patchBatch(item.id, { status: "error", error: "ошибка файла", progress: 100 })
+    }
+  }
+
+  // запуск пакетной обработки: грузим файлы по очереди, потом поллим статусы
+  const startBatch = async (files: File[]) => {
+    setError("")
+    const items: BatchItem[] = files.map((f, i) => ({
+      id: `${Date.now()}-${i}-${f.name}`,
+      name: f.name, size: f.size, progress: 0, status: "pending",
+    }))
+    setBatch(items)
+    setStage("batch")
+    // грузим последовательно, чтобы не забить сеть и воркер
+    for (let i = 0; i < items.length; i++) {
+      await uploadBatchItem(items[i], files[i])
+    }
+  }
+
+  // поллинг статусов задач в режиме batch + сохранение результата в черновики
+  useEffect(() => {
+    if (stage !== "batch") return
+    if (batchPollRef.current) clearInterval(batchPollRef.current)
+    batchPollRef.current = setInterval(async () => {
+      const active = batch.filter(b => (b.status === "queued" || b.status === "processing") && b.jobId)
+      if (!active.length) return
+      for (const b of active) {
+        const st = await api.receiptScan.jobStatus(b.jobId!, ak)
+        if (st?.status === "PROCESSING") {
+          patchBatch(b.id, { status: "processing", progress: 75 })
+        } else if (st?.status === "DONE") {
+          if (batchDoneJobs.current.has(b.jobId!)) continue  // уже сохранён — не дублируем
+          batchDoneJobs.current.add(b.jobId!)
+          const m = normMatched(st.matched)
+          const matched: MatchRow[] = m.rows.map(r => ({ ...r, warranty_until: "" }))
+          const useStore = m.store?.store_id ?? storeId
+          // любой результат воркера складываем в черновик
+          const dr = await api.receiptScan.draftSave({ job_id: b.jobId, store_id: useStore, rows: matched }, ak)
+          patchBatch(b.id, { status: "done", progress: 100, itemsCount: matched.length, draftId: dr?.draft_id })
+        } else if (st?.status === "ERROR") {
+          patchBatch(b.id, { status: "error", progress: 100, error: st.error || "ошибка распознавания" })
+        }
+      }
+    }, 2500)
+    return () => { if (batchPollRef.current) clearInterval(batchPollRef.current) }
+  }, [stage, batch, ak, storeId])
+
+  // общий вход выбора файлов: 1 файл -> обычный поток, 2+ -> очередь
+  const handleFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).slice(0, MAX_BATCH)
+    if (!files.length) return
+    if (files.length === 1) { pickFile(files[0]); return }
+    startBatch(files)
+  }
+
   const updateRow = (i: number, patch: Partial<MatchRow>) =>
     setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r))
 
@@ -290,6 +403,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const yellowCount = rows.filter(r => !r.group_id && !r.skip && (r.level === "fuzzy_mid" || (r.candidates && r.candidates.length > 0))).length
   const redCount = rows.filter(r => !r.group_id && !r.skip && r.level !== "fuzzy_mid" && !(r.candidates && r.candidates.length > 0)).length
   const qtyWarnCount = rows.filter(r => r.qty_warn && !r.skip).length
+  const batchDone = batch.filter(b => b.status === "done" || b.status === "error").length
   // Итоговая сумма счёта: сумма (цена × кол-во) по всем непропущенным позициям
   const invoiceTotal = rows.filter(r => !r.skip)
     .reduce((sum, r) => sum + (Number(r.price) || 0) * (Number(r.qty) || 0), 0)
@@ -297,7 +411,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={stage === "review" ? closeAndSave : onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={stage === "review" ? closeAndSave : stage === "batch" ? undefined : onClose}>
       <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Шапка */}
         <div className="flex items-center justify-between border-b border-border p-5">
@@ -318,18 +432,25 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
           {/* ШАГ 1: загрузка */}
           {stage === "upload" && (
             <div className="flex flex-col items-center gap-4 py-10">
-              <input ref={fileRef} type="file"
+              <input ref={fileRef} type="file" multiple
                 accept="image/*,.pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }} />
+                onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = "" }} />
               <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ cursor: "pointer" }}
-                className="flex h-44 w-full max-w-md flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50">
-                <Icon name={busy ? "Loader" : "Upload"} size={40} className={busy ? "animate-spin" : ""} />
-                <span className="text-sm font-medium">{busy ? "Загрузка..." : "Выбрать или сфотографировать счёт"}</span>
-                <span className="text-xs text-foreground/40">Фото (JPG/PNG), PDF или Excel (XLSX/XLS)</span>
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={e => { e.preventDefault(); setDragOver(false) }}
+                onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files) }}
+                className={`flex h-44 w-full max-w-md flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed transition-colors disabled:opacity-50 ${
+                  dragOver ? "border-primary bg-primary/15 text-primary scale-[1.01]" : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"}`}>
+                <Icon name={busy ? "Loader" : dragOver ? "Download" : "Upload"} size={40} className={busy ? "animate-spin" : ""} />
+                <span className="text-sm font-medium">
+                  {busy ? "Загрузка..." : dragOver ? "Отпустите файлы здесь" : "Выбрать, перетащить или сфотографировать счёт"}
+                </span>
+                <span className="text-xs text-foreground/40">Фото (JPG/PNG), PDF или Excel (XLSX/XLS) · до 20 файлов сразу</span>
               </button>
               <p className="max-w-md text-center text-xs text-foreground/50">
                 Модель распознает позиции и подставит товары со склада. Перед приёмкой можно всё проверить и поправить.
+                При загрузке нескольких файлов каждый попадёт в черновики.
               </p>
 
               {/* Настройка воркера распознавания */}
@@ -393,6 +514,46 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
               <Icon name="Loader" size={32} className="animate-spin text-primary" />
               <p className="text-sm text-foreground/60">Распознаём счёт... это занимает несколько секунд</p>
               <p className="text-xs text-foreground/40">Задача #{jobId} в очереди модели</p>
+            </div>
+          )}
+
+          {/* ШАГ 2-batch: очередь из нескольких файлов */}
+          {stage === "batch" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-foreground/70">
+                  Обработка {batch.length} файлов · готово {batchDone} из {batch.length}
+                </p>
+                <span className="text-xs text-foreground/40">Результаты сохраняются в черновики</span>
+              </div>
+              {batch.map(b => {
+                const s = BATCH_STATUS[b.status]
+                return (
+                  <div key={b.id} className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="flex items-center gap-3">
+                      <Icon name={b.name.toLowerCase().endsWith(".pdf") ? "FileText" : b.name.match(/\.xlsx?$/i) ? "Sheet" : "Image"}
+                        size={20} className="shrink-0 text-foreground/40" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium">{b.name}</span>
+                          <span className={`flex shrink-0 items-center gap-1 text-xs font-medium ${s.cls}`}>
+                            <Icon name={s.icon} size={13} className={b.status === "uploading" || b.status === "processing" ? "animate-spin" : ""} />
+                            {s.label}{b.status === "done" && b.itemsCount != null ? ` · ${b.itemsCount} поз.` : ""}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
+                          <div className={`h-full rounded-full transition-all ${b.status === "error" ? "bg-red-500" : b.status === "done" ? "bg-green-500" : "bg-primary"}`}
+                            style={{ width: `${b.progress}%` }} />
+                        </div>
+                        {b.error && <p className="mt-1 text-[11px] text-red-400">{b.error}</p>}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <p className="mt-1 text-center text-xs text-foreground/45">
+                Готовые черновики появятся в списке приёмки — открой каждый, проверь и прими.
+              </p>
             </div>
           )}
 
@@ -562,6 +723,17 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
                 {busy ? "Принимаю..." : `Принять (${greenCount + yellowCount})`}
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Футер batch */}
+        {stage === "batch" && (
+          <div className="flex items-center justify-end gap-3 border-t border-border p-4">
+            <Button onClick={() => { onAccepted(); onClose() }} disabled={batchDone < batch.length}>
+              <Icon name={batchDone < batch.length ? "Loader" : "Check"} size={15}
+                className={`mr-1.5 ${batchDone < batch.length ? "animate-spin" : ""}`} />
+              {batchDone < batch.length ? `Обработано ${batchDone}/${batch.length}...` : "Готово — к черновикам"}
+            </Button>
           </div>
         )}
       </div>
