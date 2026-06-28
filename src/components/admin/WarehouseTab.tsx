@@ -1123,9 +1123,25 @@ export default function WarehouseTab() {
             <p className="text-sm font-medium text-amber-600 flex items-center gap-1.5">
               <Icon name="FileClock" size={15} />Незаконченные листы приёмки
             </p>
-            <button onClick={() => setDraftsPanel(false)} style={{ cursor: "pointer" }}>
-              <Icon name="X" size={15} className="text-foreground/40" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={async () => {
+                  if (!confirm(`Удалить все незаконченные листы (${openDrafts.length})? Это действие нельзя отменить.`)) return
+                  const ak = getAdminKey()
+                  for (const d of openDrafts) {
+                    await api.receiptScan.draftClose(d.draft_id, "CANCELED", ak)
+                  }
+                  loadDrafts()
+                }}
+                style={{ cursor: "pointer" }}
+                className="flex items-center gap-1 rounded-lg border border-red-400/40 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-colors"
+              >
+                <Icon name="Trash2" size={13} />Удалить все
+              </button>
+              <button onClick={() => setDraftsPanel(false)} style={{ cursor: "pointer" }}>
+                <Icon name="X" size={15} className="text-foreground/40" />
+              </button>
+            </div>
           </div>
           <div className="space-y-1.5">
             {openDrafts.map(d => (
