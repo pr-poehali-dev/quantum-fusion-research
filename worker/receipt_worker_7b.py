@@ -59,15 +59,19 @@ PROMPT = (
     "Верни СТРОГО JSON без пояснений в формате: "
     '{"store": "<название поставщика/магазина или null>", '
     '"items": [{"name": "<наименование товара>", "article": "<артикул/партномер или пусто>", '
-    '"qty": <число>, "price": <цена за единицу числом>}]}. '
-    "В таблице обычно колонки: Наименование, Кол-во, Цена, Сумма. "
-    "qty бери СТРОГО из колонки «Кол-во» (она может быть 137, 8, 2 — не всегда 1). "
-    "price бери из колонки «Цена за единицу», НЕ из «Сумма». "
-    "Сумма = Цена × Кол-во — используй это для самопроверки: если price*qty "
-    "не равно колонке Сумма, перечитай qty и price внимательнее. "
-    "Цену указывай за 1 штуку. Количество — целым числом. "
+    '"qty": <число>, "price": <цена за единицу числом>, "total": <сумма по строке числом>}]}. '
+    "В таблице обычно колонки: Наименование, Цена, Кол-во, Сумма. "
+    "ВАЖНО про формат чисел: в счёте русский формат — пробел/неразрывный пробел "
+    "разделяет тысячи, запятая отделяет копейки. Пример: «8 699,00» = 8699.00, "
+    "«14 669,00» = 14669.00, «1 234 567,89» = 1234567.89. В JSON выводи числа "
+    "БЕЗ пробелов, с точкой как десятичным разделителем (8699.00). "
+    "qty бери СТРОГО из колонки «Кол-во» (целое число: 1, 2, 4, 6 и т.д.). "
+    "price бери из колонки «Цена» (цена за 1 штуку), НЕ из «Сумма». "
+    "total бери из колонки «Сумма» (это price × qty). "
+    "Самопроверка: price × qty должно равняться total. Если не сходится — "
+    "перечитай числа внимательнее, не путай колонки Цена и Сумма. "
     "Не придумывай позиции, бери только то, что видно на счёте. "
-    "Если поле не читается — оставь пустую строку или null."
+    "Если поле не читается — поставь null."
 )
 # ──────────────────────────────────────────────────
 
@@ -435,6 +439,68 @@ def detect_kind(url_low: str, data: bytes) -> str:
     return "image"
 
 
+def _to_number(v):
+    """Приводим число к float, понимая русский формат: «8 699,00» -> 8699.00.
+    Возвращаем None, если распознать не удалось."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    if not s:
+        return None
+    # убираем валюту/буквы, оставляем цифры, пробелы, запятые и точки
+    s = re.sub(r"[^\d,.\s\u00a0]", "", s)
+    s = s.replace("\u00a0", "").replace(" ", "")  # тысячные пробелы
+    if "," in s and "." in s:
+        # и точка, и запятая: запятая — десятичный разделитель (рус. формат)
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _postprocess(result: dict) -> dict:
+    """Нормализуем числа и чиним цену через сумму: price = total / qty.
+    Это спасает от путаницы колонок Цена/Сумма и кривого формата чисел."""
+    if not isinstance(result, dict):
+        return result
+    items = result.get("items")
+    if not isinstance(items, list):
+        return result
+
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        qty = _to_number(it.get("qty"))
+        price = _to_number(it.get("price"))
+        total = _to_number(it.get("total"))
+
+        # qty по умолчанию 1, целым
+        qty_int = int(round(qty)) if qty and qty > 0 else 1
+
+        # Главный источник истины — сумма по строке: price = total / qty
+        if total and total > 0 and qty_int > 0:
+            calc_price = round(total / qty_int, 2)
+            # если модель дала цену и она расходится с total/qty больше чем на 1% —
+            # доверяем расчёту из суммы (модель часто путает Цену и Сумму)
+            if not price or abs(price * qty_int - total) > max(1.0, total * 0.01):
+                if abs(calc_price - (price or 0)) > 0.01:
+                    log(f"  поправил цену по сумме: '{it.get('name','')[:40]}' "
+                        f"{price} -> {calc_price} (сумма {total} / кол-во {qty_int})")
+                price = calc_price
+
+        it["qty"] = qty_int
+        if price is not None:
+            it["price"] = price
+        it.pop("total", None)  # служебное поле наружу не отдаём
+
+    return result
+
+
 def recognize(image_url: str) -> dict:
     """Главная точка: определяем тип файла и выбираем способ разбора."""
     url_low = image_url.lower().split("?")[0]
@@ -448,19 +514,19 @@ def recognize(image_url: str) -> dict:
         table = excel_to_text(data)
         if not table.strip():
             raise RuntimeError("Excel пустой или не читается.")
-        return recognize_text(table)
+        return _postprocess(recognize_text(table))
 
     # PDF — сперва пробуем текст, если пусто (скан) — рендерим в картинку
     if kind == "pdf":
         log("Файл PDF — пробую извлечь текст...")
         text = pdf_extract_text(data)
         if len(text) >= 30:
-            return recognize_text(text)
+            return _postprocess(recognize_text(text))
         log("Текста в PDF мало (похоже скан) — рендерю в картинку для модели...")
-        return recognize_image(pdf_to_image_bytes(data))
+        return _postprocess(recognize_image(pdf_to_image_bytes(data)))
 
     # Иначе считаем, что это картинка
-    return recognize_image(data)
+    return _postprocess(recognize_image(data))
 
 
 def pull_job():
