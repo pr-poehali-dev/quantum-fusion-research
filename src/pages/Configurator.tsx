@@ -659,10 +659,10 @@ export default function Configurator() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground" style={{ cursor: "auto" }}>
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
@@ -691,7 +691,7 @@ export default function Configurator() {
       {/* Табы */}
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-6 py-3 sm:py-8">
+      <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 sm:py-8">
         <div className="mb-4 flex items-start justify-between gap-4 sm:mb-6">
           <div>
             <h1 className="mb-1 hidden text-3xl font-light text-foreground sm:block">Конфигуратор ПК</h1>
