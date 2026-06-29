@@ -191,15 +191,15 @@ function ExtrasSection({ extraItems, onAddCustom, onRemoveExtra }: {
           <p className="text-sm font-medium text-foreground">Прочее</p>
           {!hasAny && <p className="text-xs text-foreground/30">Кабели, аксессуары и свои позиции</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
           <button onClick={onAddCustom}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
             style={{ cursor: "pointer" }}>
             <Icon name="Plus" size={13} />
             Своя позиция
           </button>
           <button onClick={() => navigate("/cables")}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-primary transition-colors"
             style={{ cursor: "pointer" }}>
             <Icon name="Cable" size={13} />
             Кабели
