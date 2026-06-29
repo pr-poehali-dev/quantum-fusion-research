@@ -340,6 +340,16 @@ export default function BuildPreview() {
       }
       const delta = deltaY
       if (Math.abs(delta) > 50) {
+        // Если свайп идёт внутри прокручиваемой секции (напр. «Состав») и она ещё
+        // может прокручиваться в нужную сторону — отдаём жест нативному скроллу,
+        // не переключаем секцию (иначе длинный список «улистывается» и низ не виден).
+        const scrollable = (e.target as HTMLElement)?.closest?.("[data-scrollable]") as HTMLElement | null
+        if (scrollable) {
+          const atTop = scrollable.scrollTop <= 1
+          const atBottom = scrollable.scrollTop + scrollable.clientHeight >= scrollable.scrollHeight - 1
+          if (delta > 0 && !atBottom) return  // ещё есть куда скроллить вниз
+          if (delta < 0 && !atTop) return     // ещё есть куда скроллить вверх
+        }
         if (delta > 0) scrollToSection(currentSection + 1)
         else scrollToSection(currentSection - 1)
       }
@@ -614,9 +624,10 @@ export default function BuildPreview() {
                       </div>
                     )}
                   </div>
-                  {/* Выбор варианта конфигурации — под итоговой стоимостью */}
+                  {/* Выбор варианта конфигурации — под итоговой стоимостью.
+                      На телефоне скрыт: выбор есть на слайде «Состав». */}
                   {hasMultipleVariants && (
-                    <div className="mb-6">
+                    <div className="mb-6 hidden sm:block">
                       <p className="mb-1.5 text-xs text-muted-foreground">Вариант конфигурации</p>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {variants.map((_, i) => (
@@ -698,8 +709,8 @@ export default function BuildPreview() {
 
         {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (второй слайд, список) ── */}
         {isMobile && (
-          <div ref={el => { sectionRefs.current[1] = el }} className="w-screen shrink-0 relative overflow-y-auto" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
-            <div className="relative flex min-h-full w-full flex-col px-5 pt-24 pb-20">
+          <div ref={el => { sectionRefs.current[1] = el }} data-scrollable className="w-screen shrink-0 relative overflow-y-auto overscroll-contain" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+            <div className="relative flex min-h-full w-full flex-col px-5 pt-24 pb-28">
               <p className="mb-3 font-mono text-xs uppercase tracking-widest text-muted-foreground">Состав</p>
               <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                 {components.map((c, i) => {
