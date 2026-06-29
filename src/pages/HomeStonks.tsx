@@ -39,9 +39,15 @@ interface CatalogBuild {
   reserved?: boolean
 }
 
-const BANNER_PODBOR = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/36698bd0-b01d-4377-b795-267d9ac8c779.jpg"
-const BANNER_SBORKA = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/369e76c4-c4a6-46da-ab1d-843219204c9a.jpg"
-const BANNER_RAZGON = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/f82bffa1-7f93-4254-a9de-5233117cf6be.jpg"
+const CDN = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/optimized"
+// Каждый баннер — лёгкий WebP в 3 размерах. Браузер сам выбирает нужный по srcset.
+const makeBanner = (slug: string) => ({
+  src: `${CDN}/${slug}-768.webp`,
+  srcSet: `${CDN}/${slug}-480.webp 480w, ${CDN}/${slug}-768.webp 768w, ${CDN}/${slug}-1024.webp 1024w`,
+})
+const BANNER_PODBOR = makeBanner("banner-podbor")
+const BANNER_SBORKA = makeBanner("banner-sborka")
+const BANNER_RAZGON = makeBanner("banner-razgon")
 
 const fmtPrice = (n?: number) => (n ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—")
 const fmtDate = (s: string) => {
@@ -57,6 +63,7 @@ export default function HomeStonks() {
   const { count } = useCart()
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
   const [catalogBuilds, setCatalogBuilds] = useState<CatalogBuild[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(true)
   const [articles, setArticles] = useState<Article[]>([])
   const [artIdx, setArtIdx] = useState(0)
   const artPaused = useRef(false)
@@ -104,6 +111,7 @@ export default function HomeStonks() {
         roots.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
         setCatalogBuilds(roots.slice(0, 3))
       }).catch(() => {})
+      .finally(() => setCatalogLoading(false))
   }, [])
 
   const buildPrice = (b: CatalogBuild) => {
@@ -111,10 +119,11 @@ export default function HomeStonks() {
     return parts + (b.assembly_fee || 0)
   }
 
-  const Banner = ({ img, title, to, imgPos, priority }: { img: string; title: string; to: string; imgPos?: string; priority?: boolean }) => (
+  const Banner = ({ img, title, to, imgPos, priority }: { img: { src: string; srcSet: string }; title: string; to: string; imgPos?: string; priority?: boolean }) => (
     <button onClick={() => navigate(to)} style={{ cursor: "pointer" }}
       className="group relative h-[280px] overflow-hidden rounded-2xl border border-border sm:h-48">
-      <img src={img} alt={title} style={{ objectPosition: imgPos }} width={800} height={280}
+      <img src={img.src} srcSet={img.srcSet} sizes="(max-width: 640px) 100vw, 33vw"
+        alt={title} style={{ objectPosition: imgPos }} width={768} height={280}
         loading={priority ? "eager" : "lazy"}
         // @ts-expect-error fetchpriority — валидный HTML-атрибут, ускоряет загрузку LCP-картинки
         fetchpriority={priority ? "high" : "low"}
@@ -194,6 +203,18 @@ export default function HomeStonks() {
                 )}
               </div>
             </div>
+
+            {/* Резерв места пока грузятся сборки — чтобы контент не «прыгал» (CLS) */}
+            {catalogLoading && catalogBuilds.length === 0 && (
+              <div>
+                <div className="mb-3 h-7 w-44 animate-pulse rounded bg-muted" />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="h-[280px] animate-pulse rounded-2xl border border-border bg-muted sm:h-64" />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Последние сборки из «Наши ПК» */}
             {catalogBuilds.length > 0 && (

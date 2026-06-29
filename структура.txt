@@ -38,6 +38,15 @@
 - воркер-сервер/worker.py + ИНСТРУКЦИЯ.txt — локальный FastAPI/Ollama-воркер
   (модель qwen2-vl:7b), НЕ часть деплоя, ставится на сервер пользователя.
 
+## Оптимизация изображений (v6.20)
+- backend/img-optimize (URL .../f8ab2fb6-...) — сжимает картинку по URL в WebP
+  в нескольких размерах (для srcset) и кладёт в S3 в optimized/ с длинным кешем.
+  GET ?url=&name=&widths=480,768,1024&quality=80  или POST JSON. Python+Pillow.
+  Используется разово для подготовки баннеров главной (не вызывается из фронта).
+- Готовые WebP-баннеры: cdn.../bucket/optimized/banner-{podbor,sborka,razgon}-{480,768,1024}.webp
+- HomeStonks использует их через srcset (makeBanner). Картинки на главной — lazy,
+  первый баннер — eager+fetchpriority=high (LCP).
+
 ## Стек
 - Frontend: React + Vite + TypeScript (/src)
 - Backend: Python 3.11 Cloud Functions (/backend)

@@ -3,6 +3,33 @@
 
 ---
 
+## v6.20 | 2026-06-29 | Максимальная оптимизация витрины: WebP-баннеры, шрифты, CLS
+
+- backend/img-optimize (НОВАЯ функция, Python+Pillow): сжимает картинку
+  по URL в WebP в нескольких размерах (srcset) и кладёт в S3 с длинным
+  кешем (Cache-Control immutable). Принимает GET (?url=&name=&widths=&quality=)
+  или POST JSON. URL: functions.poehali.dev/f8ab2fb6-...
+  Прогнаны 3 баннера главной: исходники ~426/191/231 КБ JPG →
+  WebP 480/768/1024px по 25-82 КБ (сжатие в 6-14 раз).
+- src/pages/HomeStonks.tsx: баннеры переведены на WebP + srcset/sizes
+  (браузер берёт нужный размер под экран); первому баннеру eager+
+  fetchpriority=high (LCP), остальным lazy. Добавлен skeleton-резерв
+  места под блок «Последние сборки», пока грузятся данные (↓ CLS).
+- index.html: шрифты урезаны (Inter 4 толщины вместо 5, JetBrains Mono
+  1 вместо 2) и грузятся неблокирующе (media=print onload). preconnect
+  к fonts оставлен.
+- src/App.tsx: ConsentModal вынесен в lazy-загрузку (не входит в стартовый
+  бандл всех страниц).
+- ВАЖНО: часть внешних скриптов (telemetry/pp/route/inspector) платформа
+  добавляет в index.html сама, без defer — на них мы повлиять не можем,
+  они дублируют наши defer-версии. Это объясняет остаточный TBT.
+- vite.config.ts и package.json не трогали (readonly / неиспользуемые либы
+  и так не попадают в бандл благодаря tree-shaking).
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронтенд + 1 backend-функция).
+
+---
+
 ## v6.19 | 2026-06-29 | Ускорение витрины: TBT, LCP, CLS
 
 Оптимизация быстродействия публичных страниц (по замерам PageSpeed):

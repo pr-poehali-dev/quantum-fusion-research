@@ -6,8 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense } from "react";
-import ConsentModal from "@/components/ConsentModal";
 import AdminGuard from "@/components/admin/AdminGuard";
+
+const ConsentModal = lazy(() => import("@/components/ConsentModal"));
 
 const Index = lazy(() => import("./pages/Index"));
 const Shop = lazy(() => import("./pages/Shop"));
@@ -95,7 +96,9 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
-          <ConsentModal />
+          <Suspense fallback={null}>
+            <ConsentModal />
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
