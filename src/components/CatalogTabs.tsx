@@ -8,6 +8,8 @@ import Icon from "@/components/ui/icon"
 interface Tab { label: string; icon: string; path: string }
 
 const TABS: Array<Tab | "sep"> = [
+  { label: "Главная", icon: "Home", path: "/" },
+  "sep",
   { label: "Каталог товаров", icon: "Package", path: "/shop" },
   { label: "Наши ПК", icon: "Monitor", path: "/builds" },
   "sep",
@@ -26,7 +28,7 @@ export default function CatalogTabs() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/")
+  const isActive = (path: string) => path === "/" ? pathname === "/" : (pathname === path || pathname.startsWith(path + "/"))
   const current = ITEMS.find(t => isActive(t.path)) || ITEMS[0]
 
   // Закрытие мобильного меню по клику вне и по Esc
