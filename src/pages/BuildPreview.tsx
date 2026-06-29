@@ -163,6 +163,15 @@ export default function BuildPreview() {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [wipInfo, setWipInfo] = useState<WipInfo | null>(null)
   const [tagsExpanded, setTagsExpanded] = useState(false)
+  // На телефоне (<640px) добавляется отдельный слайд «Состав» (список) между
+  // обзором и покомпонентными секциями → индексы секций сдвигаются.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches)
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)")
+    const onChange = () => setIsMobile(mq.matches)
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const wheelLockRef = useRef(false)
   const touchStartY = useRef(0)
@@ -260,7 +269,10 @@ export default function BuildPreview() {
   const calcAssemblyFee = build?.assembly_fee || 0
   // Для НДС-сборок применяем +22% с округлением до 250 ₽ (как в админке)
   const calcTotalPrice = withVat(calcPartsTotal + calcAssemblyFee, build?.sell_with_vat)
-  const totalSections = components.length + 2
+  // Смещение индекса первого компонента: на ПК сразу после обзора (1),
+  // на телефоне после обзора и слайда «Состав» (2).
+  const compOffset = isMobile ? 2 : 1
+  const totalSections = components.length + (isMobile ? 3 : 2)
 
   // ── Разница цен относительно ОСНОВНОГО варианта (variants[0]) ──
   const baseVariant = variants[0] ?? null
@@ -360,7 +372,7 @@ export default function BuildPreview() {
       observers.push(obs)
     })
     return () => observers.forEach(o => o.disconnect())
-  }, [components.length])
+  }, [components.length, isMobile])
 
   const claimBuild = async () => {
     if (!isAuthed() || !sessionId) {
@@ -684,19 +696,58 @@ export default function BuildPreview() {
           </div>
         </div>
 
-        {/* ── СЕКЦИИ 1..N: Компоненты ── */}
+        {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (второй слайд, список) ── */}
+        {isMobile && (
+          <div ref={el => { sectionRefs.current[1] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+            <div className="relative flex h-full w-full flex-col px-5 pt-24 pb-20">
+              <p className="mb-3 shrink-0 font-mono text-xs uppercase tracking-widest text-muted-foreground">Состав</p>
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
+                {components.map((c, i) => {
+                  const qty = c.qty && c.qty > 1 ? c.qty : null
+                  const isDiff = activeVariant > 0 && variantDiffSlots.has(c.slot)
+                  const lineTotal = (c.current_price ?? c.price) * (c.qty || 1)
+                  const slotDiff = isDiff ? lineTotal - (baseSlotTotal[c.slot] || 0) : 0
+                  return (
+                    <div key={i} className={`flex items-start justify-between gap-3 ${isDiff ? "-mx-2 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/40" : ""}`}>
+                      <div className="flex items-start gap-2 min-w-0 flex-1">
+                        <span className={`w-5 h-5 mt-0.5 shrink-0 rounded flex items-center justify-center ${isDiff ? "bg-emerald-500/15 text-emerald-500" : "bg-primary/10 text-primary"}`}>
+                          <ComponentIcon slot={c.slot} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">{SLOT_NAMES[c.slot] || c.slot}</p>
+                          <p className={`text-sm leading-snug break-words ${isDiff ? "font-semibold text-emerald-500" : "text-foreground"}`}>
+                            {c.name}
+                            {qty ? <span className={`ml-1.5 inline-block rounded-md px-1.5 py-0.5 text-xs font-bold align-middle ${isDiff ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/15 text-primary"}`}>×{qty}</span> : null}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className={`block text-sm font-medium ${isDiff ? "text-emerald-500" : "text-foreground"}`}>{fmt(lineTotal)}</span>
+                        {isDiff && slotDiff !== 0 && (
+                          <span className={`block text-xs font-semibold ${slotDiff > 0 ? "text-emerald-500" : "text-rose-500"}`}>{fmtDiff(slotDiff)}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── СЕКЦИИ: покомпонентные ── */}
         {components.map((comp, idx) => (
-          <div key={idx} ref={el => { sectionRefs.current[idx + 1] = el }} className="w-screen shrink-0" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+          <div key={idx} ref={el => { sectionRefs.current[idx + compOffset] = el }} className="w-screen shrink-0" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
             <ComponentSection comp={comp} index={idx} total={components.length}
-              active={currentSection === idx + 1}
-              onNext={() => scrollToSection(idx + 2)}
-              onPrev={() => scrollToSection(idx)}
+              active={currentSection === idx + compOffset}
+              onNext={() => scrollToSection(idx + compOffset + 1)}
+              onPrev={() => scrollToSection(idx + compOffset - 1)}
             />
           </div>
         ))}
 
         {/* ── Последняя секция: Заказ ── */}
-        <div ref={el => { sectionRefs.current[components.length + 1] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+        <div ref={el => { sectionRefs.current[totalSections - 1] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
           <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 50% 50%, hsl(var(--primary) / 0.06) 0%, transparent 70%)" }} />
             <div className={`relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-8 pt-20 pb-8 transition-all duration-700 ${currentSection === totalSections - 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
