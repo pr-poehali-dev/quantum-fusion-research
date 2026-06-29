@@ -38,14 +38,19 @@
 - воркер-сервер/worker.py + ИНСТРУКЦИЯ.txt — локальный FastAPI/Ollama-воркер
   (модель qwen2-vl:7b), НЕ часть деплоя, ставится на сервер пользователя.
 
-## Оптимизация изображений (v6.20)
+## Оптимизация изображений (v6.20-6.21)
 - backend/img-optimize (URL .../f8ab2fb6-...) — сжимает картинку по URL в WebP
-  в нескольких размерах (для srcset) и кладёт в S3 в optimized/ с длинным кешем.
-  GET ?url=&name=&widths=480,768,1024&quality=80  или POST JSON. Python+Pillow.
-  Используется разово для подготовки баннеров главной (не вызывается из фронта).
-- Готовые WebP-баннеры: cdn.../bucket/optimized/banner-{podbor,sborka,razgon}-{480,768,1024}.webp
-- HomeStonks использует их через srcset (makeBanner). Картинки на главной — lazy,
-  первый баннер — eager+fetchpriority=high (LCP).
+  в размерах 480/768/1024 (для srcset) и кладёт в S3 в optimized/ с длинным кешем.
+  Python+Pillow. Режимы:
+    • GET ?url=&name=&widths=&quality= или POST JSON — явное сжатие (баннеры).
+    • GET ?ensure=1&url=... — идемпотентно: имя = auto-{sha1(url)[:16]}, если
+      webp уже есть (head_object) — отдаёт ссылки без пересжатия (cached:true).
+- Баннеры главной: заранее готовые optimized/banner-{podbor,sborka,razgon}-{480,768,1024}.webp
+  (makeBanner в HomeStonks, srcset; первый баннер eager+fetchpriority=high — LCP).
+- src/components/ui/optimized-image.tsx — <OptimizedImage> для ДИНАМИЧЕСКИХ картинок
+  (товары/сборки/статьи из БД). Сам считает sha1-слаг, грузит webp по srcset;
+  если webp нет — показывает оригинал и в фоне дёргает ensure. lazy по умолчанию.
+  Применён: Shop (товары+сборки), Articles (статьи), HomeStonks (сборки+статьи).
 
 ## Стек
 - Frontend: React + Vite + TypeScript (/src)

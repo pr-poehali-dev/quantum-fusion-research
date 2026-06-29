@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
+import OptimizedImage from "@/components/ui/optimized-image"
 import { api } from "@/lib/api"
 import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
@@ -234,7 +235,7 @@ export default function HomeStonks() {
                         className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left hover:border-primary/50 transition-colors">
                         <div className="relative h-[280px] w-full overflow-hidden sm:h-64">
                           {img ? (
-                            <img src={img} alt={b.name} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <OptimizedImage src={img} alt={b.name} sizes="(max-width: 640px) 100vw, 33vw" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                           ) : (
                             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted/80 to-card">
                               <Icon name="Monitor" size={28} className="text-foreground/30" />
@@ -312,7 +313,7 @@ export default function HomeStonks() {
                         className={`group absolute inset-0 block w-full text-left transition-opacity duration-700 ${i === artIdx ? "" : "pointer-events-none"}`}
                         tabIndex={i === artIdx ? 0 : -1}>
                         {a.image_url ? (
-                          <img src={a.image_url} alt={a.title} loading="lazy" decoding="async"
+                          <OptimizedImage src={a.image_url} alt={a.title} sizes="(max-width: 1024px) 100vw, 340px"
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                         ) : (
                           <div className="flex h-full items-center justify-center">

@@ -4,6 +4,7 @@ import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import OptimizedImage from "@/components/ui/optimized-image"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
@@ -871,7 +872,7 @@ function ProductImageCarousel({ images, name, inStock }: { images: string[]; nam
   return (
     <div className="relative h-full w-full">
       {images.map((src, i) => (
-        <img key={i} src={src} alt={name}
+        <OptimizedImage key={i} src={src} alt={name} sizes="(max-width: 640px) 50vw, 25vw"
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${i === idx ? "opacity-100" : "opacity-0"}`} />
       ))}
       {images.length > 1 && (
@@ -1028,9 +1029,9 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
       {hasImage ? (
         <div className="absolute inset-0">
           {images.map((url, i) => (
-            <img
+            <OptimizedImage
               key={i}
-              src={url} alt={b.name}
+              src={url} alt={b.name} sizes="(max-width: 640px) 100vw, 50vw"
               className="absolute inset-0 h-full w-full object-cover"
               style={{ filter: "brightness(0.55)", opacity: i === imgIdx ? 1 : 0, transition: "opacity 0.6s ease" }}
             />

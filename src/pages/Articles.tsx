@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import OptimizedImage from "@/components/ui/optimized-image"
 import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
 import { matchesSearch } from "@/lib/keyboardLayout"
@@ -182,7 +183,7 @@ export default function Articles() {
                 {/* Картинка */}
                 <div className="relative mb-4 aspect-[4/3] overflow-hidden rounded-xl bg-foreground/5">
                   {a.image_url ? (
-                    <img src={a.image_url} alt={a.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <OptimizedImage src={a.image_url} alt={a.title} sizes="(max-width: 640px) 100vw, 33vw" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <Icon name="FileText" size={36} className="text-foreground/15" />
