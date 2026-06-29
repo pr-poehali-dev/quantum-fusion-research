@@ -691,10 +691,10 @@ export default function Configurator() {
       {/* Табы */}
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-7xl px-6 py-3 sm:py-8">
+        <div className="mb-4 flex items-start justify-between gap-4 sm:mb-6">
           <div>
-            <h1 className="mb-1 text-3xl font-light text-foreground">Конфигуратор ПК</h1>
+            <h1 className="mb-1 hidden text-3xl font-light text-foreground sm:block">Конфигуратор ПК</h1>
             {!buildAuthor && (
               <p className="text-sm text-foreground/60">Выбирайте из каталога или добавляйте своё железо с любого магазина</p>
             )}

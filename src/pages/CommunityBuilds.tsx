@@ -119,10 +119,10 @@ export default function CommunityBuilds() {
       {/* Табы */}
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 sm:py-8">
+        <div className="mb-4 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h1 className="mb-2 text-2xl font-light text-foreground sm:text-3xl">Сборки сообщества</h1>
+            <h1 className="mb-2 hidden text-2xl font-light text-foreground sm:block sm:text-3xl">Сборки сообщества</h1>
             <p className="text-sm text-foreground/60">Конфигурации от пользователей BeGraphics — вдохновляйтесь и копируйте</p>
           </div>
           <button

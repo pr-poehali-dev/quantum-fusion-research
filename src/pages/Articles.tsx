@@ -104,13 +104,13 @@ export default function Articles() {
 
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-3 md:px-8 md:py-10">
         {/* Заголовок */}
-        <div className="mb-8">
-          <h1 className="font-sans text-4xl font-light tracking-tight text-foreground md:text-5xl">
+        <div className="mb-4 md:mb-8">
+          <h1 className="hidden font-sans text-4xl font-light tracking-tight text-foreground md:block md:text-5xl">
             Статьи и тесты
           </h1>
-          <p className="mt-2 text-sm text-foreground/40">{articles.length} материалов</p>
+          <p className="text-sm text-foreground/40 md:mt-2">{articles.length} материалов</p>
         </div>
 
         {/* Поиск */}

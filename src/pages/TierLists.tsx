@@ -321,10 +321,10 @@ export default function TierLists() {
 
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold">Тир-листы железа</h1>
-          <p className="mt-1 text-sm text-foreground/60">
+      <div className="mx-auto max-w-7xl px-6 py-3 sm:py-8">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="hidden text-3xl font-bold sm:block">Тир-листы железа</h1>
+          <p className="text-sm text-foreground/60 sm:mt-1">
             Рейтинг комплектующих по рядам — от лучших (S) до спорных (F).
             <span className="sm:hidden"> Нажмите на букву ряда, чтобы узнать, что она означает.</span>
           </p>

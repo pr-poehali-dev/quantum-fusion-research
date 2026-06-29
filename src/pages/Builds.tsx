@@ -291,9 +291,9 @@ export default function Builds() {
       {/* Табы каталога */}
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6">
-          <h1 className="mb-2 text-3xl font-light text-foreground">Наши ПК</h1>
+      <div className="mx-auto max-w-7xl px-6 py-3 sm:py-8">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="mb-2 hidden text-3xl font-light text-foreground sm:block">Наши ПК</h1>
           <p className="text-sm text-foreground/60">Готовые сборки от BeGraphics с прозрачным составом и ценами</p>
         </div>
 
