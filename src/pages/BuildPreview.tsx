@@ -698,10 +698,10 @@ export default function BuildPreview() {
 
         {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (второй слайд, список) ── */}
         {isMobile && (
-          <div ref={el => { sectionRefs.current[1] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
-            <div className="relative flex h-full w-full flex-col px-5 pt-24 pb-20">
-              <p className="mb-3 shrink-0 font-mono text-xs uppercase tracking-widest text-muted-foreground">Состав</p>
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
+          <div ref={el => { sectionRefs.current[1] = el }} className="w-screen shrink-0 relative overflow-y-auto" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+            <div className="relative flex min-h-full w-full flex-col px-5 pt-24 pb-20">
+              <p className="mb-3 font-mono text-xs uppercase tracking-widest text-muted-foreground">Состав</p>
+              <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                 {components.map((c, i) => {
                   const qty = c.qty && c.qty > 1 ? c.qty : null
                   const isDiff = activeVariant > 0 && variantDiffSlots.has(c.slot)
@@ -730,6 +730,22 @@ export default function BuildPreview() {
                     </div>
                   )
                 })}
+              </div>
+
+              {/* ИТОГ */}
+              <div className="mt-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Железо</span>
+                  <span className="font-medium text-foreground">{fmt(calcPartsTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Сборка</span>
+                  <span className="font-medium text-foreground">{fmt(calcAssemblyFee)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-primary/20 pt-2">
+                  <span className="text-sm font-semibold text-foreground">Итого</span>
+                  <span className="text-lg font-bold text-primary">{fmt(calcTotalPrice)}</span>
+                </div>
               </div>
             </div>
           </div>
