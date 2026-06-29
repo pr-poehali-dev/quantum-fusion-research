@@ -1,6 +1,4 @@
 
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -9,6 +7,8 @@ import { lazy, Suspense } from "react";
 import AdminGuard from "@/components/admin/AdminGuard";
 
 const ConsentModal = lazy(() => import("@/components/ConsentModal"));
+const Toaster = lazy(() => import("@/components/ui/toaster").then(m => ({ default: m.Toaster })));
+const Sonner = lazy(() => import("@/components/ui/sonner").then(m => ({ default: m.Toaster })));
 
 const Index = lazy(() => import("./pages/Index"));
 const Shop = lazy(() => import("./pages/Shop"));
@@ -53,8 +53,10 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
+        <Suspense fallback={null}>
+          <Toaster />
+          <Sonner />
+        </Suspense>
         <BrowserRouter>
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen">

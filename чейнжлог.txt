@@ -3,6 +3,26 @@
 
 ---
 
+## v6.22 | 2026-06-29 | Снижение TBT: дубли скриптов, тостеры, тема
+
+Борьба с Total Blocking Time (блокировка главного потока при старте):
+
+- index.html: УБРАНЫ дублирующиеся блокирующие <script> (платформенные
+  telemetry/pp/route/inspector грузились дважды — с defer И без defer).
+  Оставлены только defer-версии. Это снимало синхронную блокировку парсинга.
+- src/components/ui/sonner.tsx: убран импорт next-themes (useTheme) —
+  проект использует свою тему, а не next-themes; тема тостов = "dark".
+  next-themes больше нигде не импортируется → ушёл из стартового бандла.
+- src/App.tsx: Toaster (radix-toast) и Sonner вынесены в lazy+Suspense —
+  не грузятся до первой отрисовки (нужны только при показе уведомления).
+- src/components/theme-provider.tsx: применение темы переведено на
+  useLayoutEffect (до paint — без мерцания/лишней перерисовки), дубли
+  setProperty заменены на словари LIGHT_VARS/DARK_VARS + единая applyTheme.
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронтенд).
+
+---
+
 ## v6.21 | 2026-06-29 | Авто-WebP для всех картинок каталога/статей/сборок
 
 - backend/img-optimize: добавлен режим ensure (GET ?ensure=1&url=...).
