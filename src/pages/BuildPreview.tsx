@@ -274,6 +274,15 @@ export default function BuildPreview() {
   const compOffset = isMobile ? 2 : 1
   const totalSections = components.length + (isMobile ? 3 : 2)
 
+  // Метка текущего слайда — для верхней панели на телефоне (экономит место в теле).
+  const sectionLabel = (() => {
+    if (currentSection === 0) return "Обзор"
+    if (currentSection === totalSections - 1) return "Заказ"
+    if (isMobile && currentSection === 1) return "Состав"
+    const comp = components[currentSection - compOffset]
+    return comp ? (SLOT_NAMES[comp.slot] || comp.slot) : ""
+  })()
+
   // ── Разница цен относительно ОСНОВНОГО варианта (variants[0]) ──
   const baseVariant = variants[0] ?? null
   const isBaseActive = activeVariant === 0
@@ -462,6 +471,12 @@ export default function BuildPreview() {
             <span className="text-sm hidden sm:inline">{isTokenMode ? "Главная" : "Все сборки"}</span>
           </button>
         </div>
+        {/* Метка текущего слайда — по центру, только телефон */}
+        {sectionLabel && (
+          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 truncate max-w-[45%] text-center font-mono text-xs uppercase tracking-widest text-muted-foreground sm:hidden">
+            {sectionLabel}
+          </span>
+        )}
         <div className="flex items-center gap-2">
           {isTokenMode && !claimed && (
             <button onClick={claimBuild} disabled={claiming} style={{ cursor: "pointer" }}
@@ -710,8 +725,7 @@ export default function BuildPreview() {
         {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (второй слайд, список) ── */}
         {isMobile && (
           <div ref={el => { sectionRefs.current[1] = el }} data-scrollable className="w-screen shrink-0 relative overflow-y-auto overscroll-contain" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
-            <div className="relative flex min-h-full w-full flex-col px-5 pt-24 pb-28">
-              <p className="mb-3 font-mono text-xs uppercase tracking-widest text-muted-foreground">Состав</p>
+            <div className="relative flex min-h-full w-full flex-col px-5 pt-20 pb-28">
               <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                 {components.map((c, i) => {
                   const qty = c.qty && c.qty > 1 ? c.qty : null
@@ -1054,7 +1068,7 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
       <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-16 pt-20 pb-24">
         <div className={`max-w-lg transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
           <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
-            {SLOT_NAMES[comp.slot] || comp.slot} · {index + 1} / {total}
+            <span className="hidden sm:inline">{SLOT_NAMES[comp.slot] || comp.slot} · </span>{index + 1} / {total}
           </p>
           <h2 className="mb-3 font-light leading-tight text-foreground" style={{ fontSize: "clamp(1.6rem, 4vw, 3.2rem)" }}>
             {comp.name}
