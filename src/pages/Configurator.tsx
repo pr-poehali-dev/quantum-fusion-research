@@ -711,7 +711,7 @@ export default function Configurator() {
 
         {/* View toggle: подробный (с превью, как в корзине) / компактный */}
         {!(buildToken && isReadOnly) && (
-        <div className="mb-6 flex items-center justify-end gap-1.5">
+        <div className="mb-6 flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
           <span className="mr-1 text-xs text-foreground/40">Вид:</span>
           <button onClick={() => setViewMode("detailed")} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "detailed" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
             <Icon name="LayoutList" size={14} />Подробный
