@@ -747,6 +747,21 @@ export default function BuildPreview() {
                   <span className="text-lg font-bold text-primary">{fmt(calcTotalPrice)}</span>
                 </div>
               </div>
+
+              {/* Вариации конфигурации — под итогом */}
+              {hasMultipleVariants && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-xs text-muted-foreground">Вариант конфигурации</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {variants.map((_, i) => (
+                      <button key={i} onClick={() => setActiveVariant(i)} style={{ cursor: "pointer" }}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${i === activeVariant ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary hover:text-foreground"}`}>
+                        {i === 0 ? "Основная" : `Вариант ${i + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
