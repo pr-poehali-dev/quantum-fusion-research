@@ -111,10 +111,14 @@ export default function HomeStonks() {
     return parts + (b.assembly_fee || 0)
   }
 
-  const Banner = ({ img, title, to, imgPos }: { img: string; title: string; to: string; imgPos?: string }) => (
+  const Banner = ({ img, title, to, imgPos, priority }: { img: string; title: string; to: string; imgPos?: string; priority?: boolean }) => (
     <button onClick={() => navigate(to)} style={{ cursor: "pointer" }}
       className="group relative h-[280px] overflow-hidden rounded-2xl border border-border sm:h-48">
-      <img src={img} alt={title} style={{ objectPosition: imgPos }}
+      <img src={img} alt={title} style={{ objectPosition: imgPos }} width={800} height={280}
+        loading={priority ? "eager" : "lazy"}
+        // @ts-expect-error fetchpriority — валидный HTML-атрибут, ускоряет загрузку LCP-картинки
+        fetchpriority={priority ? "high" : "low"}
+        decoding="async"
         className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
       <span className="absolute inset-0 flex items-center justify-center px-4 py-3 text-center text-2xl font-extrabold leading-tight text-white [text-shadow:_0_2px_8px_rgb(0_0_0_/_90%)] sm:text-3xl">
         {title}
@@ -157,7 +161,7 @@ export default function HomeStonks() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* Три баннера */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Banner img={BANNER_PODBOR} title="Покупка комплектующих" to="/shop" />
+          <Banner img={BANNER_PODBOR} title="Покупка комплектующих" to="/shop" priority />
           <Banner img={BANNER_SBORKA} title="Заказать сборку ПК" to="/builds" />
           <Banner img={BANNER_RAZGON} title="Ремонт и обслуживание" to="/service" imgPos="center 80%" />
         </div>
@@ -209,7 +213,7 @@ export default function HomeStonks() {
                         className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left hover:border-primary/50 transition-colors">
                         <div className="relative h-[280px] w-full overflow-hidden sm:h-64">
                           {img ? (
-                            <img src={img} alt={b.name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <img src={img} alt={b.name} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                           ) : (
                             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted/80 to-card">
                               <Icon name="Monitor" size={28} className="text-foreground/30" />
@@ -287,7 +291,7 @@ export default function HomeStonks() {
                         className={`group absolute inset-0 block w-full text-left transition-opacity duration-700 ${i === artIdx ? "" : "pointer-events-none"}`}
                         tabIndex={i === artIdx ? 0 : -1}>
                         {a.image_url ? (
-                          <img src={a.image_url} alt={a.title}
+                          <img src={a.image_url} alt={a.title} loading="lazy" decoding="async"
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                         ) : (
                           <div className="flex h-full items-center justify-center">
