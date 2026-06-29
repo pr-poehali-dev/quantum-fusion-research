@@ -348,7 +348,7 @@ export default function Shop() {
               >
                 <Icon name="AlignLeft" size={16} />
                 <span className="hidden sm:inline">Категории</span>
-                {activeCategory !== "all" && <span className="h-2 w-2 rounded-full bg-primary" />}
+                {(activeCategory !== "all" || usedOnly) && <span className="h-2 w-2 rounded-full bg-primary" />}
               </button>
 
               <div className="relative flex-1">
@@ -436,24 +436,6 @@ export default function Shop() {
                 })()}
               </div>
 
-              <button
-                onClick={() => { const next = !usedOnly; setUsedOnly(next); if (next) { setActiveCategory("all"); setSearch(""); setSearchInput("") } }}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${usedOnly ? "border-amber-500 bg-amber-500/10 text-amber-500" : "border-border bg-card text-foreground/70 hover:text-foreground hover:border-primary"}`}
-                style={{ cursor: "pointer" }}
-                title="Показать только бывшие в употреблении"
-              >
-                <Icon name="RotateCcw" size={16} />
-                <span className="hidden sm:inline">Б/У</span>
-              </button>
-
-              <button
-                onClick={() => navigate("/configurator")}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary transition-colors"
-                style={{ cursor: "pointer" }}
-              >
-                <Icon name="Cpu" size={16} />
-                <span className="hidden sm:inline">Конфигуратор</span>
-              </button>
             </div>
 
             {/* Дропдаун категорий через portal — левее поля, z-50 */}
@@ -471,25 +453,36 @@ export default function Shop() {
                   <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-foreground/40">Категории</p>
                   <div className="flex flex-col gap-1">
                     <button
-                      onClick={() => { setActiveCategory("all"); setSearch(""); setSearchInput(""); setCatOpen(false) }}
-                      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${activeCategory === "all" ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
+                      onClick={() => { setUsedOnly(false); setActiveCategory("all"); setSearch(""); setSearchInput(""); setCatOpen(false) }}
+                      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${!usedOnly && activeCategory === "all" ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
                       style={{ cursor: "pointer" }}
                     >
                       <Icon name="LayoutGrid" size={15} />
                       Все товары
-                      {activeCategory === "all" && <Icon name="Check" size={13} className="ml-auto" />}
+                      {!usedOnly && activeCategory === "all" && <Icon name="Check" size={13} className="ml-auto" />}
                     </button>
                     {categories.map(cat => (
                       <button
                         key={cat.slug}
-                        onClick={() => { setActiveCategory(cat.slug); setSearch(""); setSearchInput(""); setCatOpen(false) }}
-                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${activeCategory === cat.slug ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
+                        onClick={() => { setUsedOnly(false); setActiveCategory(cat.slug); setSearch(""); setSearchInput(""); setCatOpen(false) }}
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${!usedOnly && activeCategory === cat.slug ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
                         style={{ cursor: "pointer" }}
                       >
                         {cat.name}
-                        {activeCategory === cat.slug && <Icon name="Check" size={13} className="ml-auto" />}
+                        {!usedOnly && activeCategory === cat.slug && <Icon name="Check" size={13} className="ml-auto" />}
                       </button>
                     ))}
+                    {/* Б/У как отдельная категория */}
+                    <div className="my-1 border-t border-border/60" />
+                    <button
+                      onClick={() => { setUsedOnly(true); setActiveCategory("all"); setSearch(""); setSearchInput(""); setCatOpen(false) }}
+                      className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-left ${usedOnly ? "bg-amber-500 text-white" : "text-amber-600 dark:text-amber-500 hover:bg-amber-500/10"}`}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Icon name="RotateCcw" size={15} />
+                      Б/У · бывшие в употреблении
+                      {usedOnly && <Icon name="Check" size={13} className="ml-auto" />}
+                    </button>
                   </div>
                 </div>
               </>,
