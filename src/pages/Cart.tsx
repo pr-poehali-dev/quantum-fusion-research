@@ -77,8 +77,8 @@ export default function Cart() {
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-4 sm:px-6">
+          <button onClick={() => navigate("/")} className="flex shrink-0 items-center gap-2" style={{ cursor: "pointer" }}>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
@@ -86,14 +86,14 @@ export default function Cart() {
             <button onClick={() => navigate("/shop")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Каталог</button>
             <button onClick={() => navigate("/configurator")} className="text-sm text-foreground/70 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>Конфигуратор</button>
           </nav>
-          <div className="flex items-center gap-2 text-sm text-foreground/60">
+          <div className="flex shrink-0 items-center gap-2 text-sm text-foreground/60">
             <Icon name="ShoppingCart" size={16} />
-            <span>Корзина · {count()} товар(а)</span>
+            <span><span className="hidden sm:inline">Корзина · </span>{count()}<span className="hidden sm:inline"> товар(а)</span></span>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <button onClick={() => navigate(-1)} className="mb-6 flex items-center gap-2 text-sm text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="ArrowLeft" size={16} />
           Назад
@@ -132,10 +132,11 @@ export default function Cart() {
                       : <Icon name={item.type === "config" ? "Cpu" : "Package"} size={viewMode === "detailed" ? 56 : 24} className="text-foreground/40" />}
                   </>
                 )
-                const photoClass = `flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-40 w-40" : "h-14 w-14"}`
+                const photoClass = `flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "detailed" ? "h-28 w-28 sm:h-40 sm:w-40" : "h-14 w-14"}`
                 return (
                 <div key={item.id} className={`rounded-xl border border-border bg-card p-4 transition-all duration-200`}>
-                  <div className={`flex gap-3 items-center`}>
+                  <div className={`flex flex-col gap-3 sm:flex-row sm:items-center`}>
+                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {/* Превью-фото — кликабельно на товар (в новой вкладке) */}
                     {viewMode === "detailed" && isProduct ? (
                       <a href={`/product/${item.id}`} target="_blank" rel="noopener noreferrer"
@@ -148,7 +149,7 @@ export default function Cart() {
                     )}
 
                     {/* Название + тип + описание */}
-                    <div className={`min-w-0 flex-1 ${viewMode === "detailed" ? "text-center" : ""}`}>
+                    <div className={`min-w-0 flex-1 ${viewMode === "detailed" ? "sm:text-center" : ""}`}>
                       <p className={`text-sm font-medium text-foreground leading-tight ${viewMode === "detailed" ? "" : "truncate"}`}>{item.name}</p>
                       <p className="mt-0.5 text-xs text-foreground/40">{item.type === "config" ? "Кастомная сборка" : "Комплектующее"}</p>
                       {viewMode === "detailed" && item.description && (
@@ -163,9 +164,10 @@ export default function Cart() {
                         </span>
                       )}
                     </div>
+                   </div>
 
                     {/* Цена / кол-во / итог / удаление — 1в1 как в конфигураторе */}
-                    <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 pt-3 sm:justify-start sm:border-0 sm:pt-0">
                       <span className="text-xs text-foreground/50">{fmt(item.price)}</span>
                       <div className="flex items-center gap-1">
                         <button onClick={() => updateQty(item.id, item.quantity - 1)}

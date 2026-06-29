@@ -312,7 +312,7 @@ export default function Builds() {
         )}
 
         {loading ? (
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {[...Array(3)].map((_, i) => <div key={i} className="h-80 rounded-xl bg-card animate-pulse" />)}
           </div>
         ) : filtered.length === 0 ? (
@@ -322,7 +322,7 @@ export default function Builds() {
             {builds.length > 0 && <button onClick={() => setActiveTagIds([])} className="mt-3 text-sm text-primary hover:underline" style={{ cursor: "pointer" }}>Сбросить фильтр</button>}
           </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map(b => (
               <BuildCard key={b.id} build={b}
                 onOpen={() => navigate(`/build-preview/${b.id}`)}
