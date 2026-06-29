@@ -4,6 +4,7 @@ import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
+import Seo, { SITE_URL } from "@/components/Seo"
 
 const SLOT_NAMES: Record<string, string> = {
   cpu: "Процессор", gpu: "Видеокарта", ram: "Оперативная память",
@@ -452,6 +453,29 @@ export default function BuildPreview() {
 
   return (
     <div className="relative w-screen overflow-hidden bg-background text-foreground" style={{ height: "100dvh", overscrollBehavior: "none" }}>
+      <Seo
+        title={build.name}
+        description={`Готовая сборка ПК «${build.name}»: ${components.length} комплектующих, сборка и настройка включены. Итоговая цена ${calcTotalPrice.toLocaleString("ru-RU")} ₽.`}
+        image={buildImages[0]}
+        path={`/build-preview/${build.id}`}
+        type="product"
+        noindex={isTokenMode}
+        jsonLd={isTokenMode ? undefined : {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: build.name,
+          image: buildImages,
+          description: `Готовая сборка ПК «${build.name}» с профессиональной сборкой и настройкой.`,
+          brand: { "@type": "Brand", name: "BeGraphics" },
+          offers: {
+            "@type": "Offer",
+            price: Math.round(calcTotalPrice),
+            priceCurrency: "RUB",
+            availability: "https://schema.org/InStock",
+            url: `${SITE_URL}/build-preview/${build.id}`,
+          },
+        }}
+      />
 
       {/* Точки навигации */}
       <nav className="fixed right-4 top-1/2 z-50 -translate-y-1/2 hidden sm:flex flex-col gap-2.5">

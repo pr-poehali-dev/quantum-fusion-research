@@ -9,6 +9,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
 import CatalogTabs from "@/components/CatalogTabs"
+import Seo from "@/components/Seo"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, ShopSortKey, emptyFilterState, applyShopFilters, sortShopProducts, ShopSortControl } from "@/components/shop/ShopFilters"
 
@@ -325,6 +326,11 @@ export default function Shop() {
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
+      <Seo
+        title="Магазин комплектующих для ПК"
+        description="Видеокарты, процессоры, материнские платы, память и другие комплектующие для ПК с доставкой. Новые и б/у — BeGraphics."
+        path="/shop"
+      />
       <ShopHeader />
 
       {/* Toast */}

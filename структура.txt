@@ -1,6 +1,24 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
+## SEO-оптимизация (v6.36)
+- backend/sitemap (URL .../9e4806c6-6f0d-4f6a-9874-33291a5d124f) — карта сайта
+  sitemap.xml для Яндекс/Google. Собирает статические страницы + опубликованные
+  статьи (articles.is_published), каталожные сборки (pc_builds status='catalog',
+  parent_id IS NULL → /build-preview/{id}) и товары (products → /product/{id}).
+  Отдаёт XML c Content-Type application/xml. Домен зашит: https://begraphics.ru.
+- public/robots.txt — Allow всем ботам, Disallow служебных (/admin /profile /cart
+  /auth /order-sheet), Host + Sitemap (ссылка на функцию sitemap).
+- Фронт SEO (через react-helmet-async):
+  • src/components/Seo.tsx — переиспользуемый компонент: title/description,
+    canonical (begraphics.ru), Open Graph, Twitter Card, Schema.org JSON-LD.
+    Экспортирует SITE_URL, SITE_NAME.
+  • App.tsx обёрнут в <HelmetProvider>.
+  • index.html — базовые мета (canonical, og:*, twitter:*, JSON-LD Organization).
+  • Seo подключён: HomeStonks (главная), Shop, Builds, Articles (списки),
+    ArticlePage (JSON-LD Article), ProductPage (JSON-LD Product+Offer),
+    BuildPreview (JSON-LD Product+Offer; noindex для клиентских токен-сборок).
+
 ## Договор поставки (v5.77)
 - backend/generate-contract — PDF договора поставки + спецификация (Приложение №1)
   по ?order_id. reportlab→base64. № договора = orders.id. Позиции из orders.items

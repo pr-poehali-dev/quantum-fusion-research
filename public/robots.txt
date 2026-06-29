@@ -1,5 +1,18 @@
 User-agent: Googlebot
 Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /cart
+Disallow: /auth
+Disallow: /order-sheet
+
+User-agent: Yandex
+Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /cart
+Disallow: /auth
+Disallow: /order-sheet
 
 User-agent: Bingbot
 Allow: /
@@ -12,3 +25,11 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /cart
+Disallow: /auth
+Disallow: /order-sheet
+
+Host: https://begraphics.ru
+Sitemap: https://functions.poehali.dev/9e4806c6-6f0d-4f6a-9874-33291a5d124f

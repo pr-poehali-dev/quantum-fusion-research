@@ -3,6 +3,28 @@
 
 ---
 
+## v6.36 | 2026-06-30 | SEO-оптимизация всего сайта (мета-теги, sitemap, Schema.org)
+
+- НОВОЕ: backend/sitemap — функция-карта сайта sitemap.xml для поисковиков.
+  Статические страницы + опубликованные статьи + каталожные сборки + товары.
+  URL: .../9e4806c6-6f0d-4f6a-9874-33291a5d124f. Тесты 2/2 прошли.
+- НОВОЕ: src/components/Seo.tsx — динамические мета-теги через react-helmet-async:
+  уникальные title/description на каждой странице, canonical (begraphics.ru),
+  Open Graph, Twitter Card, микроразметка Schema.org (JSON-LD).
+- App.tsx обёрнут в <HelmetProvider>.
+- index.html: добавлены canonical, og:* (url/image/locale/site_name), twitter:*,
+  JSON-LD Organization; title расширен ключевыми словами.
+- Seo подключён на страницах: главная (HomeStonks), Shop, Builds, Articles,
+  ArticlePage (JSON-LD Article), ProductPage (Product+Offer с ценой/наличием),
+  BuildPreview (Product+Offer; клиентские токен-сборки помечены noindex).
+- public/robots.txt: Disallow служебных разделов (/admin /profile /cart /auth
+  /order-sheet), добавлены Host и Sitemap.
+- Установлен пакет react-helmet-async.
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронтенд) + backend (функция sitemap).
+
+---
+
 ## v6.35 | 2026-06-29 | BuildPreview: выбор варианта без сброса слайда + фикс pull-to-refresh
 
 - src/pages/BuildPreview.tsx: при выборе вариации больше НЕ перекидывает на

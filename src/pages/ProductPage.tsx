@@ -4,6 +4,7 @@ import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useCart } from "@/store/cart"
+import Seo, { SITE_URL } from "@/components/Seo"
 
 interface Product {
   id: number
@@ -219,6 +220,28 @@ export default function ProductPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <Seo
+        title={product.name}
+        description={(product.description || `${product.name} — купить в BeGraphics. Цена ${fmt(product.price)}.`)}
+        image={images[0]}
+        path={`/product/${product.id}`}
+        type="product"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.name,
+          image: images,
+          description: (product.description || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300),
+          category: product.category?.name,
+          offers: {
+            "@type": "Offer",
+            price: Math.round(product.price),
+            priceCurrency: "RUB",
+            availability: product.in_stock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            url: `${SITE_URL}/product/${product.id}`,
+          },
+        }}
+      />
       {/* Хедер */}
       <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">

@@ -8,6 +8,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
 import CatalogTabs from "@/components/CatalogTabs"
+import Seo from "@/components/Seo"
 import Footer from "@/components/Footer"
 import { useRef } from "react"
 
@@ -274,6 +275,11 @@ export default function Builds() {
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
+      <Seo
+        title="Готовые сборки ПК"
+        description="Готовые сборки компьютеров для игр, работы и дома с профессиональной сборкой и настройкой. Подбор под бюджет — BeGraphics."
+        path="/builds"
+      />
       {/* Шапка */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">

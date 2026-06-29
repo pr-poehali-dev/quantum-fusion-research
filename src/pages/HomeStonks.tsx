@@ -9,6 +9,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
+import Seo from "@/components/Seo"
 
 interface CommunityBuild {
   id: number
@@ -138,6 +139,11 @@ export default function HomeStonks() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <Seo
+        title="BeGraphics — сборка, ремонт и комплектующие для ПК"
+        description="Профессиональная сборка ПК, ремонт и диагностика, продажа комплектующих. Готовые сборки под любой бюджет и каталог железа."
+        path="/"
+      />
       {/* Шапка (как в Shop) */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">

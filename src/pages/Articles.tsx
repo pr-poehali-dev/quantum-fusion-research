@@ -5,6 +5,7 @@ import Icon from "@/components/ui/icon"
 import OptimizedImage from "@/components/ui/optimized-image"
 import CatalogTabs from "@/components/CatalogTabs"
 import Footer from "@/components/Footer"
+import Seo from "@/components/Seo"
 import { matchesSearch } from "@/lib/keyboardLayout"
 
 interface Article {
@@ -90,6 +91,11 @@ export default function Articles() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Seo
+        title="Статьи и тесты — обзоры, гайды и бенчмарки железа"
+        description="Обзоры комплектующих, тесты и бенчмарки, гайды по сборке и ремонту ПК от BeGraphics."
+        path="/articles"
+      />
       {/* Шапка */}
       <div className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-10">
         <div className="mx-auto max-w-7xl px-4 md:px-8">

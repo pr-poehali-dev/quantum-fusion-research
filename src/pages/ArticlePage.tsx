@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import Seo, { SITE_URL, SITE_NAME } from "@/components/Seo"
 import CommentSection from "@/components/CommentSection"
 import { useAuth } from "@/store/auth"
 import { isAdminAuthed } from "@/components/admin/AdminGuard"
@@ -666,6 +667,24 @@ export default function ArticlePage() {
 
   return (
     <>
+      <Seo
+        title={article.title}
+        description={article.excerpt}
+        image={images[0]}
+        path={`/articles/${article.id}`}
+        type="article"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Article",
+          headline: article.title,
+          description: (article.excerpt || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200),
+          image: images,
+          datePublished: article.created_at,
+          author: { "@type": "Organization", name: SITE_NAME },
+          publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
+          mainEntityOfPage: `${SITE_URL}/articles/${article.id}`,
+        }}
+      />
       <div className="min-h-screen bg-background text-foreground">
         <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-sm">
           <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
