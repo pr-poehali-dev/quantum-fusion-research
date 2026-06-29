@@ -206,6 +206,8 @@ export default function Builds() {
   const [loading, setLoading] = useState(true)
   const [allTags, setAllTags] = useState<BuildTag[]>([])
   const [activeTagIds, setActiveTagIds] = useState<number[]>([])
+  const [tagsOpen, setTagsOpen] = useState(false)
+  const tagsRef = useRef<HTMLDivElement>(null)
   const [toastShow, setToastShow] = useState(false)
   const [toastKey, setToastKey] = useState(0)
   const [toastName, setToastName] = useState("")
@@ -227,6 +229,15 @@ export default function Builds() {
       setLoading(false)
     })
   }, [])
+
+  useEffect(() => {
+    if (!tagsOpen) return
+    const onClick = (e: MouseEvent) => { if (tagsRef.current && !tagsRef.current.contains(e.target as Node)) setTagsOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setTagsOpen(false) }
+    document.addEventListener("mousedown", onClick)
+    document.addEventListener("keydown", onKey)
+    return () => { document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onKey) }
+  }, [tagsOpen])
 
   const showToast = (name: string) => {
     setToastName(name)
@@ -286,28 +297,52 @@ export default function Builds() {
           <p className="text-sm text-foreground/60">Готовые сборки от BeGraphics с прозрачным составом и ценами</p>
         </div>
 
-        {/* Фильтр по тегам */}
+        {/* Фильтр по тегам — выпадающий список с мультивыбором */}
         {allTags.length > 0 && (
-          <div className="mb-6 flex flex-wrap gap-2">
+          <div ref={tagsRef} className="relative mb-6 w-full max-w-sm">
             <button
-              onClick={() => setActiveTagIds([])}
-              className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${activeTagIds.length === 0 ? "border-primary bg-primary/15 text-primary" : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
+              onClick={() => setTagsOpen(o => !o)}
+              aria-expanded={tagsOpen}
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground hover:border-primary/50 transition-colors"
               style={{ cursor: "pointer" }}
             >
-              Все
+              <span className="flex items-center gap-2 truncate">
+                <Icon name="SlidersHorizontal" size={15} className="text-foreground/40 shrink-0" />
+                {activeTagIds.length === 0
+                  ? <span className="text-foreground/50">Выберите нужные параметры</span>
+                  : <span className="truncate font-medium">Выбрано: {activeTagIds.length}</span>}
+              </span>
+              <Icon name="ChevronDown" size={16} className={`shrink-0 text-foreground/40 transition-transform ${tagsOpen ? "rotate-180" : ""}`} />
             </button>
-            {allTags.map(t => {
-              const active = activeTagIds.includes(t.id)
-              return (
-                <button key={t.id}
-                  onClick={() => setActiveTagIds(ids => active ? ids.filter(i => i !== t.id) : [...ids, t.id])}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${active ? getTagClass(t.color) : "border-border text-foreground/50 hover:border-primary hover:text-foreground"}`}
-                  style={{ cursor: "pointer" }}
-                >
-                  {t.name}
-                </button>
-              )
-            })}
+
+            {tagsOpen && (
+              <div className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-card p-2 shadow-xl">
+                {activeTagIds.length > 0 && (
+                  <button
+                    onClick={() => setActiveTagIds([])}
+                    className="mb-1 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Icon name="X" size={14} /> Сбросить выбор
+                  </button>
+                )}
+                {allTags.map(t => {
+                  const active = activeTagIds.includes(t.id)
+                  return (
+                    <button key={t.id}
+                      onClick={() => setActiveTagIds(ids => active ? ids.filter(i => i !== t.id) : [...ids, t.id])}
+                      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${active ? "bg-primary/10 font-medium text-primary" : "text-foreground/80 hover:bg-muted"}`}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                        {active && <Icon name="Check" size={11} />}
+                      </span>
+                      {t.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 
