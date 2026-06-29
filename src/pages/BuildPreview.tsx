@@ -228,13 +228,12 @@ export default function BuildPreview() {
     }).catch(() => {})
   }, [token, isTokenMode, user])
 
-  // При смене варианта (компоненты уже обогащены при загрузке списка)
+  // При смене варианта (компоненты уже обогащены при загрузке списка).
+  // НЕ сбрасываем на титульный слайд — пользователь остаётся на текущем.
   useEffect(() => {
     const v = variants[activeVariant]
     if (!v) return
     setComponents(v.components || [])
-    setCurrentSection(0)
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })
   }, [activeVariant]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const build = variants[activeVariant] ?? null
@@ -452,7 +451,7 @@ export default function BuildPreview() {
   const buildImages = build.image_urls || []
 
   return (
-    <div className="relative w-screen overflow-hidden bg-background text-foreground" style={{ height: "100dvh" }}>
+    <div className="relative w-screen overflow-hidden bg-background text-foreground" style={{ height: "100dvh", overscrollBehavior: "none" }}>
 
       {/* Точки навигации */}
       <nav className="fixed right-4 top-1/2 z-50 -translate-y-1/2 hidden sm:flex flex-col gap-2.5">
@@ -497,7 +496,7 @@ export default function BuildPreview() {
         </div>
       </header>
 
-      <div ref={scrollContainerRef} className="w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory", height: "100dvh" }}>
+      <div ref={scrollContainerRef} className="w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory", height: "100dvh", overscrollBehavior: "none", touchAction: "none" }}>
 
         {/* ── СЕКЦИЯ 0: Обзор ── */}
         <div ref={el => { sectionRefs.current[0] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
@@ -724,7 +723,7 @@ export default function BuildPreview() {
 
         {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (второй слайд, список) ── */}
         {isMobile && (
-          <div ref={el => { sectionRefs.current[1] = el }} data-scrollable className="w-screen shrink-0 relative overflow-y-auto overscroll-contain" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+          <div ref={el => { sectionRefs.current[1] = el }} data-scrollable className="w-screen shrink-0 relative overflow-y-auto overscroll-contain" style={{ scrollSnapAlign: "start", height: "100dvh", touchAction: "pan-y", overscrollBehavior: "contain" }}>
             <div className="relative flex min-h-full w-full flex-col px-5 pt-20 pb-28">
               <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                 {components.map((c, i) => {

@@ -3,6 +3,21 @@
 
 ---
 
+## v6.35 | 2026-06-29 | BuildPreview: выбор варианта без сброса слайда + фикс pull-to-refresh
+
+- src/pages/BuildPreview.tsx: при выборе вариации больше НЕ перекидывает на
+  титульный слайд — убран setCurrentSection(0) и scrollTo(top:0) из эффекта
+  смены activeVariant. Пользователь остаётся на текущем слайде.
+- Заблокирован браузерный pull-to-refresh: на корневом контейнере и контейнере
+  слайдов добавлены overscrollBehavior:none и touchAction:none — свайп вверх на
+  любом слайде больше не перезагружает страницу. Свайп-навигация (touchstart/
+  touchend) и прокрутка слайда «Состав» сохранены (на нём touchAction:pan-y +
+  overscrollBehavior:contain).
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронтенд).
+
+---
+
 ## v6.34 | 2026-06-29 | BuildPreview мобайл: метка слайда вынесена в верхнюю панель
 
 - src/pages/BuildPreview.tsx: на телефоне метка текущего слайда (Обзор /
