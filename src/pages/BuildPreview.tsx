@@ -162,6 +162,7 @@ export default function BuildPreview() {
   const [currentSection, setCurrentSection] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [wipInfo, setWipInfo] = useState<WipInfo | null>(null)
+  const [tagsExpanded, setTagsExpanded] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const wheelLockRef = useRef(false)
   const touchStartY = useRef(0)
@@ -471,22 +472,45 @@ export default function BuildPreview() {
             )}
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
-            <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center gap-8 px-5 sm:px-16 pt-20 pb-16">
+            <div className="relative z-10 mx-auto flex w-full max-w-7xl items-start gap-8 px-5 sm:px-16 pt-24 pb-16 sm:items-center sm:pt-20">
               {/* Левая часть — текст */}
               <div className="flex-1 min-w-0">
                 <div className={`transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+                  {/* Мобайл: фото сборки первым блоком */}
+                  {buildImages.length > 0 && (
+                    <div className="mb-5 sm:hidden">
+                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === 0} />
+                    </div>
+                  )}
                   <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">BeGraphics · Готовая сборка</p>
                   <h1 className="mb-4 font-light leading-tight tracking-tight text-foreground" style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}>
                     {build.name}
                   </h1>
                   {(build.tags || []).length > 0 && (
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {(build.tags || []).map(t => (
-                        <span key={t.id} className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${TAG_COLOR_MAP[t.color] || TAG_COLOR_MAP.primary}`}>
-                          {t.name}
-                        </span>
-                      ))}
-                    </div>
+                    <>
+                      {/* Десктоп — все теги */}
+                      <div className="mb-4 hidden flex-wrap gap-2 sm:flex">
+                        {(build.tags || []).map(t => (
+                          <span key={t.id} className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${TAG_COLOR_MAP[t.color] || TAG_COLOR_MAP.primary}`}>
+                            {t.name}
+                          </span>
+                        ))}
+                      </div>
+                      {/* Мобайл — сжатые теги: первые 3 + «Посмотреть все» */}
+                      <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:hidden">
+                        {(tagsExpanded ? (build.tags || []) : (build.tags || []).slice(0, 3)).map(t => (
+                          <span key={t.id} className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TAG_COLOR_MAP[t.color] || TAG_COLOR_MAP.primary}`}>
+                            {t.name}
+                          </span>
+                        ))}
+                        {!tagsExpanded && (build.tags || []).length > 3 && (
+                          <button onClick={() => setTagsExpanded(true)} style={{ cursor: "pointer" }}
+                            className="inline-flex items-center gap-0.5 rounded-full border border-border px-2.5 py-0.5 text-[11px] font-medium text-foreground/60 hover:text-foreground hover:border-primary transition-colors">
+                            Посмотреть все +{(build.tags || []).length - 3}
+                          </button>
+                        )}
+                      </div>
+                    </>
                   )}
                   {/* Блок статуса сборки (только если есть wip) */}
                   {wipInfo && (
@@ -551,9 +575,9 @@ export default function BuildPreview() {
                   {build.description && (
                     <div className="mb-6 max-w-lg text-sm sm:text-base leading-relaxed text-muted-foreground rich-content" dangerouslySetInnerHTML={{ __html: build.description }} />
                   )}
-                  {/* Фото — мобайл карусель */}
+                  {/* Фото — карусель для планшета (на телефоне фото уже сверху) */}
                   {buildImages.length > 0 && (
-                    <div className="lg:hidden mb-6">
+                    <div className="mb-6 hidden sm:block lg:hidden">
                       <BuildImageCarousel images={buildImages} autoPlay={currentSection === 0} />
                     </div>
                   )}
