@@ -49,23 +49,31 @@ function ArticleTierCardCell({ c, gi, isAdmin, dragOver, onActivate, onDragStart
 }) {
   const inner = (
     <>
-      {c.image_url
-        ? <img src={c.image_url} alt={c.title} draggable={false} className="h-full w-full rounded-xl object-cover" />
-        : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+      <div className="relative aspect-[16/9] w-full overflow-hidden">
+        {c.image_url
+          ? <img src={c.image_url} alt={c.title} draggable={false} className="h-full w-full object-cover" />
+          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={22} className="text-foreground/30" /></div>}
+        {c.title && (
+          <div className="pointer-events-none absolute inset-0 z-20 hidden flex-col items-center justify-center gap-1.5 bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 sm:flex">
+            <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
+            {c.anchor && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+                <Icon name="ArrowDownToLine" size={11} /> Перейти к разбору
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      {/* «Борода» — название под фото, всегда видна на телефоне. */}
       {c.title && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-background/85 px-2.5 text-center opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
-          <p className="text-sm font-semibold leading-snug text-foreground">{c.title}</p>
-          {c.anchor && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
-              <Icon name="ArrowDownToLine" size={11} /> Перейти к разбору
-            </span>
-          )}
+        <div className="flex min-h-[2.25rem] items-center justify-center border-t border-border/60 bg-card px-1.5 py-1 sm:hidden">
+          <p className="line-clamp-2 text-center text-[11px] font-medium leading-tight text-foreground">{c.title}</p>
         </div>
       )}
     </>
   )
-  const cls = "tier-card group relative block aspect-[16/9] w-32 overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44 cursor-pointer"
-  const style = { WebkitMaskImage: "-webkit-radial-gradient(white, black)", scrollMarginTop: 90 }
+  const cls = "tier-card group relative flex w-32 flex-col overflow-hidden rounded-xl border border-border bg-muted transition-transform hover:scale-[1.03] sm:w-44 cursor-pointer"
+  const style = { scrollMarginTop: 90 }
   // id карточки в блоке тир-листа. ОТЛИЧАЕТСЯ от текстовой метки toc-tier-card-N,
   // иначе getElementById находил бы карточку вместо метки в тексте.
   const aid = `tierblock-card-${gi}`

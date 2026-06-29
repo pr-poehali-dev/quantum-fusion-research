@@ -70,30 +70,35 @@ const TierCard = memo(function TierCard({
         onDragOver={e => { if (isAdmin) { e.preventDefault(); onDragOverCard(it.id) } }}
         onDrop={e => { if (isAdmin) { e.preventDefault(); e.stopPropagation(); onDropCard(it) } }}
         onClick={() => onCardClick(it)}
-        className={`group relative aspect-[16/9] w-40 overflow-hidden rounded-xl border bg-muted transition-[border-color] sm:w-56 ${picked ? "border-primary ring-2 ring-primary" : "border-border"} cursor-pointer active:cursor-grabbing`}
-        style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
+        className={`group relative flex w-40 shrink-0 flex-col overflow-hidden rounded-xl border bg-muted transition-[border-color] sm:w-56 ${picked ? "border-primary ring-2 ring-primary" : "border-border"} cursor-pointer active:cursor-grabbing`}
       >
-        {it.image_url
-          ? <img
-              src={it.image_url}
-              alt={it.name}
-              draggable={false}
-              loading="lazy"
-              className="h-full w-full rounded-xl object-cover"
-            />
-          : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={26} className="text-foreground/30" /></div>}
+        <div className="relative aspect-[16/9] w-full overflow-hidden">
+          {it.image_url
+            ? <img
+                src={it.image_url}
+                alt={it.name}
+                draggable={false}
+                loading="lazy"
+                className="h-full w-full object-cover"
+              />
+            : <div className="flex h-full w-full items-center justify-center"><Icon name="Image" size={26} className="text-foreground/30" /></div>}
 
-        {/* Название — отдельное окно поверх превью при наведении (десктоп)
-            или при выборе карточки тапом (телефон — первый тап). */}
-        <div className={`pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/85 px-2.5 text-center backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 ${picked ? "opacity-100" : "opacity-0"}`}>
-          <p className="text-sm font-semibold leading-snug text-foreground">{it.name}</p>
+          {/* Название — окно поверх превью при наведении мышью (десктоп). */}
+          <div className={`pointer-events-none absolute inset-0 z-20 hidden items-center justify-center bg-background/85 px-2.5 text-center backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 sm:flex ${picked ? "opacity-100" : "opacity-0"}`}>
+            <p className="text-sm font-semibold leading-snug text-foreground">{it.name}</p>
+          </div>
+
+          {picked && isAdmin && (
+            <div className="absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+              <Icon name="Check" size={12} />
+            </div>
+          )}
         </div>
 
-        {picked && isAdmin && (
-          <div className="absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
-            <Icon name="Check" size={12} />
-          </div>
-        )}
+        {/* «Борода» — подпись с названием под фото, всегда видна на телефоне. */}
+        <div className="flex min-h-[2.5rem] items-center justify-center border-t border-border/60 bg-card px-2 py-1.5 sm:hidden">
+          <p className="line-clamp-2 text-center text-xs font-medium leading-tight text-foreground">{it.name}</p>
+        </div>
       </div>
     </div>
   )
@@ -269,12 +274,10 @@ export default function TierLists() {
 
   // Клик по карточке: админ — если выбрана другая карточка, вставляем её ПЕРЕД этой;
   // иначе выбираем/снимаем выбор. Гость — открывает товар.
-  // На телефоне (нет hover) гостю первый тап показывает название (подсветка),
-  // второй тап по той же карточке — переход на товар. На десктопе — сразу товар.
+  // Название всегда видно (на телефоне — «борода» под фото, на десктопе — hover),
+  // поэтому тап гостя сразу ведёт на страницу товара.
   const onCardClick = (it: TierItem) => {
     if (!isAdmin) {
-      const isTouch = typeof window !== "undefined" && window.matchMedia("(hover: none)").matches
-      if (isTouch && pickedId !== it.id) { setPickedId(it.id); return }
       navigate(`/product/${it.id}`); return
     }
     if (pickedId != null && pickedId !== it.id) { dropOnCard(it); return }
