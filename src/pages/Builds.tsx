@@ -104,7 +104,7 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
           )}
           {previewTags.map(t => (
             <span key={t.id}
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm transition-all duration-300 ${hovered ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"} ${getTagClass(t.color)}`}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm transition-all duration-300 opacity-100 translate-y-0 sm:-translate-y-1 sm:opacity-0 ${hovered ? "sm:opacity-100 sm:translate-y-0" : ""} ${getTagClass(t.color)}`}
             >
               {t.name}
             </span>
@@ -158,8 +158,8 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
           </div>
         )}
 
-        {/* Hover-виджет с железом: CPU + GPU поверх фото */}
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 px-6">
+        {/* Hover-виджет с железом: CPU + GPU поверх фото (только десктоп — на тач нет hover) */}
+        <div className="absolute inset-0 z-10 hidden flex-col items-center justify-center gap-2 bg-black/40 opacity-0 transition-opacity duration-300 px-6 group-hover:opacity-100 sm:flex">
           {cpu && (
             <div className="flex items-center gap-2 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-4 py-2 w-full max-w-xs">
               <Icon name="Cpu" size={14} className="text-primary shrink-0" />
@@ -178,6 +178,23 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
       {/* ─── Плашка снизу: название + цена (как на главной, масштаб +25%) ─── */}
       <div className="flex flex-1 flex-col p-4">
         <p className="line-clamp-2 text-base font-medium leading-snug group-hover:text-primary transition-colors">{b.name}</p>
+        {/* Железо CPU/GPU — на телефоне в плашке (на десктопе это поверх фото по hover) */}
+        {(cpu || gpu) && (
+          <div className="mt-2 space-y-1 sm:hidden">
+            {cpu && (
+              <p className="flex items-center gap-1.5 text-xs text-foreground/60">
+                <Icon name="Cpu" size={12} className="shrink-0 text-primary" />
+                <span className="truncate">{cpu.name}</span>
+              </p>
+            )}
+            {gpu && (
+              <p className="flex items-center gap-1.5 text-xs text-foreground/60">
+                <Icon name="Monitor" size={12} className="shrink-0 text-primary" />
+                <span className="truncate">{gpu.name}</span>
+              </p>
+            )}
+          </div>
+        )}
         <div className="mt-2.5 flex items-center justify-between gap-3">
           <p className="text-lg font-bold">{fmt(calcTotal)}</p>
           {b.reserved ? (
