@@ -113,52 +113,53 @@ export default function Articles() {
           <p className="mt-2 text-sm text-foreground/40">{articles.length} материалов</p>
         </div>
 
-        {/* Фильтры */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          {/* Поиск */}
-          <div className="relative w-full sm:max-w-xs">
-            <Icon name="Search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/30 pointer-events-none" />
-            <input
-              value={query}
-              onChange={e => setParam("q", e.target.value)}
-              placeholder="Поиск по статьям..."
-              className="w-full rounded-lg border border-border bg-card py-2 pl-8 pr-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none transition-colors"
-            />
-            {query && (
-              <button onClick={() => setParam("q", "")} className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}>
-                <Icon name="X" size={13} />
-              </button>
-            )}
-          </div>
-
-          {/* Сортировка */}
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
-            {SORTS.map(s => (
-              <button
-                key={s.value}
-                onClick={() => setParam("sort", s.value)}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${sort === s.value ? "bg-primary text-primary-foreground" : "text-foreground/50 hover:text-foreground"}`}
-                style={{ cursor: "pointer" }}
-              >
-                <Icon name={s.icon as "Eye"} size={12} />
-                {s.label}
-              </button>
-            ))}
-          </div>
+        {/* Поиск */}
+        <div className="relative mb-4 w-full sm:max-w-xs">
+          <Icon name="Search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/30 pointer-events-none" />
+          <input
+            value={query}
+            onChange={e => setParam("q", e.target.value)}
+            placeholder="Поиск по статьям..."
+            className="w-full rounded-lg border border-border bg-card py-2 pl-8 pr-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none transition-colors"
+          />
+          {query && (
+            <button onClick={() => setParam("q", "")} className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground" style={{ cursor: "pointer" }}>
+              <Icon name="X" size={13} />
+            </button>
+          )}
         </div>
 
-        {/* Категории */}
-        <div className="mb-8 flex flex-wrap gap-2">
+        {/* Группировка (категории) — компактный ряд */}
+        <div className="mb-3 flex flex-wrap gap-1.5">
           {CATEGORIES.map(c => (
             <button
               key={c.value}
               onClick={() => setParam("category", c.value)}
-              className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${category === c.value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground/60 hover:border-primary/50 hover:text-foreground"}`}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${category === c.value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground/60 hover:border-primary/50 hover:text-foreground"}`}
               style={{ cursor: "pointer" }}
             >
               {c.label}
             </button>
           ))}
+        </div>
+
+        {/* Сортировка — выпадающий список под группировкой */}
+        <div className="mb-8 flex items-center gap-2">
+          <span className="text-xs text-foreground/40">Сортировка:</span>
+          <div className="relative">
+            <Icon name="ArrowDownUp" size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40" />
+            <select
+              value={sort}
+              onChange={e => setParam("sort", e.target.value)}
+              className="appearance-none rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-xs font-medium text-foreground focus:border-primary focus:outline-none"
+              style={{ cursor: "pointer" }}
+            >
+              {SORTS.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            <Icon name="ChevronDown" size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-foreground/40" />
+          </div>
         </div>
 
         {/* Контент */}

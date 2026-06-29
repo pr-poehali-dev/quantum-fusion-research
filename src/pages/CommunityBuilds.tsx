@@ -119,15 +119,15 @@ export default function CommunityBuilds() {
       {/* Табы */}
       <CatalogTabs />
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="mb-2 text-3xl font-light text-foreground">Сборки сообщества</h1>
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="mb-2 text-2xl font-light text-foreground sm:text-3xl">Сборки сообщества</h1>
             <p className="text-sm text-foreground/60">Конфигурации от пользователей BeGraphics — вдохновляйтесь и копируйте</p>
           </div>
           <button
             onClick={() => navigate(isAuthed() ? "/configurator" : "/auth")}
-            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:w-auto"
             style={{ cursor: "pointer" }}
           >
             <Icon name="Plus" size={16} />
@@ -136,7 +136,7 @@ export default function CommunityBuilds() {
         </div>
 
         {loading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {[...Array(6)].map((_, i) => <div key={i} className="h-56 rounded-xl bg-card animate-pulse" />)}
           </div>
         ) : builds.length === 0 ? (
@@ -149,7 +149,7 @@ export default function CommunityBuilds() {
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {builds.map(b => (
               <CommunityBuildCard
                 key={b.id}
