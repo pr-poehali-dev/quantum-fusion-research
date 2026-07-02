@@ -411,6 +411,13 @@ export default function BuildPreview() {
     navigate("/cart")
   }
 
+  // Назад — возвращаемся на предыдущую страницу (категорию/каталог, откуда пришли).
+  // Если истории нет (открыли по прямой ссылке) — разумный fallback.
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1)
+    else navigate(isTokenMode ? "/" : "/builds")
+  }
+
   // Открыть текущую сборку в конфигураторе — клиент сам меняет компоненты
   // и оставляет заявку с нужной конфигурацией.
   const editInConfigurator = () => {
@@ -442,8 +449,8 @@ export default function BuildPreview() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
       <Icon name="MonitorOff" size={48} className="mb-4 text-muted-foreground/40" />
       <h1 className="mb-2 text-xl font-medium text-foreground">{error || "Сборка не найдена"}</h1>
-      <button onClick={() => navigate(isTokenMode ? "/" : "/shop")} className="mt-6 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
-        {isTokenMode ? "На главную" : "Все сборки"}
+      <button onClick={goBack} className="mt-6 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
+        Назад
       </button>
     </div>
   )
@@ -488,9 +495,9 @@ export default function BuildPreview() {
       {/* Хедер */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-4 bg-background/80 backdrop-blur-sm border-b border-border/50">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(isTokenMode ? "/" : "/shop")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <button onClick={goBack} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="ArrowLeft" size={16} />
-            <span className="text-sm hidden sm:inline">{isTokenMode ? "Главная" : "Все сборки"}</span>
+            <span className="text-sm hidden sm:inline">Назад</span>
           </button>
         </div>
         {/* Метка текущего слайда — по центру, только телефон */}
