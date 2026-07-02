@@ -515,6 +515,12 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
           <Button variant="outline" onClick={step === 0 ? onClose : prev}>
             {step === 0 ? "Отмена" : "Назад"}
           </Button>
+          {/* Быстрый переход на финальный шаг без изменений промежуточных полей */}
+          {step !== finStep && !!categoryName && (
+            <Button variant="ghost" onClick={() => { setError(""); setStep(finStep) }}>
+              Перейти без изменений
+            </Button>
+          )}
           {step === finStep ? (
             <Button onClick={save} disabled={loading}>{loading ? "Сохранение..." : isNew ? "Создать" : "Сохранить"}</Button>
           ) : (
