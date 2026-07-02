@@ -161,6 +161,28 @@
   opacity: 1;
 }
 
+/* Ползунок яркости темы: акцентный бегунок с белой окантовкой */
+.theme-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.theme-range::-moz-range-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
 @layer utilities {
   .animate-in {
     animation-duration: 150ms;

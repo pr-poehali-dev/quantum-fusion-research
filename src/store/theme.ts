@@ -3,6 +3,18 @@ import { persist } from "zustand/middleware"
 
 export type ThemeMode = "dark" | "light"
 
+// Уровень яркости темы: 0 — супер-тёмный … 4 — супер-светлый.
+// 0,1,2 считаются «тёмными», 3,4 — «светлыми» (для иконки и /welcome).
+export type ThemeLevel = 0 | 1 | 2 | 3 | 4
+export const THEME_LEVELS: { level: ThemeLevel; label: string }[] = [
+  { level: 0, label: "Супер-тёмная" },
+  { level: 1, label: "Тёмная" },
+  { level: 2, label: "Приглушённая" },
+  { level: 3, label: "Светлая" },
+  { level: 4, label: "Супер-светлая" },
+]
+export const levelToMode = (l: ThemeLevel): ThemeMode => (l <= 2 ? "dark" : "light")
+
 export interface AccentColor {
   id: string
   label: string
@@ -22,10 +34,12 @@ export const ACCENT_COLORS: AccentColor[] = [
 
 interface ThemeStore {
   mode: ThemeMode
+  level: ThemeLevel         // уровень яркости 0..4 (ползунок)
   accentId: string
   everChanged: boolean      // менял ли пользователь тему хоть раз
   hintDismissed: boolean    // скрыл ли подсказку «больше не показывать»
   setMode: (mode: ThemeMode) => void
+  setLevel: (level: ThemeLevel) => void
   setAccent: (id: string) => void
   dismissThemeHint: () => void
   getAccent: () => AccentColor
@@ -66,10 +80,13 @@ export const useTheme = create<ThemeStore>()(
   persist(
     (set, get) => ({
       mode: "dark",
+      level: 1,
       accentId: "red",
       everChanged: false,
       hintDismissed: false,
-      setMode: (mode) => set({ mode, everChanged: true }),
+      // setMode оставлен для обратной совместимости: dark→уровень 1, light→уровень 3
+      setMode: (mode) => set({ mode, level: mode === "light" ? 3 : 1, everChanged: true }),
+      setLevel: (level) => set({ level, mode: levelToMode(level), everChanged: true }),
       setAccent: (accentId) => set({ accentId, everChanged: true }),
       dismissThemeHint: () => set({ hintDismissed: true }),
 

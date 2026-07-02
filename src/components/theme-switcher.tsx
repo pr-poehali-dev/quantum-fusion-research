@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
-import { useTheme, ACCENT_COLORS } from "@/store/theme"
+import { useTheme, ACCENT_COLORS, THEME_LEVELS, ThemeLevel } from "@/store/theme"
 import Icon from "@/components/ui/icon"
 
 // Цвета кружков (Tailwind + inline для custom)
@@ -14,7 +14,7 @@ const ACCENT_BG: Record<string, string> = {
 }
 
 export function ThemeSwitcher() {
-  const { mode, accentId, everChanged, hintDismissed, setMode, setAccent, dismissThemeHint } = useTheme()
+  const { mode, level, accentId, everChanged, hintDismissed, setLevel, setAccent, dismissThemeHint } = useTheme()
   const [open, setOpen] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
   const [showHint, setShowHint] = useState(false)
@@ -166,26 +166,39 @@ export function ThemeSwitcher() {
             className="fixed z-[9999] rounded-2xl border border-border bg-card p-5 shadow-2xl"
             style={{ top: popupPos.top, right: popupPos.right, width: "min(288px, calc(100vw - 16px))", cursor: "auto" }}
           >
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-foreground/40">Тема</p>
-            <div className="mb-5 flex gap-2">
-              {[
-                { val: "dark" as const, icon: "Moon", label: "Тёмная" },
-                { val: "light" as const, icon: "Sun", label: "Светлая" },
-              ].map(t => (
-                <button
-                  key={t.val}
-                  onClick={() => setMode(t.val)}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 text-xs font-medium transition-all ${
-                    mode === t.val
-                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                      : "border-border text-foreground/60 hover:border-primary/50 hover:text-foreground"
-                  }`}
-                  style={{ cursor: "pointer" }}
-                >
-                  <Icon name={t.icon as "Moon"} size={13} />
-                  {t.label}
-                </button>
-              ))}
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-widest text-foreground/40">Яркость темы</p>
+              <span className="text-xs font-medium text-primary">{THEME_LEVELS[level].label}</span>
+            </div>
+            <div className="mb-5">
+              <div className="mb-2 flex items-center gap-2">
+                <Icon name="Moon" size={14} className="shrink-0 text-foreground/50" />
+                <input
+                  type="range"
+                  min={0}
+                  max={THEME_LEVELS.length - 1}
+                  step={1}
+                  value={level}
+                  onChange={e => setLevel(Number(e.target.value) as ThemeLevel)}
+                  className="theme-range h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
+                  style={{
+                    background: "linear-gradient(to right, #000 0%, #222 25%, #666 50%, #ddd 75%, #fff 100%)",
+                  }}
+                />
+                <Icon name="Sun" size={14} className="shrink-0 text-foreground/50" />
+              </div>
+              {/* Точки-деления по числу шагов */}
+              <div className="flex justify-between px-6">
+                {THEME_LEVELS.map(t => (
+                  <button
+                    key={t.level}
+                    onClick={() => setLevel(t.level)}
+                    title={t.label}
+                    className={`h-2 w-2 rounded-full transition-colors ${level === t.level ? "bg-primary" : "bg-foreground/25 hover:bg-foreground/50"}`}
+                    style={{ cursor: "pointer" }}
+                  />
+                ))}
+              </div>
             </div>
 
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-foreground/40">Акцентный цвет</p>
