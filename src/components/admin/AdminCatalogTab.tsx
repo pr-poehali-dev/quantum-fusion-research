@@ -662,7 +662,7 @@ export function AdminCatalogTab({
               <select value={productForm.brand_id} onChange={e => setProductForm(f => ({ ...f, brand_id: e.target.value }))}
                 className="flex-1 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
                 <option value="">— Без бренда —</option>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {brands.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
               </select>
               <button type="button" onClick={() => setShowBrandsManager(true)}
                 className="shrink-0 rounded-lg border border-border px-3 text-foreground/60 hover:border-primary hover:text-primary transition-colors" style={{ cursor: "pointer" }}
