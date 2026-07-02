@@ -230,8 +230,9 @@ export function AdminCatalogTab({
   const compPrice = (c: { price: number; current_price?: number }) =>
     (buildForm.lock_prices ? c.price : (c.current_price ?? c.price)) || 0
   const partsTotal = buildComponents.reduce((s, c) => s + compPrice(c) * (c.qty || 1), 0)
+  // Сборка 7% округляется ВВЕРХ до кратного 250 ₽ (250/500/750/…)
   const assemblyFee = buildForm.assembly_type === "percent"
-    ? Math.round(partsTotal * 0.07)
+    ? Math.ceil(partsTotal * 0.07 / 250) * 250
     : (parseFloat(buildForm.assembly_fee_manual) || 0)
   const baseTotal = partsTotal + assemblyFee
   // Продажа с НДС: +22% и округление вверх до 250 ₽
@@ -959,7 +960,7 @@ export function AdminCatalogTab({
               <button type="button" onClick={() => setBuildForm(f => ({ ...f, assembly_type: "percent" }))}
                 className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${buildForm.assembly_type === "percent" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary"}`}
                 style={{ cursor: "pointer" }}>
-                7% автоматически ({fmt(Math.round(partsTotal * 0.07))})
+                7% автоматически ({fmt(Math.ceil(partsTotal * 0.07 / 250) * 250)})
               </button>
               <button type="button" onClick={() => setBuildForm(f => ({ ...f, assembly_type: "manual" }))}
                 className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${buildForm.assembly_type === "manual" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary"}`}
