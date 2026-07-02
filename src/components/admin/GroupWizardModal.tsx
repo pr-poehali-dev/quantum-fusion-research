@@ -41,10 +41,22 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   const [specCats, setSpecCats] = useState<SpecCat[]>([])
   const [specAttrs, setSpecAttrs] = useState<SpecAttr[]>([])
 
+  // Свежая схема совместимости (характеристики + их варианты). Тянем НАЛЕТУ:
+  // при открытии мастера и каждый раз при возврате фокуса на вкладку — чтобы
+  // новые варианты, добавленные в разделе «Совместимость», сразу появлялись.
+  const loadSpecSchema = () => api.warehouse.specSchema()
+    .then(d => { setSpecCats(d.categories || []); setSpecAttrs(d.attributes || []) })
+    .catch(() => {})
+
   useEffect(() => {
     api.products.getAll().then(d => setCatalogCats(d.categories || [])).catch(() => {})
     api.brands.getAll().then(d => setBrands(d.brands || [])).catch(() => {})
-    api.warehouse.specSchema().then(d => { setSpecCats(d.categories || []); setSpecAttrs(d.attributes || []) }).catch(() => {})
+    loadSpecSchema()
+    // Обновляем характеристики, когда админ вернулся к вкладке (мог поменять
+    // варианты в «Совместимости» в соседней вкладке).
+    const onFocus = () => loadSpecSchema()
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
   }, [])
 
   // ── Состояние мастера ───────────────────────────────────────────────────────
@@ -91,12 +103,23 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
     return m
   }, [specCats, specAttrs, catSlug])
 
-  // Варианты для select-блока: сперва тянем из совместимости (spec_attributes.options),
-  // если там пусто — откатываемся на статичный список из шаблона.
+  // Варианты для select-блока: объединяем варианты из «Совместимости»
+  // (spec_attributes.options) со статичным списком шаблона. Приоритет —
+  // у совместимости (её варианты идут первыми), дубликаты убираем. Так новые
+  // значения, добавленные в разделе «Совместимость», появляются сразу.
   const optionsFor = (block: NameBlock): string[] => {
-    const fromCompat = block.attrCode ? attrByCode[block.attrCode]?.options : undefined
-    if (fromCompat && fromCompat.length > 0) return fromCompat
-    return block.options || []
+    const fromCompat = (block.attrCode ? attrByCode[block.attrCode]?.options : undefined) || []
+    const fromTpl = block.options || []
+    if (fromCompat.length === 0) return fromTpl
+    const seen = new Set<string>()
+    const merged: string[] = []
+    for (const opt of [...fromCompat, ...fromTpl]) {
+      const key = opt.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      merged.push(opt)
+    }
+    return merged
   }
 
   // Шаги: 0 категория, 1 бренд, 2..(2+blocks-1) блоки, последний — финал
@@ -116,6 +139,13 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
         .then(d => setSuggest(d.values || [])).catch(() => {})
     }
   }, [curBlock?.key, attrIdByCode])
+
+  // При переходе на select-блок подтягиваем свежие варианты из «Совместимости»
+  // (на случай, если их только что добавили) — чтобы список был актуальным.
+  useEffect(() => {
+    if (curBlock?.input === "select") loadSpecSchema()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curBlock?.key])
 
   // При редактировании восстанавливаем БРЕНД из начала старого названия
   // (бренд в названии хранится первым словом/словами).
