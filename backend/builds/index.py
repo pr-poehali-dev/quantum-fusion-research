@@ -58,11 +58,47 @@ def _sync_wip_from_build(cur, build_id, components):
              extra_val, r[0])
         )
 
-def fmt_build(row, tags=None, reserved=False):
+def _get_price_map(cur, rows):
+    """Собирает актуальные цены каталога (products.price) по всем source_id
+    компонентов переданных сборок — одним запросом. Возвращает {product_id: price}."""
+    ids = set()
+    for r in rows:
+        for c in (r[4] or []):
+            sid = c.get("source_id") if isinstance(c, dict) else None
+            if sid:
+                ids.add(int(sid))
+    if not ids:
+        return {}
+    ids_str = ",".join(str(i) for i in ids)
+    cur.execute(f"SELECT id, price FROM {SCHEMA}.products WHERE id IN ({ids_str})")
+    return {r[0]: (float(r[1]) if r[1] is not None else None) for r in cur.fetchall()}
+
+
+def _enrich_components(components, lock_prices, price_map):
+    """Подставляет current_price в компоненты. Если lock_prices=False —
+    берём актуальную цену каталога (price_map), иначе оставляем зафиксированную
+    price (current_price = price)."""
+    out = []
+    for c in (components or []):
+        if not isinstance(c, dict):
+            out.append(c); continue
+        c = dict(c)
+        sid = c.get("source_id")
+        if not lock_prices and sid and price_map.get(int(sid)) is not None:
+            c["current_price"] = price_map[int(sid)]
+        else:
+            c["current_price"] = c.get("price", 0)
+        out.append(c)
+    return out
+
+
+def fmt_build(row, tags=None, reserved=False, price_map=None):
+    lock_prices = row[19] if len(row) > 19 else False
+    components = _enrich_components(row[4] or [], lock_prices, price_map or {})
     return {
         "id": row[0], "name": row[1], "description": row[2],
         "image_urls": row[3] or [],
-        "components": row[4] or [],
+        "components": components,
         "parts_total": float(row[5]) if row[5] else 0,
         "assembly_type": row[6],
         "assembly_fee": float(row[7]) if row[7] else 0,
@@ -77,6 +113,7 @@ def fmt_build(row, tags=None, reserved=False):
         "in_stock": row[16] if len(row) > 16 else False,
         "sell_with_vat": row[17] if len(row) > 17 else False,
         "short_code": row[18] if len(row) > 18 else None,
+        "lock_prices": lock_prices,
         "reserved": bool(reserved),
         "tags": tags or [],
     }
@@ -164,7 +201,7 @@ def handler(event: dict, context) -> dict:
             base = """SELECT id, name, description, image_urls, components, parts_total,
                              assembly_type, assembly_fee, total_price, status, is_featured,
                              sort_order, created_at, client_token, client_user_id, parent_id, in_stock,
-                             sell_with_vat, short_code
+                             sell_with_vat, short_code, lock_prices
                       FROM pc_builds"""
 
             if build_id:
@@ -194,7 +231,8 @@ def handler(event: dict, context) -> dict:
                         return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
                 reserved_ids = get_reserved_build_ids(cur, [row[0]])
-                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
+                price_map = _get_price_map(cur, [row])
+                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids, price_map))
 
             if client_token:
                 cur.execute(base + " WHERE client_token = %s", (client_token,))
@@ -203,7 +241,8 @@ def handler(event: dict, context) -> dict:
                     return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
                 reserved_ids = get_reserved_build_ids(cur, [row[0]])
-                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
+                price_map = _get_price_map(cur, [row])
+                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids, price_map))
 
             if short_code:
                 cur.execute(base + " WHERE short_code = %s", (short_code,))
@@ -212,19 +251,22 @@ def handler(event: dict, context) -> dict:
                     return resp(404, {"error": "Не найдено"})
                 tags_map = get_tags_for_builds(cur, [row[0]])
                 reserved_ids = get_reserved_build_ids(cur, [row[0]])
-                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids))
+                price_map = _get_price_map(cur, [row])
+                return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids, price_map))
 
             if parent_id:
                 cur.execute(base + " WHERE parent_id = %s ORDER BY id", (parent_id,))
                 rows = cur.fetchall()
                 tags_map = get_tags_for_builds(cur, [r[0] for r in rows])
-                return resp(200, [fmt_build(r, tags_map.get(r[0], [])) for r in rows])
+                price_map = _get_price_map(cur, rows)
+                return resp(200, [fmt_build(r, tags_map.get(r[0], []), False, price_map) for r in rows])
 
             if user_id:
                 cur.execute(base + " WHERE client_user_id = %s ORDER BY id DESC", (user_id,))
                 rows = cur.fetchall()
                 tags_map = get_tags_for_builds(cur, [r[0] for r in rows])
-                return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], [])) for r in rows]})
+                price_map = _get_price_map(cur, rows)
+                return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], []), False, price_map) for r in rows]})
 
             where = "WHERE status = %s" if status else ""
             args = [status] if status else []
@@ -233,7 +275,8 @@ def handler(event: dict, context) -> dict:
             ids = [r[0] for r in rows]
             tags_map = get_tags_for_builds(cur, ids)
             reserved_ids = get_reserved_build_ids(cur, ids)
-            return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], []), r[0] in reserved_ids) for r in rows]})
+            price_map = _get_price_map(cur, rows)
+            return resp(200, {"builds": [fmt_build(r, tags_map.get(r[0], []), r[0] in reserved_ids, price_map) for r in rows]})
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")
@@ -338,8 +381,8 @@ def handler(event: dict, context) -> dict:
 
             cur.execute(
                 """INSERT INTO pc_builds (name, description, image_urls, components, parts_total,
-                   assembly_type, assembly_fee, total_price, status, is_featured, in_stock, sort_order, created_at, parent_id, sell_with_vat)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s) RETURNING id""",
+                   assembly_type, assembly_fee, total_price, status, is_featured, in_stock, sort_order, created_at, parent_id, sell_with_vat, lock_prices)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s) RETURNING id""",
                 (body.get("name", "Новая сборка"), body.get("description"),
                  json.dumps(body.get("image_urls", [])), json.dumps(body.get("components", [])),
                  body.get("parts_total", 0), body.get("assembly_type", "manual"),
@@ -347,7 +390,7 @@ def handler(event: dict, context) -> dict:
                  body.get("status", "draft"), body.get("is_featured", False),
                  body.get("in_stock", False),
                  body.get("sort_order"), body.get("parent_id"),
-                 body.get("sell_with_vat", False))
+                 body.get("sell_with_vat", False), body.get("lock_prices", False))
             )
             new_id = cur.fetchone()[0]
             conn.commit()
@@ -365,7 +408,7 @@ def handler(event: dict, context) -> dict:
                    parts_total=%s, assembly_type=%s, assembly_fee=%s, total_price=%s,
                    status=COALESCE(%s, status), is_featured=%s, in_stock=%s,
                    sort_order=COALESCE(%s, sort_order),
-                   parent_id=COALESCE(%s, parent_id), sell_with_vat=%s
+                   parent_id=COALESCE(%s, parent_id), sell_with_vat=%s, lock_prices=%s
                    WHERE id=%s""",
                 (body.get("name"), body.get("description"),
                  json.dumps(body.get("image_urls", [])), json.dumps(body.get("components", [])),
@@ -374,7 +417,7 @@ def handler(event: dict, context) -> dict:
                  status, body.get("is_featured", False),
                  body.get("in_stock", False),
                  body.get("sort_order"), parent_id,
-                 body.get("sell_with_vat", False), body["id"])
+                 body.get("sell_with_vat", False), body.get("lock_prices", False), body["id"])
             )
             _sync_wip_from_build(cur, body["id"], body.get("components", []))
             conn.commit()

@@ -3,6 +3,35 @@
 
 ---
 
+## v6.37 | 2026-07-02 | Единый расчёт цены сборки + флаг «Фиксировать цены»
+
+ПРОБЛЕМА: цена сборки на сайте (291 083 ₽) не совпадала с админкой (278 000 ₽).
+Причина: сайт считал по актуальной цене каталога (current_price), а админка —
+по зафиксированной при создании (price). НДС в списке админки не применялся.
+
+РЕШЕНИЕ — единый источник цены + флаг фиксации:
+- БД (V0176): pc_builds.lock_prices BOOLEAN DEFAULT FALSE.
+  FALSE = синхронизация со складом (цена из каталога), TRUE = цены зафиксированы.
+- backend/builds: fmt_build теперь подставляет current_price в каждый компонент.
+  При lock_prices=FALSE — актуальная products.price (одним запросом _get_price_map),
+  при TRUE — зафиксированная price. lock_prices читается/пишется в GET/POST/PUT.
+- src/components/admin/AdminCatalogTab.tsx: чекбокс «Фиксировать цены» (по умолч.
+  выкл). При выкл — цены комплектующих тянутся из каталога (current_price) и
+  показываются только для чтения; при вкл — можно править вручную. Расчёт итога
+  через compPrice() (current_price или price). Форма шлёт lock_prices.
+- src/components/admin/BuildsList.tsx: цена в списке считается по current_price +
+  НДС (withVat), совпадает с сайтом. Показывает «с НДС».
+- src/pages/BuildPreview.tsx: enrichVariants больше не перезатирает current_price
+  (бэкенд уже проставил с учётом lock_prices). Добавлен lock_prices в тип.
+- src/pages/Builds.tsx, src/pages/HomeStonks.tsx: расчёт цены унифицирован —
+  current_price ?? price, учёт qty и НДС.
+
+ИТОГ: цена сборки одинакова везде (сайт, каталог, админка, список).
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронтенд) + backend/builds + миграция БД.
+
+---
+
 ## v6.36 | 2026-06-30 | SEO-оптимизация всего сайта (мета-теги, sitemap, Schema.org)
 
 - НОВОЕ: backend/sitemap — функция-карта сайта sitemap.xml для поисковиков.

@@ -35,10 +35,11 @@ interface CatalogBuild {
   assembly_fee?: number
   image_urls?: string[]
   parent_id?: number | null
-  components?: Array<{ price?: number }>
+  components?: Array<{ price?: number; current_price?: number; qty?: number }>
   created_at?: string
   in_stock?: boolean
   reserved?: boolean
+  sell_with_vat?: boolean
 }
 
 const CDN = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/optimized"
@@ -117,8 +118,10 @@ export default function HomeStonks() {
   }, [])
 
   const buildPrice = (b: CatalogBuild) => {
-    const parts = (b.components || []).reduce((s, c) => s + (c.price || 0), 0)
-    return parts + (b.assembly_fee || 0)
+    // current_price подставлен бэкендом с учётом lock_prices; учитываем qty и НДС
+    const parts = (b.components || []).reduce((s, c) => s + ((c.current_price ?? c.price) || 0) * (c.qty || 1), 0)
+    const base = parts + (b.assembly_fee || 0)
+    return b.sell_with_vat ? Math.ceil(base * 1.22 / 250) * 250 : base
   }
 
   const Banner = ({ img, title, to, imgPos, priority }: { img: { src: string; srcSet: string }; title: string; to: string; imgPos?: string; priority?: boolean }) => (

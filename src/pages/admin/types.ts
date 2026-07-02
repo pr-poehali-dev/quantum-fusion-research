@@ -232,6 +232,7 @@ export interface PCBuild {
   client_user_id: number | null
   parent_id: number | null
   sell_with_vat?: boolean
+  lock_prices?: boolean
   tags?: Tag[]
 }
 

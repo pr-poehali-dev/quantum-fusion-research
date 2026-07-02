@@ -54,6 +54,7 @@ interface Build {
   is_featured?: boolean; status?: string
   client_token?: string | null; client_user_id?: number | null; parent_id?: number | null
   sell_with_vat?: boolean
+  lock_prices?: boolean
   tags?: BuildTag[]
 }
 
@@ -119,16 +120,14 @@ async function enrichComponents(comps: Component[], livePrice = false): Promise<
   })
 }
 
-// Обогащает компоненты ВСЕХ вариантов актуальными ценами каталога,
-// чтобы корректно считать разницу цен между вариантами (а не по устаревшей price из БД).
-// ВАЖНО: livePrice определяется по статусу КОРНЯ (list[0]) и применяется ко всем
-// вариантам одинаково — иначе варианты-копии (status=draft/client) считаются
-// по устаревшей price из БД, а корень (catalog) — по актуальной, и разница врёт.
+// Обогащает компоненты ВСЕХ вариантов данными товара (фото/описание).
+// ЦЕНЫ (current_price) уже проставлены бэкендом с учётом флага lock_prices:
+// lock_prices=false → актуальная цена каталога, lock_prices=true → зафиксированная.
+// Поэтому livePrice здесь НЕ трогаем (передаём false), чтобы не перезатирать.
 async function enrichVariants(list: Build[]): Promise<Build[]> {
-  const livePrice = list[0]?.status === "catalog"
   return Promise.all(list.map(async (b) => ({
     ...b,
-    components: await enrichComponents(b.components || [], livePrice),
+    components: await enrichComponents(b.components || [], false),
   })))
 }
 

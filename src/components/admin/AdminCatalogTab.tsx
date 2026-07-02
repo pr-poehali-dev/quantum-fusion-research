@@ -209,10 +209,11 @@ export function AdminCatalogTab({
     assembly_fee_manual: "",
     image_urls: [] as string[],
     sell_with_vat: false,
+    lock_prices: false,
     parent_id: null as number | null,
   })
   const [buildComponents, setBuildComponents] = useState<Array<{
-    slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; qty: number; image_urls?: string[]
+    slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; current_price?: number; qty: number; image_urls?: string[]
   }>>([])
   const [expandedComponent, setExpandedComponent] = useState<number | null>(null)
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
@@ -224,7 +225,11 @@ export function AdminCatalogTab({
   const [expandedVariants, setExpandedVariants] = useState<number | null>(null)
   const [buildTagIds, setBuildTagIds] = useState<number[]>([])
 
-  const partsTotal = buildComponents.reduce((s, c) => s + c.price * (c.qty || 1), 0)
+  // Цена комплектующего: если цены НЕ зафиксированы — актуальная из каталога
+  // (current_price), иначе — зафиксированная вручную (price).
+  const compPrice = (c: { price: number; current_price?: number }) =>
+    (buildForm.lock_prices ? c.price : (c.current_price ?? c.price)) || 0
+  const partsTotal = buildComponents.reduce((s, c) => s + compPrice(c) * (c.qty || 1), 0)
   const assemblyFee = buildForm.assembly_type === "percent"
     ? Math.round(partsTotal * 0.07)
     : (parseFloat(buildForm.assembly_fee_manual) || 0)
@@ -242,11 +247,13 @@ export function AdminCatalogTab({
       assembly_fee_manual: b.assembly_fee ? String(b.assembly_fee) : "",
       image_urls: b.image_urls || [],
       sell_with_vat: b.sell_with_vat ?? false,
+      lock_prices: b.lock_prices ?? false,
       parent_id: b.parent_id ?? null,
     })
     setBuildComponents(b.components?.map(c => ({
       slot: c.slot, source: (c.source as "catalog" | "custom") || "catalog",
       source_id: c.source_id, name: c.name, price: c.price || 0,
+      current_price: c.current_price ?? c.price ?? 0,
       qty: c.qty || 1, image_urls: [],
     })) || [])
     setBuildTagIds(b.tags?.map(t => t.id) || [])
@@ -274,11 +281,15 @@ export function AdminCatalogTab({
       assembly_type: buildForm.assembly_type, assembly_fee: asm_fee,
       parts_total: partsTotal, total_price: buildTotal,
       sell_with_vat: buildForm.sell_with_vat,
+      lock_prices: buildForm.lock_prices,
       image_urls: buildForm.image_urls,
       parent_id: buildForm.parent_id,
       components: buildComponents.map(c => ({
         slot: c.slot, source: c.source, source_id: c.source_id,
-        name: c.name, price: c.price, qty: c.qty, image_urls: c.image_urls,
+        // price — зафиксированная цена (используется при lock_prices=true).
+        // Если цены зафиксированы, сохраняем то, что видит админ (current_price).
+        name: c.name, price: buildForm.lock_prices ? compPrice(c) : c.price,
+        qty: c.qty, image_urls: c.image_urls,
       })),
     }
     let savedId: number
@@ -294,7 +305,7 @@ export function AdminCatalogTab({
     }
     const d = await api.builds.getAll()
     setBuilds(Array.isArray(d) ? d : (d.builds || []))
-    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, parent_id: null })
+    setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null })
     setBuildComponents([])
     setBuildTagIds([])
     setTab("builds")
@@ -335,7 +346,7 @@ export function AdminCatalogTab({
 
   const addCatalogComponent = (slot: string, comp: ConfigComponent) => {
     if (buildComponents.some(c => c.source_id === comp.id)) return
-    setBuildComponents(cs => [...cs, { slot, source: "catalog", source_id: comp.id, name: comp.name, price: comp.price, qty: 1 }])
+    setBuildComponents(cs => [...cs, { slot, source: "catalog", source_id: comp.id, name: comp.name, price: comp.price, current_price: comp.price, qty: 1 }])
     setAddingSlot(null)
   }
 
@@ -866,15 +877,15 @@ export function AdminCatalogTab({
                       <span className="w-5 text-center text-xs font-bold text-foreground">{c.qty || 1}</span>
                       <button type="button" onClick={() => setComponentQty(c.source_id ?? 0, 1)} className="h-5 w-5 rounded border border-border text-foreground/50 hover:border-primary hover:text-primary transition-colors flex items-center justify-center" style={{ cursor: "pointer" }}><Icon name="Plus" size={10} /></button>
                     </div>
-                    {c.price === 0 ? (
+                    {(buildForm.lock_prices || (c.current_price ?? c.price) === 0) ? (
                       <div className="flex items-center gap-0.5 shrink-0 w-28">
                         <input type="number" min={0} placeholder="цена" value={c.price === 0 ? "" : c.price}
-                          onChange={e => { const val = Number(e.target.value) || 0; setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, price: val } : comp)) }}
+                          onChange={e => { const val = Number(e.target.value) || 0; setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, price: val, current_price: val } : comp)) }}
                           className="w-full rounded border border-border bg-background px-2 py-0.5 text-xs text-primary font-bold text-right focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
                         <span className="text-xs text-foreground/40 shrink-0">₽</span>
                       </div>
                     ) : (
-                      <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(c.price * (c.qty || 1))}</span>
+                      <span className="shrink-0 font-bold text-primary text-xs w-20 text-right">{fmt(compPrice(c) * (c.qty || 1))}</span>
                     )}
                     <button type="button" onClick={() => setExpandedComponent(expandedComponent === i ? null : i)} className="text-foreground/30 hover:text-primary transition-colors" style={{ cursor: "pointer" }}>
                       <Icon name={expandedComponent === i ? "ChevronUp" : "Image"} size={13} />
@@ -971,6 +982,17 @@ export function AdminCatalogTab({
               <span>+22% и округление</span>
             </div>
           )}
+          <label className="flex items-start gap-2 text-sm text-foreground/70 border-t border-border pt-3 mt-3 cursor-pointer" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={buildForm.lock_prices} onChange={e => setBuildForm(f => ({ ...f, lock_prices: e.target.checked }))} className="rounded mt-0.5" />
+            <span>
+              Фиксировать цены
+              <span className="block text-xs text-foreground/40">
+                {buildForm.lock_prices
+                  ? "Цены вбиты вручную и не меняются при изменении каталога"
+                  : "Цены синхронизируются со складом (актуальная цена каталога)"}
+              </span>
+            </span>
+          </label>
           <div className="flex items-center justify-between border-t border-border pt-3 mt-3">
             <span className="text-sm font-medium text-foreground">Итого{buildForm.sell_with_vat ? " (с НДС)" : ""}:</span>
             <span className="text-2xl font-bold text-foreground">{fmt(buildTotal)}</span>

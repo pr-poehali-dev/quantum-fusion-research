@@ -62,8 +62,9 @@ function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: (
   const [hovered, setHovered] = useState(false)
   const cpu = b.components.find(c => c.slot === "cpu")
   const gpu = b.components.find(c => c.slot === "gpu")
-  // Считаем цену из компонентов (поле total_price в БД может быть устаревшим)
-  const calcPartsTotal = b.components.reduce((s, c) => s + (c.price || 0), 0)
+  // Считаем цену из компонентов. current_price проставлен бэкендом с учётом
+  // флага lock_prices (актуальная цена каталога или зафиксированная).
+  const calcPartsTotal = b.components.reduce((s, c) => s + ((c.current_price ?? c.price) || 0) * ((c as { qty?: number }).qty || 1), 0)
   const calcTotal = withVat(calcPartsTotal + (b.assembly_fee || 0), b.sell_with_vat)
   const tags = b.tags || []
   const previewTags = tags.slice(0, 2)

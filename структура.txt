@@ -1,6 +1,19 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
+## Цены сборок ПК — единый механизм (v6.37)
+- pc_builds.lock_prices (V0176): FALSE (по умолч.) = цены комплектующих
+  синхронизируются со складом (актуальная products.price); TRUE = цены
+  зафиксированы (используется components.price, правится вручную в админке).
+- backend/builds.fmt_build подставляет в каждый компонент current_price:
+  при lock_prices=FALSE — актуальную цену каталога (_get_price_map, 1 запрос),
+  при TRUE — зафиксированную price. Все читатели (сайт+админка) считают
+  ЕДИНООБРАЗНО: sum((current_price ?? price) * qty) + assembly_fee, затем НДС
+  (sell_with_vat → +22%, округление вверх до 250 ₽).
+- Точки расчёта: BuildPreview (страница сборки), Builds/HomeStonks (карточки),
+  AdminCatalogTab (редактор, compPrice + чекбокс «Фиксировать цены»),
+  BuildsList (список админки, withVat).
+
 ## SEO-оптимизация (v6.36)
 - backend/sitemap (URL .../9e4806c6-6f0d-4f6a-9874-33291a5d124f) — карта сайта
   sitemap.xml для Яндекс/Google. Собирает статические страницы + опубликованные

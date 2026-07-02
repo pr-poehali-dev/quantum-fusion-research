@@ -1,6 +1,16 @@
 import Icon from "@/components/ui/icon"
 import { PCBuild, BUILD_STATUS } from "@/pages/admin/types"
 
+// Продажа с НДС: +22% и округление вверх до 250 ₽ (единая формула проекта)
+const withVat = (base: number, vat?: boolean) => vat ? Math.ceil(base * 1.22 / 250) * 250 : base
+
+// Итоговая цена сборки: цены комплектующих (current_price подставлен бэкендом
+// с учётом lock_prices) + сборка, затем НДС при необходимости.
+function buildTotal(b: PCBuild): number {
+  const parts = (b.components?.reduce((s, c) => s + ((c.current_price ?? c.price) || 0) * (c.qty || 1), 0) ?? 0)
+  return withVat(parts + (b.assembly_fee || 0), b.sell_with_vat)
+}
+
 // ── Строка одной сборки ──
 export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }: {
   b: PCBuild
@@ -35,9 +45,7 @@ export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoa
         </div>
         <div className="flex items-center gap-3 text-xs text-foreground/50">
           <span>{b.components?.length || 0} комп.</span>
-          <span className="font-semibold text-foreground/70">{fmt(
-            (b.components?.reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0) ?? 0) + (b.assembly_fee || 0)
-          )}</span>
+          <span className="font-semibold text-foreground/70">{fmt(buildTotal(b))}{b.sell_with_vat ? " с НДС" : ""}</span>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 shrink-0">
