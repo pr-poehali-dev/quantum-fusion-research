@@ -53,14 +53,14 @@ const LEVEL_VARS: Record<ThemeLevel, Record<string, string>> = {
     "--border": "0 0% 28%", "--input": "0 0% 28%",
     "--primary-foreground": "0 0% 100%", "--accent-foreground": "0 0% 100%",
   },
-  // 3 — Светлая (исходная light)
+  // 3 — Светлая (чуть более серая, мягче супер-светлой)
   3: {
-    "--background": "0 0% 97%", "--foreground": "0 0% 8%",
-    "--card": "0 0% 100%", "--card-foreground": "0 0% 8%",
-    "--popover": "0 0% 100%", "--popover-foreground": "0 0% 8%",
-    "--secondary": "0 0% 92%", "--secondary-foreground": "0 0% 8%",
-    "--muted": "0 0% 92%", "--muted-foreground": "0 0% 45%",
-    "--border": "0 0% 86%", "--input": "0 0% 86%",
+    "--background": "0 0% 90%", "--foreground": "0 0% 8%",
+    "--card": "0 0% 95%", "--card-foreground": "0 0% 8%",
+    "--popover": "0 0% 95%", "--popover-foreground": "0 0% 8%",
+    "--secondary": "0 0% 85%", "--secondary-foreground": "0 0% 8%",
+    "--muted": "0 0% 85%", "--muted-foreground": "0 0% 40%",
+    "--border": "0 0% 80%", "--input": "0 0% 80%",
     "--primary-foreground": "0 0% 100%", "--accent-foreground": "0 0% 100%",
   },
   // 4 — Супер-светлая (чисто-белая, максимум яркости)
