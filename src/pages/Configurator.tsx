@@ -255,6 +255,15 @@ export default function Configurator() {
   const [selected, setSelected] = useState<Record<string, SelectedComp | null>>(draft0.selected || {})
   const [customInputs, setCustomInputs] = useState<Record<string, { name: string; price: string; link: string; description: string; image_urls: string[] }>>(draft0.customInputs || {})
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed")
+  // Мобильный экран (<640px): на телефоне фото делаем компактными и кладём
+  // название поверх фото — иначе крупное превью ломает вёрстку карточки слота.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches)
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)")
+    const onChange = () => setIsMobile(mq.matches)
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
 
   // НОВОЕ окно выбора с фильтрами совместимости (тестовый прототип)
   const [pickerSlot, setPickerSlot] = useState<string | null>(null)
@@ -947,6 +956,41 @@ export default function Configurator() {
                     {/* Selected component: name + link + qty + line total */}
                     {current && (
                       <div className="border-t border-border/40 px-4 pb-4 pt-3">
+                        {/* На мобильном: фото на всю ширину с названием поверх (компактнее).
+                            На десктопе: фото слева + текст рядом (как было). */}
+                        {isMobile ? (
+                          <div className="mb-3">
+                            {(() => {
+                              const inner = current.image_urls?.[0]
+                                ? <img src={current.image_urls[0]} alt={current.name} className="h-full w-full object-cover" />
+                                : <div className="flex h-full w-full items-center justify-center"><Icon name={meta.icon as "Cpu"} size={40} className="text-foreground/40" /></div>
+                              const wrapCls = "relative block h-32 w-full overflow-hidden rounded-lg bg-muted"
+                              const overlay = (
+                                <>
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+                                  <div className="absolute inset-x-0 bottom-0 p-2.5">
+                                    <p className="text-[10px] uppercase tracking-wider text-white/60">{meta.label}</p>
+                                    <p className="text-sm font-semibold leading-tight text-white line-clamp-2">{current.name}</p>
+                                  </div>
+                                </>
+                              )
+                              return current.source === "catalog" && current.source_id ? (
+                                <a href={`/product/${current.source_id}`} target="_blank" rel="noopener noreferrer" className={wrapCls} style={{ cursor: "pointer" }}>
+                                  {inner}{overlay}
+                                </a>
+                              ) : (
+                                <div className={wrapCls}>{inner}{overlay}</div>
+                              )
+                            })()}
+                            {current.link && (
+                              <a href={current.link} target="_blank" rel="noopener noreferrer"
+                                className="mt-1.5 inline-flex items-center gap-1 text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>
+                                <Icon name="ExternalLink" size={11} />
+                                Ссылка на товар
+                              </a>
+                            )}
+                          </div>
+                        ) : (
                         <div className={`flex gap-3 items-center`}>
                           {/* Превью-фото — крупное в подробном (h-40), маленькое в компактном (h-14) */}
                           {(() => {
@@ -984,37 +1028,39 @@ export default function Configurator() {
                               </a>
                             )}
                           </div>
+                        </div>
+                        )}
 
-                          {/* Price → qty controls → line total + предупреждения.
-                              На десктопе предупреждения стоят в один ряд с ценой;
-                              на мобильных — переносятся под кол-во и ценник, по правому краю. */}
-                          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-                            {/* Предупреждения: на десктопе слева от цены (order меняем флексом),
-                                на мобильных — ниже цены (порядок DOM сохраняем, но визуально вниз) */}
-                            <div className="order-2 flex flex-col items-end gap-1.5 sm:order-1 sm:flex-row sm:items-center">
-                              {/* Критичные проблемы (рыжие) складываем в один список:
-                                  при нескольких — счётчик «Проблемы: N». Совет (БП) — отдельно. */}
-                              {(() => {
-                                const problems: string[] = [
-                                  ...(slot === "storage" && ssdSlotWarning
-                                    ? [`На материнской плате ${ssdSlotWarning.slots} ${plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили ${ssdSlotWarning.qty}. Уменьшите на ${ssdSlotWarning.over}.`]
-                                    : []),
-                                  ...(compatWarningsBySlot[slot] || []),
-                                ]
-                                return <CompatWarning texts={problems} />
-                              })()}
-                              {slot === "psu" && psuWarning && (
-                                <CompatWarning severity="advice" texts={[`Блок питания на ${psuWarning.watt} Вт справится: ваша сборка под нагрузкой потребляет около ${psuWarning.totalTdp} Вт. Но запас небольшой — для тихой работы и апгрейда в будущем советуем взять блок питания от ${psuWarning.recommended} Вт.`]} />
-                              )}
-                            </div>
-                            {/* Цена / кол-во / итог */}
-                            <div className="order-1 flex items-center gap-3 sm:order-2">
-                              <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
-                              <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
-                              <span className="w-24 text-right text-sm font-bold text-primary">
-                                {fmt(current.price * current.qty)}
-                              </span>
-                            </div>
+                        {/* Price → qty controls → line total + предупреждения.
+                            Общий блок для мобильного и десктопа.
+                            На десктопе предупреждения стоят в один ряд с ценой;
+                            на мобильных — переносятся под кол-во и ценник, по правому краю. */}
+                        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+                          {/* Предупреждения: на десктопе слева от цены (order меняем флексом),
+                              на мобильных — ниже цены (порядок DOM сохраняем, но визуально вниз) */}
+                          <div className="order-2 flex flex-col items-end gap-1.5 sm:order-1 sm:flex-row sm:items-center">
+                            {/* Критичные проблемы (рыжие) складываем в один список:
+                                при нескольких — счётчик «Проблемы: N». Совет (БП) — отдельно. */}
+                            {(() => {
+                              const problems: string[] = [
+                                ...(slot === "storage" && ssdSlotWarning
+                                  ? [`На материнской плате ${ssdSlotWarning.slots} ${plural(ssdSlotWarning.slots, "слот", "слота", "слотов")} M.2, вы поставили ${ssdSlotWarning.qty}. Уменьшите на ${ssdSlotWarning.over}.`]
+                                  : []),
+                                ...(compatWarningsBySlot[slot] || []),
+                              ]
+                              return <CompatWarning texts={problems} />
+                            })()}
+                            {slot === "psu" && psuWarning && (
+                              <CompatWarning severity="advice" texts={[`Блок питания на ${psuWarning.watt} Вт справится: ваша сборка под нагрузкой потребляет около ${psuWarning.totalTdp} Вт. Но запас небольшой — для тихой работы и апгрейда в будущем советуем взять блок питания от ${psuWarning.recommended} Вт.`]} />
+                            )}
+                          </div>
+                          {/* Цена / кол-во / итог */}
+                          <div className="order-1 flex items-center gap-3 sm:order-2">
+                            <span className="text-xs text-foreground/50">{fmt(current.price)}</span>
+                            <QtyControl qty={current.qty} onChange={q => updateQty(slot, q)} />
+                            <span className="w-24 text-right text-sm font-bold text-primary">
+                              {fmt(current.price * current.qty)}
+                            </span>
                           </div>
                         </div>
                       </div>
