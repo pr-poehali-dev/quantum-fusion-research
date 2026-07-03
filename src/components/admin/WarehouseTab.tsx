@@ -33,6 +33,8 @@ interface Supply {
   purchase_date: string | null
   warranty_until: string | null
   created_at: string
+  has_vat?: boolean
+  price_with_vat?: number | null
 }
 
 interface PricePoint {
@@ -593,6 +595,7 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [reservesModal, setReservesModal] = useState(false)
   const [snTracked, setSnTracked] = useState(false)
+  const [vatInfoId, setVatInfoId] = useState<number | null>(null)  // какой НДС-заход раскрыт (цена в счёт)
 
   useEffect(() => {
     if (!expanded) return
@@ -770,7 +773,26 @@ function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefresh, is
                           <td className="py-1 text-foreground/50">{s.purchase_date?.substring(0, 10) || "—"}</td>
                           <td className="py-1 text-right font-medium">{fmtNum(s.qty)}</td>
                           <td className="py-1 text-right text-orange-400">{fmtNum(s.qty_reserved)}</td>
-                          <td className="py-1 text-right text-foreground/60">{fmt(s.cost_price)}</td>
+                          {s.has_vat ? (
+                            <td className="py-1 text-right align-top">
+                              <button
+                                type="button"
+                                onClick={() => setVatInfoId(id => id === s.id ? null : s.id)}
+                                title="Товар с НДС — нажмите, чтобы увидеть цену в счёт"
+                                className="font-medium text-yellow-500 hover:underline"
+                                style={{ cursor: "pointer" }}
+                              >
+                                {fmt(s.cost_price)}
+                              </button>
+                              {vatInfoId === s.id && (
+                                <div className="mt-0.5 text-[11px] font-normal text-foreground/50">
+                                  цена в счёт: {s.price_with_vat != null ? fmt(s.price_with_vat) : "—"}
+                                </div>
+                              )}
+                            </td>
+                          ) : (
+                            <td className="py-1 text-right text-foreground/60">{fmt(s.cost_price)}</td>
+                          )}
                           <td className="py-1 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {snTracked && (

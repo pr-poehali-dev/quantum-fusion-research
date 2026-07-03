@@ -120,8 +120,9 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
   const [storeId, setStoreId] = useState<number | null>(stores[0]?.id ?? null)
   const [storeHint, setStoreHint] = useState<string | null>(null)      // что распознала модель ("ДНС")
   const [storeAuto, setStoreAuto] = useState(false)                     // магазин подставлен автоматически
-  const [vatMode, setVatMode] = useState<"with" | "without">("with")   // НДС / без НДС
+  const [vatMode, setVatMode] = useState<"with" | "without">("with")   // товар с НДС / без НДС
   const [vatPercent, setVatPercent] = useState(20)                      // ставка НДС из настроек
+  const [purchaseDiscount, setPurchaseDiscount] = useState(0)           // скидка закупки для НДС-товаров, %
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -185,11 +186,13 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     }
   }, [draftId, loadDraft])
 
-  // ставка НДС из настроек склада
+  // ставка НДС и скидка закупки из настроек склада
   useEffect(() => {
     api.warehouse.getSettings().then(s => {
       const v = parseFloat(String(s?.vat_percent ?? "20"))
       if (!isNaN(v)) setVatPercent(v)
+      const d = parseFloat(String(s?.purchase_discount_percent ?? "0"))
+      if (!isNaN(d)) setPurchaseDiscount(d)
     }).catch(() => {})
   }, [])
 
@@ -445,14 +448,18 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
     const unresolved = rows.filter(r => !r.skip && !r.group_id)
     if (unresolved.length && !confirm(`${unresolved.length} позиц. без товара будут пропущены. Принять остальные?`)) return
     setBusy(true)
-    // цена в чеке указана с НДС. Если выбрано «без НДС» — выделяем чистую себестоимость.
-    const vatK = vatMode === "without" ? (1 + vatPercent / 100) : 1
+    // Товар с НДС: сохраняем цену из счёта как price_with_vat, а заход (cost_price)
+    // бэкенд посчитает сам = цена × (1 − скидка закупки). При клике на заход
+    // в складе покажем именно цену из счёта.
+    // Товар без НДС: заход = цена из счёта как есть, скидка не применяется.
+    const hasVat = vatMode === "with"
     let ok = 0
     for (const r of toAccept) {
-      const cost = vatK > 1 ? Math.round((r.price / vatK) * 100) / 100 : r.price
       const res = await api.warehouse.createSupply({
         group_id: r.group_id, store_id: storeId, qty: r.qty,
-        cost_price: cost, purchase_date: new Date().toISOString().substring(0, 10),
+        has_vat: hasVat,
+        price_with_vat: r.price,
+        purchase_date: new Date().toISOString().substring(0, 10),
         warranty_until: r.warranty_until || "",
       })
       if (!res?.error) ok++
@@ -649,7 +656,7 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
 
                 {/* Переключатель НДС */}
                 <div>
-                  <label className="mb-1 block text-xs text-foreground/50">Цены в счёте</label>
+                  <label className="mb-1 block text-xs text-foreground/50">Товар</label>
                   <div className="inline-flex overflow-hidden rounded-lg border border-border">
                     <button onClick={() => setVatMode("with")} style={{ cursor: "pointer" }}
                       className={`px-3 py-2 text-sm ${vatMode === "with" ? "bg-primary text-primary-foreground" : "bg-background text-foreground/60 hover:bg-muted"}`}>
@@ -660,8 +667,12 @@ export default function ReceiptScanModal({ stores, draftId, onClose, onAccepted,
                       Без НДС
                     </button>
                   </div>
-                  {vatMode === "without" && (
-                    <p className="mt-1 text-[11px] text-foreground/45">себестоимость = цена ÷ {(1 + vatPercent / 100).toFixed(2)}</p>
+                  {vatMode === "with" ? (
+                    <p className="mt-1 text-[11px] text-foreground/45">
+                      цена из счёта сохранится, заход = цена − {purchaseDiscount}% (скидка НДС)
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-foreground/45">заход = цена из счёта как есть</p>
                   )}
                 </div>
 

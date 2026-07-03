@@ -299,6 +299,8 @@ def fmt_supply(row):
         "cell": row[8], "purchase_date": serial(row[9]) if row[9] else None,
         "warranty_until": serial(row[10]) if row[10] else None,
         "created_at": serial(row[11]),
+        "has_vat": bool(row[12]) if row[12] is not None else False,
+        "price_with_vat": float(row[13]) if row[13] is not None else None,
     }
 
 
@@ -512,7 +514,8 @@ def handler(event: dict, context) -> dict:
 
             cur.execute(
                 f"SELECT s.id, s.group_id, s.store_id, st.name, st.code, s.qty, s.qty_reserved, "
-                f"s.cost_price, s.cell, s.purchase_date, s.warranty_until, s.created_at "
+                f"s.cost_price, s.cell, s.purchase_date, s.warranty_until, s.created_at, "
+                f"s.has_vat, s.price_with_vat "
                 f"FROM {SCHEMA}.warehouse_supplies s "
                 f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = s.store_id "
                 f"WHERE s.group_id = {gid} ORDER BY s.purchase_date DESC"

@@ -3,6 +3,24 @@
 
 ---
 
+## v6.42 | 2026-07-03 | Приёмка по счёту: НДС-скидка в заходе + подсветка НДС-товаров
+
+- backend/warehouse (supply): SELECT supplies теперь отдаёт has_vat и price_with_vat;
+  fmt_supply() добавляет эти поля в JSON. Логика supply_create без изменений
+  (скидка закупки применяется при has_vat=true).
+- src/components/admin/ReceiptScanModal.tsx: ФИКС — при приёмке по счёту вместо
+  ручного деления цены на НДС теперь шлём has_vat + price_with_vat. Товар «С НДС»:
+  цена из счёта сохраняется в price_with_vat, заход = цена − скидка закупки (бэк).
+  Товар «Без НДС»: заход = цена как есть. Подпись переключателя обновлена, тянем
+  purchase_discount_percent из настроек.
+- src/components/admin/WarehouseTab.tsx: заходы НДС-товаров подсвечены жёлтым и
+  кликабельны — по клику показывается «цена в счёт: X ₽» (price_with_vat).
+  В интерфейс Supply добавлены has_vat, price_with_vat.
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронт) + backend warehouse.
+
+---
+
 ## v6.41 | 2026-07-02 | Конфигуратор: мобильная вёрстка карточек слотов
 
 - src/pages/Configurator.tsx: на телефоне (<640px) вместо крупного фото сбоку —
