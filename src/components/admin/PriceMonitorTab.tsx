@@ -53,16 +53,23 @@ export default function PriceMonitorTab() {
 
   useEffect(() => { load() }, [load])
 
+  // Убирает позицию из списка и уменьшает счётчик её вкладки на 1
+  const removeItem = (id: number) => {
+    const kind = items.find(r => r.id === id)?.kind
+    setItems(rs => rs.filter(r => r.id !== id))
+    if (kind) setCounts(c => ({ ...c, [kind]: Math.max(0, (c[kind] || 0) - 1) }))
+  }
+
   const accept = async (id: number) => {
     setBusy(id)
     await api.priceMonitor.accept(id, getAdminKey())
-    setItems(rs => rs.filter(r => r.id !== id))
+    removeItem(id)
     setBusy(null)
   }
   const reject = async (id: number) => {
     setBusy(id)
     await api.priceMonitor.reject(id, getAdminKey())
-    setItems(rs => rs.filter(r => r.id !== id))
+    removeItem(id)
     setBusy(null)
   }
   const acceptAll = async () => {
