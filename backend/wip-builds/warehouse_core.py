@@ -239,18 +239,16 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
                       note=f"Снятие POSITIVE резерва (отмена заказа #{order_id})")
             released["positive"] += r_qty
         else:
+            # КРИТИЧНО: сам минус-резерв снимаем ВСЕГДА (иначе при ресинке останется
+            # висящий ACTIVE-резерв и наложится новый → дубль/уход в минус).
+            # qty_negative откатываем всегда. Потребность в корзине уменьшаем
+            # только если она ещё NEW; при ORDERED — закупку сохраняем.
             cur.execute(
                 f"SELECT status FROM {SCHEMA}.warehouse_purchase_basket WHERE group_id = %s",
                 (group_id,),
             )
             brow = cur.fetchone()
             basket_status = brow[0] if brow else "NEW"
-            # Оставляем нехватку в закупке ТОЛЬКО если товар уже заказан у
-            # поставщика и ещё не пришёл (ORDERED). Для NEW (ещё не заказан) и
-            # RECEIVED (уже получен, лежит в наличии) — нехватку снимаем.
-            if only_new_negative and basket_status == "ORDERED":
-                released["kept_ordered"] += r_qty
-                continue
             cur.execute(
                 f"UPDATE {SCHEMA}.warehouse_supplies "
                 f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() "
@@ -261,11 +259,43 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
                 f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() WHERE id = %s",
                 (rid,),
             )
-            basket_reduce(cur, group_id, r_qty)
+            if not (only_new_negative and basket_status == "ORDERED"):
+                basket_reduce(cur, group_id, r_qty)
+            else:
+                released["kept_ordered"] += r_qty
             released["negative"] += r_qty
 
     log(cur, "release_order", order_id=order_id, payload=released)
     return released
+
+
+def recalc_order_reserves(cur, order_id, lines):
+    """
+    Снять ВСЕ активные резервы заказа и наложить заново с нуля.
+    Идемпотентно: сколько раз ни вызови — итог одинаковый (нет дублей/минусов).
+    Со страховкой от задвоения (форс-закрытие оставшихся ACTIVE перед наложением).
+    """
+    log(cur, "recalc_start", order_id=order_id, payload={"lines": len(lines)})
+    release_order_reserves(cur, order_id, only_new_negative=True)
+
+    cur.execute(
+        f"SELECT COUNT(*) FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE'",
+        (order_id,),
+    )
+    leftover = cur.fetchone()[0]
+    if leftover:
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() "
+            f"WHERE order_id = %s AND status = 'ACTIVE'",
+            (order_id,),
+        )
+        log(cur, "recalc_leftover_forced_release", order_id=order_id,
+            delta=leftover, payload={"note": "остались ACTIVE после release — закрыты принудительно"})
+
+    results = handle_reserve_and_purchase(cur, order_id, lines)
+    log(cur, "recalc_done", order_id=order_id)
+    return results
 
 
 def fulfill_order_reserves(cur, order_id):

@@ -229,17 +229,16 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
                       note=f"Снятие POSITIVE резерва (отмена заказа #{order_id})")
             released["positive"] += r_qty
         else:
+            # КРИТИЧНО: сам минус-резерв снимаем ВСЕГДА (иначе при ресинке останется
+            # висящий ACTIVE-резерв и наложится новый → дубль/уход в минус).
+            # qty_negative откатываем всегда. Потребность в корзине уменьшаем
+            # только если она ещё NEW; при ORDERED — закупку сохраняем.
             cur.execute(
                 f"SELECT status FROM {SCHEMA}.warehouse_purchase_basket WHERE group_id = %s",
                 (group_id,),
             )
             brow = cur.fetchone()
             basket_status = brow[0] if brow else "NEW"
-            # Оставляем нехватку в закупке ТОЛЬКО если товар уже заказан у
-            # поставщика и ещё не пришёл (ORDERED). NEW и RECEIVED — снимаем.
-            if only_new_negative and basket_status == "ORDERED":
-                released["kept_ordered"] += r_qty
-                continue
             cur.execute(
                 f"UPDATE {SCHEMA}.warehouse_supplies "
                 f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() "
@@ -250,7 +249,10 @@ def release_order_reserves(cur, order_id, only_new_negative=True):
                 f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() WHERE id = %s",
                 (rid,),
             )
-            basket_reduce(cur, group_id, r_qty)
+            if not (only_new_negative and basket_status == "ORDERED"):
+                basket_reduce(cur, group_id, r_qty)
+            else:
+                released["kept_ordered"] += r_qty
             released["negative"] += r_qty
 
     log(cur, "release_order", order_id=order_id, payload=released)

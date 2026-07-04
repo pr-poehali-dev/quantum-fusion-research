@@ -1827,25 +1827,12 @@ def handler(event: dict, context) -> dict:
                             )
                             cur.execute("UPDATE orders SET assembler_paid = TRUE WHERE id=%s", (order_id,))
 
-                # Закрываем POSITIVE-резервы (FULFILLED) и снимаем qty_reserved с партий
-                cur.execute(
-                    f"SELECT id, supply_id, qty FROM {schema}.warehouse_reserves "
-                    f"WHERE order_id = %s AND type = 'POSITIVE' AND status = 'ACTIVE'",
-                    (order_id,)
-                )
-                for rid, sid, rqty in cur.fetchall():
-                    if sid:
-                        cur.execute(
-                            f"UPDATE {schema}.warehouse_supplies "
-                            f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
-                            f"WHERE id = %s",
-                            (int(rqty), sid)
-                        )
-                    cur.execute(
-                        f"UPDATE {schema}.warehouse_reserves "
-                        f"SET status = 'FULFILLED', updated_at = NOW() WHERE id = %s",
-                        (rid,)
-                    )
+                # Выдача клиенту: закрываем ВСЕ активные резервы заказа единым
+                # ядром (и POSITIVE, и NEGATIVE). Раньше тут был прямой SQL,
+                # который закрывал только POSITIVE и оставлял NEGATIVE-резервы
+                # висеть ACTIVE → рассинхрон qty_negative. Идемпотентно.
+                import warehouse_core as _wc_fulfill
+                _wc_fulfill.fulfill_order_reserves(cur, order_id)
 
             cur.execute("UPDATE orders SET status=%s, updated_at=NOW() WHERE id=%s", (new_status, order_id))
             # Синхронизируем стадию wip_build со статусом заказа ПК

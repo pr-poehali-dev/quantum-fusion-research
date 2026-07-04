@@ -700,8 +700,12 @@ def handler(event: dict, context) -> dict:
                                 "slot": c.get("slot", ""),
                             })
                     if reserve_lines:
-                        wc.handle_reserve_and_purchase(cur, wip_order_id, reserve_lines)
-                        print(f"WIP {wip_id}: резерв 'Заказ', order={wip_order_id}, lines={len(reserve_lines)}")
+                        # ИДЕМПОТЕНТНО: сначала снимаем возможные старые резервы
+                        # заказа, потом накладываем заново. Раньше здесь был прямой
+                        # handle_reserve_and_purchase БЕЗ снятия — при повторном
+                        # заходе на «Заказ» резервы задваивались и уходили в минус.
+                        wc.recalc_order_reserves(cur, wip_order_id, reserve_lines)
+                        print(f"WIP {wip_id}: резерв 'Заказ' (recalc), order={wip_order_id}, lines={len(reserve_lines)}")
 
                 # ── Снятие резервов при отмене ──
                 if new_stage == "Отменён" and old_stage != "Отменён" and wip_order_id:

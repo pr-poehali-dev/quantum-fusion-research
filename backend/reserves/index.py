@@ -236,11 +236,18 @@ def _run_selftest(cur):
     before = {"neg": _group_state(cur, gid)["negative"], "basket": _basket_qty(cur, gid)}
     rel = core.release_order_reserves(cur, oid_d, only_new_negative=True)
     after = {"neg": _group_state(cur, gid)["negative"], "basket": _basket_qty(cur, gid)}
-    # ORDERED железо остаётся: neg и корзина НЕ меняются, kept_ordered=4
-    ok = (before["neg"] == 4 and after["neg"] == 4 and
-          after["basket"] == 4 and rel["kept_ordered"] == 4 and rel["negative"] == 0)
-    report.append({"case": "cancel ORDERED negative -> kept in basket", "passed": ok,
-                   "actual": {"before": before, "after": after, "released": rel}})
+    # Новая семантика: сам минус-резерв заказа снимается ВСЕГДА (qty_negative
+    # откатывается → 0), но потребность в корзине под ORDERED-закупку сохраняется
+    # (товар едет от поставщика). kept_ordered=4. Это исключает висящие резервы.
+    cur.execute(
+        f"SELECT COUNT(*) FROM {SCHEMA}.warehouse_reserves WHERE order_id=%s AND status='ACTIVE'",
+        (oid_d,),
+    )
+    active_left = int(cur.fetchone()[0])
+    ok = (before["neg"] == 4 and after["neg"] == 0 and active_left == 0 and
+          after["basket"] == 4 and rel["kept_ordered"] == 4)
+    report.append({"case": "cancel ORDERED negative -> reserve released, basket kept", "passed": ok,
+                   "actual": {"before": before, "after": after, "active_left": active_left, "released": rel}})
 
     # ── ОТМЕНА: ORDERED железо приходит и ложится в наличие даже после отмены ──
     pid, gid = mk_product(0)
@@ -267,6 +274,76 @@ def _run_selftest(cur):
           st["reserved"] == 0 and free == 2)
     report.append({"case": "ORDERED hardware arrives after cancel -> free stock", "passed": ok,
                    "actual": {"state": st, "free": free, "recv": recv}})
+
+    # ── РЕСИНК (баг Дебошира): повторная синхронизация НЕ должна плодить резервы ──
+    # Сценарий: 2 в наличии, заказ на 2. Первый recalc → 2 POSITIVE. Второй и
+    # третий recalc того же заказа не должны создавать дубли/минус-резервы.
+    pid, gid = mk_product(2)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestF__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_f = cur.fetchone()[0]
+    lines_f = [{"product_id": pid, "qty": 2, "slot": "test"}]
+    core.recalc_order_reserves(cur, oid_f, lines_f)
+    core.recalc_order_reserves(cur, oid_f, lines_f)   # ресинк №2
+    core.recalc_order_reserves(cur, oid_f, lines_f)   # ресинк №3
+    st = _group_state(cur, gid)
+    cur.execute(
+        f"SELECT COALESCE(SUM(CASE WHEN type='POSITIVE' AND status='ACTIVE' THEN qty ELSE 0 END),0), "
+        f"COALESCE(SUM(CASE WHEN type='NEGATIVE' AND status='ACTIVE' THEN qty ELSE 0 END),0), "
+        f"COUNT(*) FILTER (WHERE status='ACTIVE') "
+        f"FROM {SCHEMA}.warehouse_reserves WHERE order_id=%s",
+        (oid_f,),
+    )
+    rpos, rneg, ractive = [int(x) for x in cur.fetchone()]
+    # Инвариант: суммарно 2 POSITIVE ACTIVE, 0 NEGATIVE, партии reserved=2,
+    # negative=0. Число строк-резервов не важно (FIFO может слить в одну запись),
+    # важно что нет ЛИШНИХ единиц и нет минуса при повторных ресинках.
+    ok = (rpos == 2 and rneg == 0 and ractive >= 1 and
+          st["reserved"] == 2 and st["negative"] == 0 and st["on_hand"] == 0)
+    report.append({"case": "triple resync (2 stock, 2 order) -> no duplicates/minus", "passed": ok,
+                   "actual": {"state": st, "res_pos": rpos, "res_neg": rneg, "active": ractive}})
+
+    # ── РЕСИНК при дефиците: 1 в наличии, заказ на 2 → 1 POS + 1 NEG, стабильно ──
+    pid, gid = mk_product(1)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestG__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_g = cur.fetchone()[0]
+    lines_g = [{"product_id": pid, "qty": 2, "slot": "test"}]
+    core.recalc_order_reserves(cur, oid_g, lines_g)
+    core.recalc_order_reserves(cur, oid_g, lines_g)   # ресинк
+    st = _group_state(cur, gid)
+    cur.execute(
+        f"SELECT COALESCE(SUM(CASE WHEN type='POSITIVE' AND status='ACTIVE' THEN qty ELSE 0 END),0), "
+        f"COALESCE(SUM(CASE WHEN type='NEGATIVE' AND status='ACTIVE' THEN qty ELSE 0 END),0), "
+        f"COUNT(*) FILTER (WHERE status='ACTIVE') "
+        f"FROM {SCHEMA}.warehouse_reserves WHERE order_id=%s",
+        (oid_g,),
+    )
+    rpos, rneg, ractive = [int(x) for x in cur.fetchone()]
+    ok = (rpos == 1 and rneg == 1 and ractive == 2 and
+          st["reserved"] == 1 and st["negative"] == 1 and _basket_qty(cur, gid) == 1)
+    report.append({"case": "resync with shortage (1 stock, 2 order) -> stable 1pos+1neg", "passed": ok,
+                   "actual": {"state": st, "res_pos": rpos, "res_neg": rneg, "active": ractive,
+                              "basket": _basket_qty(cur, gid)}})
+
+    # ── ИНВАРИАНТ ЦЕЛОСТНОСТИ: sum(ACTIVE POSITIVE) == sum(qty_reserved) по тест-группам ──
+    cur.execute(
+        f"SELECT g.id, "
+        f"  COALESCE((SELECT SUM(qty) FROM {SCHEMA}.warehouse_reserves r "
+        f"            WHERE r.group_id=g.id AND r.type='POSITIVE' AND r.status='ACTIVE'),0), "
+        f"  COALESCE((SELECT SUM(qty_reserved) FROM {SCHEMA}.warehouse_supplies s WHERE s.group_id=g.id),0), "
+        f"  COALESCE((SELECT SUM(qty) FROM {SCHEMA}.warehouse_reserves r "
+        f"            WHERE r.group_id=g.id AND r.type='NEGATIVE' AND r.status='ACTIVE'),0), "
+        f"  COALESCE((SELECT SUM(qty_negative) FROM {SCHEMA}.warehouse_supplies s WHERE s.group_id=g.id),0) "
+        f"FROM {SCHEMA}.warehouse_groups g WHERE g.name='__selftest_grp__'"
+    )
+    mism = [row[0] for row in cur.fetchall() if row[1] != row[2] or row[3] != row[4]]
+    report.append({"case": "integrity: active reserves == supplies counters", "passed": (len(mism) == 0),
+                   "actual": {"mismatched_groups": mism}})
 
     report.append({"summary": {
         "total": len([r for r in report if "passed" in r]),
