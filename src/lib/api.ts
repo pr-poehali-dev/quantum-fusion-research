@@ -88,8 +88,8 @@ export const api = {
       fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "reject_all", ...(kind ? { kind } : {}) }) }).then(r => r.json()),
     acceptAll: (adminKey: string) =>
       fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "accept_all" }) }).then(r => r.json()),
-    match: (id: number, adminKey: string) =>
-      fetch(`${URLS.priceMonitor}?action=match&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    match: (id: number, adminKey: string, q?: string) =>
+      fetch(`${URLS.priceMonitor}?action=match&id=${id}${q ? `&q=${encodeURIComponent(q)}` : ""}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     linkProduct: (id: number, productId: number, adminKey: string) =>
       fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "link_product", id, product_id: productId }) }).then(r => r.json()),
   },

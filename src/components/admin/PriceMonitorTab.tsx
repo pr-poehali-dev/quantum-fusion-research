@@ -236,6 +236,11 @@ function ProcessModal({ item, onClose, onDone }: {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loadingCand, setLoadingCand] = useState(false)
   const [saving, setSaving] = useState(false)
+  // поиск другого товара со склада (как в приёмке по счёту)
+  const [picking, setPicking] = useState(false)
+  const [searchQ, setSearchQ] = useState("")
+  const [searchRes, setSearchRes] = useState<Candidate[]>([])
+  const [searching, setSearching] = useState(false)
 
   // НДС в мониторе цен не применяется — это только приёмка поставок
   const finalPrice = ceil250(price)
@@ -248,10 +253,25 @@ function ProcessModal({ item, onClose, onDone }: {
       .finally(() => setLoadingCand(false))
   }, [isNew, linkedId, item.id])
 
+  // Живой поиск товара по названию (debounce 300мс)
+  useEffect(() => {
+    if (!picking || searchQ.trim().length < 2) { setSearchRes([]); return }
+    setSearching(true)
+    const t = setTimeout(() => {
+      api.priceMonitor.match(item.id, getAdminKey(), searchQ.trim())
+        .then(d => setSearchRes(d.candidates || []))
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [picking, searchQ, item.id])
+
   const link = async (c: Candidate) => {
     await api.priceMonitor.linkProduct(item.id, c.product_id, getAdminKey())
     setLinkedId(c.product_id)
     setLinkedName(c.name)
+    // подставляем текущую цену выбранного товара как базу
+    if (c.price) setPrice(Math.round(item.suggested_price || item.market_price || c.price))
+    setPicking(false); setSearchQ(""); setSearchRes([])
   }
 
   const apply = async () => {
@@ -278,36 +298,75 @@ function ProcessModal({ item, onClose, onDone }: {
           </button>
         </div>
 
-        {/* Матчинг для новых товаров */}
-        {isNew && (
-          <div className="mb-4">
-            <label className="mb-1.5 block text-xs text-foreground/50">Привязка к товару каталога</label>
-            {linkedId ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
-                <span className="truncate text-sm text-foreground">{linkedName}</span>
-                <button onClick={() => { setLinkedId(null); setLinkedName(null) }}
-                  className="shrink-0 text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
-                  сменить
-                </button>
-              </div>
-            ) : loadingCand ? (
-              <p className="text-xs text-foreground/40">Ищу похожие…</p>
-            ) : candidates.length === 0 ? (
-              <p className="text-xs text-foreground/40">Похожих товаров нет — можно принять как есть (без привязки).</p>
-            ) : (
-              <div className="max-h-40 space-y-1 overflow-y-auto">
-                {candidates.map(c => (
-                  <button key={c.product_id} onClick={() => link(c)}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors"
-                    style={{ cursor: "pointer" }}>
-                    <span className="min-w-0 truncate text-sm text-foreground">{c.name}</span>
-                    <span className="shrink-0 text-xs text-foreground/40">{c.score}%</span>
+        {/* Товар: привязка + возможность выбрать другой со склада */}
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs text-foreground/50">
+            {isNew ? "Привязка к товару каталога" : "Наш товар"}
+          </label>
+
+          {/* Текущий выбранный товар */}
+          {linkedId && !picking && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+              <span className="truncate text-sm text-foreground">{linkedName || "Товар выбран"}</span>
+              <button onClick={() => { setPicking(true); setSearchQ(""); setSearchRes([]) }}
+                className="shrink-0 text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>
+                Выбрать другой
+              </button>
+            </div>
+          )}
+
+          {/* Ничего не привязано (new_product без выбора) */}
+          {!linkedId && !picking && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-border px-3 py-2">
+              <span className="text-sm text-foreground/50">Товар не выбран</span>
+              <button onClick={() => { setPicking(true); setSearchQ(""); setSearchRes([]) }}
+                className="shrink-0 text-xs text-primary hover:underline" style={{ cursor: "pointer" }}>
+                Выбрать товар
+              </button>
+            </div>
+          )}
+
+          {/* Режим выбора: поиск + похожие кандидаты (как в приёмке по счёту) */}
+          {picking && (
+            <div className="rounded-lg border border-primary/20 bg-background p-2">
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-lg border border-border px-2.5 py-1.5">
+                  <Icon name="Search" size={14} className="text-foreground/40" />
+                  <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                    placeholder="Поиск товара по названию…"
+                    className="w-full bg-transparent text-sm outline-none" />
+                </div>
+                {linkedId && (
+                  <button onClick={() => setPicking(false)}
+                    className="shrink-0 text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
+                    Отмена
                   </button>
-                ))}
+                )}
               </div>
-            )}
-          </div>
-        )}
+
+              <div className="max-h-48 space-y-1 overflow-y-auto">
+                {searching ? (
+                  <p className="px-1 py-2 text-xs text-foreground/40">Ищу…</p>
+                ) : (searchQ.trim().length >= 2 ? searchRes : candidates).length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-foreground/40">
+                    {searchQ.trim().length >= 2 ? "Ничего не найдено" : loadingCand ? "Загружаю похожие…" : "Начните вводить название"}
+                  </p>
+                ) : (
+                  (searchQ.trim().length >= 2 ? searchRes : candidates).map(c => (
+                    <button key={c.product_id} onClick={() => link(c)}
+                      className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors"
+                      style={{ cursor: "pointer" }}>
+                      <span className="min-w-0 truncate text-sm text-foreground">{c.name}</span>
+                      <span className="shrink-0 text-xs text-foreground/40">
+                        {c.price ? fmt(c.price) : `${c.score}%`}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Цена конкурента / наша */}
         <div className="mb-3 flex items-center gap-4 text-sm">
