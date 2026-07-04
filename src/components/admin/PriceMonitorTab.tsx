@@ -223,7 +223,11 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
   const title = item.product_name || item.ext_name
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
+    <div className={`rounded-2xl border p-4 transition-colors ${
+      linked
+        ? "border-emerald-500/40 bg-emerald-500/5"
+        : "border-amber-500/40 bg-amber-500/5"
+    }`}>
       {/* Шапка: название из парсера + цены + действия */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -331,27 +335,39 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-1.5">
               {loadingCand ? (
                 <p className="text-xs text-foreground/40">Ищу похожие…</p>
-              ) : candidates.slice(0, 3).map(c => (
-                <button key={c.product_id} onClick={() => link(c)} disabled={linking}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              ) : candidates.slice(0, 3).map(c => {
+                const chosen = c.product_id === item.product_id
+                return (
+                  <button key={c.product_id} onClick={() => link(c)} disabled={linking}
+                    className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
+                      chosen
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-foreground"
+                        : "border-border text-foreground hover:bg-muted"
+                    }`}
+                    style={{ cursor: "pointer" }}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {chosen && <Icon name="Check" size={13} className="shrink-0 text-emerald-500" />}
+                      <span className="min-w-0">{c.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-foreground/40">{c.score}%</span>
+                  </button>
+                )
+              })}
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <button onClick={() => { setPicking(true); setSearchQ("") }}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
                   style={{ cursor: "pointer" }}>
-                  <span className="max-w-[220px] truncate">{c.name}</span>
-                  <span className="text-xs text-foreground/40">{c.score}%</span>
+                  <Icon name="Search" size={13} />Выбрать из существующих
                 </button>
-              ))}
-              <button onClick={() => { setPicking(true); setSearchQ("") }}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
-                style={{ cursor: "pointer" }}>
-                <Icon name="Search" size={13} />Выбрать из существующих
-              </button>
-              <button onClick={onProcess}
-                className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
-                style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={13} />Создать новый товар
-              </button>
+                <button onClick={onProcess}
+                  className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="Plus" size={13} />Создать новый товар
+                </button>
+              </div>
             </div>
           )}
       </div>
