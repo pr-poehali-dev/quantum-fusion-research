@@ -141,14 +141,14 @@ def handler(event: dict, context) -> dict:
         cur.close(); conn.close()
         return resp({"error": "forbidden"}, 403)
 
-    if method == "GET":
-        out = _list(cur, params.get("kind"))
-        cur.close(); conn.close()
-        return resp(out)
-
     if action == "match":
         out = _match_candidates(cur, params.get("q") or params.get("name"),
                                 params.get("id"))
+        cur.close(); conn.close()
+        return resp(out)
+
+    if method == "GET":
+        out = _list(cur, params.get("kind"))
         cur.close(); conn.close()
         return resp(out)
 
