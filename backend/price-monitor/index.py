@@ -166,6 +166,20 @@ def handler(event: dict, context) -> dict:
         conn.commit(); cur.close(); conn.close()
         return resp({"ok": True})
 
+    if action == "reject_all":
+        # отклонить все 'new' предложения; опц. фильтр по kind (price_change|new_product)
+        kind = body.get("kind") or params.get("kind")
+        where = "status='new'"
+        if kind in ("price_change", "new_product"):
+            where += f" AND kind='{kind}'"
+        cur.execute(
+            f"UPDATE {SCHEMA}.price_suggestions SET status='rejected', decided_at=now() "
+            f"WHERE {where}"
+        )
+        n = cur.rowcount
+        conn.commit(); cur.close(); conn.close()
+        return resp({"ok": True, "rejected": n})
+
     if action == "accept_all":
         cur.execute(
             f"SELECT id FROM {SCHEMA}.price_suggestions "

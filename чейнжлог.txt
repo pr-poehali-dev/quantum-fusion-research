@@ -3,6 +3,19 @@
 
 ---
 
+## v6.44 | 2026-07-04 | Мониторинг цен: кнопка «Удалить все» + живой счётчик вкладок
+
+- backend/price-monitor/index.py: новый action=reject_all (опц. фильтр по kind) —
+  отклоняет все 'new' предложения разом, возвращает кол-во.
+- src/lib/api.ts: priceMonitor.rejectAll(adminKey, kind?).
+- src/components/admin/PriceMonitorTab.tsx: кнопка «Удалить все» справа от подвкладок
+  (отклоняет все предложения текущей вкладки). Счётчики вкладок теперь обновляются
+  локально при принятии/отклонении/массовом удалении (removeItem уменьшает counts).
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронт) + backend price-monitor.
+
+---
+
 ## v6.43 | 2026-07-04 | Мониторинг цен: Telegram-сводка, матчинг, обработка с ценой/НДС
 
 - backend/price-monitor/tg_notify.py (новый): отправка сводки в Telegram

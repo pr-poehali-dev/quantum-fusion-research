@@ -78,6 +78,14 @@ export default function PriceMonitorTab() {
     await api.priceMonitor.acceptAll(getAdminKey())
     load()
   }
+  const rejectAll = async () => {
+    const label = view === "price_change" ? "изменения цен" : "новые товары"
+    if (!confirm(`Удалить все предложения (${label})? Они пропадут из списка.`)) return
+    setLoading(true)
+    await api.priceMonitor.rejectAll(getAdminKey(), view)
+    setCounts(c => ({ ...c, [view]: 0 }))
+    load()
+  }
 
   return (
     <div>
@@ -98,7 +106,7 @@ export default function PriceMonitorTab() {
       </div>
 
       {/* Подвкладки */}
-      <div className="mb-5 flex gap-2">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
         {([
           { key: "price_change", label: "Изменения цен", icon: "TrendingUp" },
           { key: "new_product", label: "Новые товары", icon: "Sparkles" },
@@ -113,6 +121,14 @@ export default function PriceMonitorTab() {
             )}
           </button>
         ))}
+        {items.length > 0 && (
+          <button onClick={rejectAll}
+            title="Удалить все предложения этой вкладки"
+            className="ml-auto flex items-center gap-1.5 rounded-xl border border-red-400/40 px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-400/10 transition-colors"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Trash2" size={15} />Удалить все
+          </button>
+        )}
       </div>
 
       {loading ? (
