@@ -38,6 +38,13 @@
       "path": "/",
       "body": {"action": "link_product", "id": 1, "product_id": 2},
       "expectedStatus": 403
+    },
+    {
+      "name": "Финиш парсера без токена — 401",
+      "method": "POST",
+      "path": "/?action=finish",
+      "body": {"action": "finish"},
+      "expectedStatus": 401
     }
   ]
 }

@@ -7,6 +7,10 @@
    кладёт в price_observations, матчит по названию с products,
    формирует price_suggestions (price_change / new_product).
    Рекомендованная цена = цена_конкурента * 0.93, округл. до 250 ₽.
+   action=finish (POST, тот же parser-токен) — вызывается парсером ПОСЛЕ обхода
+   всех источников: собирает счётчики прогона по источникам из price_run_stats,
+   шлёт общую сводку в основной чат (PRICE_SUMMARY_CHAT_ID / -1002809968150)
+   и очищает счётчики.
 
 2) АДМИН (заголовок X-Session-Id с ролью admin или X-Admin-Token=ADMIN_KEY):
    GET  ?action=list&kind=price_change|new_product — список новых предложений
@@ -29,9 +33,12 @@ import html
 import psycopg2
 
 try:
-    from tg_notify import notify_price
+    from tg_notify import notify_price, notify_main
 except Exception:  # на всякий случай не роняем основной поток
     def notify_price(text: str) -> bool:  # type: ignore
+        return False
+
+    def notify_main(text: str) -> bool:  # type: ignore
         return False
 
 SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "t_p72635010_quantum_fusion_resea")
@@ -110,13 +117,18 @@ def handler(event: dict, context) -> dict:
     cur = conn.cursor()
 
     # ===== Контур ПАРСЕРА (приём данных) =====
-    if parser_token or action == "ingest":
+    if parser_token or action in ("ingest", "finish"):
         if not expected_token or parser_token != expected_token:
             cur.close(); conn.close()
             return resp({"error": "unauthorized"}, 401)
         if method != "POST":
             cur.close(); conn.close()
             return resp({"error": "method_not_allowed"}, 405)
+        if action == "finish":
+            # Парсер закончил обход всех источников — шлём общую сводку в чат.
+            result = _finish(cur)
+            conn.commit(); cur.close(); conn.close()
+            return resp(result)
         result = _ingest(cur, body)
         conn.commit(); cur.close(); conn.close()
         return resp(result)
@@ -330,6 +342,30 @@ def _ingest(cur, body: dict) -> dict:
     if tg_drops or tg_ups or tg_new:
         _send_summary(source_name, tg_drops, tg_ups, tg_new)
 
+    # Копим счётчики прогона по источнику — для общей сводки при action=finish.
+    # Если запись источника старше 6 часов — считаем это новым прогоном и
+    # перезаписываем счётчики, иначе суммируем (частями в рамках одного прогона).
+    src_key = source_name or "парсер"
+    cur.execute(
+        f"""
+        INSERT INTO {SCHEMA}.price_run_stats
+            (source_name, price_changes, new_products, processed, updated_at)
+        VALUES ({esc(src_key)}, {int(created_suggestions)}, {int(new_products)},
+                {int(processed)}, now())
+        ON CONFLICT (source_name) DO UPDATE SET
+            price_changes = CASE WHEN {SCHEMA}.price_run_stats.updated_at < now() - interval '6 hours'
+                                 THEN EXCLUDED.price_changes
+                                 ELSE {SCHEMA}.price_run_stats.price_changes + EXCLUDED.price_changes END,
+            new_products  = CASE WHEN {SCHEMA}.price_run_stats.updated_at < now() - interval '6 hours'
+                                 THEN EXCLUDED.new_products
+                                 ELSE {SCHEMA}.price_run_stats.new_products + EXCLUDED.new_products END,
+            processed     = CASE WHEN {SCHEMA}.price_run_stats.updated_at < now() - interval '6 hours'
+                                 THEN EXCLUDED.processed
+                                 ELSE {SCHEMA}.price_run_stats.processed + EXCLUDED.processed END,
+            updated_at    = now()
+        """
+    )
+
     return {
         "ok": True,
         "processed": processed,
@@ -378,6 +414,34 @@ def _send_summary(source_name, drops, ups, news):
 
     lines.append("\nОткрой админку → «Цены от парсера», чтобы обработать.")
     notify_price("\n".join(lines))
+
+
+def _finish(cur) -> dict:
+    """Итоговая сводка по всем источникам в основной чат + сброс счётчиков прогона."""
+    cur.execute(
+        f"SELECT source_name, price_changes, new_products "
+        f"FROM {SCHEMA}.price_run_stats ORDER BY source_name"
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return {"ok": True, "sent": False, "reason": "no_stats"}
+
+    lines = ["<b>📊 Мониторинг цен</b>"]
+    tot_pc = tot_np = 0
+    for src, pc, np_ in rows:
+        pc = int(pc or 0); np_ = int(np_ or 0)
+        tot_pc += pc; tot_np += np_
+        lines.append(f"\n<b>{html.escape(src or 'парсер')}</b>")
+        lines.append(f"изменения цен — {pc}")
+        lines.append(f"новых товаров — {np_}")
+    lines.append(f"\n<b>Итого:</b> изменений {tot_pc}, новых {tot_np}")
+    lines.append("Открой админку → «Цены от парсера», чтобы обработать.")
+
+    ok = notify_main("\n".join(lines))
+
+    # Прогон завершён — очищаем накопленные счётчики
+    cur.execute(f"DELETE FROM {SCHEMA}.price_run_stats")
+    return {"ok": True, "sent": bool(ok), "sources": len(rows)}
 
 
 def _list(cur, kind=None) -> dict:
