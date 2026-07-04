@@ -186,14 +186,13 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
   const [searching, setSearching] = useState(false)
   const [linking, setLinking] = useState(false)
 
-  // похожие товары со склада (Jaccard от названия парсера)
+  // похожие товары со склада (Jaccard от названия парсера) — всегда, чтобы можно было сменить
   useEffect(() => {
-    if (linked) return
     setLoadingCand(true)
     api.priceMonitor.match(item.id, getAdminKey())
       .then(d => setCandidates(d.candidates || []))
       .finally(() => setLoadingCand(false))
-  }, [linked, item.id])
+  }, [item.id])
 
   // живой поиск по складу (debounce 300мс)
   useEffect(() => {
@@ -288,12 +287,19 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
         </div>
       </div>
 
-      {/* Сопоставление со складом (для непривязанных товаров) */}
-      {!linked && (
-        <div className="mt-3 border-t border-border pt-3">
+      {/* Сопоставление со складом — как строка приёмки по счёту */}
+      <div className="mt-3 border-t border-border pt-3">
+        {linked ? (
+          <p className="mb-2 flex items-center gap-1.5 text-xs text-emerald-500/90">
+            <Icon name="Check" size={13} />
+            Наш товар: <span className="text-foreground/70">{item.product_name || "выбран"}</span>
+            <span className="text-foreground/40">— можно сменить ниже</span>
+          </p>
+        ) : (
           <p className="mb-2 text-xs text-amber-500/80">
             Нет на складе — выберите товар ниже или создайте новый
           </p>
+        )}
 
           {picking ? (
             <div className="rounded-lg border border-primary/20 bg-background p-2">
@@ -348,8 +354,7 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
               </button>
             </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
