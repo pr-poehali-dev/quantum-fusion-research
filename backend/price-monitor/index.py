@@ -273,6 +273,14 @@ def _ingest(cur, body: dict) -> dict:
 
         sugg_price = suggest_price(price)
         if matched_id:
+            # Если рекомендованная цена совпадает с нашей текущей — предлагать нечего.
+            # Пропускаем и подчищаем ранее созданное 'new'-предложение по этому товару.
+            if current_price is not None and round(float(sugg_price)) == round(float(current_price)):
+                cur.execute(
+                    f"UPDATE {SCHEMA}.price_suggestions SET status='rejected', decided_at=now() "
+                    f"WHERE product_id = {int(matched_id)} AND status = 'new' AND kind = 'price_change'"
+                )
+                continue
             cur.execute(
                 f"SELECT id FROM {SCHEMA}.price_suggestions "
                 f"WHERE product_id = {int(matched_id)} AND status = 'new'"
