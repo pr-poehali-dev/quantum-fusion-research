@@ -3,6 +3,30 @@
 
 ---
 
+## v6.43 | 2026-07-04 | Мониторинг цен: Telegram-сводка, матчинг, обработка с ценой/НДС
+
+- backend/price-monitor/tg_notify.py (новый): отправка сводки в Telegram
+  (PRICE_ALERT_CHAT_ID → fallback TELEGRAM_MANAGER_CHAT_ID).
+- backend/price-monitor/index.py:
+  * после ingest шлётся Telegram-сводка (падение/рост цен, новые товары),
+    только если реально есть изменения (тихий прогон = без спама).
+  * action=match — кандидаты каталога с % похожести (Jaccard) для new_product.
+  * action=link_product — привязка new_product к товару каталога.
+  * action=accept расширен: final_price (ручная цена), with_vat (+22%, округл.
+    вверх до 250), product_id. Обновляет products.price, warehouse_groups.price_retail,
+    пишет warehouse_price_history, пересчитывает незафиксированные сборки.
+  * _list теперь отдаёт ext_sku и match_score.
+- src/lib/api.ts: priceMonitor.match, linkProduct; accept принимает opts
+  (final_price/with_vat/product_id).
+- src/components/admin/PriceMonitorTab.tsx: кнопка «Обработать» + модалка ProcessModal
+  (редактируемая цена, чекбокс НДС, итоговая цена, матчинг+привязка для new_product).
+- Секрет PRICE_ALERT_CHAT_ID (опциональный).
+
+ЧАСТЬ ВЕБ-ДЕПЛОЯ (фронт) + backend price-monitor.
+Локальный парсер DNS/Ozon — отдельный desktop-проект вне этого репозитория.
+
+---
+
 ## v6.42 | 2026-07-03 | Приёмка по счёту: НДС-скидка в заходе + подсветка НДС-товаров
 
 - backend/warehouse (supply): SELECT supplies теперь отдаёт has_vat и price_with_vat;

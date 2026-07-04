@@ -25,6 +25,19 @@
       "path": "/",
       "body": {"action": "accept", "id": 1},
       "expectedStatus": 403
+    },
+    {
+      "name": "Матчинг без доступа — 403",
+      "method": "GET",
+      "path": "/?action=match&q=RTX+4070",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Привязка без доступа — 403",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "link_product", "id": 1, "product_id": 2},
+      "expectedStatus": 403
     }
   ]
 }

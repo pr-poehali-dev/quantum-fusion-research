@@ -10,7 +10,10 @@
 
 2) АДМИН (заголовок X-Session-Id с ролью admin или X-Admin-Token=ADMIN_KEY):
    GET  ?action=list&kind=price_change|new_product — список новых предложений
-   POST action=accept     {id}    — принять (проставить цену в товар)
+   GET  ?action=match&id=NN (или &q=название) — кандидаты каталога с % похожести
+   POST action=link_product {id, product_id} — привязать new_product к товару
+   POST action=accept   {id, final_price?, with_vat?, product_id?} — принять:
+        проставить цену в товар + склад (price_retail, история) + пересчёт сборок
    POST action=reject     {id}    — отклонить
    POST action=accept_all         — принять все price_change
 
@@ -22,7 +25,14 @@
 import json
 import os
 import re
+import html
 import psycopg2
+
+try:
+    from tg_notify import notify_price
+except Exception:  # на всякий случай не роняем основной поток
+    def notify_price(text: str) -> bool:  # type: ignore
+        return False
 
 SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "t_p72635010_quantum_fusion_resea")
 ADMIN_PASSWORD = os.environ.get("ADMIN_KEY", "begraphics2024")
@@ -124,10 +134,29 @@ def handler(event: dict, context) -> dict:
         cur.close(); conn.close()
         return resp(out)
 
-    if action == "accept":
-        ok = _apply_price(cur, int(body.get("id")))
+    if action == "match":
+        out = _match_candidates(cur, params.get("q") or params.get("name"),
+                                params.get("id"))
+        cur.close(); conn.close()
+        return resp(out)
+
+    if action == "link_product":
+        out = _link_product(cur, int(body.get("id")), int(body.get("product_id")))
         conn.commit(); cur.close(); conn.close()
-        return resp({"ok": ok})
+        return resp(out)
+
+    if action == "accept":
+        # Расширенный accept: ручная цена (final_price), НДС (with_vat),
+        # привязка к товару (product_id) для new_product. Всё опционально —
+        # без параметров работает как раньше (берёт suggested_price).
+        out = _apply_price(
+            cur, int(body.get("id")),
+            final_price=body.get("final_price"),
+            with_vat=body.get("with_vat"),
+            product_id=body.get("product_id"),
+        )
+        conn.commit(); cur.close(); conn.close()
+        return resp(out if isinstance(out, dict) else {"ok": out})
 
     if action == "reject":
         cur.execute(
@@ -176,6 +205,10 @@ def _ingest(cur, body: dict) -> dict:
     created_suggestions = 0
     new_products = 0
     processed = 0
+    # накапливаем детали для Telegram-сводки
+    tg_drops = []   # (name, current, market) — рынок ниже нашей цены (можно снижать)
+    tg_ups = []     # (name, current, market) — рынок выше нашей цены
+    tg_new = []     # (name, market)
 
     for it in items:
         name = (it.get("name") or "").strip()
@@ -253,6 +286,11 @@ def _ingest(cur, body: dict) -> dict:
                     """
                 )
                 created_suggestions += 1
+                disp_name = _pname_by_id(catalog, matched_id) or name
+                if current_price is not None and price < current_price:
+                    tg_drops.append((disp_name, current_price, price))
+                elif current_price is not None and price > current_price:
+                    tg_ups.append((disp_name, current_price, price))
         else:
             cur.execute(
                 f"""
@@ -264,6 +302,11 @@ def _ingest(cur, body: dict) -> dict:
                 """
             )
             new_products += 1
+            tg_new.append((name, price))
+
+    # Telegram-сводка только если реально есть изменения (иначе тихий прогон)
+    if tg_drops or tg_ups or tg_new:
+        _send_summary(source_name, tg_drops, tg_ups, tg_new)
 
     return {
         "ok": True,
@@ -273,6 +316,48 @@ def _ingest(cur, body: dict) -> dict:
     }
 
 
+def _pname_by_id(catalog, pid):
+    for cid, cname, _cprice, _ctok in catalog:
+        if cid == pid:
+            return cname
+    return None
+
+
+def _send_summary(source_name, drops, ups, news):
+    """Короткая сводка в Telegram по итогам ingest."""
+    def money(v):
+        return f"{int(round(v)):,}".replace(",", " ") + " ₽"
+
+    src = html.escape(source_name or "парсер")
+    lines = [f"<b>📊 Мониторинг цен · {src}</b>"]
+    total = len(drops) + len(ups) + len(news)
+    lines.append(f"Новых сигналов: <b>{total}</b>")
+
+    if drops:
+        lines.append(f"\n🔻 <b>Рынок ниже нас ({len(drops)})</b>")
+        for name, cur_p, mkt in drops[:10]:
+            lines.append(f"• {html.escape(name)}: {money(cur_p)} → {money(mkt)}")
+        if len(drops) > 10:
+            lines.append(f"…и ещё {len(drops) - 10}")
+
+    if ups:
+        lines.append(f"\n🔺 <b>Рынок выше нас ({len(ups)})</b>")
+        for name, cur_p, mkt in ups[:5]:
+            lines.append(f"• {html.escape(name)}: {money(cur_p)} → {money(mkt)}")
+        if len(ups) > 5:
+            lines.append(f"…и ещё {len(ups) - 5}")
+
+    if news:
+        lines.append(f"\n✨ <b>Новые товары ({len(news)})</b>")
+        for name, mkt in news[:10]:
+            lines.append(f"• {html.escape(name)}: {money(mkt)}")
+        if len(news) > 10:
+            lines.append(f"…и ещё {len(news) - 10}")
+
+    lines.append("\nОткрой админку → «Цены от парсера», чтобы обработать.")
+    notify_price("\n".join(lines))
+
+
 def _list(cur, kind=None) -> dict:
     where = "s.status = 'new'"
     if kind in ("price_change", "new_product"):
@@ -280,9 +365,11 @@ def _list(cur, kind=None) -> dict:
     cur.execute(
         f"""
         SELECT s.id, s.kind, s.product_id, s.source_name, s.ext_name, s.ext_url,
-               s.market_price, s.current_price, s.suggested_price, p.name, s.created_at
+               s.market_price, s.current_price, s.suggested_price, p.name, s.created_at,
+               o.ext_sku, o.match_score
         FROM {SCHEMA}.price_suggestions s
         LEFT JOIN {SCHEMA}.products p ON p.id = s.product_id
+        LEFT JOIN {SCHEMA}.price_observations o ON o.id = s.observation_id
         WHERE {where}
         ORDER BY s.created_at DESC
         """
@@ -297,6 +384,8 @@ def _list(cur, kind=None) -> dict:
             "suggested_price": float(r[8]) if r[8] is not None else None,
             "product_name": r[9],
             "created_at": r[10].isoformat() if r[10] else None,
+            "ext_sku": r[11],
+            "match_score": float(r[12]) if r[12] is not None else None,
         })
     cur.execute(
         f"SELECT kind, COUNT(*) FROM {SCHEMA}.price_suggestions "
@@ -306,23 +395,163 @@ def _list(cur, kind=None) -> dict:
     return {"items": items, "counts": counts}
 
 
-def _apply_price(cur, sugg_id: int) -> bool:
-    """Проставляет рекомендованную цену в товар и закрывает предложение."""
+def _apply_vat_price(base: float) -> float:
+    """Розничная цена с НДС: +22% и округление ВВЕРХ до 250 ₽ (как на складе)."""
+    import math
+    return float(math.ceil(base * 1.22 / 250.0) * 250)
+
+
+def _apply_price(cur, sugg_id: int, final_price=None, with_vat=None,
+                 product_id=None) -> dict:
+    """Принимает предложение и проставляет цену в товар.
+
+    final_price  — ручная цена; если None, берём suggested_price из предложения.
+    with_vat     — если True, к цене применяется НДС (+22%, округл. вверх до 250).
+    product_id   — для new_product: к какому товару каталога привязать (если ещё нет).
+
+    Обновляет: products.price, связанную warehouse_groups.price_retail,
+    пишет запись в warehouse_price_history и пересчитывает незафиксированные сборки.
+    """
     cur.execute(
         f"SELECT product_id, suggested_price, kind FROM {SCHEMA}.price_suggestions "
         f"WHERE id = {int(sugg_id)} AND status = 'new'"
     )
     row = cur.fetchone()
     if not row:
-        return False
-    product_id, suggested_price, kind = row
-    if kind == "price_change" and product_id and suggested_price is not None:
+        return {"ok": False, "error": "not_found"}
+    sugg_pid, suggested_price, kind = row
+
+    # к какому товару применяем цену
+    target_pid = product_id or sugg_pid
+    if product_id and not sugg_pid:
+        # привязка нового товара к каталогу прямо при accept
         cur.execute(
-            f"UPDATE {SCHEMA}.products SET price = {float(suggested_price)} "
-            f"WHERE id = {int(product_id)}"
+            f"UPDATE {SCHEMA}.price_suggestions SET product_id = {int(product_id)} "
+            f"WHERE id = {int(sugg_id)}"
         )
+
+    # итоговая цена
+    price = final_price if final_price is not None else suggested_price
+    if price is None:
+        # закрываем предложение без изменения цены (например new_product без привязки)
+        cur.execute(
+            f"UPDATE {SCHEMA}.price_suggestions SET status='accepted', decided_at=now() "
+            f"WHERE id = {int(sugg_id)}"
+        )
+        return {"ok": True, "price": None}
+    price = float(price)
+    if with_vat is True:
+        price = _apply_vat_price(price)
+
+    builds_updated = 0
+    if target_pid:
+        cur.execute(
+            f"UPDATE {SCHEMA}.products SET price = {price} WHERE id = {int(target_pid)}"
+        )
+        # связанная складская группа → цена + история
+        cur.execute(
+            f"SELECT id, avg_cost FROM {SCHEMA}.warehouse_groups "
+            f"WHERE product_id = {int(target_pid)}"
+        )
+        grp = cur.fetchone()
+        if grp:
+            gid, avg_cost = grp[0], grp[1]
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_groups SET price_retail = {price}, "
+                f"updated_at = NOW() WHERE id = {int(gid)}"
+            )
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.warehouse_price_history "
+                f"(group_id, price_retail, avg_cost) "
+                f"VALUES ({int(gid)}, {price}, {float(avg_cost) if avg_cost is not None else 'NULL'})"
+            )
+        builds_updated = _recalc_builds(cur, int(target_pid), price)
+
     cur.execute(
         f"UPDATE {SCHEMA}.price_suggestions SET status='accepted', decided_at=now() "
         f"WHERE id = {int(sugg_id)}"
     )
-    return True
+    return {"ok": True, "price": price, "builds_updated": builds_updated}
+
+
+def _recalc_builds(cur, product_id: int, new_price: float) -> int:
+    """Пересчёт цен незафиксированных продажных сборок с этим товаром (catalog/source_id).
+    Не трогает сборки из наличия (in_stock) и архивные. Учитывает НДС продажи."""
+    import math
+    cur.execute(
+        f"SELECT id, components, assembly_fee, sell_with_vat FROM {SCHEMA}.pc_builds "
+        f"WHERE COALESCE(in_stock, FALSE) = FALSE AND COALESCE(status, '') <> 'archive' "
+        f"AND components::text LIKE %s",
+        ('%"source_id": ' + str(int(product_id)) + '%',)
+    )
+    rows = cur.fetchall()
+    updated = 0
+    for build_id, components, assembly_fee, sell_with_vat in rows:
+        comps = components if isinstance(components, list) else json.loads(components or "[]")
+        changed = False
+        for c in comps:
+            if c.get("source") == "catalog" and int(c.get("source_id") or 0) == int(product_id):
+                if float(c.get("price") or 0) != float(new_price):
+                    c["price"] = float(new_price)
+                    changed = True
+        if not changed:
+            continue
+        parts_total = sum(float(c.get("price") or 0) * int(c.get("qty") or 1) for c in comps)
+        base = parts_total + float(assembly_fee or 0)
+        total_price = float(math.ceil(base * 1.22 / 250.0) * 250) if sell_with_vat else base
+        cur.execute(
+            f"UPDATE {SCHEMA}.pc_builds SET components=%s, parts_total=%s, total_price=%s WHERE id=%s",
+            (json.dumps(comps), parts_total, total_price, build_id)
+        )
+        updated += 1
+    return updated
+
+
+def _match_candidates(cur, q, sugg_id=None) -> dict:
+    """Кандидаты каталога для ручной привязки new_product — по Jaccard-похожести названия."""
+    name = (q or "").strip()
+    if not name and sugg_id:
+        cur.execute(
+            f"SELECT ext_name FROM {SCHEMA}.price_suggestions WHERE id = {int(sugg_id)}"
+        )
+        r = cur.fetchone()
+        if r:
+            name = (r[0] or "").strip()
+    if not name:
+        return {"candidates": []}
+
+    ext_tokens = tokenize(name)
+    cur.execute(f"SELECT id, name, price FROM {SCHEMA}.products WHERE is_archived = FALSE")
+    scored = []
+    for pid, pname, pprice in cur.fetchall():
+        ptok = tokenize(pname)
+        if not ext_tokens or not ptok:
+            continue
+        inter = len(ext_tokens & ptok)
+        if inter == 0:
+            continue
+        score = inter / len(ext_tokens | ptok)
+        scored.append((score, pid, pname, float(pprice)))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return {
+        "candidates": [
+            {"product_id": pid, "name": pname, "price": pprice,
+             "score": round(score * 100, 1)}
+            for score, pid, pname, pprice in scored[:12]
+        ]
+    }
+
+
+def _link_product(cur, sugg_id: int, product_id: int) -> dict:
+    """Привязывает предложение new_product к товару каталога (без изменения цены)."""
+    cur.execute(f"SELECT price FROM {SCHEMA}.products WHERE id = {int(product_id)}")
+    prow = cur.fetchone()
+    if not prow:
+        return {"ok": False, "error": "product_not_found"}
+    cur.execute(
+        f"UPDATE {SCHEMA}.price_suggestions "
+        f"SET product_id = {int(product_id)}, kind = 'price_change', "
+        f"    current_price = {float(prow[0])} "
+        f"WHERE id = {int(sugg_id)} AND status = 'new'"
+    )
+    return {"ok": True, "product_id": product_id, "current_price": float(prow[0])}

@@ -219,14 +219,24 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
    - товара нет → kind='new_product'
    Рекомендованная цена = цена_конкурента * 0.93 (-7%), округл. до 250 ₽.
    Дубли по товару не плодятся: существующее 'new' предложение обновляется.
+   После ingest шлётся Telegram-сводка (падение/рост цен, новые товары) через
+   tg_notify.py — только если реально есть изменения (тихий прогон = без спама).
 2) АДМИН: X-Admin-Token == ADMIN_KEY (или X-Session-Id с ролью admin).
-   GET ?action=list&kind=price_change|new_product — список 'new' + counts.
-   POST action=accept {id} — принять: проставить suggested_price в products.price.
+   GET ?action=list&kind=price_change|new_product — список 'new' + counts
+       (+ ext_sku, match_score).
+   GET ?action=match&id=NN (или &q=название) — кандидаты каталога с % похожести.
+   POST action=link_product {id, product_id} — привязать new_product к товару.
+   POST action=accept {id, final_price?, with_vat?, product_id?} — принять:
+        ручная цена / suggested_price, НДС (+22%, округл. вверх до 250);
+        обновляет products.price, warehouse_groups.price_retail, пишет
+        warehouse_price_history, пересчитывает незафиксированные сборки.
    POST action=reject {id} — отклонить. POST action=accept_all — принять все price_change.
 Таблицы: price_sources, price_observations, price_suggestions (миграция V0154).
 Frontend: вкладка /admin/price_monitor (PriceMonitorTab) в группе «Операции».
-API: api.priceMonitor.list/accept/reject/acceptAll (src/lib/api.ts).
-Секрет PARSER_INGEST_TOKEN — токен парсера для авторизации входящих данных.
+   Кнопка «Обработать» открывает модалку ProcessModal (цена, НДС, матчинг+привязка).
+API: api.priceMonitor.list/accept/reject/acceptAll/match/linkProduct (src/lib/api.ts).
+Секреты: PARSER_INGEST_TOKEN — токен парсера; PRICE_ALERT_CHAT_ID (опц.) — чат
+   Telegram для сводок (иначе TELEGRAM_MANAGER_CHAT_ID).
 
 ### sn-archive
 Реестр серийных номеров (SnArhive). Связь серийник -> товар -> поставка -> магазин.

@@ -80,12 +80,16 @@ export const api = {
   priceMonitor: {
     list: (adminKey: string, kind?: string) =>
       fetch(`${URLS.priceMonitor}?action=list${kind ? `&kind=${kind}` : ""}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    accept: (id: number, adminKey: string) =>
-      fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "accept", id }) }).then(r => r.json()),
+    accept: (id: number, adminKey: string, opts?: { final_price?: number; with_vat?: boolean; product_id?: number }) =>
+      fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "accept", id, ...(opts || {}) }) }).then(r => r.json()),
     reject: (id: number, adminKey: string) =>
       fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "reject", id }) }).then(r => r.json()),
     acceptAll: (adminKey: string) =>
       fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "accept_all" }) }).then(r => r.json()),
+    match: (id: number, adminKey: string) =>
+      fetch(`${URLS.priceMonitor}?action=match&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    linkProduct: (id: number, productId: number, adminKey: string) =>
+      fetch(URLS.priceMonitor, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "link_product", id, product_id: productId }) }).then(r => r.json()),
   },
   builds: {
     getAll: (params?: Record<string, string>) => {

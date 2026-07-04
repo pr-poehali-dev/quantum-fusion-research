@@ -15,10 +15,22 @@ interface Suggestion {
   suggested_price: number | null
   product_name: string | null
   created_at: string | null
+  ext_sku?: string | null
+  match_score?: number | null
+}
+
+interface Candidate {
+  product_id: number
+  name: string
+  price: number
+  score: number
 }
 
 const fmt = (v: number | null) =>
   v === null || v === undefined ? "—" : `${Math.round(v).toLocaleString("ru-RU")} ₽`
+
+// округление ВВЕРХ до 250 (как на складе для розничной цены)
+const ceil250 = (v: number) => Math.ceil(v / 250) * 250
 
 export default function PriceMonitorTab() {
   const [view, setView] = useState<"price_change" | "new_product">("price_change")
@@ -26,6 +38,7 @@ export default function PriceMonitorTab() {
   const [items, setItems] = useState<Suggestion[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState<number | null>(null)
+  const [processItem, setProcessItem] = useState<Suggestion | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -148,10 +161,16 @@ export default function PriceMonitorTab() {
                   </div>
 
                   <div className="flex shrink-0 gap-2">
+                    <button onClick={() => setProcessItem(s)} disabled={busy === s.id}
+                      title="Обработать — задать цену, НДС, привязку"
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name="Settings2" size={15} />Обработать
+                    </button>
                     {s.kind === "price_change" && (
                       <button onClick={() => accept(s.id)} disabled={busy === s.id}
-                        title="Принять — обновить цену товара"
-                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        title="Быстро принять рекомендованную цену"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
                         style={{ cursor: "pointer" }}>
                         <Icon name="Check" size={16} />
                       </button>
@@ -169,6 +188,154 @@ export default function PriceMonitorTab() {
           ))}
         </div>
       )}
+
+      {processItem && (
+        <ProcessModal
+          item={processItem}
+          onClose={() => setProcessItem(null)}
+          onDone={() => { setProcessItem(null); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProcessModal({ item, onClose, onDone }: {
+  item: Suggestion
+  onClose: () => void
+  onDone: () => void
+}) {
+  const isNew = item.kind === "new_product"
+  const [withVat, setWithVat] = useState(false)
+  // базовая цена: рекомендованная (уже без НДС, market*0.93)
+  const [price, setPrice] = useState<number>(Math.round(item.suggested_price || item.market_price || 0))
+  const [linkedId, setLinkedId] = useState<number | null>(item.product_id)
+  const [linkedName, setLinkedName] = useState<string | null>(item.product_name)
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [loadingCand, setLoadingCand] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // финальная цена с учётом НДС (+22%, округл. вверх до 250)
+  const finalPrice = withVat ? ceil250(price * 1.22) : ceil250(price)
+
+  useEffect(() => {
+    if (!isNew || linkedId) return
+    setLoadingCand(true)
+    api.priceMonitor.match(item.id, getAdminKey())
+      .then(d => setCandidates(d.candidates || []))
+      .finally(() => setLoadingCand(false))
+  }, [isNew, linkedId, item.id])
+
+  const link = async (c: Candidate) => {
+    await api.priceMonitor.linkProduct(item.id, c.product_id, getAdminKey())
+    setLinkedId(c.product_id)
+    setLinkedName(c.name)
+  }
+
+  const apply = async () => {
+    setSaving(true)
+    await api.priceMonitor.accept(item.id, getAdminKey(), {
+      final_price: price,
+      with_vat: withVat,
+      ...(linkedId ? { product_id: linkedId } : {}),
+    })
+    setSaving(false)
+    onDone()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-medium text-foreground">Обработка предложения</h3>
+            <p className="mt-0.5 truncate text-xs text-foreground/50">{item.ext_name}</p>
+          </div>
+          <button onClick={onClose} className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+
+        {/* Матчинг для новых товаров */}
+        {isNew && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-xs text-foreground/50">Привязка к товару каталога</label>
+            {linkedId ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+                <span className="truncate text-sm text-foreground">{linkedName}</span>
+                <button onClick={() => { setLinkedId(null); setLinkedName(null) }}
+                  className="shrink-0 text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
+                  сменить
+                </button>
+              </div>
+            ) : loadingCand ? (
+              <p className="text-xs text-foreground/40">Ищу похожие…</p>
+            ) : candidates.length === 0 ? (
+              <p className="text-xs text-foreground/40">Похожих товаров нет — можно принять как есть (без привязки).</p>
+            ) : (
+              <div className="max-h-40 space-y-1 overflow-y-auto">
+                {candidates.map(c => (
+                  <button key={c.product_id} onClick={() => link(c)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors"
+                    style={{ cursor: "pointer" }}>
+                    <span className="min-w-0 truncate text-sm text-foreground">{c.name}</span>
+                    <span className="shrink-0 text-xs text-foreground/40">{c.score}%</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Цена конкурента / наша */}
+        <div className="mb-3 flex items-center gap-4 text-sm">
+          {item.current_price != null && (
+            <div>
+              <p className="text-xs text-foreground/40">У нас</p>
+              <p className="text-foreground/70">{fmt(item.current_price)}</p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-foreground/40">Рынок</p>
+            <p className="text-foreground/70">{fmt(item.market_price)}</p>
+          </div>
+        </div>
+
+        {/* Редактируемая цена */}
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-foreground/50">Цена (без НДС)</label>
+          <input type="number" value={price}
+            onChange={e => setPrice(parseFloat(e.target.value) || 0)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+        </div>
+
+        {/* НДС */}
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-foreground/70">
+          <input type="checkbox" checked={withVat} onChange={e => setWithVat(e.target.checked)}
+            className="h-4 w-4 accent-primary" />
+          Продавать с НДС (+22%)
+        </label>
+
+        {/* Итог */}
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5">
+          <span className="text-sm text-foreground/60">Итоговая цена</span>
+          <span className="text-lg font-semibold text-primary">{fmt(finalPrice)}</span>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={apply} disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            style={{ cursor: "pointer" }}>
+            <Icon name="Check" size={16} />{saving ? "Применяю…" : "Применить цену"}
+          </button>
+          <button onClick={onClose}
+            className="rounded-xl border border-border px-4 py-2.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+            style={{ cursor: "pointer" }}>
+            Отмена
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
