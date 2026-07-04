@@ -143,71 +143,15 @@ export default function PriceMonitorTab() {
       ) : (
         <div className="grid gap-3">
           {items.map(s => (
-            <div key={s.id} className="rounded-2xl border border-border bg-card p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-medium text-foreground">
-                      {s.kind === "price_change" ? (s.product_name || s.ext_name) : s.ext_name}
-                    </p>
-                    {s.source_name && (
-                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/60">{s.source_name}</span>
-                    )}
-                  </div>
-                  {s.kind === "price_change" && s.ext_name && s.ext_name !== s.product_name && (
-                    <p className="mt-0.5 truncate text-xs text-foreground/40">У конкурента: {s.ext_name}</p>
-                  )}
-                  {s.ext_url && (
-                    <a href={s.ext_url} target="_blank" rel="noreferrer"
-                      className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                      <Icon name="ExternalLink" size={12} />Открыть у конкурента
-                    </a>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-4 sm:gap-6">
-                  <div className="flex items-center gap-4 text-sm">
-                    {s.kind === "price_change" && (
-                      <div className="text-center">
-                        <p className="text-xs text-foreground/40">У нас</p>
-                        <p className="font-medium text-foreground/70">{fmt(s.current_price)}</p>
-                      </div>
-                    )}
-                    <div className="text-center">
-                      <p className="text-xs text-foreground/40">На сайте</p>
-                      <p className="font-medium text-foreground/70">{fmt(s.market_price)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-foreground/40">Рекомендуем</p>
-                      <p className="font-semibold text-primary">{fmt(s.suggested_price)}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 gap-2">
-                    <button onClick={() => setProcessItem(s)} disabled={busy === s.id}
-                      title="Обработать — задать цену продажи, привязку"
-                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                      style={{ cursor: "pointer" }}>
-                      <Icon name="Settings2" size={15} />Обработать
-                    </button>
-                    {s.kind === "price_change" && (
-                      <button onClick={() => accept(s.id)} disabled={busy === s.id}
-                        title="Быстро принять рекомендованную цену"
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                        style={{ cursor: "pointer" }}>
-                        <Icon name="Check" size={16} />
-                      </button>
-                    )}
-                    <button onClick={() => reject(s.id)} disabled={busy === s.id}
-                      title={s.kind === "new_product" ? "Скрыть" : "Отклонить"}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground/60 hover:text-foreground transition-colors disabled:opacity-50"
-                      style={{ cursor: "pointer" }}>
-                      <Icon name="X" size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <SuggestionCard
+              key={s.id}
+              item={s}
+              busy={busy === s.id}
+              onProcess={() => setProcessItem(s)}
+              onAccept={() => accept(s.id)}
+              onReject={() => reject(s.id)}
+              onRelinked={next => setItems(rs => rs.map(r => r.id === next.id ? next : r))}
+            />
           ))}
         </div>
       )}
@@ -218,6 +162,193 @@ export default function PriceMonitorTab() {
           onClose={() => setProcessItem(null)}
           onDone={() => { setProcessItem(null); load() }}
         />
+      )}
+    </div>
+  )
+}
+
+// Карточка предложения в стиле строки приёмки по счёту:
+// сверху — название из парсера, снизу — сопоставление с товаром склада
+function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked }: {
+  item: Suggestion
+  busy: boolean
+  onProcess: () => void
+  onAccept: () => void
+  onReject: () => void
+  onRelinked: (next: Suggestion) => void
+}) {
+  const linked = item.product_id != null
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [loadingCand, setLoadingCand] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [searchQ, setSearchQ] = useState("")
+  const [searchRes, setSearchRes] = useState<Candidate[]>([])
+  const [searching, setSearching] = useState(false)
+  const [linking, setLinking] = useState(false)
+
+  // похожие товары со склада (Jaccard от названия парсера)
+  useEffect(() => {
+    if (linked) return
+    setLoadingCand(true)
+    api.priceMonitor.match(item.id, getAdminKey())
+      .then(d => setCandidates(d.candidates || []))
+      .finally(() => setLoadingCand(false))
+  }, [linked, item.id])
+
+  // живой поиск по складу (debounce 300мс)
+  useEffect(() => {
+    if (!picking || searchQ.trim().length < 2) { setSearchRes([]); return }
+    setSearching(true)
+    const t = setTimeout(() => {
+      api.priceMonitor.match(item.id, getAdminKey(), searchQ.trim())
+        .then(d => setSearchRes(d.candidates || []))
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [picking, searchQ, item.id])
+
+  const link = async (c: Candidate) => {
+    setLinking(true)
+    const res = await api.priceMonitor.linkProduct(item.id, c.product_id, getAdminKey())
+    setLinking(false)
+    setPicking(false); setSearchQ(""); setSearchRes([])
+    onRelinked({
+      ...item,
+      kind: "price_change",
+      product_id: c.product_id,
+      product_name: c.name,
+      current_price: res?.current_price ?? c.price ?? item.current_price,
+    })
+  }
+
+  const title = item.product_name || item.ext_name
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      {/* Шапка: название из парсера + цены + действия */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-medium text-foreground">{title}</p>
+            {item.source_name && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/60">{item.source_name}</span>
+            )}
+          </div>
+          {item.ext_name && item.ext_name !== item.product_name && (
+            <p className="mt-0.5 truncate text-xs text-foreground/40">У конкурента: {item.ext_name}</p>
+          )}
+          {item.ext_url && (
+            <a href={item.ext_url} target="_blank" rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+              <Icon name="ExternalLink" size={12} />Открыть у конкурента
+            </a>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-4 text-sm">
+            {item.current_price != null && (
+              <div className="text-center">
+                <p className="text-xs text-foreground/40">У нас</p>
+                <p className="font-medium text-foreground/70">{fmt(item.current_price)}</p>
+              </div>
+            )}
+            <div className="text-center">
+              <p className="text-xs text-foreground/40">На сайте</p>
+              <p className="font-medium text-foreground/70">{fmt(item.market_price)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-foreground/40">Рекомендуем</p>
+              <p className="font-semibold text-primary">{fmt(item.suggested_price)}</p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 gap-2">
+            <button onClick={onProcess} disabled={busy}
+              title="Обработать — задать цену продажи, привязку"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              style={{ cursor: "pointer" }}>
+              <Icon name="Settings2" size={15} />Обработать
+            </button>
+            {linked && (
+              <button onClick={onAccept} disabled={busy}
+                title="Быстро принять рекомендованную цену"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Check" size={16} />
+              </button>
+            )}
+            <button onClick={onReject} disabled={busy}
+              title={linked ? "Отклонить" : "Скрыть"}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground/60 hover:text-foreground transition-colors disabled:opacity-50"
+              style={{ cursor: "pointer" }}>
+              <Icon name="X" size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Сопоставление со складом (для непривязанных товаров) */}
+      {!linked && (
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="mb-2 text-xs text-amber-500/80">
+            Нет на складе — выберите товар ниже или создайте новый
+          </p>
+
+          {picking ? (
+            <div className="rounded-lg border border-primary/20 bg-background p-2">
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5">
+                <Icon name="Search" size={14} className="text-foreground/40" />
+                <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                  placeholder="Поиск товара по складу…"
+                  className="w-full bg-transparent text-sm outline-none" />
+                <button onClick={() => { setPicking(false); setSearchQ("") }}
+                  className="shrink-0 text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
+                  Отмена
+                </button>
+              </div>
+              <div className="max-h-48 space-y-1 overflow-y-auto">
+                {searching ? (
+                  <p className="px-1 py-2 text-xs text-foreground/40">Ищу…</p>
+                ) : searchRes.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-foreground/40">
+                    {searchQ.trim().length >= 2 ? "Ничего не найдено" : "Введите название"}
+                  </p>
+                ) : searchRes.map(c => (
+                  <button key={c.product_id} onClick={() => link(c)} disabled={linking}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors disabled:opacity-50"
+                    style={{ cursor: "pointer" }}>
+                    <span className="min-w-0 truncate text-sm text-foreground">{c.name}</span>
+                    <span className="shrink-0 text-xs text-foreground/40">{c.price ? fmt(c.price) : `${c.score}%`}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {loadingCand ? (
+                <p className="text-xs text-foreground/40">Ищу похожие…</p>
+              ) : candidates.slice(0, 3).map(c => (
+                <button key={c.product_id} onClick={() => link(c)} disabled={linking}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  style={{ cursor: "pointer" }}>
+                  <span className="max-w-[220px] truncate">{c.name}</span>
+                  <span className="text-xs text-foreground/40">{c.score}%</span>
+                </button>
+              ))}
+              <button onClick={() => { setPicking(true); setSearchQ("") }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Search" size={13} />Выбрать из существующих
+              </button>
+              <button onClick={onProcess}
+                className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={13} />Создать новый товар
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
