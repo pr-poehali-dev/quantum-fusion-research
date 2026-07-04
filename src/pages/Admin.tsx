@@ -17,6 +17,7 @@ import QuizRequestsTab from "@/components/admin/QuizRequestsTab"
 import PriceMonitorTab from "@/components/admin/PriceMonitorTab"
 import StressTestsTab from "@/components/admin/StressTestsTab"
 import CompanySettings from "@/components/admin/CompanySettings"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 import {
   ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
@@ -214,6 +215,7 @@ export default function Admin() {
             <span className="font-semibold text-foreground">BeGraphics Admin</span>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeSwitcher />
             <button onClick={() => navigate("/shop")} className="text-xs text-foreground/40 hover:text-foreground/70 transition-colors" style={{ cursor: "pointer" }}>На сайт</button>
             <button onClick={logout} className="flex items-center gap-1.5 text-xs text-foreground/40 hover:text-foreground/70 transition-colors" style={{ cursor: "pointer" }}>
               <Icon name="LogOut" size={14} />Выйти
