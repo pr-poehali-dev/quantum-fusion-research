@@ -174,7 +174,7 @@ export default function PriceMonitorTab() {
                       </div>
                     )}
                     <div className="text-center">
-                      <p className="text-xs text-foreground/40">Рынок</p>
+                      <p className="text-xs text-foreground/40">На сайте</p>
                       <p className="font-medium text-foreground/70">{fmt(s.market_price)}</p>
                     </div>
                     <div className="text-center">
@@ -185,7 +185,7 @@ export default function PriceMonitorTab() {
 
                   <div className="flex shrink-0 gap-2">
                     <button onClick={() => setProcessItem(s)} disabled={busy === s.id}
-                      title="Обработать — задать цену, НДС, привязку"
+                      title="Обработать — задать цену продажи, привязку"
                       className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
                       style={{ cursor: "pointer" }}>
                       <Icon name="Settings2" size={15} />Обработать
@@ -229,8 +229,7 @@ function ProcessModal({ item, onClose, onDone }: {
   onDone: () => void
 }) {
   const isNew = item.kind === "new_product"
-  const [withVat, setWithVat] = useState(false)
-  // базовая цена: рекомендованная (уже без НДС, market*0.93)
+  // базовая цена: рекомендованная от цены на сайте конкурента (market*0.93)
   const [price, setPrice] = useState<number>(Math.round(item.suggested_price || item.market_price || 0))
   const [linkedId, setLinkedId] = useState<number | null>(item.product_id)
   const [linkedName, setLinkedName] = useState<string | null>(item.product_name)
@@ -238,8 +237,8 @@ function ProcessModal({ item, onClose, onDone }: {
   const [loadingCand, setLoadingCand] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // финальная цена с учётом НДС (+22%, округл. вверх до 250)
-  const finalPrice = withVat ? ceil250(price * 1.22) : ceil250(price)
+  // НДС в мониторе цен не применяется — это только приёмка поставок
+  const finalPrice = ceil250(price)
 
   useEffect(() => {
     if (!isNew || linkedId) return
@@ -259,7 +258,6 @@ function ProcessModal({ item, onClose, onDone }: {
     setSaving(true)
     await api.priceMonitor.accept(item.id, getAdminKey(), {
       final_price: price,
-      with_vat: withVat,
       ...(linkedId ? { product_id: linkedId } : {}),
     })
     setSaving(false)
@@ -320,25 +318,18 @@ function ProcessModal({ item, onClose, onDone }: {
             </div>
           )}
           <div>
-            <p className="text-xs text-foreground/40">Рынок</p>
+            <p className="text-xs text-foreground/40">На сайте</p>
             <p className="text-foreground/70">{fmt(item.market_price)}</p>
           </div>
         </div>
 
         {/* Редактируемая цена */}
-        <div className="mb-3">
-          <label className="mb-1 block text-xs text-foreground/50">Цена (без НДС)</label>
+        <div className="mb-4">
+          <label className="mb-1 block text-xs text-foreground/50">Цена продажи</label>
           <input type="number" value={price}
             onChange={e => setPrice(parseFloat(e.target.value) || 0)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
-
-        {/* НДС */}
-        <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-foreground/70">
-          <input type="checkbox" checked={withVat} onChange={e => setWithVat(e.target.checked)}
-            className="h-4 w-4 accent-primary" />
-          Продавать с НДС (+22%)
-        </label>
 
         {/* Итог */}
         <div className="mb-4 flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5">
