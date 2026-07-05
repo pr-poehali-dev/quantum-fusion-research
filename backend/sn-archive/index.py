@@ -137,10 +137,18 @@ def list_serials(cur, params):
     cur.execute(
         f"SELECT a.id, a.serial, a.category, a.product_name, a.group_id, "
         f"a.supply_id, a.product_id, a.store_id, st.name AS store_name, "
-        f"st.code AS store_code, a.purchase_date, a.warranty_until, "
+        f"st.code AS store_code, a.purchase_date, "
+        # «Гарантия до»: если явно сохранена — берём её; иначе считаем от даты
+        # покупки + срок гарантии группы (warranty_months). Так дата есть даже
+        # для старых записей, где warranty_until не заполнялся при приёмке.
+        f"COALESCE("
+        f"  a.warranty_until, "
+        f"  (a.purchase_date + (g.warranty_months || ' months')::interval)::date"
+        f") AS warranty_until, "
         f"a.status, a.order_id, a.note, a.created_at "
         f"FROM {SCHEMA}.sn_archive a "
         f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = a.store_id "
+        f"LEFT JOIN {SCHEMA}.warehouse_groups g ON g.id = a.group_id "
         f"WHERE {' AND '.join(where)} "
         f"ORDER BY a.id DESC LIMIT {limit}"
     )
@@ -156,9 +164,14 @@ def lookup(cur, params):
     cur.execute(
         f"SELECT a.id, a.serial, a.category, a.product_name, a.store_id, "
         f"st.name AS store_name, st.code AS store_code, a.purchase_date, "
-        f"a.warranty_until, a.status, a.order_id, a.supply_id "
+        f"COALESCE("
+        f"  a.warranty_until, "
+        f"  (a.purchase_date + (g.warranty_months || ' months')::interval)::date"
+        f") AS warranty_until, "
+        f"a.status, a.order_id, a.supply_id "
         f"FROM {SCHEMA}.sn_archive a "
         f"LEFT JOIN {SCHEMA}.warehouse_stores st ON st.id = a.store_id "
+        f"LEFT JOIN {SCHEMA}.warehouse_groups g ON g.id = a.group_id "
         f"WHERE LOWER(a.serial) = LOWER({esc(serial)}) ORDER BY a.id DESC LIMIT 1"
     )
     row = cur.fetchone()
@@ -198,7 +211,12 @@ def add_serials(cur, body):
 
     # Данные поставки: группа, товар, магазин, даты, категория.
     cur.execute(
-        f"SELECT s.id, s.group_id, s.store_id, s.purchase_date, s.warranty_until, "
+        f"SELECT s.id, s.group_id, s.store_id, s.purchase_date, "
+        # warranty_until: из поставки, иначе считаем от даты покупки + срок группы
+        f"COALESCE("
+        f"  s.warranty_until, "
+        f"  (s.purchase_date + (g.warranty_months || ' months')::interval)::date"
+        f"), "
         f"g.product_id, g.name, g.category "
         f"FROM {SCHEMA}.warehouse_supplies s "
         f"JOIN {SCHEMA}.warehouse_groups g ON g.id = s.group_id "
