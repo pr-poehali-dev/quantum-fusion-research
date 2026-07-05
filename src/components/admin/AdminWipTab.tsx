@@ -1006,16 +1006,36 @@ export function AdminWipTab({
                           const statusKey = row.key === "case_name" ? "case_status" : row.key + "_status"
                           const status = (w as Record<string, string>)[statusKey] || "pending"
                           const { cls: sCls, label: sLabel } = COMP_STATUS_LABELS[status] || COMP_STATUS_LABELS.pending
-                          // количество берём из build_components по слоту
+                          // Слот "Доп" (extra) может содержать НЕСКОЛЬКО позиций
+                          // (например вентиляторы: fan + extra). Собираем все строки
+                          // слота, а не только первую — иначе теряются кол-во и вторая
+                          // позиция вентиляторов.
                           const slotKey = row.key === "case_name" ? "case" : row.key
-                          const comp = (w.build_components || []).find(c => c.slot === slotKey || (slotKey === "extra" && c.slot === "fan"))
-                          const qty = comp?.qty || 1
+                          const comps = (w.build_components || []).filter(
+                            c => c.slot === slotKey || (slotKey === "extra" && c.slot === "fan")
+                          )
+                          const totalQty = comps.reduce((s, c) => s + (c.qty || 1), 0)
+                          // Для "Доп" показываем каждую позицию отдельно (название+кол-во),
+                          // т.к. это могут быть разные товары. Для остальных слотов —
+                          // одно название с суммарным кол-вом.
+                          const isMulti = comps.length > 1
                           return val ? (
                             <div className="space-y-1">
-                              <p className="text-xs text-foreground/80 leading-snug">
-                                {val}
-                                {qty > 1 && <span className="ml-1 font-semibold text-primary">×{qty}</span>}
-                              </p>
+                              {isMulti ? (
+                                <div className="space-y-0.5">
+                                  {comps.map((c, i) => (
+                                    <p key={i} className="text-xs text-foreground/80 leading-snug">
+                                      {c.name || val}
+                                      {(c.qty || 1) > 1 && <span className="ml-1 font-semibold text-primary">×{c.qty}</span>}
+                                    </p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-foreground/80 leading-snug">
+                                  {val}
+                                  {totalQty > 1 && <span className="ml-1 font-semibold text-primary">×{totalQty}</span>}
+                                </p>
+                              )}
                               <div>
                                 {status !== "pending" && (
                                   <span className={`rounded-full px-1.5 py-0 text-[10px] font-semibold w-fit ${sCls}`}>{sLabel}</span>
