@@ -338,13 +338,13 @@ def handler(event: dict, context) -> dict:
                 if not wip_id:
                     return resp(400, {"error": "Нет wip_id"})
                 cur.execute(
-                    f"SELECT order_id, build_id, contact, order_number FROM {SCHEMA}.wip_builds WHERE id = %s",
+                    f"SELECT order_id, build_id, contact, order_number, stage FROM {SCHEMA}.wip_builds WHERE id = %s",
                     (wip_id,)
                 )
                 w = cur.fetchone()
                 if not w:
                     return resp(404, {"error": "Сборка не найдена"})
-                order_id, build_id, contact, order_number = w
+                order_id, build_id, contact, order_number, wip_stage = w
                 if order_id:
                     return resp(200, {"order_id": order_id, "ok": True, "existed": True})
                 if not build_id:
@@ -442,11 +442,17 @@ def handler(event: dict, context) -> dict:
                     f"UPDATE {SCHEMA}.wip_builds SET order_id = %s, updated_at = NOW() WHERE id = %s",
                     (new_order_id, wip_id)
                 )
-                # создаём резервы под сборку (по source_id из pc_builds.components)
-                try:
-                    core.ensure_order_reserves(cur, new_order_id, build_id)
-                except Exception:
-                    pass
+                # Резервы на этапе «Согласование» НЕ накладываем — заказ создаётся
+                # без резервов (нужно для договора/согласования без блокировки склада).
+                # Резервы наложатся позже, при переходе сборки на этап «Заказ»
+                # (там вызывается recalc_order_reserves). Явный флаг skip_reserves
+                # тоже уважаем.
+                skip_reserves = bool(body.get("skip_reserves")) or (wip_stage == "Согласование")
+                if not skip_reserves:
+                    try:
+                        core.ensure_order_reserves(cur, new_order_id, build_id)
+                    except Exception:
+                        pass
                 conn.commit()
 
                 try:

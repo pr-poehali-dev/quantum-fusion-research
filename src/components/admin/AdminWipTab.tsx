@@ -75,6 +75,35 @@ export function AdminWipTab({
   const [syncingWipId, setSyncingWipId] = useState<number | null>(null)
   const [syncDoneWipId, setSyncDoneWipId] = useState<number | null>(null)
 
+  // Договор поставки прямо из сборки (в т.ч. на этапе «Согласование»).
+  // Если заказа ещё нет — создаём его (на согласовании без резервов), затем PDF.
+  const CONTRACT_URL = "https://functions.poehali.dev/7db163ee-2c8f-43e0-af32-d7c98db8f5e4"
+  const [contractWipId, setContractWipId] = useState<number | null>(null)
+  const openWipContract = async (w: WipBuild) => {
+    setContractWipId(w.id!)
+    try {
+      let orderId = w.order_id
+      if (!orderId) {
+        const ens = await api.wipBuilds.ensureOrder(w.id!)
+        if (ens?.error) { alert(ens.error); return }
+        orderId = ens?.order_id
+        if (orderId) {
+          setWipBuilds(bs => bs.map(b => b.id === w.id
+            ? { ...b, order_id: ens.order_id, total: ens.total ?? b.total } : b))
+        }
+      }
+      if (!orderId) { alert("Не удалось подготовить заказ для договора"); return }
+      const res = await fetch(`${CONTRACT_URL}?order_id=${orderId}`).then(r => r.json()).catch(() => null)
+      if (!res?.pdf_b64) { alert("Не удалось создать договор"); return }
+      const link = document.createElement("a")
+      link.href = `data:application/pdf;base64,${res.pdf_b64}`
+      link.download = res.filename || `contract_${orderId}.pdf`
+      document.body.appendChild(link); link.click(); link.remove()
+    } finally {
+      setContractWipId(null)
+    }
+  }
+
   // Модалка подтверждения предоплаты при переходе «Согласование → Заказ»
   const [prepayModal, setPrepayModal] = useState<WipBuild | null>(null)
   // Модалка оплаты остатка перед выдачей («Забрали»)
@@ -902,6 +931,15 @@ export function AdminWipTab({
                                 className="flex items-center justify-center rounded-lg border border-blue-400/30 bg-blue-400/5 p-1.5 text-blue-400 hover:bg-blue-400/10 transition-colors"
                                 style={{ cursor: "pointer" }}>
                                 <Icon name="ClipboardList" size={13} />
+                              </button>
+                            )}
+                            {(w.build_id || w.order_id) && w.id && (
+                              <button onClick={() => openWipContract(w)}
+                                disabled={contractWipId === w.id}
+                                title="Договор поставки (можно на этапе согласования, без резервов)"
+                                className="flex items-center justify-center rounded-lg border border-purple-400/30 bg-purple-400/5 p-1.5 text-purple-400 hover:bg-purple-400/10 transition-colors disabled:opacity-50"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name={contractWipId === w.id ? "Loader" : "FileSignature"} size={13} className={contractWipId === w.id ? "animate-spin" : ""} />
                               </button>
                             )}
                             {w.build_id && (

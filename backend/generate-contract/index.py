@@ -345,19 +345,28 @@ def build_spec(d, order, company):
     # таблица: Слот | Наименование | Кол-во | Цена
     rows = order["spec_rows"]   # [(label, name, qty, line_sum)]
     col_x = d.lm
-    c1 = 32 * mm                       # слот
-    c3 = 16 * mm                       # кол-во
-    c4 = 24 * mm                       # цена
+    c1 = 30 * mm                       # слот
+    c3 = 14 * mm                       # кол-во
+    c4 = 32 * mm                       # цена (шире — крупные суммы не обрезаются)
     c2 = d.maxw - c1 - c3 - c4         # наименование
     rh = 9 * mm
     x_qty = col_x + c1 + c2
     x_price = col_x + c1 + c2 + c3
 
     def cell_text(s, x, w, align="left", font="dj", size=9, color=0.15, pad=2.5):
-        d.c.setFont(font, size); d.c.setFillGray(color)
+        d.c.setFillGray(color)
         txt = str(s)
-        while pdfmetrics.stringWidth(txt, font, size) > w - 2 * pad * mm and len(txt) > 3:
-            txt = txt[:-2]
+        avail = w - 2 * pad * mm
+        if align == "right":
+            # Числа/суммы НЕЛЬЗЯ обрезать (иначе "1 014 141" → "1 014 1").
+            # Если не влезает — уменьшаем шрифт до посадки (до 6pt).
+            while size > 6 and pdfmetrics.stringWidth(txt, font, size) > avail:
+                size -= 0.5
+        else:
+            # Для текста (наименование) — многоточие с конца.
+            while pdfmetrics.stringWidth(txt, font, size) > avail and len(txt) > 3:
+                txt = txt[:-2]
+        d.c.setFont(font, size)
         cy = d.y - rh + 3 * mm
         if align == "center":
             d.c.drawCentredString(x + w / 2, cy, txt)
