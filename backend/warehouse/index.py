@@ -628,6 +628,55 @@ def handler(event: dict, context) -> dict:
                     import warehouse_core as wc
                     wc.recalc_builds_for_product(cur, int(_pid_row[0]), float(body["price_retail"]))
 
+            # ── Каскадная синхронизация НАЗВАНИЯ/КАТЕГОРИИ во все связи ──
+            # При переименовании карточки склада меняем название и в каталоге
+            # товаров (products), и в шаблонах сборок (pc_builds.components —
+            # снимок названия по source_id). Совместимость (product_spec_values)
+            # ссылается на товар по product_id и берёт имя динамически — там
+            # хранимого имени нет, отдельное обновление не требуется.
+            cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid}")
+            _syncr = cur.fetchone()
+            sync_pid = int(_syncr[0]) if _syncr and _syncr[0] else None
+
+            if sync_pid and ("name" in body or "category" in body):
+                # 1) Каталог товаров: название + категория
+                prod_fields = []
+                if "name" in body:
+                    prod_fields.append(f"name = {esc(body['name'])}")
+                if "category" in body:
+                    # категория товара — по имени категории из справочника
+                    cur.execute(
+                        f"SELECT id FROM {SCHEMA}.categories WHERE LOWER(name) = LOWER({esc(body['category'])}) LIMIT 1"
+                    )
+                    _catr = cur.fetchone()
+                    if _catr:
+                        prod_fields.append(f"category_id = {int(_catr[0])}")
+                if prod_fields:
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.products SET {', '.join(prod_fields)} WHERE id = {sync_pid}"
+                    )
+
+                # 2) Шаблоны сборок: обновляем снимок name в components по source_id
+                if "name" in body:
+                    cur.execute(
+                        f"SELECT id, components FROM {SCHEMA}.pc_builds "
+                        f"WHERE components::text LIKE '%\"source_id\": {sync_pid}%' "
+                        f"   OR components::text LIKE '%\"source_id\":{sync_pid}%'"
+                    )
+                    new_name = str(body["name"])
+                    for pcb_id, comps in cur.fetchall():
+                        arr = comps if isinstance(comps, list) else json.loads(comps or "[]")
+                        changed = False
+                        for c in arr:
+                            if c.get("source") == "catalog" and c.get("source_id") == sync_pid and c.get("name") != new_name:
+                                c["name"] = new_name
+                                changed = True
+                        if changed:
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.pc_builds SET components = {esc(json.dumps(arr, ensure_ascii=False))}::jsonb "
+                                f"WHERE id = {pcb_id}"
+                            )
+
             log_movement(cur, gid, None, None, None, "group_updated", 0, note="Обновлена карточка группы")
             cur.execute(f"SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = {gid}")
             _pidr = cur.fetchone()
