@@ -20,8 +20,12 @@ cors = {
     "Access-Control-Allow-Headers": "Content-Type, X-User-Id, X-Auth-Token",
 }
 
-FONT_REGULAR_URL = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans.ttf"
-FONT_BOLD_URL    = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans-Bold.ttf"
+# Строгий деловой шрифт с засечками (PT Serif) — хорошо смотрится в договоре,
+# полная поддержка кириллицы. Fallback на DejaVuSans, если PT Serif недоступен.
+FONT_REGULAR_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/ptserif/PT_Serif-Web-Regular.ttf"
+FONT_BOLD_URL    = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/ptserif/PT_Serif-Web-Bold.ttf"
+FONT_REGULAR_FALLBACK = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans.ttf"
+FONT_BOLD_FALLBACK    = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans-Bold.ttf"
 
 _fonts_registered = False
 
@@ -41,20 +45,31 @@ def ensure_fonts():
     if _fonts_registered:
         return
 
-    def fetch_to_tmp(url, name):
+    def fetch_to_tmp(url, name, fallback_url=None):
         path = f"/tmp/{name}"
         try:
             with open(path, "rb"):
                 pass
+            return path
         except FileNotFoundError:
-            with urllib.request.urlopen(url, timeout=15) as r:
-                data = r.read()
-            with open(path, "wb") as f:
-                f.write(data)
-        return path
+            pass
+        last_err = None
+        for u in [url, fallback_url]:
+            if not u:
+                continue
+            try:
+                with urllib.request.urlopen(u, timeout=15) as r:
+                    data = r.read()
+                with open(path, "wb") as f:
+                    f.write(data)
+                return path
+            except Exception as e:
+                last_err = e
+                continue
+        raise last_err
 
-    reg = fetch_to_tmp(FONT_REGULAR_URL, "djv.ttf")
-    bold = fetch_to_tmp(FONT_BOLD_URL, "djvb.ttf")
+    reg = fetch_to_tmp(FONT_REGULAR_URL, "ctr_reg.ttf", FONT_REGULAR_FALLBACK)
+    bold = fetch_to_tmp(FONT_BOLD_URL, "ctr_bold.ttf", FONT_BOLD_FALLBACK)
     pdfmetrics.registerFont(TTFont("dj", reg))
     pdfmetrics.registerFont(TTFont("djB", bold))
     _fonts_registered = True
@@ -349,75 +364,121 @@ def build_spec(d, order, company):
     c3 = 14 * mm                       # кол-во
     c4 = 32 * mm                       # цена (шире — крупные суммы не обрезаются)
     c2 = d.maxw - c1 - c3 - c4         # наименование
-    rh = 9 * mm
     x_qty = col_x + c1 + c2
     x_price = col_x + c1 + c2 + c3
 
-    def cell_text(s, x, w, align="left", font="dj", size=9, color=0.15, pad=2.5):
-        d.c.setFillGray(color)
-        txt = str(s)
-        avail = w - 2 * pad * mm
-        if align == "right":
-            # Числа/суммы НЕЛЬЗЯ обрезать (иначе "1 014 141" → "1 014 1").
-            # Если не влезает — уменьшаем шрифт до посадки (до 6pt).
-            while size > 6 and pdfmetrics.stringWidth(txt, font, size) > avail:
-                size -= 0.5
-        else:
-            # Для текста (наименование) — многоточие с конца.
-            while pdfmetrics.stringWidth(txt, font, size) > avail and len(txt) > 3:
-                txt = txt[:-2]
-        d.c.setFont(font, size)
-        cy = d.y - rh + 3 * mm
-        if align == "center":
-            d.c.drawCentredString(x + w / 2, cy, txt)
-        elif align == "right":
-            d.c.drawRightString(x + w - pad * mm, cy, txt)
-        else:
-            d.c.drawString(x + pad * mm, cy, txt)
+    pad = 2.5 * mm          # внутренний отступ ячейки
+    line_h = 4.2 * mm       # высота одной текстовой строки
+    min_rh = 8 * mm         # минимальная высота строки таблицы
+
+    def wrap_lines(s, w, font="dj", size=9):
+        """Переносит текст по словам так, чтобы каждая строка влезала в ширину w.
+        Длинное слово (без пробелов) при необходимости рвётся по символам —
+        текст НИКОГДА не теряется."""
+        avail = w - 2 * pad
+        words = str(s).split()
+        if not words:
+            return [""]
+        lines, cur = [], ""
+        for word in words:
+            trial = (cur + " " + word).strip()
+            if pdfmetrics.stringWidth(trial, font, size) <= avail:
+                cur = trial
+                continue
+            if cur:
+                lines.append(cur)
+                cur = ""
+            # слово само по себе шире ячейки — рвём по символам
+            while pdfmetrics.stringWidth(word, font, size) > avail and len(word) > 1:
+                chunk = word
+                while pdfmetrics.stringWidth(chunk, font, size) > avail and len(chunk) > 1:
+                    chunk = chunk[:-1]
+                lines.append(chunk)
+                word = word[len(chunk):]
+            cur = word
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    def draw_cell(lines, x, w, top_y, height, align="left", font="dj", size=9, color=0.15):
+        """Рисует многострочный текст, вертикально центрируя блок в ячейке."""
+        d.c.setFont(font, size); d.c.setFillGray(color)
+        block_h = len(lines) * line_h
+        cy = top_y - (height - block_h) / 2 - line_h + 1.2 * mm
+        for ln in lines:
+            if align == "center":
+                d.c.drawCentredString(x + w / 2, cy, ln)
+            elif align == "right":
+                d.c.drawRightString(x + w - pad, cy, ln)
+            else:
+                d.c.drawString(x + pad, cy, ln)
+            cy -= line_h
         d.c.setFillGray(0)
 
-    # ── Шапка таблицы (заливка) ──
-    d._ensure(rh / mm + 2)
-    d.c.setFillGray(0.92)
-    d.c.rect(col_x, d.y - rh, d.maxw, rh, stroke=0, fill=1)
-    d.c.setFillGray(0)
-    cell_text("Комплектующее", col_x, c1, "left", "djB", 8.5, 0.25)
-    cell_text("Наименование", col_x + c1, c2, "center", "djB", 8.5, 0.25)
-    cell_text("Кол-во", x_qty, c3, "center", "djB", 8.5, 0.25)
-    cell_text("Цена, ₽", x_price, c4, "right", "djB", 8.5, 0.25)
-    d.c.setStrokeGray(0.6); d.c.setLineWidth(0.6)
-    d.c.rect(col_x, d.y - rh, d.maxw, rh)
-    d.y -= rh
+    def row_height(cells):
+        """cells: [(lines_count)] -> высота строки по самой «высокой» ячейке."""
+        max_lines = max(cells) if cells else 1
+        return max(min_rh, max_lines * line_h + 3 * mm)
 
-    # ── Строки (чередование фона) ──
+    # ── Шапка таблицы ──
+    hdr = [
+        ("Комплектующее", col_x, c1, "left"),
+        ("Наименование", col_x + c1, c2, "center"),
+        ("Кол-во", x_qty, c3, "center"),
+        ("Цена, ₽", x_price, c4, "right"),
+    ]
+    hdr_lines = [wrap_lines(t, w, "djB", 8.5) for t, _, w, _ in hdr]
+    h_rh = row_height([len(l) for l in hdr_lines])
+    d._ensure(h_rh / mm + 2)
+    top = d.y
+    d.c.setFillGray(0.92)
+    d.c.rect(col_x, top - h_rh, d.maxw, h_rh, stroke=0, fill=1)
+    d.c.setFillGray(0)
+    for (t, x, w, al), lines in zip(hdr, hdr_lines):
+        draw_cell(lines, x, w, top, h_rh, al, "djB", 8.5, 0.25)
+    d.c.setStrokeGray(0.6); d.c.setLineWidth(0.6)
+    d.c.rect(col_x, top - h_rh, d.maxw, h_rh)
+    d.y -= h_rh
+
+    # ── Строки (чередование фона, авто-высота, перенос текста) ──
     d.c.setStrokeGray(0.78); d.c.setLineWidth(0.4)
     for i, (label, name, qty, line_sum) in enumerate(rows):
-        d._ensure(rh / mm + 2)
+        l_label = wrap_lines(label, c1, "dj", 8.5)
+        l_name = wrap_lines(name, c2, "dj", 9)
+        l_qty = wrap_lines(f"{qty} шт", c3, "dj", 8.5)
+        l_price = wrap_lines(fmt_money(line_sum), c4, "djB", 9)
+        r_h = row_height([len(l_label), len(l_name), len(l_qty), len(l_price)])
+        d._ensure(r_h / mm + 2)
+        top = d.y
         if i % 2 == 1:
             d.c.setFillGray(0.97)
-            d.c.rect(col_x, d.y - rh, d.maxw, rh, stroke=0, fill=1)
+            d.c.rect(col_x, top - r_h, d.maxw, r_h, stroke=0, fill=1)
             d.c.setFillGray(0)
-        d.c.rect(col_x, d.y - rh, c1, rh)
-        d.c.rect(col_x + c1, d.y - rh, c2, rh)
-        d.c.rect(x_qty, d.y - rh, c3, rh)
-        d.c.rect(x_price, d.y - rh, c4, rh)
-        cell_text(label, col_x, c1, "left", "dj", 8.5, 0.2)
-        cell_text(name, col_x + c1, c2, "center", "dj", 9, 0.1)
-        cell_text(f"{qty} шт", x_qty, c3, "center", "dj", 8.5, 0.2)
-        cell_text(fmt_money(line_sum), x_price, c4, "right", "djB", 9, 0.1)
-        d.y -= rh
+        d.c.setStrokeGray(0.78)
+        d.c.rect(col_x, top - r_h, c1, r_h)
+        d.c.rect(col_x + c1, top - r_h, c2, r_h)
+        d.c.rect(x_qty, top - r_h, c3, r_h)
+        d.c.rect(x_price, top - r_h, c4, r_h)
+        draw_cell(l_label, col_x, c1, top, r_h, "left", "dj", 8.5, 0.2)
+        draw_cell(l_name, col_x + c1, c2, top, r_h, "center", "dj", 9, 0.1)
+        draw_cell(l_qty, x_qty, c3, top, r_h, "center", "dj", 8.5, 0.2)
+        draw_cell(l_price, x_price, c4, top, r_h, "right", "djB", 9, 0.1)
+        d.y -= r_h
 
     # ── ИТОГО ──
-    d._ensure(rh / mm + 2)
+    total_lines = wrap_lines(fmt_money(order["total"]), c4, "djB", 10)
+    t_rh = row_height([len(total_lines), 1])
+    d._ensure(t_rh / mm + 2)
+    top = d.y
     d.c.setFillGray(0.9)
-    d.c.rect(col_x, d.y - rh, d.maxw, rh, stroke=0, fill=1)
+    d.c.rect(col_x, top - t_rh, d.maxw, t_rh, stroke=0, fill=1)
     d.c.setFillGray(0)
     d.c.setStrokeGray(0.6); d.c.setLineWidth(0.6)
-    d.c.rect(col_x, d.y - rh, c1 + c2 + c3, rh)
-    d.c.rect(x_price, d.y - rh, c4, rh)
-    cell_text("ИТОГО:", col_x, c1 + c2 + c3, "right", "djB", 10, 0.1)
-    cell_text(fmt_money(order["total"]), x_price, c4, "right", "djB", 10, 0.05)
-    d.y -= rh
+    d.c.rect(col_x, top - t_rh, c1 + c2 + c3, t_rh)
+    d.c.rect(x_price, top - t_rh, c4, t_rh)
+    draw_cell(["ИТОГО:"], col_x, c1 + c2 + c3, top, t_rh, "right", "djB", 10, 0.1)
+    draw_cell(total_lines, x_price, c4, top, t_rh, "right", "djB", 10, 0.05)
+    d.y -= t_rh
     d.space(8)
 
     d.text(f"Срок поставки: {company['delivery_days']} дней.")
