@@ -282,8 +282,8 @@ export default function Profile() {
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex flex-col items-center gap-2">
-          <button onClick={() => navigate("/configurator")} className="flex w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+        <div className="mx-auto mb-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+          <button onClick={() => navigate("/configurator")} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:col-span-2" style={{ cursor: "pointer" }}>
             <Icon name="Plus" size={16} />Новая сборка
           </button>
           {[
@@ -295,7 +295,7 @@ export default function Profile() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key as typeof activeTab)}
-              className={`flex w-full max-w-xs items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${activeTab === t.key ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`}
+              className={`flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors ${activeTab === t.key ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`}
               style={{ cursor: "pointer" }}
             >
               <Icon name={t.icon as "Cpu"} size={15} />
