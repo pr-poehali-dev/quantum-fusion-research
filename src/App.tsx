@@ -4,40 +4,65 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { ThemeProvider } from "@/components/theme-provider";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, ComponentType } from "react";
 import AdminGuard from "@/components/admin/AdminGuard";
+
+// Обёртка для lazy-импортов: если после нового деплоя браузер держит ссылку
+// на старый (уже удалённый) чанк — ловим ошибку загрузки модуля и один раз
+// перезагружаем страницу, чтобы подтянуть свежий билд. Предотвращает
+// "Failed to fetch dynamically imported module" после релиза.
+function lazyWithReload<T extends ComponentType<unknown>>(
+  factory: () => Promise<{ default: T }>
+) {
+  const key = "chunk_reload_once";
+  return lazy(() =>
+    factory()
+      .then((mod) => {
+        sessionStorage.removeItem(key);
+        return mod;
+      })
+      .catch((err) => {
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, "1");
+          window.location.reload();
+          return new Promise<{ default: T }>(() => {});
+        }
+        throw err;
+      })
+  );
+}
 
 const ConsentModal = lazy(() => import("@/components/ConsentModal"));
 const Toaster = lazy(() => import("@/components/ui/toaster").then(m => ({ default: m.Toaster })));
 const Sonner = lazy(() => import("@/components/ui/sonner").then(m => ({ default: m.Toaster })));
 
-const Index = lazy(() => import("./pages/Index"));
-const Shop = lazy(() => import("./pages/Shop"));
-const Configurator = lazy(() => import("./pages/Configurator"));
-const Cart = lazy(() => import("./pages/Cart"));
-const Admin = lazy(() => import("./pages/Admin"));
-const AuthPage = lazy(() => import("./pages/AuthPage"));
-const Profile = lazy(() => import("./pages/Profile"));
-const BuildPreview = lazy(() => import("./pages/BuildPreview"));
-const OrderSheet = lazy(() => import("./pages/OrderSheet"));
-const OrderProcessPage = lazy(() => import("./pages/OrderProcessPage"));
-const ArticlePage = lazy(() => import("./pages/ArticlePage"));
-const ProductPage = lazy(() => import("./pages/ProductPage"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const CablePage = lazy(() => import("./pages/CablePage"));
-const Builds = lazy(() => import("./pages/Builds"));
-const CommunityBuilds = lazy(() => import("./pages/CommunityBuilds"));
-const UserProfile = lazy(() => import("./pages/UserProfile"));
-const UserBuild = lazy(() => import("./pages/UserBuild"));
-const B2B = lazy(() => import("./pages/B2B"));
-const Articles = lazy(() => import("./pages/Articles"));
-const HomeStonks = lazy(() => import("./pages/HomeStonks"));
-const Quiz = lazy(() => import("./pages/Quiz"));
-const Service = lazy(() => import("./pages/Service"));
-const Privacy = lazy(() => import("./pages/Privacy"));
-const Contacts = lazy(() => import("./pages/Contacts"));
-const TierLists = lazy(() => import("./pages/TierLists"));
-const ProjectReport = lazy(() => import("./pages/ProjectReport"));
+const Index = lazyWithReload(() => import("./pages/Index"));
+const Shop = lazyWithReload(() => import("./pages/Shop"));
+const Configurator = lazyWithReload(() => import("./pages/Configurator"));
+const Cart = lazyWithReload(() => import("./pages/Cart"));
+const Admin = lazyWithReload(() => import("./pages/Admin"));
+const AuthPage = lazyWithReload(() => import("./pages/AuthPage"));
+const Profile = lazyWithReload(() => import("./pages/Profile"));
+const BuildPreview = lazyWithReload(() => import("./pages/BuildPreview"));
+const OrderSheet = lazyWithReload(() => import("./pages/OrderSheet"));
+const OrderProcessPage = lazyWithReload(() => import("./pages/OrderProcessPage"));
+const ArticlePage = lazyWithReload(() => import("./pages/ArticlePage"));
+const ProductPage = lazyWithReload(() => import("./pages/ProductPage"));
+const NotFound = lazyWithReload(() => import("./pages/NotFound"));
+const CablePage = lazyWithReload(() => import("./pages/CablePage"));
+const Builds = lazyWithReload(() => import("./pages/Builds"));
+const CommunityBuilds = lazyWithReload(() => import("./pages/CommunityBuilds"));
+const UserProfile = lazyWithReload(() => import("./pages/UserProfile"));
+const UserBuild = lazyWithReload(() => import("./pages/UserBuild"));
+const B2B = lazyWithReload(() => import("./pages/B2B"));
+const Articles = lazyWithReload(() => import("./pages/Articles"));
+const HomeStonks = lazyWithReload(() => import("./pages/HomeStonks"));
+const Quiz = lazyWithReload(() => import("./pages/Quiz"));
+const Service = lazyWithReload(() => import("./pages/Service"));
+const Privacy = lazyWithReload(() => import("./pages/Privacy"));
+const Contacts = lazyWithReload(() => import("./pages/Contacts"));
+const TierLists = lazyWithReload(() => import("./pages/TierLists"));
+const ProjectReport = lazyWithReload(() => import("./pages/ProjectReport"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
