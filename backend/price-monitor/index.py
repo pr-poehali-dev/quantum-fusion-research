@@ -117,13 +117,22 @@ def handler(event: dict, context) -> dict:
     cur = conn.cursor()
 
     # ===== Контур ПАРСЕРА (приём данных) =====
-    if parser_token or action in ("ingest", "finish"):
+    if parser_token or action in ("ingest", "finish", "test_alert"):
         if not expected_token or parser_token != expected_token:
             cur.close(); conn.close()
             return resp({"error": "unauthorized"}, 401)
         if method != "POST":
             cur.close(); conn.close()
             return resp({"error": "method_not_allowed"}, 405)
+        if action == "test_alert":
+            try:
+                from tg_notify import notify_price
+                sent = notify_price("тестовое сообщение")
+            except Exception as e:
+                sent = False
+                print(f"TEST_ALERT error: {e}")
+            cur.close(); conn.close()
+            return resp({"ok": True, "sent": sent})
         if action == "finish":
             # Парсер закончил обход всех источников — шлём общую сводку в чат.
             result = _finish(cur)
