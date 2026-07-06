@@ -237,25 +237,23 @@ export default function B2B() {
           </div>
         </div>
 
-        {/* Категории */}
-        <div className="mb-5 flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveCategory("")}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${activeCategory === "" ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
-            style={{ cursor: "pointer" }}
-          >
-            Все
-          </button>
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${activeCategory === cat ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+        {/* Категории — выпадающий список */}
+        <div className="mb-5">
+          <div className="relative inline-flex w-full items-center sm:w-72">
+            <Icon name="Tag" size={15} className="pointer-events-none absolute left-3 text-foreground/40" />
+            <select
+              value={activeCategory}
+              onChange={e => setActiveCategory(e.target.value)}
+              className="w-full appearance-none rounded-xl border border-border bg-card py-2.5 pl-9 pr-9 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
               style={{ cursor: "pointer" }}
             >
-              {cat}
-            </button>
-          ))}
+              <option value="">Все категории</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <Icon name="ChevronDown" size={16} className="pointer-events-none absolute right-3 text-foreground/40" />
+          </div>
         </div>
 
         {/* Таблица */}
