@@ -862,6 +862,20 @@ export default function WarehouseTab() {
   type ReserveFilter = null | 'all' | 'only' | 'negative'
   const [reserveFilter, setReserveFilter] = useState<ReserveFilter>(null)
 
+  // Показывать ли позиции с нулевым количеством И без резервов.
+  // По умолчанию скрыты; состояние кнопки запоминается в localStorage.
+  const [showZeroQty, setShowZeroQty] = useState<boolean>(
+    () => localStorage.getItem("wh_show_zero_qty") === "1"
+  )
+  const toggleZeroQty = () => {
+    setShowZeroQty(prev => {
+      const next = !prev
+      localStorage.setItem("wh_show_zero_qty", next ? "1" : "0")
+      return next
+    })
+    setPage(0)
+  }
+
   const RESERVE_FILTER_CYCLE: ReserveFilter[] = [null, 'all', 'only', 'negative']
   const RESERVE_FILTER_LABELS: Record<string, string> = {
     all: 'Все резервы',
@@ -921,6 +935,9 @@ export default function WarehouseTab() {
     if (search) params.search = search
     if (filterCat) params.category = filterCat
     if (showArchived) params.archived = "true"
+    // Скрываем пустые позиции (qty=0 и без резервов) на бэкенде — для корректной пагинации.
+    // Позиции с любым резервом остаются видимыми. Не действует в архиве и режиме резервов.
+    if (!showZeroQty && !showArchived && !reserveFilter) params.hide_zero = "true"
     const [gData, sData, cData] = await Promise.all([
       api.warehouse.getGroups(params),
       api.warehouse.getStores(),
@@ -930,7 +947,7 @@ export default function WarehouseTab() {
     if (!gData.error) { setGroups(gData.groups || []); setTotal(gData.total || 0) }
     if (!sData.error && Array.isArray(sData)) setStores(sData)
     if (!cData.error && Array.isArray(cData)) setCategories(cData)
-  }, [search, filterCat, page, reserveFilter, showArchived])
+  }, [search, filterCat, page, reserveFilter, showArchived, showZeroQty])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(0) }, [search, filterCat, showArchived])
@@ -1024,6 +1041,9 @@ export default function WarehouseTab() {
       })
       .catch(() => {})
   }, [])
+
+  // Пустые позиции (qty=0 и без резервов) скрываются на бэкенде через hide_zero,
+  // пока не нажата кнопка "Показать нулевые" (см. load).
 
   // Применяем фильтр и сортировку резервов
   const displayGroups = (() => {
@@ -1126,6 +1146,16 @@ export default function WarehouseTab() {
         >
           <Icon name={recalcing ? "Loader" : "RefreshCw"} size={14} className={`mr-1.5 ${recalcing ? "animate-spin" : ""}`} />
           {recalcing ? "Пересчёт..." : "Пересчитать резервы"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={toggleZeroQty}
+          title="Показать позиции с нулевым остатком и без резервов"
+          className={showZeroQty ? "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary" : ""}
+        >
+          <Icon name={showZeroQty ? "Eye" : "EyeOff"} size={14} className="mr-1.5" />
+          {showZeroQty ? "Скрыть нулевые" : "Показать нулевые"}
         </Button>
         <Button
           variant="outline"

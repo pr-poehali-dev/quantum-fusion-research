@@ -392,6 +392,7 @@ def handler(event: dict, context) -> dict:
             archived = params.get("archived", "false")
             limit = int(params.get("limit", 50))
             offset = int(params.get("offset", 0))
+            hide_zero = params.get("hide_zero", "false") == "true"
 
             where = [f"g.is_archived = {'TRUE' if archived == 'true' else 'FALSE'}"]
             if search:
@@ -406,6 +407,17 @@ def handler(event: dict, context) -> dict:
                 where.append(f"g.category = {esc(category)}")
             where_sql = "WHERE " + " AND ".join(where)
 
+            # Скрытие пустых позиций: qty=0 И резервов нет (ни обычных, ни отриц.).
+            # Позиция с любым резервом остаётся видимой. Через HAVING, чтобы
+            # пагинация и total считались корректно.
+            having_sql = ""
+            if hide_zero and archived != "true":
+                having_sql = (
+                    "HAVING (COALESCE(SUM(s.qty), COALESCE(p.stock_qty, 0)) > 0 "
+                    "OR COALESCE(SUM(s.qty_reserved), 0) > 0 "
+                    "OR COALESCE(SUM(s.qty_negative), 0) <> 0)"
+                )
+
             cur.execute(
                 f"SELECT g.id, g.product_id, g.name, g.sku, g.category, g.part_number, "
                 f"g.warranty_months, g.price_retail, g.price_opt1, g.price_opt2, "
@@ -418,13 +430,22 @@ def handler(event: dict, context) -> dict:
                 f"FROM {SCHEMA}.warehouse_groups g "
                 f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
                 f"LEFT JOIN {SCHEMA}.products p ON p.id = g.product_id "
-                f"{where_sql} GROUP BY g.id, p.stock_qty ORDER BY g.name LIMIT {limit} OFFSET {offset}"
+                f"{where_sql} GROUP BY g.id, p.stock_qty {having_sql} ORDER BY g.name LIMIT {limit} OFFSET {offset}"
             )
             groups = [fmt_group(r) for r in cur.fetchall()]
 
-            cur.execute(
-                f"SELECT COUNT(*) FROM {SCHEMA}.warehouse_groups g {where_sql}"
-            )
+            if having_sql:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM ("
+                    f"SELECT g.id FROM {SCHEMA}.warehouse_groups g "
+                    f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
+                    f"LEFT JOIN {SCHEMA}.products p ON p.id = g.product_id "
+                    f"{where_sql} GROUP BY g.id, p.stock_qty {having_sql}) sub"
+                )
+            else:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM {SCHEMA}.warehouse_groups g {where_sql}"
+                )
             total = cur.fetchone()[0]
 
             # история цен за 7 дней для каждой группы
