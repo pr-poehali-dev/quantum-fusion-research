@@ -1449,16 +1449,28 @@ def handler(event: dict, context) -> dict:
                 (inv_id,)
             )
             items = cur.fetchall()
-            applied = []
+            applied = []    # применённые к остатку изменения (недостачи)
+            overflow = []   # излишки (+) — требуют оформления ПРИЁМКИ поставки
             for iid, gid, qty_exp, qty_act, cell, name in items:
                 # qty_exp — это СВОБОДНЫЙ остаток (без резервов), см. inventory_create.
                 # delta = факт (свободный) - ожидаемый свободный остаток.
                 delta = int(qty_act) - int(qty_exp)
                 if delta == 0:
                     continue
-                # Поставки группы, где есть СВОБОДНЫЕ единицы (qty > qty_reserved),
-                # от свежих к старым. Корректируем только свободную часть,
-                # зарезервированное под заказы не трогаем.
+
+                if delta > 0:
+                    # Излишек (пересорт): нашли БОЛЬШЕ, чем в базе. НЕ плюсуем молча
+                    # в фантомную партию — эти единицы нужно принять как реальную
+                    # поставку (с ценой, магазином, ячейкой). Отдаём во фронт для
+                    # последовательного окна приёмки. Остаток тут не трогаем.
+                    overflow.append({
+                        "group_id": gid, "name": name,
+                        "delta": delta, "qty_actual": qty_act,
+                        "qty_expected": qty_exp, "cell": cell or "",
+                    })
+                    continue
+
+                # Недостача — списываем из свободных единиц поставок, от свежих к старым.
                 cur.execute(
                     f"SELECT id, qty, qty_reserved FROM {SCHEMA}.warehouse_supplies "
                     f"WHERE group_id=%s ORDER BY id DESC",
@@ -1467,40 +1479,27 @@ def handler(event: dict, context) -> dict:
                 supplies = cur.fetchall()
                 if not supplies:
                     continue
-                remaining = delta
                 touched_sid = None
-                if delta > 0:
-                    # Излишек — добавляем в самую свежую поставку
-                    sid, s_qty, s_res = supplies[0]
+                need = -delta
+                for sid, s_qty, s_res in supplies:
+                    free = max(0, int(s_qty) - int(s_res))
+                    if free <= 0:
+                        continue
+                    take = min(free, need)
                     cur.execute(
                         f"UPDATE {SCHEMA}.warehouse_supplies SET qty=%s, updated_at=NOW() WHERE id=%s",
-                        (int(s_qty) + delta, sid)
+                        (int(s_qty) - take, sid)
                     )
                     touched_sid = sid
-                    remaining = 0
-                else:
-                    # Недостача — списываем из свободных единиц, начиная со свежих
-                    need = -delta
-                    for sid, s_qty, s_res in supplies:
-                        free = max(0, int(s_qty) - int(s_res))
-                        if free <= 0:
-                            continue
-                        take = min(free, need)
-                        cur.execute(
-                            f"UPDATE {SCHEMA}.warehouse_supplies SET qty=%s, updated_at=NOW() WHERE id=%s",
-                            (int(s_qty) - take, sid)
-                        )
-                        touched_sid = sid
-                        need -= take
-                        if need <= 0:
-                            break
-                    remaining = -need  # 0 если списали всё нужное
+                    need -= take
+                    if need <= 0:
+                        break
 
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.warehouse_movements "
                     f"(group_id, supply_id, type, qty_delta, note, created_at) "
                     f"VALUES (%s, %s, 'inventory', %s, %s, NOW())",
-                    (gid, touched_sid, delta, f"Инвентаризация #{inv_id}: {'+' if delta>0 else ''}{delta} шт. (факт {qty_act}, ожидалось {qty_exp})")
+                    (gid, touched_sid, delta, f"Инвентаризация #{inv_id}: {delta} шт. (факт {qty_act}, ожидалось {qty_exp})")
                 )
                 # Синхронизируем in_stock/stock_qty в products
                 cur.execute(
@@ -1514,12 +1513,14 @@ def handler(event: dict, context) -> dict:
                 )
                 applied.append({"name": name, "delta": delta, "qty_actual": qty_act})
 
+            # В историю пишем и применённые недостачи, и излишки (для отчёта).
+            result_all = applied + [{"name": o["name"], "delta": o["delta"], "qty_actual": o["qty_actual"]} for o in overflow]
             cur.execute(
                 f"UPDATE {SCHEMA}.warehouse_inventories SET status='applied', result_json=%s, applied_at=NOW() WHERE id=%s",
-                (json.dumps(applied, ensure_ascii=False), inv_id)
+                (json.dumps(result_all, ensure_ascii=False), inv_id)
             )
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "applied": applied})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "applied": applied, "overflow": overflow})}
 
         if action == "inventory_get" and method == "GET":
             """Получить позиции инвентаризации"""

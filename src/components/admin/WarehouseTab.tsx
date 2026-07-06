@@ -1418,6 +1418,7 @@ export default function WarehouseTab() {
         <InventoryModal
           categories={categories}
           groups={groups}
+          stores={stores}
           onClose={() => setInventoryModal(false)}
           onApplied={load}
         />
@@ -2073,6 +2074,137 @@ function QuickSupplyModal({ stores, onClose, onSaved }: {
   )
 }
 
+// ─── Приёмка излишка инвентаризации (товар уже известен) ─────────────────────
+
+function InventoryReceiveModal({ stores, item, onClose, onSaved }: {
+  stores: Store[]
+  item: { group_id: number; name: string; delta: number; cell: string }
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    store_id: "" as number | "",
+    qty: String(item.delta),
+    cost_price: "" as string,
+    purchase_date: new Date().toISOString().substring(0, 10),
+    has_vat: null as boolean | null,
+    cell: item.cell || "",
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [showErrors, setShowErrors] = useState(false)
+
+  const qtyNum = parseInt(form.qty) || 0
+  const costNum = parseFloat(form.cost_price) || 0
+  const storeInvalid = form.store_id === "" || form.store_id == null
+  const qtyInvalid = qtyNum <= 0
+  const priceInvalid = costNum <= 0
+  const vatInvalid = form.has_vat === null
+  const canSave = !storeInvalid && !qtyInvalid && !priceInvalid && !vatInvalid
+
+  const save = async () => {
+    if (!canSave) { setShowErrors(true); return }
+    setLoading(true); setError("")
+    const data = await api.warehouse.createSupply({
+      group_id: item.group_id,
+      store_id: form.store_id || null,
+      qty: qtyNum,
+      price_with_vat: costNum,
+      has_vat: form.has_vat,
+      purchase_date: form.purchase_date,
+      cell: form.cell || null,
+    })
+    setLoading(false)
+    if (data.error) { setError(data.error); return }
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-border px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Приёмка товара</h2>
+            <button onClick={onClose}><Icon name="X" size={18} className="text-foreground/40" /></button>
+          </div>
+          <p className="mt-0.5 text-xs text-foreground/40">Товар не был проведён на складе</p>
+        </div>
+
+        <div className="space-y-4 px-6 py-4">
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+            <p className="text-sm font-medium">{item.name}</p>
+            <p className="mt-0.5 text-xs text-foreground/50">Найдено при инвентаризации: +{item.delta} шт.</p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-foreground/60">Магазин *</label>
+            <select
+              className={`w-full rounded-lg border bg-background px-3 py-2 text-sm ${showErrors && storeInvalid ? "border-red-500" : "border-border"}`}
+              value={form.store_id}
+              onChange={e => setForm(p => ({ ...p, store_id: e.target.value ? Number(e.target.value) : "" }))}
+            >
+              <option value="">Выбери магазин</option>
+              {stores.map(s => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground/60">Количество *</label>
+              <Input type="number" min={1} value={form.qty}
+                className={showErrors && qtyInvalid ? "border-red-500" : ""}
+                onChange={e => setForm(p => ({ ...p, qty: e.target.value }))} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground/60">Цена закупки *</label>
+              <Input type="number" min={0} placeholder="₽ за шт." value={form.cost_price}
+                className={showErrors && priceInvalid ? "border-red-500" : ""}
+                onChange={e => setForm(p => ({ ...p, cost_price: e.target.value }))} />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-foreground/60">Цена с НДС? *</label>
+            <div className="flex gap-2">
+              <button onClick={() => setForm(p => ({ ...p, has_vat: true }))}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${form.has_vat === true ? "border-primary bg-primary text-primary-foreground" : showErrors && vatInvalid ? "border-red-500" : "border-border hover:border-primary/40"}`}>
+                С НДС
+              </button>
+              <button onClick={() => setForm(p => ({ ...p, has_vat: false }))}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${form.has_vat === false ? "border-primary bg-primary text-primary-foreground" : showErrors && vatInvalid ? "border-red-500" : "border-border hover:border-primary/40"}`}>
+                Без НДС
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground/60">Дата закупки</label>
+              <Input type="date" value={form.purchase_date}
+                onChange={e => setForm(p => ({ ...p, purchase_date: e.target.value }))} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground/60">Ячейка</label>
+              <Input placeholder="Ячейка" value={form.cell}
+                onChange={e => setForm(p => ({ ...p, cell: e.target.value }))} />
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex justify-between border-t border-border px-6 py-4">
+          <Button variant="outline" onClick={onClose}>Назад</Button>
+          <Button onClick={save} disabled={loading}>
+            {loading ? <><Icon name="Loader" size={14} className="mr-1.5 animate-spin" />Принимаю...</>
+              : <><Icon name="Check" size={14} className="mr-1.5" />Принять</>}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Инвентаризация ────────────────────────────────────────────────────────────
 
 type InvItem = {
@@ -2092,14 +2224,20 @@ type InventoryRecord = {
   created_at: string | null
 }
 
-function InventoryModal({ categories, groups, onClose, onApplied }: {
+type OverflowItem = {
+  group_id: number; name: string; delta: number
+  qty_actual: number; qty_expected: number; cell: string
+}
+
+function InventoryModal({ categories, groups, stores, onClose, onApplied }: {
   categories: string[]
   groups: Group[]
+  stores: Store[]
   onClose: () => void
   onApplied: () => void
 }) {
   // Шаг 1 — выбор фильтров, Шаг 2 — заполнение, Шаг 3 — подтверждение, "history" — история
-  const [step, setStep] = useState<1 | 2 | 3 | "history">(1)
+  const [step, setStep] = useState<1 | 2 | 3 | "history" | "receive">(1)
   const [selCells, setSelCells] = useState<string[]>([])
   const [selCats, setSelCats] = useState<string[]>([])
   const [inventoryId, setInventoryId] = useState<number | null>(null)
@@ -2112,6 +2250,10 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
   const [error, setError] = useState("")
   const [historyList, setHistoryList] = useState<InventoryRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  // Приёмка излишков (пересорт «+»): открывается последовательно по каждой позиции
+  const [overflowItems, setOverflowItems] = useState<OverflowItem[]>([])
+  const [receiveIdx, setReceiveIdx] = useState<number | null>(null)
+  const [receivedIdx, setReceivedIdx] = useState<Set<number>>(new Set())
 
   // Уникальные ячейки из текущих групп
   const allCells = Array.from(new Set(groups.map(g => g.cell).filter(Boolean))).sort()
@@ -2156,7 +2298,24 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
     setApplying(false)
     if (d.error) { setError(d.error); return }
     setApplyResult(d.applied || [])
-    setStep(3)
+    onApplied()
+    // Излишки (пересорт «+») требуют оформления приёмки — открываем окно
+    // последовательно на каждую позицию. Иначе сразу показываем результат.
+    const ovf: OverflowItem[] = d.overflow || []
+    if (ovf.length > 0) {
+      setOverflowItems(ovf)
+      setReceivedIdx(new Set())
+      setReceiveIdx(0)
+      setStep("receive")
+    } else {
+      setStep(3)
+    }
+  }
+
+  // Приёмка одной позиции-излишка завершена → зелёная подсветка + переход к следующей
+  const onReceived = (idx: number) => {
+    setReceivedIdx(prev => new Set(prev).add(idx))
+    setReceiveIdx(null)
     onApplied()
   }
 
@@ -2174,13 +2333,16 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
         <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
           <div>
             <h2 className="text-lg font-semibold">
-              {step === "history" ? "История инвентаризаций" : "Инвентаризация"}
+              {step === "history" ? "История инвентаризаций"
+                : step === "receive" ? "Приёмка излишков"
+                : "Инвентаризация"}
             </h2>
             <p className="text-xs text-foreground/40 mt-0.5">
               {step === 1 && "Шаг 1 из 3 — выбор позиций"}
               {step === 2 && `Шаг 2 из 3 — подсчёт (заполнено ${filledCount} из ${items.length})`}
               {step === 3 && "Шаг 3 из 3 — результат"}
               {step === "history" && "Все проведённые инвентаризации"}
+              {step === "receive" && "Оформи поступление найденного товара"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2359,7 +2521,52 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
               )}
             </div>
           )}
+
+          {/* ПРИЁМКА ИЗЛИШКОВ — товар найден при инвентаризации, но не проведён на складе */}
+          {step === "receive" && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-orange-400/30 bg-orange-400/5 px-4 py-3 text-sm">
+                <p className="font-medium text-orange-400">Приёмка товара, не проведённого на складе</p>
+                <p className="mt-0.5 text-xs text-foreground/50">
+                  Излишки при инвентаризации нужно оформить как поступление. Прими каждую позицию.
+                </p>
+              </div>
+              {overflowItems.map((o, i) => {
+                const done = receivedIdx.has(i)
+                return (
+                  <div key={i} className={`flex items-center justify-between rounded-xl border px-4 py-3 ${done ? "border-emerald-500/40 bg-emerald-500/10" : "border-border bg-background"}`}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{o.name}</p>
+                      {o.cell && <p className="mt-0.5 text-xs text-foreground/40 font-mono">📦 {o.cell}</p>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`text-sm font-semibold ${done ? "text-emerald-500" : "text-foreground/70"}`}>+{o.delta} шт.</span>
+                      {done ? (
+                        <span className="flex items-center gap-1 text-xs text-emerald-500 font-medium">
+                          <Icon name="Check" size={14} />принято
+                        </span>
+                      ) : (
+                        <Button size="sm" onClick={() => setReceiveIdx(i)}>
+                          <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
+
+        {/* Модалка приёмки конкретной позиции-излишка */}
+        {receiveIdx !== null && overflowItems[receiveIdx] && (
+          <InventoryReceiveModal
+            stores={stores}
+            item={overflowItems[receiveIdx]}
+            onClose={() => setReceiveIdx(null)}
+            onSaved={() => onReceived(receiveIdx)}
+          />
+        )}
 
         {/* Футер */}
         <div className="border-t border-border px-6 py-4 shrink-0 flex items-center justify-between gap-3">
@@ -2430,6 +2637,19 @@ function InventoryModal({ categories, groups, onClose, onApplied }: {
             <div className="flex w-full justify-end">
               <Button onClick={onClose}>Закрыть</Button>
             </div>
+          )}
+          {step === "receive" && (
+            <>
+              <span className="text-xs text-foreground/40">
+                Принято: {receivedIdx.size} из {overflowItems.length}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setStep(3)}>← Назад</Button>
+                <Button onClick={() => setStep(3)} disabled={receivedIdx.size < overflowItems.length}>
+                  <Icon name="Check" size={14} className="mr-1.5" />Готово
+                </Button>
+              </div>
+            </>
           )}
         </div>
       </div>
