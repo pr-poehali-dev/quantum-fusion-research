@@ -59,6 +59,18 @@ export default function Admin() {
   // id сборки, которую надо открыть в редакторе каталога после перехода на add_build
   const [autoEditBuildId, setAutoEditBuildId] = useState<number | null>(null)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  // Счётчик необработанных предложений парсера цен (бейдж на вкладке «Цены»)
+  const [parserPending, setParserPending] = useState(0)
+
+  useEffect(() => {
+    if (!authed) return
+    api.priceMonitor.list(getAdminKey())
+      .then(d => {
+        const c = d.counts || {}
+        setParserPending((c.price_change || 0) + (c.new_product || 0))
+      })
+      .catch(() => {})
+  }, [authed, tab])
 
   // ── Data loading ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -237,6 +249,11 @@ export default function Admin() {
                   style={{ cursor: "pointer" }}>
                   <Icon name={(t.icon || "Package") as "Package"} size={15} />
                   {t.label}
+                  {t.key === "price_monitor" && parserPending > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold leading-none text-white">
+                      {parserPending > 99 ? "99+" : parserPending}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -267,6 +284,11 @@ export default function Admin() {
                         style={{ cursor: "pointer" }}>
                         <Icon name={(t.icon || "Package") as "Package"} size={16} className="shrink-0" />
                         {t.label}
+                        {t.key === "price_monitor" && parserPending > 0 && (
+                          <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold leading-none text-white">
+                            {parserPending > 99 ? "99+" : parserPending}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>

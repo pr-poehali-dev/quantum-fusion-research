@@ -1,10 +1,17 @@
 import React, { useEffect, useState, useCallback, useRef } from "react"
-import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import { playScanOk, playScanError } from "@/lib/scanSound"
 import { getAdminKey } from "@/pages/admin/types"
 import BrandsManager from "./BrandsManager"
@@ -1030,18 +1037,6 @@ export default function WarehouseTab() {
 
   const totalPages = Math.ceil(total / PAGE)
 
-  // ── Парсер цен: счётчик необработанных предложений ──
-  const navigate = useNavigate()
-  const [parserPending, setParserPending] = useState(0)
-  useEffect(() => {
-    api.priceMonitor.list(getAdminKey())
-      .then(d => {
-        const c = d.counts || {}
-        setParserPending((c.price_change || 0) + (c.new_product || 0))
-      })
-      .catch(() => {})
-  }, [])
-
   // Пустые позиции (qty=0 и без резервов) скрываются на бэкенде через hide_zero,
   // пока не нажата кнопка "Показать нулевые" (см. load).
 
@@ -1071,103 +1066,109 @@ export default function WarehouseTab() {
         <Badge variant="outline">{total} {showArchived ? "в архиве" : "позиций"}</Badge>
         <div className="flex-1" />
 
-        <Button variant="outline" size="sm" onClick={() => setStoresModal(true)}>
-          <Icon name="Store" size={14} className="mr-1.5" />Магазины
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setBrandsModal(true)}>
-          <Icon name="Award" size={14} className="mr-1.5" />Бренды
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setCatModal(true)}>
-          <Icon name="Tag" size={14} className="mr-1.5" />Категории
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setDiscountModal(true)}>
-          <Icon name="Percent" size={14} className="mr-1.5" />Настройки закупки
-        </Button>
-        <Button size="sm" onClick={() => setQuickSupplyModal(true)}>
-          <Icon name="PackagePlus" size={14} className="mr-1.5" />Принять поставку
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setReceiptModal({})} className="relative border-primary/50 text-primary hover:bg-primary/10">
-          <Icon name="ScanLine" size={14} className="mr-1.5" />Принять по счёту
-          {draftsTotal > 0 && (
-            <span
-              role="button"
-              onClick={(e) => { e.stopPropagation(); setDraftsPanel(v => !v) }}
-              title="Незаконченные листы приёмки"
-              className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white shadow"
+        {/* Меню «Справочники» */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Icon name="Settings2" size={14} className="mr-1.5" />Справочники
+              <Icon name="ChevronDown" size={13} className="ml-1 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuLabel>Справочники</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setStoresModal(true)}>
+              <Icon name="Store" size={14} className="mr-2" />Магазины
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setBrandsModal(true)}>
+              <Icon name="Award" size={14} className="mr-2" />Бренды
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setCatModal(true)}>
+              <Icon name="Tag" size={14} className="mr-2" />Категории
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDiscountModal(true)}>
+              <Icon name="Percent" size={14} className="mr-2" />Настройки закупки
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Меню «Приёмка» (грузовик) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" className="relative">
+              <Icon name="Truck" size={14} className="mr-1.5" />Приёмка
+              <Icon name="ChevronDown" size={13} className="ml-1 opacity-80" />
+              {draftsTotal > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white shadow">
+                  {draftsTotal > 99 ? "99+" : draftsTotal}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Приёмка и товары</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setQuickSupplyModal(true)}>
+              <Icon name="PackagePlus" size={14} className="mr-2" />Принять поставку
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setReceiptModal({})}>
+              <Icon name="ScanLine" size={14} className="mr-2" />Принять по счёту
+              {draftsTotal > 0 && (
+                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white">
+                  {draftsTotal > 99 ? "99+" : draftsTotal}
+                </span>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setGroupModal({})} disabled={showArchived}>
+              <Icon name="Plus" size={14} className="mr-2" />Добавить товар
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Меню «Склад» */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={
+                reserveFilter || showArchived || showZeroQty
+                  ? "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"
+                  : ""
+              }
             >
-              {draftsTotal > 99 ? "99+" : draftsTotal}
-            </span>
-          )}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setInventoryModal(true)}>
-          <Icon name="ClipboardList" size={14} className="mr-1.5" />Инвентаризация
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate("/admin/price_monitor")}
-          className="relative"
-          title="Предложения по ценам от парсера"
-        >
-          <Icon name="Radar" size={14} className="mr-1.5" />Работа с парсером
-          {parserPending > 0 && (
-            <span className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold leading-none text-white shadow">
-              {parserPending > 99 ? "99+" : parserPending}
-            </span>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={cycleReserveFilter}
-          className={
-            reserveFilter === 'negative'
-              ? "border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-400"
-              : reserveFilter === 'only'
-              ? "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 hover:text-orange-400"
-              : reserveFilter === 'all'
-              ? "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-400"
-              : ""
-          }
-        >
-          <Icon
-            name={reserveFilter === 'negative' ? "AlertTriangle" : "Layers"}
-            size={14}
-            className="mr-1.5"
-          />
-          {reserveFilter ? RESERVE_FILTER_LABELS[reserveFilter] : "Просмотр резервов"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRecalcReserves}
-          disabled={recalcing}
-          title="Привести остатки склада в соответствие с реальными резервами заказов"
-        >
-          <Icon name={recalcing ? "Loader" : "RefreshCw"} size={14} className={`mr-1.5 ${recalcing ? "animate-spin" : ""}`} />
-          {recalcing ? "Пересчёт..." : "Пересчитать резервы"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={toggleZeroQty}
-          title="Показать позиции с нулевым остатком и без резервов"
-          className={showZeroQty ? "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary" : ""}
-        >
-          <Icon name={showZeroQty ? "Eye" : "EyeOff"} size={14} className="mr-1.5" />
-          {showZeroQty ? "Скрыть нулевые" : "Показать нулевые"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowArchived(v => !v)}
-          className={showArchived ? "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-400" : ""}
-        >
-          <Icon name="Archive" size={14} className="mr-1.5" />{showArchived ? "Скрыть архив" : "Архив"}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setGroupModal({})} disabled={showArchived}>
-          <Icon name="Plus" size={14} className="mr-1.5" />Добавить товар
-        </Button>
+              <Icon name="Warehouse" size={14} className="mr-1.5" />Склад
+              <Icon name="ChevronDown" size={13} className="ml-1 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuLabel>Управление складом</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setInventoryModal(true)}>
+              <Icon name="ClipboardList" size={14} className="mr-2" />Инвентаризация
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={cycleReserveFilter}>
+              <Icon name={reserveFilter === 'negative' ? "AlertTriangle" : "Layers"} size={14} className="mr-2" />
+              {reserveFilter ? RESERVE_FILTER_LABELS[reserveFilter] : "Просмотр резервов"}
+              {reserveFilter && <Icon name="Check" size={13} className="ml-auto text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleRecalcReserves} disabled={recalcing}>
+              <Icon name={recalcing ? "Loader" : "RefreshCw"} size={14} className={`mr-2 ${recalcing ? "animate-spin" : ""}`} />
+              {recalcing ? "Пересчёт..." : "Пересчитать резервы"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={toggleZeroQty}>
+              <Icon name={showZeroQty ? "Eye" : "EyeOff"} size={14} className="mr-2" />
+              {showZeroQty ? "Скрыть нулевые" : "Показать нулевые"}
+              {showZeroQty && <Icon name="Check" size={13} className="ml-auto text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowArchived(v => !v)}>
+              <Icon name="Archive" size={14} className="mr-2" />
+              {showArchived ? "Скрыть архив" : "Архив"}
+              {showArchived && <Icon name="Check" size={13} className="ml-auto text-primary" />}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Панель незаконченных листов приёмки по счёту */}
