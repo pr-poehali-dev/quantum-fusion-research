@@ -9,18 +9,22 @@ import urllib.request
 import urllib.parse
 
 
-def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n") -> bool:
+def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n",
+          thread_id: str = "") -> bool:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token or not chat_id:
         print("TG_NOTIFY: пропуск — нет TELEGRAM_BOT_TOKEN / чата")
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({
+    payload = {
         "chat_id": chat_id,
         "text": prefix + text,
         "parse_mode": "HTML",
         "disable_web_page_preview": "true",
-    }).encode()
+    }
+    if thread_id:
+        payload["message_thread_id"] = thread_id
+    data = urllib.parse.urlencode(payload).encode()
     last_err = None
     for _ in range(3):
         try:
@@ -36,7 +40,8 @@ def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n") -> bool:
 
 def notify_price(text: str) -> bool:
     chat_id = os.environ.get("PRICE_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_MANAGER_CHAT_ID")
-    return _send(text, chat_id or "")
+    thread_id = os.environ.get("PRICE_ALERT_THREAD_ID", "")
+    return _send(text, chat_id or "", thread_id=thread_id)
 
 
 def notify_main(text: str) -> bool:
