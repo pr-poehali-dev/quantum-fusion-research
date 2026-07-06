@@ -62,9 +62,13 @@ export default function PriceMonitorTab() {
 
   const accept = async (id: number) => {
     setBusy(id)
-    await api.priceMonitor.accept(id, getAdminKey())
-    removeItem(id)
+    const res = await api.priceMonitor.accept(id, getAdminKey())
     setBusy(null)
+    if (res?.error || res?.ok === false) {
+      alert("Не удалось применить: " + (res?.error || "неизвестная ошибка"))
+      return
+    }
+    removeItem(id)
   }
   const reject = async (id: number) => {
     setBusy(id)
@@ -75,7 +79,8 @@ export default function PriceMonitorTab() {
   const acceptAll = async () => {
     if (!confirm("Принять все изменения цен? Цены товаров обновятся автоматически.")) return
     setLoading(true)
-    await api.priceMonitor.acceptAll(getAdminKey())
+    const res = await api.priceMonitor.acceptAll(getAdminKey())
+    if (res?.error) alert("Ошибка при применении: " + res.error)
     load()
   }
   const rejectAll = async () => {
@@ -220,10 +225,12 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
     })
   }
 
-  const title = item.product_name || item.ext_name
+  // Сверху — всегда название из парсера (что нашли у конкурента).
+  // Ниже серым — сопоставленный товар из базы (product_name).
+  const title = item.ext_name || item.product_name
 
   return (
-    <div className={`rounded-2xl border p-4 transition-colors ${
+    <div className={`overflow-hidden rounded-2xl border p-4 transition-colors ${
       linked
         ? "border-emerald-500/40 bg-emerald-500/5"
         : "border-amber-500/40 bg-amber-500/5"
@@ -237,8 +244,8 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
               <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/60">{item.source_name}</span>
             )}
           </div>
-          {item.ext_name && item.ext_name !== item.product_name && (
-            <p className="mt-0.5 truncate text-xs text-foreground/40">У конкурента: {item.ext_name}</p>
+          {item.product_name && (
+            <p className="mt-0.5 truncate text-xs text-foreground/40">Наш товар: {item.product_name}</p>
           )}
           {item.ext_url && (
             <a href={item.ext_url} target="_blank" rel="noreferrer"
@@ -305,71 +312,71 @@ function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked 
           </p>
         )}
 
-          {picking ? (
-            <div className="rounded-lg border border-primary/20 bg-background p-2">
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5">
-                <Icon name="Search" size={14} className="text-foreground/40" />
-                <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
-                  placeholder="Поиск товара по складу…"
-                  className="w-full bg-transparent text-sm outline-none" />
-                <button onClick={() => { setPicking(false); setSearchQ("") }}
-                  className="shrink-0 text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
-                  Отмена
-                </button>
-              </div>
-              <div className="max-h-48 space-y-1 overflow-y-auto">
-                {searching ? (
-                  <p className="px-1 py-2 text-xs text-foreground/40">Ищу…</p>
-                ) : searchRes.length === 0 ? (
-                  <p className="px-1 py-2 text-xs text-foreground/40">
-                    {searchQ.trim().length >= 2 ? "Ничего не найдено" : "Введите название"}
-                  </p>
-                ) : searchRes.map(c => (
-                  <button key={c.product_id} onClick={() => link(c)} disabled={linking}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors disabled:opacity-50"
-                    style={{ cursor: "pointer" }}>
-                    <span className="min-w-0 truncate text-sm text-foreground">{c.name}</span>
-                    <span className="shrink-0 text-xs text-foreground/40">{c.price ? fmt(c.price) : `${c.score}%`}</span>
-                  </button>
-                ))}
-              </div>
+        {picking ? (
+          <div className="rounded-lg border border-primary/20 bg-background p-2">
+            <div className="mb-2 flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5">
+              <Icon name="Search" size={14} className="text-foreground/40" />
+              <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                placeholder="Поиск товара по складу…"
+                className="w-full min-w-0 bg-transparent text-sm outline-none" />
+              <button onClick={() => { setPicking(false); setSearchQ("") }}
+                className="shrink-0 text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
+                Отмена
+              </button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {loadingCand ? (
-                <p className="text-xs text-foreground/40">Ищу похожие…</p>
-              ) : candidates.slice(0, 3).map(c => {
-                const chosen = c.product_id === item.product_id
-                return (
-                  <button key={c.product_id} onClick={() => link(c)} disabled={linking}
-                    className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
-                      chosen
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-foreground"
-                        : "border-border text-foreground hover:bg-muted"
-                    }`}
-                    style={{ cursor: "pointer" }}>
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      {chosen && <Icon name="Check" size={13} className="shrink-0 text-emerald-500" />}
-                      <span className="min-w-0">{c.name}</span>
-                    </span>
-                    <span className="shrink-0 text-xs text-foreground/40">{c.score}%</span>
-                  </button>
-                )
-              })}
-              <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                <button onClick={() => { setPicking(true); setSearchQ("") }}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+            <div className="max-h-48 space-y-1 overflow-y-auto">
+              {searching ? (
+                <p className="px-1 py-2 text-xs text-foreground/40">Ищу…</p>
+              ) : searchRes.length === 0 ? (
+                <p className="px-1 py-2 text-xs text-foreground/40">
+                  {searchQ.trim().length >= 2 ? "Ничего не найдено" : "Введите название"}
+                </p>
+              ) : searchRes.map(c => (
+                <button key={c.product_id} onClick={() => link(c)} disabled={linking}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted transition-colors disabled:opacity-50"
                   style={{ cursor: "pointer" }}>
-                  <Icon name="Search" size={13} />Выбрать из существующих
+                  <span className="min-w-0 truncate text-sm text-foreground">{c.name}</span>
+                  <span className="shrink-0 text-xs text-foreground/40">{c.price ? fmt(c.price) : `${c.score}%`}</span>
                 </button>
-                <button onClick={onProcess}
-                  className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
-                  style={{ cursor: "pointer" }}>
-                  <Icon name="Plus" size={13} />Создать новый товар
-                </button>
-              </div>
+              ))}
             </div>
-          )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {loadingCand ? (
+              <p className="text-xs text-foreground/40">Ищу похожие…</p>
+            ) : candidates.slice(0, 3).map(c => {
+              const chosen = c.product_id === item.product_id
+              return (
+                <button key={c.product_id} onClick={() => link(c)} disabled={linking}
+                  className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
+                    chosen
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-foreground"
+                      : "border-border text-foreground hover:bg-muted"
+                  }`}
+                  style={{ cursor: "pointer" }}>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {chosen && <Icon name="Check" size={13} className="shrink-0 text-emerald-500" />}
+                    <span className="min-w-0 truncate">{c.name}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-foreground/40">{c.score}%</span>
+                </button>
+              )
+            })}
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              <button onClick={() => { setPicking(true); setSearchQ("") }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Search" size={13} />Выбрать из существующих
+              </button>
+              <button onClick={onProcess}
+                className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={13} />Создать новый товар
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -428,11 +435,15 @@ function ProcessModal({ item, onClose, onDone }: {
 
   const apply = async () => {
     setSaving(true)
-    await api.priceMonitor.accept(item.id, getAdminKey(), {
-      final_price: price,
+    const res = await api.priceMonitor.accept(item.id, getAdminKey(), {
+      final_price: finalPrice,
       ...(linkedId ? { product_id: linkedId } : {}),
     })
     setSaving(false)
+    if (res?.error || res?.ok === false) {
+      alert("Не удалось применить цену: " + (res?.error || "неизвестная ошибка"))
+      return
+    }
     onDone()
   }
 
