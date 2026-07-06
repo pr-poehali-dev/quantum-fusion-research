@@ -92,7 +92,9 @@ def handler(event: dict, context) -> dict:
 
         cur.execute(f"""
             SELECT DISTINCT g.category FROM {SCHEMA}.warehouse_groups g
-            WHERE g.is_archived = false AND g.category IS NOT NULL
+            WHERE g.is_archived = false
+              AND g.category IS NOT NULL
+              AND TRIM(g.category) <> ''
             ORDER BY g.category
         """)
         categories = [r[0] for r in cur.fetchall()]

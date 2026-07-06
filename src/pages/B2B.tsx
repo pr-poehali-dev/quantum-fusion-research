@@ -248,7 +248,7 @@ export default function B2B() {
               style={{ cursor: "pointer" }}
             >
               <option value="">Все категории</option>
-              {categories.map(cat => (
+              {categories.filter(cat => cat && cat.trim()).map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
