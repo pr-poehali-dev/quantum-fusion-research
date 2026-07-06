@@ -8,11 +8,13 @@
 Backend price-monitor/tg_notify.py:
 - _send() теперь принимает thread_id и передаёт message_thread_id в Telegram
   (отправка в ветку/топик форума).
-- notify_price() берёт ветку из нового секрета PRICE_ALERT_THREAD_ID (=2158):
-  полный список изменений цен (ingest) уходит в ветку 2158 группы парсера
-  (PRICE_ALERT_CHAT_ID = -1003007397543).
+- notify_price() берёт ветку из нового секрета PRICE_ALERT_THREAD_ID:
+  полный список изменений цен (ingest) уходит в ветку «Парсер» группы парсера.
+- ПРОВЕРЕНО в бою (Telegram ok=true, topic «Парсер»). Верные значения секретов:
+    PRICE_ALERT_CHAT_ID   = -1003007397543
+    PRICE_ALERT_THREAD_ID = 21585   (ID топика форума, НЕ 2158 — то было ошибочно)
 - notify_main() (итоговая сводка finish в рабочий чат менеджеров) — без изменений.
-- Секрет PRICE_ALERT_THREAD_ID добавляется через UI. Если не задан — поведение
+- Секрет PRICE_ALERT_THREAD_ID задаётся через UI. Если не задан — поведение
   как раньше (в общий чат группы).
 - НЕ применялась миграция V0156 (счётчики уже через price_run_stats).
 

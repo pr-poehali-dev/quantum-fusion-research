@@ -9,6 +9,21 @@
 Функция: `backend/price-monitor/`
 URL: `https://functions.poehali.dev/505d6a55-4cdb-4d30-9e46-3292ad49b4ab`
 
+## ⚡ СТАТУС: ЗАДАЧА ВЫПОЛНЕНА И ПРОВЕРЕНА В БОЮ (2026-07-06)
+
+Отправка в ветку форума УЖЕ работает в облаке и подтверждена Telegram (ok=true,
+topic «Парсер»). Cursor: нужно ТОЛЬКО синхронизировать локальный код с боевым
+(см. §2.2 и §3) — код в облаке первичен, не откатывать его старой версией.
+
+ВЕРНЫЕ значения секретов (в UI poehali уже заданы, в код НЕ хардкодить):
+```
+PRICE_ALERT_CHAT_ID   = -1003007397543
+PRICE_ALERT_THREAD_ID = 21585         ← ID топика форума. НЕ 2158 (то было ошибкой)
+```
+Почему 21585, а не 2158: ссылка на ветку t.me/c/3007397543/21585 → последнее
+число 21585 и есть message_thread_id топика «Парсер». Значение 2158 из старого ТЗ
+было неверным, отправляло не туда — исправлено.
+
 ---
 
 ## 0. Главный вывод (прочитать первым)
@@ -39,9 +54,9 @@ ADMIN_KEY
 MAIN_DB_SCHEMA               # = t_p72635010_quantum_fusion_resea
 PRICE_ALERT_CHAT_ID          # ⚠️ УЖЕ существует, значение должно быть -1003007397543
 ```
-Добавляется сейчас (заявка создана, пользователь вписывает значение):
+Задан в UI (проверено в бою):
 ```
-PRICE_ALERT_THREAD_ID = 2158     # ID ветки форума t.me/c/3007397543/2158
+PRICE_ALERT_THREAD_ID = 21585    # ID топика форума t.me/c/3007397543/21585
 ```
 
 Cursor: в коде НЕ хардкодить значения секретов, только читать `os.environ`.
@@ -68,26 +83,38 @@ Cursor: в коде НЕ хардкодить значения секретов,
   `accept_all`.
 - CORS-заголовки, обработка OPTIONS первым — присутствуют.
 
-### 2.2. `backend/price-monitor/tg_notify.py` (ЭТАЛОН — текущее облако)
+### 2.2. `backend/price-monitor/tg_notify.py` (ЭТАЛОН — ТЕКУЩЕЕ ОБЛАКО, ФИНАЛ)
+Это ровно тот код, что задеплоен и проверен в бою. Локальный файл должен стать
+таким же — БАЙТ В БАЙТ. Именно `if thread_id: payload["message_thread_id"]`
+обеспечивает попадание в ветку форума.
 ```python
-"""Отправка сводки по мониторингу цен в Telegram."""
+"""Отправка сводки по мониторингу цен в Telegram.
+
+Берёт TELEGRAM_BOT_TOKEN и чат из PRICE_ALERT_CHAT_ID (если задан),
+иначе — TELEGRAM_MANAGER_CHAT_ID. Никогда не роняет основной поток:
+при ошибке логирует и возвращает False.
+"""
 import os
 import urllib.request
 import urllib.parse
 
 
-def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n") -> bool:
+def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n",
+          thread_id: str = "") -> bool:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token or not chat_id:
         print("TG_NOTIFY: пропуск — нет TELEGRAM_BOT_TOKEN / чата")
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({
+    payload = {
         "chat_id": chat_id,
         "text": prefix + text,
         "parse_mode": "HTML",
         "disable_web_page_preview": "true",
-    }).encode()
+    }
+    if thread_id:
+        payload["message_thread_id"] = thread_id
+    data = urllib.parse.urlencode(payload).encode()
     last_err = None
     for _ in range(3):
         try:
@@ -103,7 +130,8 @@ def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n") -> bool:
 
 def notify_price(text: str) -> bool:
     chat_id = os.environ.get("PRICE_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_MANAGER_CHAT_ID")
-    return _send(text, chat_id or "")
+    thread_id = os.environ.get("PRICE_ALERT_THREAD_ID", "")
+    return _send(text, chat_id or "", thread_id=thread_id)
 
 
 def notify_main(text: str) -> bool:
@@ -114,51 +142,28 @@ def notify_main(text: str) -> bool:
     return _send(text, chat_id)
 ```
 
-Если локальная версия tg_notify.py ОТЛИЧАЕТСЯ от этого — синхронизировать с эталоном
-ПЕРЕД внесением правки из §3 (иначе перезапишешь облако старой версией).
-
 ---
 
-## 3. Единственная правка, которую нужно внести (thread_id)
+## 3. Что уже сделано (правка thread_id — ВНЕСЕНА в облако)
 
-Цель: `notify_price()` должна отправлять сообщение в ВЕТКУ форума 2158, если задан
-`PRICE_ALERT_THREAD_ID`. `notify_main()` (рабочий чат менеджеров) — НЕ ТРОГАТЬ.
+Правка thread_id УЖЕ в боевом коде (см. §2.2). Cursor: просто убедиться, что
+локальный `tg_notify.py` совпадает с §2.2. Ничего дополнительно вносить не нужно.
 
-### 3.1. Правка `_send` — принять и передать `message_thread_id`
-```python
-def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n",
-          thread_id: str = "") -> bool:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token or not chat_id:
-        print("TG_NOTIFY: пропуск — нет TELEGRAM_BOT_TOKEN / чата")
-        return False
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": prefix + text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": "true",
-    }
-    if thread_id:
-        payload["message_thread_id"] = thread_id   # ветка форума (topic)
-    data = urllib.parse.urlencode(payload).encode()
-    # ... остальное без изменений (retry x3)
-```
-
-### 3.2. Правка `notify_price` — прокинуть thread_id
-```python
-def notify_price(text: str) -> bool:
-    chat_id = os.environ.get("PRICE_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_MANAGER_CHAT_ID")
-    thread_id = os.environ.get("PRICE_ALERT_THREAD_ID", "")
-    return _send(text, chat_id or "", thread_id=thread_id)
-```
-
-### 3.3. `notify_main` — БЕЗ ИЗМЕНЕНИЙ
-Рабочий чат менеджеров форумом не является, thread_id туда НЕ передавать.
+Логика:
+- `notify_price()` — берёт `PRICE_ALERT_CHAT_ID` (иначе `TELEGRAM_MANAGER_CHAT_ID`)
+  и `PRICE_ALERT_THREAD_ID`, шлёт полный список цен в ВЕТКУ форума «Парсер».
+- `notify_main()` — БЕЗ thread_id, шлёт итог finish в рабочий чат менеджеров.
 
 Важно: `message_thread_id` работает ТОЛЬКО если целевой чат — супергруппа с
 включёнными Топиками (форумом) и бот имеет право писать в этот топик. Если
 `PRICE_ALERT_THREAD_ID` не задан — поведение как раньше (в общий чат).
+
+⚠️ Частая ошибка: перепутать ID ветки. Верное значение — 21585 (последнее число
+из ссылки на топик), НЕ 2158. С 2158 сообщение уходило не в тот чат.
+
+⚠️ Временные тестовые действия (`test_alert`, `test_alert_open`, `diag_chat`)
+в боевом коде БЫТЬ НЕ ДОЛЖНО — они использовались только для проверки и удалены.
+Если Cursor видит их в локальной версии — удалить.
 
 ---
 
@@ -166,10 +171,10 @@ def notify_price(text: str) -> bool:
 
 - [ ] `index.py`: импорт `from tg_notify import notify_price, notify_main` (НЕ notify_price_alert).
 - [ ] `index.py`: `finish` использует `price_run_stats`, НЕ price_parser_session/counters.
-- [ ] `tg_notify.py` локально идентичен эталону §2.2 ДО внесения правки §3.
+- [ ] `tg_notify.py` локально идентичен эталону §2.2 (с thread_id) — БАЙТ В БАЙТ.
 - [ ] В проекте НЕТ файла `db_migrations/V0156__price_parser_session.sql` и он НЕ создаётся.
-- [ ] Внесена правка §3 (message_thread_id в `_send` + `notify_price`).
-- [ ] `notify_main` НЕ изменён.
+- [ ] В `index.py` НЕТ временных действий `test_alert` / `test_alert_open` / `diag_chat`.
+- [ ] `notify_main` без thread_id (шлёт в рабочий чат менеджеров).
 - [ ] Нигде не захардкожены значения секретов (chat_id/токены) кроме дефолта
       рабочего чата `-1002809968150`, который уже был в облаке.
 - [ ] `requirements.txt` не содержит лишних зависимостей (используется только
