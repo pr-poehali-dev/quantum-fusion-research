@@ -1405,17 +1405,20 @@ def handler(event: dict, context) -> dict:
 
             items = []
             for gid, name, cat, cell, qty_total, qty_reserved in groups:
+                # Ожидаемое кол-во для пересчёта — СВОБОДНЫЙ остаток (без резервов):
+                # кладовщик считает то, что физически лежит на полке и не отложено под заказы.
+                qty_free = max(0, int(qty_total) - int(qty_reserved))
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.warehouse_inventory_items "
                     f"(inventory_id, group_id, qty_expected, qty_actual, cell) "
                     f"VALUES (%s, %s, %s, NULL, %s) RETURNING id",
-                    (inv_id, gid, int(qty_total), cell or "")
+                    (inv_id, gid, qty_free, cell or "")
                 )
                 item_id = cur.fetchone()[0]
                 items.append({
                     "id": item_id, "group_id": gid, "name": name,
                     "category": cat, "cell": cell or "",
-                    "qty_expected": int(qty_total), "qty_reserved": int(qty_reserved),
+                    "qty_expected": qty_free, "qty_reserved": int(qty_reserved),
                     "qty_actual": None
                 })
 
@@ -1448,39 +1451,68 @@ def handler(event: dict, context) -> dict:
             items = cur.fetchall()
             applied = []
             for iid, gid, qty_exp, qty_act, cell, name in items:
+                # qty_exp — это СВОБОДНЫЙ остаток (без резервов), см. inventory_create.
+                # delta = факт (свободный) - ожидаемый свободный остаток.
                 delta = int(qty_act) - int(qty_exp)
                 if delta == 0:
                     continue
-                # Берём последнюю поставку этой группы для корректировки
+                # Поставки группы, где есть СВОБОДНЫЕ единицы (qty > qty_reserved),
+                # от свежих к старым. Корректируем только свободную часть,
+                # зарезервированное под заказы не трогаем.
                 cur.execute(
-                    f"SELECT id, qty FROM {SCHEMA}.warehouse_supplies WHERE group_id=%s ORDER BY id DESC LIMIT 1",
+                    f"SELECT id, qty, qty_reserved FROM {SCHEMA}.warehouse_supplies "
+                    f"WHERE group_id=%s ORDER BY id DESC",
                     (gid,)
                 )
-                supply = cur.fetchone()
-                if supply:
-                    sid, s_qty = supply
-                    new_qty = max(0, int(s_qty) + delta)
+                supplies = cur.fetchall()
+                if not supplies:
+                    continue
+                remaining = delta
+                touched_sid = None
+                if delta > 0:
+                    # Излишек — добавляем в самую свежую поставку
+                    sid, s_qty, s_res = supplies[0]
                     cur.execute(
                         f"UPDATE {SCHEMA}.warehouse_supplies SET qty=%s, updated_at=NOW() WHERE id=%s",
-                        (new_qty, sid)
+                        (int(s_qty) + delta, sid)
                     )
-                    cur.execute(
-                        f"INSERT INTO {SCHEMA}.warehouse_movements "
-                        f"(group_id, supply_id, type, qty_delta, note, created_at) "
-                        f"VALUES (%s, %s, 'inventory', %s, %s, NOW())",
-                        (gid, sid, delta, f"Инвентаризация #{inv_id}: {'+' if delta>0 else ''}{delta} шт. (факт {qty_act}, ожидалось {qty_exp})")
-                    )
-                    # Синхронизируем in_stock/stock_qty в products
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.products SET "
-                        f"stock_qty=(SELECT COALESCE(SUM(s2.qty),0) FROM {SCHEMA}.warehouse_supplies s2 "
-                        f"JOIN {SCHEMA}.warehouse_groups g2 ON g2.id=s2.group_id WHERE g2.product_id=products.id), "
-                        f"in_stock=(SELECT COALESCE(SUM(s2.qty),0)>0 FROM {SCHEMA}.warehouse_supplies s2 "
-                        f"JOIN {SCHEMA}.warehouse_groups g2 ON g2.id=s2.group_id WHERE g2.product_id=products.id) "
-                        f"WHERE id=(SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id=%s)",
-                        (gid,)
-                    )
-                    applied.append({"name": name, "delta": delta, "qty_actual": qty_act})
+                    touched_sid = sid
+                    remaining = 0
+                else:
+                    # Недостача — списываем из свободных единиц, начиная со свежих
+                    need = -delta
+                    for sid, s_qty, s_res in supplies:
+                        free = max(0, int(s_qty) - int(s_res))
+                        if free <= 0:
+                            continue
+                        take = min(free, need)
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.warehouse_supplies SET qty=%s, updated_at=NOW() WHERE id=%s",
+                            (int(s_qty) - take, sid)
+                        )
+                        touched_sid = sid
+                        need -= take
+                        if need <= 0:
+                            break
+                    remaining = -need  # 0 если списали всё нужное
+
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_movements "
+                    f"(group_id, supply_id, type, qty_delta, note, created_at) "
+                    f"VALUES (%s, %s, 'inventory', %s, %s, NOW())",
+                    (gid, touched_sid, delta, f"Инвентаризация #{inv_id}: {'+' if delta>0 else ''}{delta} шт. (факт {qty_act}, ожидалось {qty_exp})")
+                )
+                # Синхронизируем in_stock/stock_qty в products
+                cur.execute(
+                    f"UPDATE {SCHEMA}.products SET "
+                    f"stock_qty=(SELECT COALESCE(SUM(s2.qty),0) FROM {SCHEMA}.warehouse_supplies s2 "
+                    f"JOIN {SCHEMA}.warehouse_groups g2 ON g2.id=s2.group_id WHERE g2.product_id=products.id), "
+                    f"in_stock=(SELECT COALESCE(SUM(s2.qty),0)>0 FROM {SCHEMA}.warehouse_supplies s2 "
+                    f"JOIN {SCHEMA}.warehouse_groups g2 ON g2.id=s2.group_id WHERE g2.product_id=products.id) "
+                    f"WHERE id=(SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id=%s)",
+                    (gid,)
+                )
+                applied.append({"name": name, "delta": delta, "qty_actual": qty_act})
 
             cur.execute(
                 f"UPDATE {SCHEMA}.warehouse_inventories SET status='applied', result_json=%s, applied_at=NOW() WHERE id=%s",
