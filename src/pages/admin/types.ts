@@ -272,6 +272,7 @@ export interface WipBuild {
   build_id?: number | null
   client_token?: string | null
   build_components?: Array<{ slot: string; name: string; qty?: number }>
+  need_by_slot?: Record<string, number>
   customer_name?: string
   customer_phone?: string
   total?: number

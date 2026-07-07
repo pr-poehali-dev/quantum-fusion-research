@@ -128,6 +128,38 @@ def fmt_row(row):
     d["prepayment_confirmed_amount"] = prepay if confirmed else 0
     return d
 
+
+def attach_need_qty(cur, dicts):
+    """Добавляет каждому WIP словарь need_by_slot: {slot: сколько_заказать}.
+    Источник — активные NEGATIVE-резервы заказа (дефицит на складе).
+    Слоты складываются как в WIP: 'case' → 'case', вентиляторы (fan) и прочие
+    аксессуары агрегируются в 'extra' (столбец «Доп.»)."""
+    if not dicts:
+        return dicts
+    order_ids = [d["order_id"] for d in dicts if d.get("order_id")]
+    if not order_ids:
+        for d in dicts:
+            d["need_by_slot"] = {}
+        return dicts
+    ids_sql = ",".join(str(int(o)) for o in set(order_ids))
+    cur.execute(
+        f"SELECT r.order_id, r.slot, SUM(r.qty) "
+        f"FROM {SCHEMA}.warehouse_reserves r "
+        f"WHERE r.order_id IN ({ids_sql}) AND r.type = 'NEGATIVE' AND r.status = 'ACTIVE' "
+        f"GROUP BY r.order_id, r.slot"
+    )
+    # Маппинг slot резерва → слот WIP (fan/аксессуары → extra)
+    SLOT_TO_WIP = {"fan": "extra", "accessory": "extra"}
+    need = {}  # order_id -> {wip_slot: qty}
+    for oid, slot, qty in cur.fetchall():
+        wip_slot = SLOT_TO_WIP.get(slot or "", slot or "extra")
+        bucket = need.setdefault(oid, {})
+        bucket[wip_slot] = bucket.get(wip_slot, 0) + int(qty or 0)
+    for d in dicts:
+        d["need_by_slot"] = need.get(d.get("order_id"), {})
+    return dicts
+
+
 def resp(status, data):
     return {"statusCode": status, "headers": CORS, "body": json.dumps(data, ensure_ascii=False, default=str)}
 
@@ -312,21 +344,22 @@ def handler(event: dict, context) -> dict:
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, fmt_row(row))
+                return resp(200, attach_need_qty(cur, [fmt_row(row)])[0])
             if order_id:
                 cur.execute(SELECT + " WHERE w.order_id = %s", (order_id,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, fmt_row(row))
+                return resp(200, attach_need_qty(cur, [fmt_row(row)])[0])
             if client_token:
                 cur.execute(SELECT + " WHERE w.client_token = %s", (client_token,))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})
-                return resp(200, fmt_row(row))
+                return resp(200, attach_need_qty(cur, [fmt_row(row)])[0])
             cur.execute(SELECT + " ORDER BY w.id DESC")
-            return resp(200, {"wip_builds": [fmt_row(r) for r in cur.fetchall()], "stages": STAGES})
+            rows = attach_need_qty(cur, [fmt_row(r) for r in cur.fetchall()])
+            return resp(200, {"wip_builds": rows, "stages": STAGES})
 
         elif method == "POST":
             body = json.loads(event.get("body") or "{}")

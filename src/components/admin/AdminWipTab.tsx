@@ -1076,7 +1076,12 @@ export function AdminWipTab({
                               )}
                               <div>
                                 {status !== "pending" && (
-                                  <span className={`rounded-full px-1.5 py-0 text-[10px] font-semibold w-fit ${sCls}`}>{sLabel}</span>
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[10px] font-semibold w-fit ${sCls}`}>
+                                    {sLabel}
+                                    {status === "need_order" && (w.need_by_slot?.[slotKey] ?? 0) > 0 && (
+                                      <span className="font-bold">{w.need_by_slot![slotKey]} шт</span>
+                                    )}
+                                  </span>
                                 )}
                               </div>
                             </div>

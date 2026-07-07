@@ -3,6 +3,18 @@
 
 ---
 
+## v6.72 | 2026-07-07 | WIP: показ количества к заказу у статуса «Заказать»
+
+Backend backend/wip-builds/index.py:
+- В список/одиночные WIP добавлено поле need_by_slot: {слот: сколько заказать}
+  — сумма активных NEGATIVE-резервов заказа по слотам (fan/аксессуары → extra).
+  Один запрос на весь список (attach_need_qty).
+
+Frontend:
+- types.ts: WipBuild.need_by_slot?: Record<string, number>.
+- AdminWipTab.tsx: рядом со статусом «Заказать» выводится «N шт» — сколько
+  штук нужно закупить по этому компоненту.
+
 ## v6.71 | 2026-07-07 | Конструктор сборки: фикс порядка компонентов в overview
 
 Frontend src/components/admin/AdminCatalogTab.tsx:
