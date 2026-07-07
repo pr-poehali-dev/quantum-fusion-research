@@ -17,6 +17,144 @@ def resp(status, data):
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
+SLOT_LABELS = {
+    "cpu": "Процессор", "motherboard": "Материнская плата", "ram": "ОЗУ",
+    "gpu": "Видеокарта", "storage": "Накопитель", "psu": "Блок питания",
+    "case": "Корпус", "case_name": "Корпус", "cooling": "Охлаждение",
+    "fan": "Вентилятор", "extra": "Доп.", "other": "Прочее",
+}
+
+
+def _rebuild_orders_from_build(cur, build_id, components, assembly_fee):
+    """Пересобрать позиции (orders.items) и сумму привязанных к сборке заказов.
+
+    Когда в сборке меняется состав/цена железа — заказы на этапе согласования
+    должны отражать актуальный список и итог. Финальные цены/серийники/статусы
+    по слотам сохраняются из существующих items (по slot), чтобы ручные правки
+    цены и выданные серийники не потерялись.
+    Пересобираем ТОЛЬКО активные заказы (не done/cancelled)."""
+    if not build_id:
+        return
+    if isinstance(components, str):
+        try:
+            components = json.loads(components or "[]")
+        except Exception:
+            components = []
+    try:
+        assembly_fee = float(assembly_fee or 0)
+    except (TypeError, ValueError):
+        assembly_fee = 0.0
+
+    cur.execute(
+        f"SELECT wb.order_id FROM {SCHEMA}.wip_builds wb "
+        f"WHERE wb.build_id = %s AND wb.order_id IS NOT NULL",
+        (build_id,)
+    )
+    order_ids = [r[0] for r in cur.fetchall()]
+    if not order_ids:
+        return
+
+    for order_id in order_ids:
+        cur.execute(
+            f"SELECT items, status FROM {SCHEMA}.orders WHERE id = %s LIMIT 1",
+            (order_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            continue
+        raw_items = row[0] or []
+        if isinstance(raw_items, str):
+            try:
+                raw_items = json.loads(raw_items)
+            except Exception:
+                raw_items = []
+        if row[1] in ("done", "cancelled"):
+            continue
+
+        build_qty = 1
+        for oi in raw_items:
+            if oi.get("item_type") in ("config", "pc_build"):
+                build_qty = int(oi.get("quantity", 1) or 1)
+                break
+
+        # Сохраняем финальные цены/серийники/статусы/гарантии по слотам
+        slot_serials, slot_final_price, slot_item_status, slot_warranty = {}, {}, {}, {}
+        assembly_warranty, assembly_serial, assembly_final_price = 12, [], None
+        for it in raw_items:
+            s = it.get("slot")
+            if s and s != "assembly":
+                sn = it.get("serial_numbers") or []
+                if sn:
+                    slot_serials[s] = [x for x in sn if x and str(x).strip()]
+                if it.get("final_price") is not None:
+                    slot_final_price[s] = float(it["final_price"])
+                if it.get("item_status"):
+                    slot_item_status[s] = it["item_status"]
+                if it.get("warranty_months") is not None:
+                    slot_warranty[s] = it["warranty_months"]
+            if it.get("item_type") in ("config", "assembly") or it.get("assembly"):
+                if it.get("assembly_warranty"):
+                    assembly_warranty = int(it["assembly_warranty"])
+                if it.get("warranty_months") is not None and it.get("item_type") == "assembly":
+                    assembly_warranty = int(it["warranty_months"])
+                sn = it.get("serial_numbers") or []
+                assembly_serial = [x for x in sn if x and str(x).strip()]
+                if it.get("item_type") == "assembly" and it.get("final_price") is not None:
+                    assembly_final_price = float(it["final_price"])
+
+        snapshot = []
+        for comp in (components or []):
+            slot = comp.get("slot")
+            name = comp.get("name")
+            if not name or not str(name).strip():
+                continue
+            product_id = None
+            if comp.get("source") == "catalog" and comp.get("source_id"):
+                product_id = int(comp["source_id"])
+            if not product_id:
+                cur.execute(f"SELECT id FROM {SCHEMA}.products WHERE name = %s LIMIT 1", (name,))
+                pr = cur.fetchone()
+                if pr:
+                    product_id = pr[0]
+            slot_qty = int(comp.get("qty", 1) or 1) * build_qty
+            snapshot.append({
+                "id": product_id,
+                "name": name,
+                "slot": slot,
+                "slot_label": SLOT_LABELS.get(slot, slot),
+                "price": float(comp.get("price", 0) or 0),
+                "final_price": slot_final_price.get(slot),
+                "quantity": slot_qty,
+                "item_type": "product",
+                "warranty_months": slot_warranty.get(slot),
+                "serial_numbers": slot_serials.get(slot, []),
+                "item_status": slot_item_status.get(slot),
+            })
+
+        snapshot.append({
+            "id": None,
+            "name": "Работа по сборке и настройке ПК",
+            "slot": "assembly",
+            "price": assembly_fee,
+            "final_price": assembly_final_price,
+            "quantity": 1,
+            "item_type": "assembly",
+            "warranty_months": assembly_warranty,
+            "serial_numbers": assembly_serial,
+            "item_status": None,
+        })
+
+        snap_total = sum(
+            (it.get("final_price") if it.get("final_price") is not None
+             else it.get("price", 0)) * it.get("quantity", 1)
+            for it in snapshot
+            if it.get("item_status") != "returned"
+        )
+        cur.execute(
+            f"UPDATE {SCHEMA}.orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+            (json.dumps(snapshot), snap_total, order_id)
+        )
+
 
 def _sync_wip_from_build(cur, build_id, components):
     """Если к pc_build привязана WIP-сборка — переносим названия комплектующих
@@ -420,6 +558,8 @@ def handler(event: dict, context) -> dict:
                  body.get("sell_with_vat", False), body.get("lock_prices", False), body["id"])
             )
             _sync_wip_from_build(cur, body["id"], body.get("components", []))
+            _rebuild_orders_from_build(cur, body["id"], body.get("components", []),
+                                       body.get("assembly_fee", 0))
             conn.commit()
             return resp(200, {"ok": True})
 

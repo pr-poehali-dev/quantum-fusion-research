@@ -1375,6 +1375,27 @@ def handler(event: dict, context) -> dict:
                         (wip_id,)
                     )
 
+                # ПЕРЕСБОРКА ПОЗИЦИЙ ЗАКАЗА из актуального состава сборки.
+                # Если в pc_builds.components добавили/убрали железо или изменили
+                # цену — orders.items и total пересобираются из снимка сборки.
+                # Финальные цены/серийники/статусы по слотам при этом сохраняются
+                # (build_pc_snapshot берёт их из существующих items по slot).
+                if build_id:
+                    snapshot = build_pc_snapshot(
+                        cur, schema, order_id, order_items_raw, build_id, wip, build_qty
+                    )
+                    snap_total = sum(
+                        (it.get("final_price") if it.get("final_price") is not None
+                         else it.get("price", 0))
+                        * it.get("quantity", 1)
+                        for it in snapshot
+                        if it.get("item_status") != "returned"
+                    )
+                    cur.execute(
+                        f"UPDATE {schema}.orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
+                        (json.dumps(snapshot), snap_total, order_id)
+                    )
+
                 # Если всё в ready — меняем статус заказа на waiting_assembly
                 all_slots_filled = all(
                     not v or not v.strip() or
