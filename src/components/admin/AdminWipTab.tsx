@@ -572,7 +572,9 @@ export function AdminWipTab({
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
                                 <span className="font-mono text-[10px] text-foreground/40">{item.sku}</span>
-                                <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">нужно {item.required_qty} шт.</span>
+                                {item.required_qty > 0 && (
+                                  <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">нужно {item.required_qty} шт.</span>
+                                )}
                               </div>
                             </div>
                             {item.url_supplier && (

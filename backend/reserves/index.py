@@ -767,7 +767,15 @@ def handler(event: dict, context) -> dict:
                 f"""
                 SELECT
                     b.group_id, g.name, g.sku,
-                    COALESCE((comp->>'qty')::int, 1) as required_qty,
+                    -- «нужно N шт.» = реальная нехватка = сумма активных
+                    -- NEGATIVE-резервов этого товара в рамках ЭТОГО заказа.
+                    -- Раньше бралось comp->>'qty' (кол-во в сборке), из-за чего
+                    -- корзина не совпадала со статусом «Заказать N» в WIP.
+                    COALESCE((
+                        SELECT SUM(rr.qty) FROM {SCHEMA}.warehouse_reserves rr
+                        WHERE rr.group_id = g.id AND rr.order_id = wb.order_id
+                          AND rr.type = 'NEGATIVE' AND rr.status = 'ACTIVE'
+                    ), 0) as required_qty,
                     b.status, g.url_supplier,
                     wb.id as wip_id, wb.order_number, wb.order_id, wb.stage,
                     -- Допы хранятся со слотом 'fan', но статус-колонка одна — extra_status.
@@ -795,8 +803,23 @@ def handler(event: dict, context) -> dict:
                 LEFT JOIN {SCHEMA}.wip_component_eta eta
                     ON eta.wip_id = wb.id
                     AND eta.slot = CASE comp->>'slot' WHEN 'fan' THEN 'extra' ELSE comp->>'slot' END
-                WHERE b.required_qty > 0
-                  AND wb.stage NOT IN ('Архив', 'Забрали', 'Отменён', 'Согласование')
+                WHERE wb.stage NOT IN ('Архив', 'Забрали', 'Отменён', 'Согласование')
+                  AND (
+                    -- есть реальная нехватка по этому товару в этом заказе...
+                    EXISTS (
+                        SELECT 1 FROM {SCHEMA}.warehouse_reserves rr
+                        WHERE rr.group_id = g.id AND rr.order_id = wb.order_id
+                          AND rr.type = 'NEGATIVE' AND rr.status = 'ACTIVE'
+                    )
+                    -- ...или компонент уже заказан у поставщика / получен
+                    OR (CASE comp->>'slot'
+                        WHEN 'cpu' THEN wb.cpu_status WHEN 'motherboard' THEN wb.motherboard_status
+                        WHEN 'ram' THEN wb.ram_status WHEN 'gpu' THEN wb.gpu_status
+                        WHEN 'storage' THEN wb.storage_status WHEN 'psu' THEN wb.psu_status
+                        WHEN 'case' THEN wb.case_status WHEN 'cooling' THEN wb.cooling_status
+                        WHEN 'extra' THEN wb.extra_status WHEN 'fan' THEN wb.extra_status
+                        ELSE 'pending' END) IN ('ordered_transit', 'ordered_delay')
+                  )
                 ORDER BY wb.order_number, b.status
                 """
             )
