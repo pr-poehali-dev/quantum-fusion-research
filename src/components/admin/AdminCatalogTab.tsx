@@ -867,7 +867,15 @@ export function AdminCatalogTab({
           {buildComponents.length > 0 && (
             <div className="mb-3 space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-4">
               <p className="mb-2 text-xs font-medium text-foreground/60">Позиций: {buildComponents.length} · Итого железо: {fmt(partsTotal)}</p>
-              {buildComponents.map((c, i) => (
+              {(() => {
+                // Фиксированный порядок вывода компонентов сборки (по типу слота).
+                // Оригинальный индекс i сохраняем для операций (qty/фото/удаление).
+                const SLOT_ORDER = ["cpu", "motherboard", "ram", "gpu", "storage", "cooling", "fan", "psu", "case"]
+                const ord = (s: string) => { const k = SLOT_ORDER.indexOf(s); return k === -1 ? SLOT_ORDER.length : k }
+                return buildComponents
+                  .map((c, i) => ({ c, i }))
+                  .sort((a, b) => ord(a.c.slot) - ord(b.c.slot))
+                  .map(({ c, i }) => (
                 <div key={i} className="rounded-lg border border-border/40 bg-card/60">
                   <div className="flex items-center gap-2 text-sm px-3 py-2">
                     <span className="w-24 shrink-0 text-xs text-foreground/50 font-mono truncate">{c.slot}</span>
@@ -900,7 +908,8 @@ export function AdminCatalogTab({
                     </div>
                   )}
                 </div>
-              ))}
+                ))
+              })()}
             </div>
           )}
 
