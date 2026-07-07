@@ -927,90 +927,16 @@ def handler(event: dict, context) -> dict:
             for ord_id, cnt in fulfilled_by_order.items():
                 negative_alerts.append({"product": prod_name, "reserved": cnt, "orders": [ord_id]})
 
-            # Подчищаем «сиротские» долги в qty_negative без записей в резервах (рассинхрон)
-            if avail > 0:
-                cur.execute(
-                    f"SELECT s.id, s.qty_negative FROM {SCHEMA}.warehouse_supplies s "
-                    f"WHERE s.group_id = {group_id} AND s.id != {supply_id} AND s.qty_negative > 0 ORDER BY s.id ASC"
-                )
-                for (neg_sid, neg_qty) in cur.fetchall():
-                    if avail <= 0:
-                        break
-                    to_clear = min(neg_qty, avail)
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_supplies "
-                        f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
-                        (to_clear, neg_sid)
-                    )
-                    avail -= to_clear
-
-            # Ищем активные wip_builds где компонент ещё не получен (need_order /
-            # ordered_transit / ordered_delay — «надо заказать» или «едет/заказано»)
-            # и резервируем под них пришедший товар. 'ready' пропускаем — уже получен.
-            if grp_product_id and avail > 0:
-                pn = prod_name.replace("'", "''")
-                NEED = "('need_order','ordered_transit','ordered_delay')"
-                cur.execute(f"""
-                    SELECT wip_id, order_id, slot FROM (
-                        SELECT wb.id as wip_id, wb.order_id,
-                            CASE
-                                WHEN LOWER(wb.cpu) = LOWER('{pn}') AND wb.cpu_status IN {NEED} THEN 'cpu'
-                                WHEN LOWER(wb.gpu) = LOWER('{pn}') AND wb.gpu_status IN {NEED} THEN 'gpu'
-                                WHEN LOWER(wb.ram) = LOWER('{pn}') AND wb.ram_status IN {NEED} THEN 'ram'
-                                WHEN LOWER(wb.storage) = LOWER('{pn}') AND wb.storage_status IN {NEED} THEN 'storage'
-                                WHEN LOWER(wb.psu) = LOWER('{pn}') AND wb.psu_status IN {NEED} THEN 'psu'
-                                WHEN LOWER(wb.case_name) = LOWER('{pn}') AND wb.case_status IN {NEED} THEN 'case'
-                                WHEN LOWER(wb.motherboard) = LOWER('{pn}') AND wb.motherboard_status IN {NEED} THEN 'motherboard'
-                                WHEN LOWER(wb.cooling) = LOWER('{pn}') AND wb.cooling_status IN {NEED} THEN 'cooling'
-                                ELSE NULL
-                            END as slot
-                        FROM {SCHEMA}.wip_builds wb
-                        JOIN {SCHEMA}.orders o ON o.id = wb.order_id
-                        WHERE o.status NOT IN ('cancelled','done')
-                    ) sub WHERE slot IS NOT NULL
-                    ORDER BY wip_id ASC
-                """)
-                wip_rows = cur.fetchall()
-                for (wip_id_r, order_id_r, slot_r) in wip_rows:
-                    if avail <= 0:
-                        break
-                    status_field = f"{slot_r}_status"
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.wip_builds SET {status_field}='ready', updated_at=NOW() WHERE id=%s",
-                        (wip_id_r,)
-                    )
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_supplies SET qty=qty-1, qty_reserved=qty_reserved+1 WHERE id=%s",
-                        (supply_id,)
-                    )
-                    # Создаём POSITIVE-резерв в таблице резервов (иначе рассинхрон:
-                    # qty_reserved растёт, а записи о резерве под заказ нет)
-                    cur.execute(
-                        f"INSERT INTO {SCHEMA}.warehouse_reserves "
-                        f"(order_id, group_id, supply_id, slot, qty, type, status) "
-                        f"VALUES (%s, %s, %s, %s, 1, 'POSITIVE', 'ACTIVE')",
-                        (order_id_r, group_id, supply_id, slot_r)
-                    )
-                    cur.execute(
-                        f"INSERT INTO {SCHEMA}.warehouse_movements "
-                        f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                        f"VALUES (%s, %s, %s, 'reserved', 1, %s, NOW())",
-                        (group_id, supply_id, order_id_r, f"Авторезерв при поставке: {pn}")
-                    )
-                    affected_orders.append(order_id_r)
-                    avail -= 1
-
-                if affected_orders:
-                    # Позиция корзины закупки → 'RECEIVED' (получено)
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_purchase_basket "
-                        f"SET status = 'RECEIVED', updated_at = NOW() WHERE group_id = {group_id}"
-                    )
-                    negative_alerts.append({
-                        "product": prod_name,
-                        "reserved": len(affected_orders),
-                        "orders": affected_orders
-                    })
+            # ВАЖНО: раньше здесь были два доп. этапа — «подчистка сиротских долгов»
+            # (гасила qty_negative без учёта резервов и завышала avail) и
+            # «WIP-авторезерв под avail» (создавал новый POSITIVE-резерв и +1 к
+            # qty_reserved). Из-за них один и тот же заказ мог оказаться учтён
+            # дважды: и как обычный резерв (qty_reserved), и как нехватка
+            # (qty_negative) на одной пустой партии (qty=0). Именно это давало в
+            # модалке «Резервы» одновременно «В резерве 1 шт» и «Нехватка −1 шт».
+            # Резерв под ожидающие заказы полностью закрывает Этап 1 выше (гашение
+            # NEGATIVE-резервов приходом), а любые расхождения приводит в порядок
+            # recalc_reserves. Поэтому оба дублирующих этапа удалены.
 
             # Пересчёт этапа сборки для всех заказов, которых коснулась приёмка:
             # если все железки приехали → этап «Ожидание сборки» автоматически.
