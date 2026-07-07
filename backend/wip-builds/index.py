@@ -764,16 +764,19 @@ def handler(event: dict, context) -> dict:
                         return resp(400, {"error": "remaining_unpaid",
                                           "message": "Перед выдачей нужно принять оплату остатка по заказу."})
 
-                # ── Списание резервов при выдаче клиенту («Забрали») ──
+                # ── Списание резервов при выдаче клиенту («Забрали»/«Архив») ──
                 # Товар физически уходит клиенту: qty_reserved уменьшается,
                 # резерв → FULFILLED, в наличие НЕ возвращается.
-                if new_stage == "Забрали" and old_stage != "Забрали" and wip_order_id:
+                # «Архив» = заказ выдан и убран из активной работы (выдача через WIP),
+                # поэтому обрабатывается так же, как «Забрали»: иначе выданный заказ
+                # продолжал бы держать активный резерв.
+                if new_stage in ("Забрали", "Архив") and old_stage not in ("Забрали", "Архив") and wip_order_id:
                     import warehouse_core as wc
                     fulfilled = wc.fulfill_order_reserves(cur, wip_order_id)
-                    print(f"WIP {wip_id}: выдача, резервы списаны order={wip_order_id}: {fulfilled}")
+                    print(f"WIP {wip_id}: выдача ({new_stage}), резервы списаны order={wip_order_id}: {fulfilled}")
 
-                # При "Забрали" или "Отменён" — переносим pc_build в архив
-                if new_stage in ("Забрали", "Отменён"):
+                # При "Забрали", "Архив" или "Отменён" — переносим pc_build в архив
+                if new_stage in ("Забрали", "Архив", "Отменён"):
                     cur.execute(
                         "UPDATE pc_builds SET status='archive' WHERE id=(SELECT build_id FROM wip_builds WHERE id=%s)",
                         (wip_id,)
@@ -793,6 +796,7 @@ def handler(event: dict, context) -> dict:
                     "Готов, можно забрать":   "assembly",
                     "Отнести в сдэк":         "assembly",
                     "Забрали":                "done",
+                    "Архив":                  "done",
                     "Отменён":                "cancelled",
                 }
                 order_status = STAGE_TO_ORDER_STATUS.get(new_stage)
