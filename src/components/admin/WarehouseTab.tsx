@@ -1099,7 +1099,13 @@ export default function WarehouseTab() {
               <Icon name="Truck" size={14} className="mr-1.5" />Приёмка
               <Icon name="ChevronDown" size={13} className="ml-1 opacity-80" />
               {draftsTotal > 0 && (
-                <span className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white shadow">
+                <span
+                  role="button"
+                  title="Показать незаконченные листы приёмки"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); loadDrafts(); setDraftsPanel(true) }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="absolute -right-2 -top-2 flex h-5 min-w-[20px] cursor-pointer items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white shadow hover:bg-amber-600"
+                >
                   {draftsTotal > 99 ? "99+" : draftsTotal}
                 </span>
               )}
@@ -1114,7 +1120,12 @@ export default function WarehouseTab() {
             <DropdownMenuItem onClick={() => setReceiptModal({})}>
               <Icon name="ScanLine" size={14} className="mr-2" />Принять по счёту
               {draftsTotal > 0 && (
-                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white">
+                <span
+                  role="button"
+                  title="Показать незаконченные листы приёмки"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); loadDrafts(); setDraftsPanel(true) }}
+                  className="ml-auto flex h-5 min-w-[20px] cursor-pointer items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-none text-white hover:bg-amber-600"
+                >
                   {draftsTotal > 99 ? "99+" : draftsTotal}
                 </span>
               )}
