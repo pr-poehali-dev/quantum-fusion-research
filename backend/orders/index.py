@@ -1259,23 +1259,27 @@ def handler(event: dict, context) -> dict:
                         raw = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
                         pc_components = raw
 
-                # Строим маппинг slot -> source_id + qty компонента
-                slot_product_map = {}
-                for comp in pc_components:
-                    slot = comp.get("slot")
-                    if slot and comp.get("source") == "catalog" and comp.get("source_id"):
-                        slot_product_map[slot] = int(comp["source_id"])
+                # Маппинг слота компонента из pc_builds → слот WIP.
+                # В WIP несколько типов складываются в один столбец «Доп.»:
+                # все вентиляторы (fan) и прочие аксессуары идут в extra.
+                # Корпус в WIP хранится в поле case_name / case_status, слот 'case'.
+                PC_TO_WIP_SLOT = {
+                    "cpu": "cpu", "motherboard": "motherboard", "ram": "ram",
+                    "gpu": "gpu", "storage": "storage", "psu": "psu",
+                    "case": "case", "cooling": "cooling",
+                    "extra": "extra", "fan": "extra", "accessory": "extra",
+                }
 
                 reserved_items = []
                 negative_items = []
-                new_statuses = {}
+                # Агрегируем результат резерва по WIP-слоту: если хоть один
+                # компонент слота ушёл в дефицит → need_order, иначе ready.
+                slot_had_negative = {}
+                slot_had_positive = {}
 
                 # Резервирование через ядро склада (warehouse_core): корректно
                 # создаёт записи в warehouse_reserves — и POSITIVE (наличие), и
-                # NEGATIVE (дефицит) — с привязкой к order_id. Раньше здесь была
-                # самописная логика, которая для минус-резерва писала только
-                # qty_negative БЕЗ записи в warehouse_reserves → на складе не было
-                # видно к какому заказу привязан минус.
+                # NEGATIVE (дефицит) — с привязкой к order_id.
                 import warehouse_core as wc
 
                 # ИДЕМПОТЕНТНОСТЬ: при создании заказа резервы уже могли быть
@@ -1285,43 +1289,81 @@ def handler(event: dict, context) -> dict:
                 # заказанных у поставщика) и резервируем заново с чистого листа.
                 wc.release_order_reserves(cur, order_id, only_new_negative=True)
 
-                for slot, name, status in zip(slot_names, slot_values, slot_statuses):
-                    if not name or name.strip() == "":
-                        continue
-                    # Уже заказан у поставщика — резерв сохранён, пропускаем
-                    if status in ("ordered_transit", "ordered_delay"):
-                        continue
+                # Слоты, уже заказанные у поставщика — их резерв не трогаем.
+                ordered_wip_slots = {
+                    slot_names[i] for i in range(len(slot_names))
+                    if slot_statuses[i] in ("ordered_transit", "ordered_delay")
+                }
 
-                    product_id = slot_product_map.get(slot)
-                    if not product_id:
-                        # Пробуем найти по названию
+                # Резервируем КАЖДЫЙ компонент сборки отдельно (по source_id и qty).
+                # Это чинит допы/вентиляторы и любые повторяющиеся слоты (напр.
+                # несколько накопителей), которые раньше склеивались в одну строку
+                # и терялись при маппинге slot→product.
+                reserved_any_component = False
+                for comp in pc_components:
+                    if comp.get("source") != "catalog" or not comp.get("source_id"):
+                        continue  # пользовательское железо — не резервируем
+                    pc_slot = comp.get("slot") or ""
+                    wip_slot = PC_TO_WIP_SLOT.get(pc_slot, "extra")
+                    if wip_slot in ordered_wip_slots:
+                        continue
+                    comp_qty = int(comp.get("qty", 1) or 1) * build_qty
+                    if comp_qty <= 0:
+                        continue
+                    product_id = int(comp["source_id"])
+                    reserved_any_component = True
+                    res = wc.reserve_line(cur, order_id, product_id=product_id,
+                                          qty=comp_qty, slot=wip_slot)
+                    pos = int(res.get("positive", 0) or 0)
+                    neg = int(res.get("negative", 0) or 0)
+                    cname = comp.get("name") or ""
+                    if pos > 0:
+                        slot_had_positive[wip_slot] = True
+                        reserved_items.append({"slot": wip_slot, "name": cname,
+                                               "product_id": product_id, "reserved": pos})
+                    if neg > 0:
+                        slot_had_negative[wip_slot] = True
+                        negative_items.append({"slot": wip_slot, "name": cname,
+                                               "product_id": product_id, "shortage": neg})
+
+                new_statuses = {}
+                for wip_slot in set(list(slot_had_negative) + list(slot_had_positive)):
+                    if slot_had_negative.get(wip_slot):
+                        new_statuses[wip_slot] = "need_order"
+                    elif slot_had_positive.get(wip_slot):
+                        new_statuses[wip_slot] = "ready"
+
+                # FALLBACK для сборок без сохранённого состава pc_builds (старые
+                # заказы): резервируем по названиям из WIP, как раньше — по одному
+                # товару на слот. Только если компонентов каталога не было вовсе.
+                if not reserved_any_component:
+                    for slot, name, status in zip(slot_names, slot_values, slot_statuses):
+                        if not name or not name.strip():
+                            continue
+                        if status in ("ordered_transit", "ordered_delay"):
+                            continue
                         cur.execute(
                             f"SELECT p.id FROM {schema}.products p WHERE p.name = %s LIMIT 1",
                             (name,)
                         )
                         pr = cur.fetchone()
-                        if pr:
-                            product_id = pr[0]
-
-                    if not product_id:
-                        new_statuses[slot] = "need_order"
-                        negative_items.append({"slot": slot, "name": name, "reason": "product_not_found"})
-                        continue
-
-                    # Ядро: POSITIVE если есть наличие, NEGATIVE на дефицит +
-                    # пополнение корзины закупки. Всё с записью в warehouse_reserves.
-                    res = wc.reserve_line(cur, order_id, product_id=product_id,
-                                          qty=build_qty, slot=slot)
-                    pos = int(res.get("positive", 0) or 0)
-                    neg = int(res.get("negative", 0) or 0)
-                    if pos > 0:
-                        reserved_items.append({"slot": slot, "name": name,
-                                               "product_id": product_id, "reserved": pos})
-                    if neg > 0:
-                        new_statuses[slot] = "need_order"
-                        negative_items.append({"slot": slot, "name": name, "product_id": product_id})
-                    elif pos > 0:
-                        new_statuses[slot] = "ready"
+                        if not pr:
+                            new_statuses[slot] = "need_order"
+                            negative_items.append({"slot": slot, "name": name, "reason": "product_not_found"})
+                            continue
+                        product_id = pr[0]
+                        res = wc.reserve_line(cur, order_id, product_id=product_id,
+                                              qty=build_qty, slot=slot)
+                        pos = int(res.get("positive", 0) or 0)
+                        neg = int(res.get("negative", 0) or 0)
+                        if pos > 0:
+                            reserved_items.append({"slot": slot, "name": name,
+                                                   "product_id": product_id, "reserved": pos})
+                        if neg > 0:
+                            new_statuses[slot] = "need_order"
+                            negative_items.append({"slot": slot, "name": name, "product_id": product_id})
+                        elif pos > 0:
+                            new_statuses[slot] = "ready"
 
                 # Обновляем статусы слотов в wip_build
                 set_parts = []
