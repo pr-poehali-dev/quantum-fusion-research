@@ -685,17 +685,38 @@ def handler(event: dict, context) -> dict:
                         f"   OR components::text LIKE '%\"source_id\":{sync_pid}%'"
                     )
                     new_name = str(body["name"])
+                    # Слот компонента pc_builds → колонка названия в wip_builds.
+                    # fan/extra НЕ трогаем: там в поле extra может быть несколько
+                    # товаров склеены в строку, точечная замена невозможна —
+                    # актуальное имя фронт берёт из состава сборки (build_components).
+                    PC_SLOT_TO_WIP_COL = {
+                        "cpu": "cpu", "motherboard": "motherboard", "ram": "ram",
+                        "gpu": "gpu", "storage": "storage", "psu": "psu",
+                        "case": "case_name", "cooling": "cooling",
+                    }
                     for pcb_id, comps in cur.fetchall():
                         arr = comps if isinstance(comps, list) else json.loads(comps or "[]")
                         changed = False
+                        wip_cols = set()
                         for c in arr:
-                            if c.get("source") == "catalog" and c.get("source_id") == sync_pid and c.get("name") != new_name:
-                                c["name"] = new_name
-                                changed = True
+                            if c.get("source") == "catalog" and c.get("source_id") == sync_pid:
+                                if c.get("name") != new_name:
+                                    c["name"] = new_name
+                                    changed = True
+                                col = PC_SLOT_TO_WIP_COL.get(c.get("slot") or "")
+                                if col:
+                                    wip_cols.add(col)
                         if changed:
                             cur.execute(
                                 f"UPDATE {SCHEMA}.pc_builds SET components = {esc(json.dumps(arr, ensure_ascii=False))}::jsonb "
                                 f"WHERE id = {pcb_id}"
+                            )
+                        # 3) Синхронизируем название в активных WIP-сборках этого
+                        # шаблона (одиночные слоты). Иначе в WIP оставалось старое имя.
+                        for col in wip_cols:
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.wip_builds SET {col} = {esc(new_name)}, updated_at = NOW() "
+                                f"WHERE build_id = {int(pcb_id)}"
                             )
 
             log_movement(cur, gid, None, None, None, "group_updated", 0, note="Обновлена карточка группы")

@@ -1072,7 +1072,10 @@ export function AdminWipTab({
                                 </div>
                               ) : (
                                 <p className="text-xs text-foreground/80 leading-snug">
-                                  {val}
+                                  {/* Актуальное название берём из состава сборки
+                                      (синхронизируется со складом), val — фолбэк
+                                      для старых заказов без build_components. */}
+                                  {comps[0]?.name || val}
                                   {totalQty > 1 && <span className="ml-1 font-semibold text-primary">×{totalQty}</span>}
                                 </p>
                               )}
