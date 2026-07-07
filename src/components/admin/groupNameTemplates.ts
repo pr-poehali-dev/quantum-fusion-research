@@ -138,6 +138,13 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
         options: ["240","280","360","420"] },
     ],
   },
+  // 🔌 Аксессуары → {Бренд} {Название} (свободный ввод названия предпоследним шагом)
+  {
+    slug: "accessories",
+    blocks: [
+      { key: "title", label: "Название", hint: "Кабель-удлинитель ARGB 3-pin", input: "text", required: true },
+    ],
+  },
 ]
 
 export const templateForSlug = (slug: string | null): CategoryTemplate | null =>
