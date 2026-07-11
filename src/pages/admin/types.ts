@@ -219,7 +219,7 @@ export interface PCBuild {
   name: string
   description: string
   image_urls: string[]
-  components: Array<{ slot: string; name: string; price: number; source: string; source_id?: number; current_price?: number; qty?: number }>
+  components: Array<{ slot: string; name: string; price: number; source: string; source_id?: number; current_price?: number; qty?: number; point?: { x: number; y: number } | null }>
   parts_total: number
   assembly_type: string
   assembly_fee: number

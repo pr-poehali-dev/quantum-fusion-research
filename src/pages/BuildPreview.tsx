@@ -30,6 +30,7 @@ const COMPONENT_STATUS_LABELS: Record<string, { label: string; cls: string }> = 
 interface Component {
   slot: string; name: string; price: number; current_price?: number; qty?: number
   source_id?: number; image_url?: string; image_urls?: string[]; description?: string; specs?: Record<string, string>
+  point?: { x: number; y: number } | null
 }
 
 interface BuildTag { id: number; name: string; color: string }
@@ -1075,17 +1076,28 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         <h1 className="font-light tracking-tight text-foreground drop-shadow-lg" style={{ fontSize: "clamp(1.5rem, 3.5vw, 2.75rem)" }}>{buildName}</h1>
       </div>
 
-      {/* Строго горизонтальные линии-стрелки (влево/вправо), на высоте бокса */}
+      {/* Линии-стрелки: если у железки задана точка на фото — ведём стрелку
+          от подписи к этой точке; иначе — короткая горизонтальная стрелка. */}
       <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
         <defs>
           <marker id="bss-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
             <path d="M0,0 L5,3 L0,6 Z" fill="hsl(var(--primary))" />
           </marker>
         </defs>
-        {items.map((_, i) => {
+        {items.map((c, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
-          // от края подписи ровно по горизонтали внутрь фото (та же y)
+          if (c.point) {
+            // от края подписи к заданной точке на фото
+            const x1 = a.side === "left" ? a.x + 20 : a.x - 20
+            return (
+              <line key={i} x1={x1} y1={a.y} x2={c.point.x} y2={c.point.y}
+                stroke="hsl(var(--primary))" strokeWidth="0.4" strokeOpacity="0.75"
+                markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke"
+                style={{ transition: "opacity 500ms ease", opacity: 1 }} />
+            )
+          }
+          // фолбэк: короткая горизонтальная стрелка внутрь фото
           const x1 = a.side === "left" ? a.x + 20 : a.x - 20
           const x2 = a.side === "left" ? a.x + 34 : a.x - 34
           return (
@@ -1096,6 +1108,18 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
           )
         })}
       </svg>
+
+      {/* Маркеры-точки на фото для железок с заданной точкой */}
+      {items.map((c, i) => {
+        if (!c.point || i >= shown) return null
+        return (
+          <div key={`pt-${i}`} className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${c.point.x}%`, top: `${c.point.y}%`,
+              opacity: i < shown ? 1 : 0, transition: "opacity 500ms ease" }}>
+            <span className="block h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-primary/40 ring-offset-1 ring-offset-background/50" />
+          </div>
+        )
+      })}
 
       {/* Плашки с названиями — плавное появление */}
       {items.map((c, i) => {

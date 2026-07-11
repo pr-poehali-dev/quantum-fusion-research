@@ -3,6 +3,20 @@
 
 ---
 
+## v6.93 | 2026-07-11 | Конфиги: точки железок на фото + стрелки к ним на витрине
+
+- src/components/admin/AdminCatalogTab.tsx: в редакторе сборки у каждого
+  компонента (раскрытая карточка) добавлен редактор «Точка на фото сборки» —
+  клик по фото сборки ставит точку (x,y в %), маркер, кнопка «Убрать точку».
+  Индикатор MapPin в строке компонента. point прокинут в editBuild и submitBuild.
+- Модель: у компонента сборки добавлено поле point?: {x,y}|null
+  (types.ts PCBuild.components, buildComponents, BuildPreview Component).
+- Backend builds НЕ менялся: components сохраняются json.dumps целиком,
+  _enrich_components делает dict(c) — доп. поле point проходит насквозь.
+- src/pages/BuildPreview.tsx (BuildShowcaseSlide): если у железки задана point —
+  стрелка ведёт от подписи к этой точке на фото + маркер-точка; иначе прежняя
+  горизонтальная стрелка (фолбэк).
+
 ## v6.92 | 2026-07-11 | Витрина: крупные боксы, плотнее, горизонтальные стрелки
 
 - src/pages/BuildPreview.tsx (BuildShowcaseSlide): подписи-боксы увеличены ~×3
