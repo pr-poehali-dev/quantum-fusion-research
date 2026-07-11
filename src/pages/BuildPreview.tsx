@@ -534,7 +534,7 @@ export default function BuildPreview() {
 
             {/* Карусель фото сборки — справа, автосмена */}
             {buildImages.length > 0 && (
-              <HeroBuildCarousel images={buildImages} active={currentSection === 0} />
+              <HeroBuildCarousel images={buildImages} active={currentSection === 0} components={components} />
             )}
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
@@ -969,14 +969,21 @@ function BuildImageCarousel({ images, autoPlay = true }: { images: string[]; aut
 }
 
 // Карусель-обои для секции обзора — фото меняется каждые 6 сек
-function HeroBuildCarousel({ images, active }: { images: string[]; active: boolean }) {
+function HeroBuildCarousel({ images, active, components = [] }: { images: string[]; active: boolean; components?: Component[] }) {
   const [idx, setIdx] = useState(0)
+  // Сколько держать первое фото: даём подписям комплектующих доиграться
+  // (≈1 сек на подпись) + пауза, чтобы их можно было прочитать.
+  const calloutCount = Math.min(7, components.filter(c => c.name && c.slot !== "extra").length)
+  const firstHold = active ? Math.max(6000, calloutCount * 1000 + 3500) : 6000
 
   useEffect(() => {
     if (images.length <= 1) return
-    const t = setInterval(() => setIdx(i => (i + 1) % images.length), 6000)
-    return () => clearInterval(t)
-  }, [images.length])
+    const t = setTimeout(() => setIdx(i => (i + 1) % images.length), idx === 0 ? firstHold : 6000)
+    return () => clearTimeout(t)
+  }, [images.length, idx, firstHold])
+
+  // Первым слайдом всегда стартуем с первого фото (когда секция становится активной)
+  useEffect(() => { if (active) setIdx(0) }, [active])
 
   return (
     <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none overflow-hidden">
@@ -988,6 +995,10 @@ function HeroBuildCarousel({ images, active }: { images: string[]; active: boole
         />
       ))}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.4) 25%, transparent 55%)" }} />
+
+      {/* Подписи комплектующих со стрелками к центру — только на первом фото */}
+      {active && idx === 0 && <HeroComponentCallouts components={components} />}
+
       {/* Точки слева снизу */}
       {images.length > 1 && (
         <div className="absolute bottom-8 left-4 flex gap-1.5 pointer-events-auto">
@@ -997,6 +1008,95 @@ function HeroBuildCarousel({ images, active }: { images: string[]; active: boole
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Оверлей поверх фото ПК: подписи комплектующих появляются по одной каждую
+ * секунду, у каждой — линия-стрелка к центру фото. Плашки с backdrop-blur и
+ * полупрозрачным фоном + обводкой читаются и на тёмном, и на светлом фоне.
+ */
+function HeroComponentCallouts({ components }: { components: Component[] }) {
+  // Берём значимые слоты (без «доп.»), максимум 7 — по числу опорных позиций
+  const items = components
+    .filter(c => c.name && c.slot !== "extra")
+    .slice(0, 7)
+  const [shown, setShown] = useState(0)
+
+  useEffect(() => {
+    setShown(0)
+    if (!items.length) return
+    const t = setInterval(() => {
+      setShown(s => {
+        if (s >= items.length) { clearInterval(t); return s }
+        return s + 1
+      })
+    }, 1000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length])
+
+  if (!items.length) return null
+
+  const cx = 50, cy = 50 // центр фото в %
+  // Опорные точки-подписи вокруг центра (левый столбец сверху вниз, затем правый)
+  const anchors = [
+    { x: 8, y: 20, side: "left" }, { x: 8, y: 44, side: "left" },
+    { x: 8, y: 68, side: "left" }, { x: 8, y: 90, side: "left" },
+    { x: 92, y: 22, side: "right" }, { x: 92, y: 50, side: "right" },
+    { x: 92, y: 78, side: "right" },
+  ] as const
+
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Линии-стрелки к центру */}
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <marker id="hc-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+            <path d="M0,0 L5,3 L0,6 Z" fill="hsl(var(--primary))" />
+          </marker>
+        </defs>
+        {items.map((_, i) => {
+          const a = anchors[i]
+          if (!a || i >= shown) return null
+          // Тянем линию от плашки к точке около центра
+          const tx = cx + (a.side === "left" ? -10 : 10)
+          const ty = cy
+          return (
+            <line key={i} x1={a.x} y1={a.y} x2={tx} y2={ty}
+              stroke="hsl(var(--primary))" strokeWidth="0.35" strokeOpacity="0.75"
+              markerEnd="url(#hc-arrow)" vectorEffect="non-scaling-stroke"
+              style={{ transition: "opacity 400ms", opacity: 1 }} />
+          )
+        })}
+      </svg>
+
+      {/* Плашки с названиями */}
+      {items.map((c, i) => {
+        const a = anchors[i]
+        if (!a) return null
+        const visible = i < shown
+        return (
+          <div key={i}
+            className="absolute max-w-[42%]"
+            style={{
+              left: `${a.x}%`, top: `${a.y}%`,
+              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "6px"})`,
+              opacity: visible ? 1 : 0,
+              transition: "opacity 500ms ease, transform 500ms cubic-bezier(0.22,1,0.36,1)",
+            }}>
+            <div className="inline-flex flex-col rounded-lg border border-primary/30 bg-background/80 px-3 py-1.5 shadow-lg backdrop-blur-md">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-primary leading-none">
+                {SLOT_NAMES[c.slot] || c.slot}
+              </span>
+              <span className="mt-0.5 text-xs font-semibold text-foreground leading-tight line-clamp-1">
+                {c.name}
+              </span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
