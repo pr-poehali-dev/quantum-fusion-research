@@ -223,6 +223,31 @@
   .delay-500 {
     animation-delay: 500ms;
   }
+
+  /* Tilt-анимация кнопок: лёгкий 3D-наклон при наведении + отклик на нажатие.
+     Вешается на любую кнопку/ссылку классом .btn-tilt. */
+  .btn-tilt {
+    transform-style: preserve-3d;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 220ms ease;
+    will-change: transform;
+  }
+  .btn-tilt:hover {
+    transform: perspective(600px) rotateX(12deg) translateY(-2px);
+    box-shadow: 0 10px 22px -8px hsl(var(--primary) / 0.45);
+  }
+  .btn-tilt:active {
+    transform: perspective(600px) rotateX(6deg) translateY(0) scale(0.98);
+    transition-duration: 90ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-tilt,
+    .btn-tilt:hover,
+    .btn-tilt:active {
+      transform: none;
+      transition: none;
+    }
+  }
 }
 
 /* Rich text content rendering */

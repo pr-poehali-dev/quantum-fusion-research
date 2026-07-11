@@ -520,7 +520,7 @@ export default function BuildPreview() {
             </span>
           )}
           <button onClick={orderBuild} style={{ cursor: "pointer" }}
-            className="rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+            className="btn-tilt rounded-full bg-primary px-4 sm:px-5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
             <span className="hidden sm:inline">Заказать — </span>{fmt(calcTotalPrice)}
           </button>
         </div>
@@ -685,7 +685,7 @@ export default function BuildPreview() {
                   )}
                   <div className="flex flex-wrap items-center gap-3">
                     <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
-                      className="flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
+                      className="btn-tilt flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
                       Изучить состав <Icon name="ArrowDown" size={15} />
                     </button>
                     <button onClick={orderBuild} style={{ cursor: "pointer" }}
@@ -863,7 +863,7 @@ export default function BuildPreview() {
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button onClick={orderBuild} style={{ cursor: "pointer" }}
-                    className="flex items-center justify-center gap-2 rounded-full bg-primary px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                    className="btn-tilt flex items-center justify-center gap-2 rounded-full bg-primary px-10 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
                     <Icon name="ShoppingCart" size={17} />
                     Заказать сборку
                   </button>

@@ -1212,7 +1212,7 @@ function ProductModal({ product: p, onClose, onAddCart, fmt }: { product: Produc
               <div className="text-3xl font-bold text-foreground">{fmt(p.price)}</div>
               {p.old_price && <div className="text-sm text-foreground/40 line-through">{fmt(p.old_price)}</div>}
             </div>
-            <button onClick={onAddCart} disabled={!p.in_stock} className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors" style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}>
+            <button onClick={onAddCart} disabled={!p.in_stock} className="btn-tilt flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors" style={{ cursor: p.in_stock ? "pointer" : "not-allowed" }}>
               <Icon name="ShoppingCart" size={16} />
               {p.in_stock ? "В корзину" : "Нет в наличии"}
             </button>

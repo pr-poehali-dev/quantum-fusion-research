@@ -434,7 +434,7 @@ export default function Quiz() {
                 </button>
               )}
               <button onClick={goNext} disabled={!canNext() || sending} style={{ cursor: canNext() && !sending ? "pointer" : "default" }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
+                className="btn-tilt flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
                 {isExtraStep ? (
                   sending ? <><Icon name="Loader2" size={18} className="animate-spin" />Отправляем...</>
                           : <><Icon name="Send" size={18} />Отправить заявку</>

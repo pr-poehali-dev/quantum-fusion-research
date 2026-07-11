@@ -1176,7 +1176,7 @@ export default function Configurator() {
               <button
                 onClick={addToCart}
                 disabled={!hasComponents}
-                className="w-full rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                className="btn-tilt w-full rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
                 style={{ cursor: hasComponents ? "pointer" : "not-allowed" }}
               >
                 {hasComponents ? "Оформить заказ" : "Добавьте компоненты"}

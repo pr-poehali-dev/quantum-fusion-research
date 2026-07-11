@@ -283,7 +283,7 @@ export default function Cart() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  className="btn-tilt w-full rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   style={{ cursor: "pointer" }}
                 >
                   {submitting ? "Отправка..." : "Отправить заявку"}

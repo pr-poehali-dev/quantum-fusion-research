@@ -387,7 +387,7 @@ export default function ProductPage() {
                 </div>
               ) : (
                 <button onClick={handleAddToCart} disabled={!product.in_stock}
-                  className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                  className="btn-tilt flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
                   style={{ cursor: product.in_stock ? "pointer" : "not-allowed" }}>
                   <Icon name="ShoppingCart" size={16} />
                   В корзину
