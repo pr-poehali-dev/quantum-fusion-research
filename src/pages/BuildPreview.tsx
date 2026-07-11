@@ -1053,13 +1053,54 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
     return () => clearInterval(t)
   }, [active, items.length])
 
-  // Опорные точки подписей вокруг центра (левый столбец сверху вниз, затем правый)
-  const anchors = [
-    { x: 4, y: 30, side: "left" }, { x: 4, y: 50, side: "left" },
-    { x: 4, y: 70, side: "left" }, { x: 4, y: 90, side: "left" },
-    { x: 96, y: 34, side: "right" }, { x: 96, y: 54, side: "right" },
-    { x: 96, y: 74, side: "right" },
-  ] as const
+  // Авторасстановка подписей без перехлёста линий.
+  // Логика: делим железки на левую/правую колонку по X точки (или балансируем,
+  // если точки нет). Внутри колонки сортируем по Y точки и раскладываем подписи
+  // сверху вниз в ТОМ ЖЕ порядке — тогда линии колонки не пересекаются
+  // (порядок подписей совпадает с порядком точек по вертикали).
+  const anchors = useMemo(() => {
+    const YT = 18, YB = 92        // вертикальный диапазон подписей (%)
+    const LX = 4, RX = 96         // X-край подписей слева/справа
+    const withIdx = items.map((c, i) => ({ c, i }))
+    const n = withIdx.length
+
+    // Порог деления на колонки — по МЕДИАНЕ X точек, а не по жёсткому 50.
+    // Так колонки делятся примерно поровну даже если точки скучены с одной
+    // стороны (иначе одна колонка переполняется и лучи тянутся через центр).
+    const xs = withIdx.filter(it => it.c.point).map(it => it.c.point!.x).sort((a, b) => a - b)
+    const median = xs.length ? xs[Math.floor(xs.length / 2)] : 50
+    const half = Math.ceil(n / 2)
+
+    const withPt = withIdx.filter(it => it.c.point)
+    const noPt = withIdx.filter(it => !it.c.point)
+
+    // Сначала грубо по медиане, затем ребалансируем до ~половины в каждой колонке
+    const left: { c: Component; i: number }[] = []
+    const right: { c: Component; i: number }[] = []
+    // сортируем по X: самые левые точки → левая колонка
+    const byX = [...withPt].sort((a, b) => a.c.point!.x - b.c.point!.x)
+    for (const it of byX) {
+      const preferLeft = it.c.point!.x < median
+      if (preferLeft && left.length < half) left.push(it)
+      else if (!preferLeft && right.length < half) right.push(it)
+      else (left.length <= right.length ? left : right).push(it)
+    }
+    for (const it of noPt) (left.length <= right.length ? left : right).push(it)
+
+    const res: Record<number, { x: number; y: number; side: "left" | "right" }> = {}
+    const place = (arr: { c: Component; i: number }[], side: "left" | "right") => {
+      // сортировка по Y точки (без точки — в конец) → линии колонки не пересекаются
+      const sorted = [...arr].sort((a, b) => (a.c.point?.y ?? 999) - (b.c.point?.y ?? 999))
+      const m = sorted.length
+      sorted.forEach((it, k) => {
+        const y = m === 1 ? (YT + YB) / 2 : YT + (YB - YT) * (k / (m - 1))
+        res[it.i] = { x: side === "left" ? LX : RX, y, side }
+      })
+    }
+    place(left, "left")
+    place(right, "right")
+    return res
+  }, [items])
 
   return (
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
@@ -1078,35 +1119,41 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         <h1 className="font-light tracking-tight text-foreground drop-shadow-lg" style={{ fontSize: "clamp(1.5rem, 3.5vw, 2.75rem)" }}>{buildName}</h1>
       </div>
 
-      {/* Линии-стрелки: если у железки задана точка на фото — ведём стрелку
-          от подписи к этой точке; иначе — короткая горизонтальная стрелка. */}
+      {/* Лучи-указатели «___/»: жирная горизонтальная палочка от подписи,
+          затем наклон к точке. Подложка-обводка для контраста. Подписи
+          авторасставлены (anchors) так, что линии в колонке не пересекаются. */}
       <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
         <defs>
-          <marker id="bss-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
-            <path d="M0,0 L5,3 L0,6 Z" fill="hsl(var(--primary))" />
+          <marker id="bss-arrow" markerWidth="5" markerHeight="5" refX="3.2" refY="2.5" orient="auto">
+            <path d="M0,0 L4.5,2.5 L0,5 Z" fill="hsl(var(--primary))" />
           </marker>
         </defs>
         {items.map((c, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
-          if (c.point) {
-            // от края подписи к заданной точке на фото
-            const x1 = a.side === "left" ? a.x + 20 : a.x - 20
-            return (
-              <line key={i} x1={x1} y1={a.y} x2={c.point.x} y2={c.point.y}
-                stroke="hsl(var(--primary))" strokeWidth="0.4" strokeOpacity="0.75"
-                markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke"
-                style={{ transition: "opacity 500ms ease", opacity: 1 }} />
-            )
-          }
-          // фолбэк: короткая горизонтальная стрелка внутрь фото
           const x1 = a.side === "left" ? a.x + 20 : a.x - 20
-          const x2 = a.side === "left" ? a.x + 34 : a.x - 34
+          let pts: string
+          if (c.point) {
+            // «___/»: горизонталь до колена рядом с точкой, затем наклон к точке
+            const kneeX = a.side === "left" ? c.point.x - 8 : c.point.x + 8
+            pts = `${x1},${a.y} ${kneeX},${a.y} ${c.point.x},${c.point.y}`
+          } else {
+            // фолбэк без точки — горизонталь с лёгким изломом вверх
+            const midX = a.side === "left" ? x1 + 12 : x1 - 12
+            const endX = a.side === "left" ? x1 + 20 : x1 - 20
+            pts = `${x1},${a.y} ${midX},${a.y} ${endX},${a.y - 4}`
+          }
           return (
-            <line key={i} x1={x1} y1={a.y} x2={x2} y2={a.y}
-              stroke="hsl(var(--primary))" strokeWidth="0.4" strokeOpacity="0.75"
-              markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke"
-              style={{ transition: "opacity 500ms ease", opacity: 1 }} />
+            <g key={i} style={{ transition: "opacity 500ms ease", opacity: 1 }}>
+              <polyline points={pts} fill="none"
+                stroke="hsl(var(--background))" strokeOpacity="0.65"
+                strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"
+                vectorEffect="non-scaling-stroke" />
+              <polyline points={pts} fill="none"
+                stroke="hsl(var(--primary))" strokeOpacity="0.95"
+                strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"
+                markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke" />
+            </g>
           )
         })}
       </svg>
