@@ -1053,44 +1053,37 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
     return () => clearInterval(t)
   }, [active, items.length])
 
-  // Авторасстановка подписей без перехлёста линий.
-  // Логика: делим железки на левую/правую колонку по X точки (или балансируем,
-  // если точки нет). Внутри колонки сортируем по Y точки и раскладываем подписи
-  // сверху вниз в ТОМ ЖЕ порядке — тогда линии колонки не пересекаются
-  // (порядок подписей совпадает с порядком точек по вертикали).
+  // Авторасстановка подписей БЕЗ перехлёста лучей.
+  // 1) Сторона подписи — по реальному X точки (x<50 → слева, иначе справа):
+  //    луч не идёт через центр к чужой стороне.
+  // 2) Внутри колонки подписи сортируются по УГЛУ луча (atan2 от общей точки-
+  //    старта колонки к точке железки) и раскладываются сверху вниз в этом
+  //    порядке. Сортировка по углу математически исключает пересечения лучей
+  //    в колонке (в отличие от сортировки только по Y, которая ломалась, когда
+  //    две точки почти на одной высоте, но на разном X).
   const anchors = useMemo(() => {
-    const YT = 18, YB = 92        // вертикальный диапазон подписей (%)
+    const YT = 12, YB = 95        // вертикальный диапазон подписей (%)
     const LX = 4, RX = 96         // X-край подписей слева/справа
     const withIdx = items.map((c, i) => ({ c, i }))
-    const n = withIdx.length
 
-    // Порог деления на колонки — по МЕДИАНЕ X точек, а не по жёсткому 50.
-    // Так колонки делятся примерно поровну даже если точки скучены с одной
-    // стороны (иначе одна колонка переполняется и лучи тянутся через центр).
-    const xs = withIdx.filter(it => it.c.point).map(it => it.c.point!.x).sort((a, b) => a - b)
-    const median = xs.length ? xs[Math.floor(xs.length / 2)] : 50
-    const half = Math.ceil(n / 2)
-
-    const withPt = withIdx.filter(it => it.c.point)
-    const noPt = withIdx.filter(it => !it.c.point)
-
-    // Сначала грубо по медиане, затем ребалансируем до ~половины в каждой колонке
     const left: { c: Component; i: number }[] = []
     const right: { c: Component; i: number }[] = []
-    // сортируем по X: самые левые точки → левая колонка
-    const byX = [...withPt].sort((a, b) => a.c.point!.x - b.c.point!.x)
-    for (const it of byX) {
-      const preferLeft = it.c.point!.x < median
-      if (preferLeft && left.length < half) left.push(it)
-      else if (!preferLeft && right.length < half) right.push(it)
-      else (left.length <= right.length ? left : right).push(it)
+    const noPt: { c: Component; i: number }[] = []
+    for (const it of withIdx) {
+      if (!it.c.point) { noPt.push(it); continue }
+      (it.c.point.x < 50 ? left : right).push(it)
     }
     for (const it of noPt) (left.length <= right.length ? left : right).push(it)
 
     const res: Record<number, { x: number; y: number; side: "left" | "right" }> = {}
     const place = (arr: { c: Component; i: number }[], side: "left" | "right") => {
-      // сортировка по Y точки (без точки — в конец) → линии колонки не пересекаются
-      const sorted = [...arr].sort((a, b) => (a.c.point?.y ?? 999) - (b.c.point?.y ?? 999))
+      // Общая точка-старт колонки (у её края, по центру высоты) — для угла луча
+      const startX = side === "left" ? LX + 26 : RX - 26
+      const sorted = [...arr].sort((a, b) => {
+        const angA = a.c.point ? Math.atan2(a.c.point.y - 50, a.c.point.x - startX) : 9
+        const angB = b.c.point ? Math.atan2(b.c.point.y - 50, b.c.point.x - startX) : 9
+        return angA - angB
+      })
       const m = sorted.length
       sorted.forEach((it, k) => {
         const y = m === 1 ? (YT + YB) / 2 : YT + (YB - YT) * (k / (m - 1))
@@ -1131,16 +1124,19 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         {items.map((c, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
+          // Старт линии — у края подписи
           const x1 = a.side === "left" ? a.x + 20 : a.x - 20
           let pts: string
           if (c.point) {
-            // «___/»: горизонталь до колена рядом с точкой, затем наклон к точке
-            const kneeX = a.side === "left" ? c.point.x - 8 : c.point.x + 8
-            pts = `${x1},${a.y} ${kneeX},${a.y} ${c.point.x},${c.point.y}`
+            // Короткий горизонтальный «поводок» у подписи (~6%), затем ПРЯМАЯ
+            // линия к точке. Прямые лучи при сортировке подписей по Y точки
+            // не пересекаются (в отличие от длинных «полочек» на разной высоте).
+            const leadX = a.side === "left" ? x1 + 6 : x1 - 6
+            pts = `${x1},${a.y} ${leadX},${a.y} ${c.point.x},${c.point.y}`
           } else {
-            // фолбэк без точки — горизонталь с лёгким изломом вверх
-            const midX = a.side === "left" ? x1 + 12 : x1 - 12
-            const endX = a.side === "left" ? x1 + 20 : x1 - 20
+            // фолбэк без точки — короткая горизонталь с лёгким изломом вверх
+            const midX = a.side === "left" ? x1 + 8 : x1 - 8
+            const endX = a.side === "left" ? x1 + 16 : x1 - 16
             pts = `${x1},${a.y} ${midX},${a.y} ${endX},${a.y - 4}`
           }
           return (
