@@ -6,6 +6,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense, ComponentType } from "react";
 import AdminGuard from "@/components/admin/AdminGuard";
+import { captureUtm } from "@/lib/utm";
 
 // Обёртка для lazy-импортов: если после нового деплоя браузер держит ссылку
 // на старый (уже удалённый) чанк — ловим ошибку загрузки модуля и один раз
@@ -74,6 +75,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+captureUtm();
 
 const App = () => (
   <HelmetProvider>

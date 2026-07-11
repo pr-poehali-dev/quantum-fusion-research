@@ -102,14 +102,32 @@ def handler(event: dict, context) -> dict:
     # ─────────── ОТПРАВКА АНКЕТЫ КЛИЕНТОМ ───────────
     if resource == "submit" and method == "POST":
         _tg_tag = (body.get("telegram_tag") or "").strip().lstrip("@")
+        # UTM-метки, пойманные с лендинга (для аналитики источников)
+        _utm_source = (body.get("utm_source") or "").strip() or None
+        _utm_medium = (body.get("utm_medium") or "").strip() or None
+        _utm_campaign = (body.get("utm_campaign") or "").strip() or None
+        # Авто-подбор источника по utm_source
+        _source_id = None
+        if _utm_source:
+            cur.execute(
+                "SELECT id FROM marketing_sources "
+                "WHERE is_active = TRUE AND LOWER(utm_source) = LOWER(%s) "
+                "ORDER BY sort_order LIMIT 1",
+                (_utm_source,)
+            )
+            _sm = cur.fetchone()
+            if _sm:
+                _source_id = _sm[0]
         cur.execute(
             "INSERT INTO quiz_requests (name, phone, contact_method, budget_min, "
-            "budget_max, answers, extra_wishes, telegram_tag, status) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new') RETURNING id",
+            "budget_max, answers, extra_wishes, telegram_tag, status, "
+            "source_id, utm_source, utm_medium, utm_campaign) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, %s, %s) RETURNING id",
             (body.get("name"), body.get("phone"), body.get("contact_method"),
              body.get("budget_min"), body.get("budget_max"),
              Json(body.get("answers", {})), body.get("extra_wishes"),
-             _tg_tag or None),
+             _tg_tag or None,
+             _source_id, _utm_source, _utm_medium, _utm_campaign),
         )
         new_id = cur.fetchone()[0]
         conn.commit()

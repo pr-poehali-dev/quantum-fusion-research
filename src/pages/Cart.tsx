@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
+import { getUtm } from "@/lib/utm"
 import Icon from "@/components/ui/icon"
 import { useNavigate } from "react-router-dom"
 
@@ -46,6 +47,7 @@ export default function Cart() {
       items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type, assembly: i.assembly, components: i.components, preorder: i.preorder })),
       total: total(),
       comment,
+      ...getUtm(),
     }, sessionId)
     clearCart()
     setSuccess(true)

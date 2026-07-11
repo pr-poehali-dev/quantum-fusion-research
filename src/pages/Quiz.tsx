@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
+import { getUtm } from "@/lib/utm"
 
 type TaskOption = { label: string; group: "games" | "work" }
 type OptObj = { label: string; image_url?: string }
@@ -221,6 +222,7 @@ export default function Quiz() {
       budget_max: budget.max,
       answers,
       extra_wishes: extra.trim(),
+      ...getUtm(),
     }
     const res = await api.quiz.submit(payload).catch(() => null)
     setSending(false)

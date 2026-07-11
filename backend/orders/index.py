@@ -195,14 +195,33 @@ def handler(event: dict, context) -> dict:
             body = json.loads(event.get("body") or "{}")
             user_id = get_user_by_session(cur, session_id)
             quiz_request_id = body.get("quiz_request_id")  # привязка к заявке (опц.)
+
+            # Источник клиента: явный source_id или авто-подбор по utm_source.
+            utm_source = (body.get("utm_source") or "").strip() or None
+            utm_medium = (body.get("utm_medium") or "").strip() or None
+            utm_campaign = (body.get("utm_campaign") or "").strip() or None
+            source_id = body.get("source_id")
+            if not source_id and utm_source:
+                cur.execute(
+                    "SELECT id FROM marketing_sources "
+                    "WHERE is_active = TRUE AND LOWER(utm_source) = LOWER(%s) "
+                    "ORDER BY sort_order LIMIT 1",
+                    (utm_source,)
+                )
+                _m = cur.fetchone()
+                if _m:
+                    source_id = _m[0]
+
             cur.execute(
                 """INSERT INTO orders (customer_name, customer_phone, customer_email, order_type,
-                   items, total, comment, status, user_id, quiz_request_id, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, NOW(), NOW()) RETURNING id""",
+                   items, total, comment, status, user_id, quiz_request_id,
+                   source_id, utm_source, utm_medium, utm_campaign, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, %s, %s, %s, %s, NOW(), NOW()) RETURNING id""",
                 (body["customer_name"], body["customer_phone"],
                  body.get("customer_email"), body.get("order_type", "cart"),
                  json.dumps(body["items"]), body["total"],
-                 body.get("comment"), user_id, quiz_request_id)
+                 body.get("comment"), user_id, quiz_request_id,
+                 source_id, utm_source, utm_medium, utm_campaign)
             )
             order_id = cur.fetchone()[0]
 
@@ -557,6 +576,22 @@ def handler(event: dict, context) -> dict:
                 order = fmt_order(row, row[18], quiz_request_id=row[19])
                 schema = "t_p72635010_quantum_fusion_resea"
 
+                # Источник клиента (канал привлечения)
+                cur.execute(
+                    f"SELECT o.source_id, s.name, o.utm_source, o.utm_medium, o.utm_campaign "
+                    f"FROM {schema}.orders o "
+                    f"LEFT JOIN {schema}.marketing_sources s ON s.id = o.source_id "
+                    f"WHERE o.id = %s",
+                    (int(params["id"]),)
+                )
+                _src = cur.fetchone()
+                if _src:
+                    order["source_id"] = _src[0]
+                    order["source_name"] = _src[1]
+                    order["utm_source"] = _src[2]
+                    order["utm_medium"] = _src[3]
+                    order["utm_campaign"] = _src[4]
+
                 # Признак «сборка из свободной продажи» (привязанный pc_build.status='catalog')
                 cur.execute(
                     f"SELECT (pb.status = 'catalog') FROM {schema}.wip_builds wb "
@@ -785,6 +820,17 @@ def handler(event: dict, context) -> dict:
                 )
                 conn.commit()
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "customer_name": name, "customer_phone": phone})}
+
+            if action == "set_source":
+                # Источник клиента (канал привлечения) — выбор из справочника
+                src = body.get("source_id")
+                src = int(src) if src not in (None, "", 0, "0") else None
+                cur.execute(
+                    "UPDATE orders SET source_id=%s, updated_at=NOW() WHERE id=%s",
+                    (src, order_id),
+                )
+                conn.commit()
+                return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "source_id": src})}
 
             if action == "set_prepayment":
                 # Предоплата: по проценту или по сумме (второе пересчитывается)

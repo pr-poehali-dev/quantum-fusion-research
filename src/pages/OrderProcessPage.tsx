@@ -93,6 +93,11 @@ interface Order {
   remaining_paid?: boolean
   remaining_paid_amount?: number
   is_stock_sale?: boolean
+  source_id?: number | null
+  source_name?: string | null
+  utm_source?: string | null
+  utm_medium?: string | null
+  utm_campaign?: string | null
 }
 
 function fmt(n: number) {
@@ -126,6 +131,10 @@ export default function OrderProcessPage() {
   const [custName, setCustName] = useState("")
   const [custPhone, setCustPhone] = useState("")
   const [custSaving, setCustSaving] = useState(false)
+
+  // Источник клиента (канал привлечения)
+  const [sources, setSources] = useState<{ id: number; name: string; group_name: string | null }[]>([])
+  const [sourceSaving, setSourceSaving] = useState(false)
 
   // Синхронизация заказа ПК
   const [syncLoading, setSyncLoading] = useState(false)
@@ -211,6 +220,18 @@ export default function OrderProcessPage() {
     setCustSaving(false)
     if (res?.error) { alert(res.error); return }
     setEditCustomer(false)
+    await load()
+  }
+
+  // Загрузка справочника источников (один раз)
+  useEffect(() => {
+    api.marketing.getSources(true).then(d => setSources(d?.sources || [])).catch(() => {})
+  }, [])
+
+  const changeSource = async (sourceId: number | null) => {
+    setSourceSaving(true)
+    await api.orders.setSource(Number(id), sourceId).catch(() => {})
+    setSourceSaving(false)
     await load()
   }
 
@@ -501,6 +522,26 @@ export default function OrderProcessPage() {
             <div>
               <p className="text-xs text-foreground/40 mb-1">Тип заказа</p>
               <p className="text-sm">{order.order_type === "pc_build" ? "Сборка ПК" : "Комплектующие"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-foreground/40 mb-1">Источник клиента</p>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={order.source_id ?? ""}
+                  onChange={e => changeSource(e.target.value ? Number(e.target.value) : null)}
+                  disabled={sourceSaving}
+                  className="w-52 rounded border border-border bg-background px-2 py-1 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
+                  style={{ cursor: "pointer" }}>
+                  <option value="">— не указан —</option>
+                  {sources.map(s => (
+                    <option key={s.id} value={s.id}>{s.group_name ? `${s.group_name}: ${s.name}` : s.name}</option>
+                  ))}
+                </select>
+                {sourceSaving && <Icon name="Loader" size={13} className="animate-spin text-foreground/40" />}
+              </div>
+              {order.utm_source && (
+                <p className="text-[10px] text-foreground/40 mt-1">UTM: {order.utm_source}{order.utm_medium ? ` / ${order.utm_medium}` : ""}</p>
+              )}
             </div>
             {order.order_type === "pc_build" && (
               <div>

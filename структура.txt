@@ -1,6 +1,26 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
+## Маркетинг и аналитика источников (v6.80)
+- backend/marketing (URL .../1683aaf5-e13f-4ef7-9848-9ca2ecf03b8a) — источники
+  клиентов, группы источников, помесячные рекламные бюджеты и сводная аналитика.
+  Actions: groups / group_save / group_archive; sources (active=true) /
+  source_save; budgets (group_id) / budget_save (upsert по group_id+месяц);
+  analytics (from/to) → KPI, by_source, by_group (CPL/CAC/ROMI), timeline.
+  Лиды = max(ручные лиды бюджета, заявки квиза, заказы) по группе.
+- Таблицы (V0185): marketing_source_groups, marketing_sources
+  (utm_source для авто-привязки, is_paid, is_active), marketing_budgets
+  (period_month, amount, leads_manual, UNIQUE group_id+month).
+  orders/quiz_requests: +source_id, +utm_source/medium/campaign.
+- backend/orders: при создании заказа ловит source_id или авто-подбирает по
+  utm_source; action set_source меняет источник; getById отдаёт source_*/utm_*.
+- backend/quiz submit: сохраняет source_id (авто по utm_source) + utm-метки.
+- Фронт: src/lib/utm.ts (captureUtm при загрузке App → localStorage, getUtm),
+  проброс getUtm() в Cart.tsx и Quiz.tsx. api.marketing.* в src/lib/api.ts.
+  Вкладка админки «Аналитика» — src/components/admin/AnalyticsTab.tsx
+  (Дашборд recharts / Источники+группы / Бюджеты). Выбор источника в карточке
+  заказа — OrderProcessPage.tsx.
+
 ## Цены сборок ПК — единый механизм (v6.37)
 - pc_builds.lock_prices (V0176): FALSE (по умолч.) = цены комплектующих
   синхронизируются со складом (актуальная products.price); TRUE = цены

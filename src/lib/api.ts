@@ -23,6 +23,7 @@ const URLS = {
   stress: "https://functions.poehali.dev/ffa7efcd-7a92-4a76-a463-abec515d846c",
   companySettings: "https://functions.poehali.dev/9156c6f9-b7d3-42f2-9236-62ebc0347f02",
   receiptScan: "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4",
+  marketing: "https://functions.poehali.dev/1683aaf5-e13f-4ef7-9848-9ca2ecf03b8a",
 }
 
 function authHeaders(session?: string | null) {
@@ -71,11 +72,22 @@ export const api = {
     updateItem: (data: unknown) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     updateStatus: (data: unknown) => fetch(URLS.orders, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     setPrepayment: (data: { id: number; prepayment_percent?: number; prepayment_amount?: number }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_prepayment", ...data }) }).then(r => r.json()),
+    setSource: (id: number, source_id: number | null) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_source", id, source_id }) }).then(r => r.json()),
     linkQuiz: (id: number, quiz_request_id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "link_quiz", id, quiz_request_id }) }).then(r => r.json()),
     unlinkQuiz: (id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "unlink_quiz", id }) }).then(r => r.json()),
     quizAnalytics: () => fetch(`${URLS.orders}?action=quiz_analytics`).then(r => r.json()),
     getMyOrders: (session: string) => fetch(`${URLS.orders}?my=true`, { headers: { "X-Session-Id": session } }).then(r => r.json()),
     createWithSession: (data: unknown, session?: string | null) => fetch(URLS.orders, { method: "POST", headers: { "Content-Type": "application/json", ...(session ? { "X-Session-Id": session } : {}) }, body: JSON.stringify(data) }).then(r => r.json()),
+  },
+  marketing: {
+    getGroups: () => fetch(`${URLS.marketing}?action=groups`).then(r => r.json()),
+    saveGroup: (data: { id?: number; name: string; color?: string; sort_order?: number }) => fetch(URLS.marketing, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_save", ...data }) }).then(r => r.json()),
+    archiveGroup: (id: number) => fetch(URLS.marketing, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "group_archive", id }) }).then(r => r.json()),
+    getSources: (activeOnly?: boolean) => fetch(`${URLS.marketing}?action=sources${activeOnly ? "&active=true" : ""}`).then(r => r.json()),
+    saveSource: (data: { id?: number; group_id?: number | null; name: string; utm_source?: string; utm_medium?: string; is_paid?: boolean; is_active?: boolean; sort_order?: number }) => fetch(URLS.marketing, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "source_save", ...data }) }).then(r => r.json()),
+    getBudgets: (groupId?: number) => fetch(`${URLS.marketing}?action=budgets${groupId ? `&group_id=${groupId}` : ""}`).then(r => r.json()),
+    saveBudget: (data: { group_id: number; period_month: string; amount: number; leads_manual?: number | null; note?: string }) => fetch(URLS.marketing, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "budget_save", ...data }) }).then(r => r.json()),
+    analytics: (from?: string, to?: string) => fetch(`${URLS.marketing}?action=analytics${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`).then(r => r.json()),
   },
   priceMonitor: {
     list: (adminKey: string, kind?: string) =>

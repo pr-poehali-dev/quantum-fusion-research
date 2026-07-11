@@ -8,6 +8,7 @@ import CompatibilityTab from "@/components/admin/CompatibilityTab"
 import ScheduleTab from "@/components/admin/ScheduleTab"
 import CalendarTab from "@/components/admin/CalendarTab"
 import FinanceTab from "@/components/admin/FinanceTab"
+import AnalyticsTab from "@/components/admin/AnalyticsTab"
 import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import { AdminCatalogTab } from "@/components/admin/AdminCatalogTab"
@@ -193,6 +194,7 @@ export default function Admin() {
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
+    { key: "analytics", label: "Аналитика", icon: "ChartColumnBig" },
     { key: "company_settings", label: "Реквизиты", icon: "Building2" },
     { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
@@ -338,6 +340,9 @@ export default function Admin() {
 
         {/* FINANCE */}
         {tab === "finance" && <FinanceTab />}
+
+        {/* ANALYTICS — источники, бюджеты, дашборд */}
+        {tab === "analytics" && <AnalyticsTab />}
 
         {/* COMPANY SETTINGS (реквизиты для договора) */}
         {tab === "company_settings" && (
