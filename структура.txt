@@ -1,6 +1,22 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
+## FAQ — вопросы и ответы (v6.82)
+- backend/faq (URL .../b058cfaf-eb48-4710-90b0-f38899b0b16a) — категории и
+  вопросы-ответы. GET / (или action=public) — публичный список для сайта
+  (категории с опубликованными вопросами, пустые скрыты). Админка:
+  categories / category_save / category_archive; items / item_save / item_delete.
+  Ответ (answer) хранится как HTML — тот же формат, что content у статей.
+- Таблицы (V0186): faq_categories (name, icon, sort_order, is_archived),
+  faq_items (category_id, question, answer HTML, sort_order, is_published).
+  Предзаполнены категории: Оплата, Доставка, Гарантия, Сборка ПК, Прочее.
+- Фронт: api.faq.* в src/lib/api.ts. Клиентский блок на главной —
+  src/components/sections/faq-section.tsx (табы категорий + аккордеон),
+  вставлен в Index.tsx перед ContactSection (навигация главной: 9 секций).
+  Ответы рендерятся через dangerouslySetInnerHTML (класс rich-content).
+  Админка: вкладка «Вопросы (FAQ)» — src/components/admin/FaqTab.tsx
+  (управление категориями + вопросы с ленивым RichTextEditor, folder="faq").
+
 ## Маркетинг и аналитика источников (v6.80)
 - backend/marketing (URL .../1683aaf5-e13f-4ef7-9848-9ca2ecf03b8a) — источники
   клиентов, группы источников, помесячные рекламные бюджеты и сводная аналитика.

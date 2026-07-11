@@ -12,6 +12,7 @@ const ScheduleTab = lazy(() => import("@/components/admin/ScheduleTab"))
 const CalendarTab = lazy(() => import("@/components/admin/CalendarTab"))
 const FinanceTab = lazy(() => import("@/components/admin/FinanceTab"))
 const AnalyticsTab = lazy(() => import("@/components/admin/AnalyticsTab"))
+const FaqTab = lazy(() => import("@/components/admin/FaqTab"))
 const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
 const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
 const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
@@ -198,6 +199,7 @@ export default function Admin() {
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "analytics", label: "Аналитика", icon: "ChartColumnBig" },
+    { key: "faq", label: "Вопросы (FAQ)", icon: "MessagesSquare" },
     { key: "company_settings", label: "Реквизиты", icon: "Building2" },
     { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
@@ -347,6 +349,9 @@ export default function Admin() {
 
         {/* ANALYTICS — источники, бюджеты, дашборд */}
         {tab === "analytics" && <AnalyticsTab />}
+
+        {/* FAQ — вопросы и ответы */}
+        {tab === "faq" && <FaqTab />}
 
         {/* COMPANY SETTINGS (реквизиты для договора) */}
         {tab === "company_settings" && (

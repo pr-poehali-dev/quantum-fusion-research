@@ -7,6 +7,7 @@ import { ServicesSection } from "@/components/sections/services-section"
 import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
 import { ArticlesSection } from "@/components/sections/articles-section"
+import { FaqSection } from "@/components/sections/faq-section"
 import { ConfiguratorSection } from "@/components/sections/configurator-section"
 import { MagneticButton } from "@/components/magnetic-button"
 import { useRef, useEffect, useState, useCallback } from "react"
@@ -110,7 +111,7 @@ export default function Index() {
       const deltaX = touchStartX.current - touchEndX
 
       if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
-        if (deltaY > 0 && currentSection < 7) {
+        if (deltaY > 0 && currentSection < 8) {
           scrollToSection(currentSection + 1)
         } else if (deltaY < 0 && currentSection > 0) {
           scrollToSection(currentSection - 1)
@@ -145,7 +146,7 @@ export default function Index() {
       wheelLockRef.current = true
       setTimeout(() => { wheelLockRef.current = false }, 900)
 
-      if (e.deltaY > 0 && currentSection < 7) {
+      if (e.deltaY > 0 && currentSection < 8) {
         scrollToSection(currentSection + 1)
       } else if (e.deltaY < 0 && currentSection > 0) {
         scrollToSection(currentSection - 1)
@@ -178,7 +179,7 @@ export default function Index() {
         const scrollTop = scrollContainerRef.current.scrollTop
         const newSection = Math.round(scrollTop / sectionHeight)
 
-        if (newSection !== currentSection && newSection >= 0 && newSection <= 7) {
+        if (newSection !== currentSection && newSection >= 0 && newSection <= 8) {
           setCurrentSection(newSection)
         }
 
@@ -275,7 +276,7 @@ export default function Index() {
         </button>
 
         <div className="hidden items-center gap-8 md:flex">
-          {["Главная", "Сборки", "Магазин", "Услуги", "Конфигуратор", "О нас", "Статьи", "Контакты"].map((item, index) => (
+          {["Главная", "Сборки", "Магазин", "Услуги", "Конфигуратор", "О нас", "Статьи", "Вопросы", "Контакты"].map((item, index) => (
             <button
               key={item}
               onClick={() => scrollToSection(index)}
@@ -311,7 +312,7 @@ export default function Index() {
 
       {/* Вертикальные точки-индикаторы */}
       <div className={`fixed right-6 top-1/2 z-50 -translate-y-1/2 flex flex-col gap-2 transition-opacity duration-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
-        {Array.from({ length: 8 }).map((_, i) => (
+        {Array.from({ length: 9 }).map((_, i) => (
           <button
             key={i}
             onClick={() => scrollToSection(i)}
@@ -375,6 +376,7 @@ export default function Index() {
         <ConfiguratorSection />
         <AboutSection scrollToSection={scrollToSection} />
         <ArticlesSection />
+        <FaqSection />
         <ContactSection />
       </div>
 

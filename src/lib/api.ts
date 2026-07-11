@@ -24,6 +24,7 @@ const URLS = {
   companySettings: "https://functions.poehali.dev/9156c6f9-b7d3-42f2-9236-62ebc0347f02",
   receiptScan: "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4",
   marketing: "https://functions.poehali.dev/1683aaf5-e13f-4ef7-9848-9ca2ecf03b8a",
+  faq: "https://functions.poehali.dev/b058cfaf-eb48-4710-90b0-f38899b0b16a",
 }
 
 function authHeaders(session?: string | null) {
@@ -88,6 +89,15 @@ export const api = {
     getBudgets: (groupId?: number) => fetch(`${URLS.marketing}?action=budgets${groupId ? `&group_id=${groupId}` : ""}`).then(r => r.json()),
     saveBudget: (data: { group_id: number; period_month: string; amount: number; leads_manual?: number | null; note?: string }) => fetch(URLS.marketing, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "budget_save", ...data }) }).then(r => r.json()),
     analytics: (from?: string, to?: string) => fetch(`${URLS.marketing}?action=analytics${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`).then(r => r.json()),
+  },
+  faq: {
+    getPublic: () => fetch(URLS.faq).then(r => r.json()),
+    getCategories: () => fetch(`${URLS.faq}?action=categories`).then(r => r.json()),
+    saveCategory: (data: { id?: number; name: string; icon?: string; sort_order?: number }) => fetch(URLS.faq, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_save", ...data }) }).then(r => r.json()),
+    archiveCategory: (id: number) => fetch(URLS.faq, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_archive", id }) }).then(r => r.json()),
+    getItems: () => fetch(`${URLS.faq}?action=items`).then(r => r.json()),
+    saveItem: (data: { id?: number; category_id?: number | null; question: string; answer?: string; sort_order?: number; is_published?: boolean }) => fetch(URLS.faq, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "item_save", ...data }) }).then(r => r.json()),
+    deleteItem: (id: number) => fetch(URLS.faq, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "item_delete", id }) }).then(r => r.json()),
   },
   priceMonitor: {
     list: (adminKey: string, kind?: string) =>

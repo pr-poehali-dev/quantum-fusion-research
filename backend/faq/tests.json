@@ -1,0 +1,41 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Public FAQ list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Admin categories",
+      "method": "GET",
+      "path": "/?action=categories",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Admin items",
+      "method": "GET",
+      "path": "/?action=items",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Item save requires question",
+      "method": "POST",
+      "path": "/?action=item_save",
+      "body": {"question": ""},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Unknown action 400",
+      "method": "GET",
+      "path": "/?action=nope",
+      "expectedStatus": 400
+    }
+  ]
+}
