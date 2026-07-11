@@ -1057,6 +1057,40 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
   )
   const [shown, setShown] = useState(0)
 
+  // === Привязка точек к пикселям на самом ФОТО (object-contain) ===
+  // Фото вписано в контейнер с letterbox. Точки заданы в % ОТ ФОТО, поэтому
+  // их надо пересчитать в % от КОНТЕЙНЕРА, зная реальный прямоугольник фото.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [nat, setNat] = useState<{ w: number; h: number } | null>(null)   // natural размер фото
+  const [wrap, setWrap] = useState<{ w: number; h: number }>({ w: 0, h: 0 }) // размер контейнера
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const upd = () => setWrap({ w: el.clientWidth, h: el.clientHeight })
+    upd()
+    const ro = new ResizeObserver(upd)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Прямоугольник видимого фото внутри контейнера (в % контейнера) при object-contain
+  const photoBox = useMemo(() => {
+    if (!nat || !wrap.w || !wrap.h) return { x: 0, y: 0, w: 100, h: 100 }
+    const scale = Math.min(wrap.w / nat.w, wrap.h / nat.h)
+    const dispW = nat.w * scale, dispH = nat.h * scale
+    return {
+      x: ((wrap.w - dispW) / 2) / wrap.w * 100,
+      y: ((wrap.h - dispH) / 2) / wrap.h * 100,
+      w: dispW / wrap.w * 100,
+      h: dispH / wrap.h * 100,
+    }
+  }, [nat, wrap])
+
+  // Пересчёт «% фото» → «% контейнера»
+  const toX = (px: number) => photoBox.x + px / 100 * photoBox.w
+  const toY = (py: number) => photoBox.y + py / 100 * photoBox.h
+
   // Появление подписей по одной каждую секунду — только когда слайд активен
   useEffect(() => {
     if (!active) { setShown(0); return }
@@ -1083,12 +1117,18 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
     const YT = 12, YB = 95        // вертикальный диапазон подписей (%)
     const LX = 4, RX = 96         // X-край подписей слева/справа
     const withIdx = items.map((c, i) => ({ c, i }))
+    // Центр компонента в координатах КОНТЕЙНЕРА (с учётом letterbox фото),
+    // чтобы сторона подписи и сортировка лучей совпадали с реальной картинкой.
+    const ctrOf = (c: Component) => {
+      const ctr = compCenter(c)
+      return ctr ? { x: toX(ctr.x), y: toY(ctr.y) } : null
+    }
 
     const left: { c: Component; i: number }[] = []
     const right: { c: Component; i: number }[] = []
     const noPt: { c: Component; i: number }[] = []
     for (const it of withIdx) {
-      const ctr = compCenter(it.c)
+      const ctr = ctrOf(it.c)
       if (!ctr) { noPt.push(it); continue }
       (ctr.x < 50 ? left : right).push(it)
     }
@@ -1101,7 +1141,7 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
       const labelY = (k: number) => m === 1 ? (YT + YB) / 2 : YT + (YB - YT) * (k / (m - 1))
       // Стартовый порядок — по углу от точки-старта колонки
       const sorted = [...arr].sort((a, b) => {
-        const ca = compCenter(a.c), cb = compCenter(b.c)
+        const ca = ctrOf(a.c), cb = ctrOf(b.c)
         const angA = ca ? Math.atan2(ca.y - 50, ca.x - x1) : 9
         const angB = cb ? Math.atan2(cb.y - 50, cb.x - x1) : 9
         return angA - angB
@@ -1109,7 +1149,7 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
       // Устранение пересечений обменом соседей: если луч k пересекает луч k+1,
       // меняем подписи местами. Повторяем, пока пересечения есть (сходится).
       const seg = (idx: number) => {
-        const ctr = compCenter(sorted[idx].c) || { x: x1, y: labelY(idx) }
+        const ctr = ctrOf(sorted[idx].c) || { x: x1, y: labelY(idx) }
         return { ax: x1, ay: labelY(idx), bx: ctr.x, by: ctr.y }
       }
       const cross = (s1: ReturnType<typeof seg>, s2: ReturnType<typeof seg>) => {
@@ -1135,14 +1175,16 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
     place(left, "left")
     place(right, "right")
     return res
-  }, [items])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, photoBox])
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
+    <div ref={wrapRef} className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
       {/* Фото ПК на весь экран */}
       {images.map((src, i) => (
         <img key={i} src={src} alt={buildName}
           className="absolute inset-0 h-full w-full object-contain transition-opacity duration-1000"
+          onLoad={i === 0 ? (e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }) : undefined}
           style={{ opacity: i === 0 && active ? 1 : (i === 0 ? 0.4 : 0) }} />
       ))}
       {/* Лёгкое затемнение по краям для читаемости подписей */}
@@ -1175,7 +1217,7 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
           // Если у компонента несколько точек (qty>1) — от бокса тянем луч
           // к КАЖДОЙ точке. Общий короткий «поводок» у подписи, затем ветки.
           const rays: string[] = pointsArr.length
-            ? pointsArr.map(p => `${x1},${a.y} ${leadX},${a.y} ${p.x},${p.y}`)
+            ? pointsArr.map(p => `${x1},${a.y} ${leadX},${a.y} ${toX(p.x)},${toY(p.y)}`)
             : [(() => {
                 // фолбэк без точки — короткая горизонталь с лёгким изломом вверх
                 const midX = a.side === "left" ? x1 + 8 : x1 - 8
@@ -1205,7 +1247,7 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
       {items.map((c, i) => (
         i < shown ? compPoints(c).map((p, pi) => (
           <div key={`pt-${i}-${pi}`} className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${p.x}%`, top: `${p.y}%`,
+            style={{ left: `${toX(p.x)}%`, top: `${toY(p.y)}%`,
               opacity: 1, transition: "opacity 500ms ease" }}>
             <span className="block h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-primary/40 ring-offset-1 ring-offset-background/50" />
           </div>
