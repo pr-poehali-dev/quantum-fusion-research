@@ -268,16 +268,21 @@ export default function BuildPreview() {
   const calcAssemblyFee = build?.assembly_fee || 0
   // Для НДС-сборок применяем +22% с округлением до 250 ₽ (как в админке)
   const calcTotalPrice = withVat(calcPartsTotal + calcAssemblyFee, build?.sell_with_vat)
-  // Смещение индекса первого компонента: на ПК сразу после обзора (1),
-  // на телефоне после обзора и слайда «Состав» (2).
-  const compOffset = isMobile ? 2 : 1
-  const totalSections = components.length + (isMobile ? 3 : 2)
+  // Новый первый слайд «Витрина» (фото ПК с подписями) добавляется, только
+  // если у сборки есть фото. Он сдвигает индексы всех остальных секций на +1.
+  const heroImages = build?.image_urls || []
+  const introOffset = heroImages.length > 0 ? 1 : 0
+  // Смещение индекса первого компонента: на ПК сразу после обзора,
+  // на телефоне после обзора и слайда «Состав». Плюс витрина (introOffset).
+  const compOffset = (isMobile ? 2 : 1) + introOffset
+  const totalSections = components.length + (isMobile ? 3 : 2) + introOffset
 
   // Метка текущего слайда — для верхней панели на телефоне (экономит место в теле).
   const sectionLabel = (() => {
-    if (currentSection === 0) return "Обзор"
+    if (introOffset && currentSection === 0) return "Витрина"
+    if (currentSection === introOffset) return "Обзор"
     if (currentSection === totalSections - 1) return "Заказ"
-    if (isMobile && currentSection === 1) return "Состав"
+    if (isMobile && currentSection === introOffset + 1) return "Состав"
     const comp = components[currentSection - compOffset]
     return comp ? (SLOT_NAMES[comp.slot] || comp.slot) : ""
   })()
@@ -528,24 +533,38 @@ export default function BuildPreview() {
 
       <div ref={scrollContainerRef} className="w-screen overflow-y-hidden" style={{ scrollSnapType: "y mandatory", height: "100dvh", overscrollBehavior: "none", touchAction: "none" }}>
 
-        {/* ── СЕКЦИЯ 0: Обзор ── */}
-        <div ref={el => { sectionRefs.current[0] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+        {/* ── СЕКЦИЯ «Витрина» — новый первый слайд: фото ПК на весь экран
+              с плавно появляющимися подписями комплектующих и стрелками ── */}
+        {introOffset > 0 && (
+          <div ref={el => { sectionRefs.current[0] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+            <BuildShowcaseSlide
+              images={buildImages}
+              components={components}
+              active={currentSection === 0}
+              buildName={build.name}
+              onNext={() => scrollToSection(1)}
+            />
+          </div>
+        )}
+
+        {/* ── СЕКЦИЯ: Обзор ── */}
+        <div ref={el => { sectionRefs.current[introOffset] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
           <div className="relative flex h-full w-full overflow-hidden">
 
             {/* Карусель фото сборки — справа, автосмена */}
             {buildImages.length > 0 && (
-              <HeroBuildCarousel images={buildImages} active={currentSection === 0} components={components} />
+              <HeroBuildCarousel images={buildImages} active={currentSection === introOffset} />
             )}
             <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 30% 50%, hsl(var(--primary) / 0.05) 0%, transparent 70%)" }} />
 
             <div className="relative z-10 mx-auto flex w-full max-w-7xl items-start gap-8 px-5 sm:px-16 pt-24 pb-16 sm:items-center sm:pt-20">
               {/* Левая часть — текст */}
               <div className="flex-1 min-w-0">
-                <div className={`transition-all duration-700 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+                <div className={`transition-all duration-700 ${currentSection === introOffset ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                   {/* Мобайл: фото сборки первым блоком */}
                   {buildImages.length > 0 && (
                     <div className="mb-5 sm:hidden">
-                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === 0} />
+                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === introOffset} />
                     </div>
                   )}
                   <p className="mb-3 font-mono text-xs uppercase tracking-widest text-primary">BeGraphics · Готовая сборка</p>
@@ -644,7 +663,7 @@ export default function BuildPreview() {
                   {/* Фото — карусель для планшета (на телефоне фото уже сверху) */}
                   {buildImages.length > 0 && (
                     <div className="mb-6 hidden sm:block lg:hidden">
-                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === 0} />
+                      <BuildImageCarousel images={buildImages} autoPlay={currentSection === introOffset} />
                     </div>
                   )}
                   <div className="mb-6 flex flex-wrap items-end gap-4 sm:gap-6">
@@ -684,7 +703,7 @@ export default function BuildPreview() {
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-3">
-                    <button onClick={() => scrollToSection(1)} style={{ cursor: "pointer" }}
+                    <button onClick={() => scrollToSection(introOffset + 1)} style={{ cursor: "pointer" }}
                       className="btn-tilt flex items-center gap-2 rounded-full bg-primary px-5 sm:px-7 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all">
                       Изучить состав <Icon name="ArrowDown" size={15} />
                     </button>
@@ -701,7 +720,7 @@ export default function BuildPreview() {
               </div>
 
               {/* Список компонентов — десктоп справа */}
-              <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+              <div className={`hidden xl:block w-80 shrink-0 transition-all duration-700 delay-200 ${currentSection === introOffset ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
                 <p className="mb-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">Состав</p>
                 <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                   {components.map((c, i) => {
@@ -744,16 +763,16 @@ export default function BuildPreview() {
               </div>
             </div>
 
-            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === 0 ? "opacity-40" : "opacity-0"}`}>
+            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${currentSection === introOffset ? "opacity-40" : "opacity-0"}`}>
               <p className="text-xs text-muted-foreground">Прокрутите вниз</p>
               <Icon name="ChevronDown" size={16} className="text-muted-foreground animate-bounce" />
             </div>
           </div>
         </div>
 
-        {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (второй слайд, список) ── */}
+        {/* ── СЕКЦИЯ «Состав» — ТОЛЬКО телефон (после обзора, список) ── */}
         {isMobile && (
-          <div ref={el => { sectionRefs.current[1] = el }} data-scrollable className="w-screen shrink-0 relative overflow-y-auto overscroll-contain" style={{ scrollSnapAlign: "start", height: "100dvh", touchAction: "pan-y", overscrollBehavior: "contain" }}>
+          <div ref={el => { sectionRefs.current[introOffset + 1] = el }} data-scrollable className="w-screen shrink-0 relative overflow-y-auto overscroll-contain" style={{ scrollSnapAlign: "start", height: "100dvh", touchAction: "pan-y", overscrollBehavior: "contain" }}>
             <div className="relative flex min-h-full w-full flex-col px-5 pt-20 pb-28">
               <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-4 space-y-2.5">
                 {components.map((c, i) => {
@@ -969,21 +988,14 @@ function BuildImageCarousel({ images, autoPlay = true }: { images: string[]; aut
 }
 
 // Карусель-обои для секции обзора — фото меняется каждые 6 сек
-function HeroBuildCarousel({ images, active, components = [] }: { images: string[]; active: boolean; components?: Component[] }) {
+function HeroBuildCarousel({ images, active }: { images: string[]; active: boolean }) {
   const [idx, setIdx] = useState(0)
-  // Сколько держать первое фото: даём подписям комплектующих доиграться
-  // (≈1 сек на подпись) + пауза, чтобы их можно было прочитать.
-  const calloutCount = Math.min(7, components.filter(c => c.name && c.slot !== "extra").length)
-  const firstHold = active ? Math.max(6000, calloutCount * 1000 + 3500) : 6000
 
   useEffect(() => {
     if (images.length <= 1) return
-    const t = setTimeout(() => setIdx(i => (i + 1) % images.length), idx === 0 ? firstHold : 6000)
-    return () => clearTimeout(t)
-  }, [images.length, idx, firstHold])
-
-  // Первым слайдом всегда стартуем с первого фото (когда секция становится активной)
-  useEffect(() => { if (active) setIdx(0) }, [active])
+    const t = setInterval(() => setIdx(i => (i + 1) % images.length), 6000)
+    return () => clearInterval(t)
+  }, [images.length])
 
   return (
     <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none overflow-hidden">
@@ -995,10 +1007,6 @@ function HeroBuildCarousel({ images, active, components = [] }: { images: string
         />
       ))}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to right, hsl(var(--background)) 0%, hsl(var(--background) / 0.4) 25%, transparent 55%)" }} />
-
-      {/* Подписи комплектующих со стрелками к центру — только на первом фото */}
-      {active && idx === 0 && <HeroComponentCallouts components={components} />}
-
       {/* Точки слева снизу */}
       {images.length > 1 && (
         <div className="absolute bottom-8 left-4 flex gap-1.5 pointer-events-auto">
@@ -1013,18 +1021,24 @@ function HeroBuildCarousel({ images, active, components = [] }: { images: string
 }
 
 /**
- * Оверлей поверх фото ПК: подписи комплектующих появляются по одной каждую
- * секунду, у каждой — линия-стрелка к центру фото. Плашки с backdrop-blur и
- * полупрозрачным фоном + обводкой читаются и на тёмном, и на светлом фоне.
+ * Первый слайд «Витрина»: фото ПК на весь экран, поверх которого по одной
+ * каждую ~1 сек ПЛАВНО появляются подписи комплектующих со стрелками к центру.
+ * Плашки с backdrop-blur + полупрозрачным фоном и обводкой primary читаются
+ * и на тёмном, и на светлом фоне.
  */
-function HeroComponentCallouts({ components }: { components: Component[] }) {
-  // Берём значимые слоты (без «доп.»), максимум 7 — по числу опорных позиций
-  const items = components
-    .filter(c => c.name && c.slot !== "extra")
-    .slice(0, 7)
+function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
+  images: string[]; components: Component[]; active: boolean; buildName: string; onNext: () => void
+}) {
+  // Значимые слоты (без «доп.»), максимум 7 — по числу опорных позиций
+  const items = useMemo(
+    () => components.filter(c => c.name && c.slot !== "extra").slice(0, 7),
+    [components]
+  )
   const [shown, setShown] = useState(0)
 
+  // Появление подписей по одной каждую секунду — только когда слайд активен
   useEffect(() => {
+    if (!active) { setShown(0); return }
     setShown(0)
     if (!items.length) return
     const t = setInterval(() => {
@@ -1034,59 +1048,68 @@ function HeroComponentCallouts({ components }: { components: Component[] }) {
       })
     }, 1000)
     return () => clearInterval(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length])
+  }, [active, items.length])
 
-  if (!items.length) return null
-
-  const cx = 50, cy = 50 // центр фото в %
-  // Опорные точки-подписи вокруг центра (левый столбец сверху вниз, затем правый)
+  // Опорные точки подписей вокруг центра (левый столбец сверху вниз, затем правый)
   const anchors = [
-    { x: 8, y: 20, side: "left" }, { x: 8, y: 44, side: "left" },
-    { x: 8, y: 68, side: "left" }, { x: 8, y: 90, side: "left" },
-    { x: 92, y: 22, side: "right" }, { x: 92, y: 50, side: "right" },
-    { x: 92, y: 78, side: "right" },
+    { x: 7, y: 22, side: "left" }, { x: 7, y: 46, side: "left" },
+    { x: 7, y: 70, side: "left" }, { x: 7, y: 92, side: "left" },
+    { x: 93, y: 24, side: "right" }, { x: 93, y: 52, side: "right" },
+    { x: 93, y: 80, side: "right" },
   ] as const
+  const cx = 50, cy = 50
 
   return (
-    <div className="absolute inset-0 pointer-events-none">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
+      {/* Фото ПК на весь экран */}
+      {images.map((src, i) => (
+        <img key={i} src={src} alt={buildName}
+          className="absolute inset-0 h-full w-full object-contain transition-opacity duration-1000"
+          style={{ opacity: i === 0 && active ? 1 : (i === 0 ? 0.4 : 0) }} />
+      ))}
+      {/* Лёгкое затемнение по краям для читаемости подписей */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 55% at 50% 50%, transparent 40%, hsl(var(--background) / 0.55) 100%)" }} />
+
+      {/* Заголовок сверху */}
+      <div className={`absolute top-20 left-1/2 z-10 -translate-x-1/2 text-center transition-all duration-700 ${active ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"}`}>
+        <p className="mb-1 font-mono text-[11px] uppercase tracking-widest text-primary">BeGraphics · Готовая сборка</p>
+        <h1 className="font-light tracking-tight text-foreground drop-shadow-lg" style={{ fontSize: "clamp(1.5rem, 3.5vw, 2.75rem)" }}>{buildName}</h1>
+      </div>
+
       {/* Линии-стрелки к центру */}
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
         <defs>
-          <marker id="hc-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+          <marker id="bss-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
             <path d="M0,0 L5,3 L0,6 Z" fill="hsl(var(--primary))" />
           </marker>
         </defs>
         {items.map((_, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
-          // Тянем линию от плашки к точке около центра
-          const tx = cx + (a.side === "left" ? -10 : 10)
-          const ty = cy
+          const tx = cx + (a.side === "left" ? -12 : 12)
           return (
-            <line key={i} x1={a.x} y1={a.y} x2={tx} y2={ty}
-              stroke="hsl(var(--primary))" strokeWidth="0.35" strokeOpacity="0.75"
-              markerEnd="url(#hc-arrow)" vectorEffect="non-scaling-stroke"
-              style={{ transition: "opacity 400ms", opacity: 1 }} />
+            <line key={i} x1={a.x} y1={a.y} x2={tx} y2={cy}
+              stroke="hsl(var(--primary))" strokeWidth="0.35" strokeOpacity="0.7"
+              markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke"
+              style={{ transition: "opacity 500ms ease", opacity: 1 }} />
           )
         })}
       </svg>
 
-      {/* Плашки с названиями */}
+      {/* Плашки с названиями — плавное появление */}
       {items.map((c, i) => {
         const a = anchors[i]
         if (!a) return null
         const visible = i < shown
         return (
-          <div key={i}
-            className="absolute max-w-[42%]"
+          <div key={i} className="absolute z-10 max-w-[40%]"
             style={{
               left: `${a.x}%`, top: `${a.y}%`,
-              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "6px"})`,
+              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "10px"}) scale(${visible ? 1 : 0.96})`,
               opacity: visible ? 1 : 0,
-              transition: "opacity 500ms ease, transform 500ms cubic-bezier(0.22,1,0.36,1)",
+              transition: "opacity 600ms ease, transform 600ms cubic-bezier(0.22,1,0.36,1)",
             }}>
-            <div className="inline-flex flex-col rounded-lg border border-primary/30 bg-background/80 px-3 py-1.5 shadow-lg backdrop-blur-md">
+            <div className="inline-flex flex-col rounded-lg border border-primary/30 bg-background/80 px-3 py-1.5 shadow-xl backdrop-blur-md">
               <span className="text-[10px] font-medium uppercase tracking-wide text-primary leading-none">
                 {SLOT_NAMES[c.slot] || c.slot}
               </span>
@@ -1097,6 +1120,13 @@ function HeroComponentCallouts({ components }: { components: Component[] }) {
           </div>
         )
       })}
+
+      {/* Кнопка/подсказка вниз */}
+      <button onClick={onNext} style={{ cursor: "pointer" }}
+        className={`absolute bottom-8 left-1/2 z-10 -translate-x-1/2 flex flex-col items-center gap-1.5 transition-all duration-500 ${active ? "opacity-70 hover:opacity-100" : "opacity-0"}`}>
+        <span className="text-xs font-medium text-foreground/80">Подробнее о сборке</span>
+        <Icon name="ChevronDown" size={18} className="text-primary animate-bounce" />
+      </button>
     </div>
   )
 }
