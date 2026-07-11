@@ -217,6 +217,8 @@ export function AdminCatalogTab({
     point?: { x: number; y: number } | null
   }>>([])
   const [expandedComponent, setExpandedComponent] = useState<number | null>(null)
+  // Индекс железки, для которой сейчас ставим точку на общем фото сборки
+  const [pointPickIdx, setPointPickIdx] = useState<number | null>(null)
   const [addingSlot, setAddingSlot] = useState<string | null>(null)
   const [componentSearch, setComponentSearch] = useState("")
   const [componentSearchIdx, setComponentSearchIdx] = useState(0)
@@ -312,6 +314,7 @@ export function AdminCatalogTab({
     setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null })
     setBuildComponents([])
     setBuildTagIds([])
+    setPointPickIdx(null)
     setTab("builds")
   }
 
@@ -906,47 +909,77 @@ export function AdminCatalogTab({
                     <button type="button" onClick={() => removeComponent(c.source_id ?? 0)} className="text-foreground/30 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}><Icon name="X" size={13} /></button>
                   </div>
                   {expandedComponent === i && (
-                    <div className="px-3 pb-3 border-t border-border/30 pt-2 space-y-3">
-                      <div>
-                        <p className="text-xs text-foreground/50 mb-1.5">Фото компонента</p>
-                        <ImageUploader images={c.image_urls || []} onChange={urls => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, image_urls: urls } : comp))} folder="builds" maxImages={6} />
-                      </div>
-                      {/* Точка на фото сборки — для витрины /build-preview */}
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <p className="text-xs text-foreground/50">Точка на фото сборки {c.point ? `(${Math.round(c.point.x)}%, ${Math.round(c.point.y)}%)` : "— кликните по фото"}</p>
-                          {c.point && (
-                            <button type="button" onClick={() => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, point: null } : comp))}
-                              className="text-[11px] text-red-400 hover:underline" style={{ cursor: "pointer" }}>Убрать точку</button>
-                          )}
-                        </div>
-                        {(buildForm.image_urls?.length ?? 0) === 0 ? (
-                          <p className="text-xs text-foreground/40">Сначала загрузите фото сборки (в блоке выше), затем отметьте точку.</p>
-                        ) : (
-                          <div
-                            className="relative w-full max-w-md overflow-hidden rounded-lg border border-border bg-black/20"
-                            style={{ cursor: "crosshair" }}
-                            onClick={e => {
-                              const r = e.currentTarget.getBoundingClientRect()
-                              const x = Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))
-                              const y = Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100))
-                              setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, point: { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 } } : comp))
-                            }}>
-                            <img src={buildForm.image_urls[0]} alt="" className="block w-full select-none" draggable={false} />
-                            {c.point && (
-                              <div className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
-                                style={{ left: `${c.point.x}%`, top: `${c.point.y}%` }}>
-                                <div className="h-4 w-4 rounded-full border-2 border-white bg-primary shadow-lg ring-2 ring-primary/40" />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                    <div className="px-3 pb-3 border-t border-border/30 pt-2">
+                      <p className="text-xs text-foreground/50 mb-1.5">Фото компонента</p>
+                      <ImageUploader images={c.image_urls || []} onChange={urls => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, image_urls: urls } : comp))} folder="builds" maxImages={6} />
                     </div>
                   )}
                 </div>
                 ))
               })()}
+            </div>
+          )}
+
+          {/* Точки железок на фото сборки (для витрины /build-preview).
+              Одно общее фото сборки: выбираем железку слева и кликаем по фото. */}
+          {buildComponents.length > 0 && (buildForm.image_urls?.length ?? 0) > 0 && (
+            <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Icon name="MapPin" size={14} className="text-primary" />
+                <h3 className="text-sm font-medium text-foreground">Точки железок на фото</h3>
+                <span className="text-xs text-foreground/40">выберите железку и кликните по фото</span>
+              </div>
+              <div className="flex flex-col gap-4 md:flex-row">
+                {/* Список железок слева */}
+                <div className="w-full shrink-0 space-y-1 md:w-56">
+                  {buildComponents.map((c, i) => (
+                    <div key={i}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${pointPickIdx === i ? "border-primary bg-primary/10" : "border-border/50 hover:border-primary/50"}`}>
+                      <button type="button" onClick={() => setPointPickIdx(pointPickIdx === i ? null : i)}
+                        className="flex flex-1 items-center gap-2 text-left" style={{ cursor: "pointer" }}>
+                        <span className="w-16 shrink-0 truncate font-mono text-foreground/50">{c.slot}</span>
+                        <span className="flex-1 truncate text-foreground">{c.name}</span>
+                      </button>
+                      {c.point ? (
+                        <span className="flex shrink-0 items-center gap-1">
+                          <Icon name="MapPin" size={11} className="text-emerald-400" />
+                          <button type="button" title="Убрать точку"
+                            onClick={() => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, point: null } : comp))}
+                            className="text-foreground/30 hover:text-red-400" style={{ cursor: "pointer" }}><Icon name="X" size={11} /></button>
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[10px] text-foreground/30">нет</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Фото сборки с точками */}
+                <div className="flex-1">
+                  <div
+                    className="relative w-full overflow-hidden rounded-lg border border-border bg-black/20"
+                    style={{ cursor: pointPickIdx !== null ? "crosshair" : "default" }}
+                    onClick={e => {
+                      if (pointPickIdx === null) return
+                      const r = e.currentTarget.getBoundingClientRect()
+                      const x = Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))
+                      const y = Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100))
+                      const pt = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }
+                      setBuildComponents(cs => cs.map((comp, ci) => ci === pointPickIdx ? { ...comp, point: pt } : comp))
+                    }}>
+                    <img src={buildForm.image_urls[0]} alt="" className="block w-full select-none" draggable={false} />
+                    {buildComponents.map((c, i) => c.point && (
+                      <div key={i} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: `${c.point.x}%`, top: `${c.point.y}%` }}>
+                        <div className={`h-4 w-4 rounded-full border-2 border-white shadow-lg ${pointPickIdx === i ? "bg-emerald-400 ring-2 ring-emerald-300/50" : "bg-primary ring-2 ring-primary/40"}`} />
+                        <span className="absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap rounded bg-background/85 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow backdrop-blur-sm">{c.name.slice(0, 18)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {pointPickIdx !== null && (
+                    <p className="mt-1.5 text-xs text-primary">Кликните по фото — поставите точку для: <b>{buildComponents[pointPickIdx]?.name}</b></p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
