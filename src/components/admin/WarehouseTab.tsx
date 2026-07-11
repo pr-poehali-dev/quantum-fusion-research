@@ -2451,8 +2451,8 @@ function InventoryModal({ categories, groups, stores, onClose, onApplied }: {
                         {it.cell && <><span>·</span><span className="font-mono">📦 {it.cell}</span></>}
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-xs text-foreground/60">
-                        <span>Свободно на полке: <span className="font-semibold text-foreground">{it.qty_expected}</span></span>
-                        {it.qty_reserved > 0 && <span title="Отложено под заказы — считать не нужно">Резерв: <span className="text-orange-400 font-semibold">{it.qty_reserved}</span></span>}
+                        <span>Числится на полке: <span className="font-semibold text-foreground">{it.qty_expected}</span></span>
+                        {it.qty_reserved > 0 && <span title="Из них отложено под заказы (физически тоже лежит на полке — считать нужно всё)">в т.ч. резерв: <span className="text-orange-400 font-semibold">{it.qty_reserved}</span></span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

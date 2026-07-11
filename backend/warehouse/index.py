@@ -1373,20 +1373,22 @@ def handler(event: dict, context) -> dict:
 
             items = []
             for gid, name, cat, cell, qty_total, qty_reserved in groups:
-                # Ожидаемое кол-во для пересчёта — СВОБОДНЫЙ остаток (без резервов):
-                # кладовщик считает то, что физически лежит на полке и не отложено под заказы.
-                qty_free = max(0, int(qty_total) - int(qty_reserved))
+                # Ожидаемое кол-во для пересчёта — ВСЁ физическое кол-во на полке
+                # (qty_total), а НЕ свободный остаток. Резерв — это лишь бронь под
+                # заказы, но железо физически всё ещё лежит на складе, поэтому
+                # кладовщик при пересчёте видит именно полное количество.
+                qty_shelf = max(0, int(qty_total))
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.warehouse_inventory_items "
                     f"(inventory_id, group_id, qty_expected, qty_actual, cell) "
                     f"VALUES (%s, %s, %s, NULL, %s) RETURNING id",
-                    (inv_id, gid, qty_free, cell or "")
+                    (inv_id, gid, qty_shelf, cell or "")
                 )
                 item_id = cur.fetchone()[0]
                 items.append({
                     "id": item_id, "group_id": gid, "name": name,
                     "category": cat, "cell": cell or "",
-                    "qty_expected": qty_free, "qty_reserved": int(qty_reserved),
+                    "qty_expected": qty_shelf, "qty_reserved": int(qty_reserved),
                     "qty_actual": None
                 })
 
@@ -1420,8 +1422,8 @@ def handler(event: dict, context) -> dict:
             applied = []    # применённые к остатку изменения (недостачи)
             overflow = []   # излишки (+) — требуют оформления ПРИЁМКИ поставки
             for iid, gid, qty_exp, qty_act, cell, name in items:
-                # qty_exp — это СВОБОДНЫЙ остаток (без резервов), см. inventory_create.
-                # delta = факт (свободный) - ожидаемый свободный остаток.
+                # qty_exp — ПОЛНОЕ физическое кол-во на полке (qty_total), см. inventory_create.
+                # delta = факт (всё, что физически посчитали) - ожидаемое полное кол-во.
                 delta = int(qty_act) - int(qty_exp)
                 if delta == 0:
                     continue
@@ -1438,7 +1440,10 @@ def handler(event: dict, context) -> dict:
                     })
                     continue
 
-                # Недостача — списываем из свободных единиц поставок, от свежих к старым.
+                # Недостача — списываем из ФИЗИЧЕСКИХ единиц поставок, от свежих к старым.
+                # Сначала расходуем свободные единицы; если недостача больше свободного
+                # остатка — уменьшаем и зарезервированные (qty_reserved), т.к. физически
+                # железа не хватает, и бронь не может висеть на отсутствующем товаре.
                 cur.execute(
                     f"SELECT id, qty, qty_reserved FROM {SCHEMA}.warehouse_supplies "
                     f"WHERE group_id=%s ORDER BY id DESC",
@@ -1449,19 +1454,35 @@ def handler(event: dict, context) -> dict:
                     continue
                 touched_sid = None
                 need = -delta
+                # Проход 1: списываем свободные единицы
                 for sid, s_qty, s_res in supplies:
                     free = max(0, int(s_qty) - int(s_res))
                     if free <= 0:
                         continue
                     take = min(free, need)
                     cur.execute(
-                        f"UPDATE {SCHEMA}.warehouse_supplies SET qty=%s, updated_at=NOW() WHERE id=%s",
-                        (int(s_qty) - take, sid)
+                        f"UPDATE {SCHEMA}.warehouse_supplies SET qty=qty-%s, updated_at=NOW() WHERE id=%s",
+                        (take, sid)
                     )
                     touched_sid = sid
                     need -= take
                     if need <= 0:
                         break
+                # Проход 2: если свободного не хватило — режем и qty, и qty_reserved
+                if need > 0:
+                    for sid, s_qty, s_res in supplies:
+                        if int(s_res) <= 0:
+                            continue
+                        take = min(int(s_res), need)
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.warehouse_supplies "
+                            f"SET qty=qty-%s, qty_reserved=qty_reserved-%s, updated_at=NOW() WHERE id=%s",
+                            (take, take, sid)
+                        )
+                        touched_sid = sid
+                        need -= take
+                        if need <= 0:
+                            break
 
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.warehouse_movements "
