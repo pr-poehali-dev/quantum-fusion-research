@@ -197,12 +197,15 @@ export default function Admin() {
   const extraTabs = [
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
+    { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
+    { key: "stress", label: "Стресс-тесты", icon: "Activity" },
+  ]
+  // Группа 4 — Финансы и настройки
+  const financeTabs = [
     { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "analytics", label: "Аналитика", icon: "ChartColumnBig" },
     { key: "faq", label: "Вопросы (FAQ)", icon: "MessagesSquare" },
     { key: "company_settings", label: "Реквизиты", icon: "Building2" },
-    { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
-    { key: "stress", label: "Стресс-тесты", icon: "Activity" },
   ]
   // Группа 4 — Быстрый доступ
   const quickTabs = [
@@ -217,9 +220,10 @@ export default function Admin() {
     { title: "Сборки", items: topTabs },
     { title: "Заявки и склад", items: bottomTabs },
     { title: "Операции", items: extraTabs },
+    { title: "Финансы и настройки", items: financeTabs },
     { title: "Сайт", items: quickTabs },
   ]
-  const allTabs = [...topTabs, ...bottomTabs, ...extraTabs, ...quickTabs]
+  const allTabs = [...topTabs, ...bottomTabs, ...extraTabs, ...financeTabs, ...quickTabs]
   const currentTabMeta = allTabs.find(t => t.key === tab)
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
@@ -246,7 +250,7 @@ export default function Admin() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         {/* Десктоп: строки табов */}
         <div className="mb-6 hidden border-b border-border md:block">
-          {[topTabs, bottomTabs, extraTabs, quickTabs].map((row, ri) => (
+          {[topTabs, bottomTabs, extraTabs, financeTabs, quickTabs].map((row, ri) => (
             <div key={ri} className="flex items-center justify-center gap-0 overflow-x-auto">
               {row.map(t => t.key.startsWith("DIVIDER") ? (
                 <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
