@@ -269,10 +269,12 @@ export default function BuildPreview() {
   const calcAssemblyFee = build?.assembly_fee || 0
   // Для НДС-сборок применяем +22% с округлением до 250 ₽ (как в админке)
   const calcTotalPrice = withVat(calcPartsTotal + calcAssemblyFee, build?.sell_with_vat)
-  // Новый первый слайд «Витрина» (фото ПК с подписями) добавляется, только
-  // если у сборки есть фото. Он сдвигает индексы всех остальных секций на +1.
+  // Новый первый слайд «Витрина» (фото ПК с подписями по бокам) — только для
+  // десктопа и при наличии фото. На телефоне слайд пропускается (боковые
+  // подписи не помещаются), сразу показываем обзор. introOffset сдвигает
+  // индексы всех остальных секций на +1, когда витрина есть.
   const heroImages = build?.image_urls || []
-  const introOffset = heroImages.length > 0 ? 1 : 0
+  const introOffset = (!isMobile && heroImages.length > 0) ? 1 : 0
   // Смещение индекса первого компонента: на ПК сразу после обзора,
   // на телефоне после обзора и слайда «Состав». Плюс витрина (introOffset).
   const compOffset = (isMobile ? 2 : 1) + introOffset
