@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
@@ -22,6 +22,7 @@ const AdminCatalogTab = lazy(() => import("@/components/admin/AdminCatalogTab").
 const AdminUsersTab = lazy(() => import("@/components/admin/AdminUsersTab").then(m => ({ default: m.AdminUsersTab })))
 import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
+import AdminTabsNav from "@/components/admin/AdminTabsNav"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import {
   ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
@@ -224,6 +225,10 @@ export default function Admin() {
     { title: "Сайт", items: quickTabs },
   ]
   const allTabs = [...topTabs, ...bottomTabs, ...extraTabs, ...financeTabs, ...quickTabs]
+  // Стабильная ссылка для AdminTabsNav (иначе реконсиляция раскладки на каждый рендер)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allTabsMemo = useMemo(() => allTabs, [])
+  const tabBadges = useMemo(() => ({ price_monitor: parserPending }), [parserPending])
   const currentTabMeta = allTabs.find(t => t.key === tab)
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
@@ -248,28 +253,13 @@ export default function Admin() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Десктоп: строки табов */}
-        <div className="mb-6 hidden border-b border-border md:block">
-          {[topTabs, bottomTabs, extraTabs, financeTabs, quickTabs].map((row, ri) => (
-            <div key={ri} className="flex items-center justify-center gap-0 overflow-x-auto">
-              {row.map(t => t.key.startsWith("DIVIDER") ? (
-                <div key={t.key} className="mx-2 h-5 w-px shrink-0 bg-border" />
-              ) : (
-                <button key={t.key} onClick={() => setTab(t.key as AdminTab)}
-                  className={`flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"}`}
-                  style={{ cursor: "pointer" }}>
-                  <Icon name={(t.icon || "Package") as "Package"} size={15} />
-                  {t.label}
-                  {t.key === "price_monitor" && parserPending > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold leading-none text-white">
-                      {parserPending > 99 ? "99+" : parserPending}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
+        {/* Десктоп: настраиваемые строки табов (drag&drop, архив, персонально per admin) */}
+        <AdminTabsNav
+          allTabs={allTabsMemo}
+          activeTab={tab}
+          onSelect={k => setTab(k as AdminTab)}
+          badges={tabBadges}
+        />
 
         {/* Мобильный: выпадающее меню с группировкой */}
         <div className="relative mb-6 md:hidden">
