@@ -1078,8 +1078,8 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
       {/* Строго горизонтальные линии-стрелки (влево/вправо), на высоте бокса */}
       <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
         <defs>
-          <marker id="bss-arrow" markerWidth="9" markerHeight="9" refX="5" refY="4.5" orient="auto">
-            <path d="M0,0 L8,4.5 L0,9 Z" fill="hsl(var(--primary))" />
+          <marker id="bss-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+            <path d="M0,0 L5,3 L0,6 Z" fill="hsl(var(--primary))" />
           </marker>
         </defs>
         {items.map((_, i) => {
@@ -1103,18 +1103,19 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         if (!a) return null
         const visible = i < shown
         return (
-          <div key={i} className="absolute z-10 max-w-[46%]"
+          <div key={i} className="absolute z-10"
             style={{
               left: `${a.x}%`, top: `${a.y}%`,
+              width: "min(24%, 220px)",
               transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "14px"}) scale(${visible ? 1 : 0.94})`,
               opacity: visible ? 1 : 0,
               transition: "opacity 600ms ease, transform 600ms cubic-bezier(0.22,1,0.36,1)",
             }}>
-            <div className="inline-flex flex-col rounded-2xl border-2 border-primary/40 bg-background/80 px-6 py-4 shadow-2xl backdrop-blur-md">
-              <span className="text-lg font-semibold uppercase tracking-wide text-primary leading-none">
+            <div className={`flex w-full flex-col rounded-xl border border-primary/40 bg-background/80 px-3 py-2 shadow-xl backdrop-blur-md ${a.side === "right" ? "items-end text-right" : ""}`}>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-primary leading-none">
                 {SLOT_NAMES[c.slot] || c.slot}
               </span>
-              <span className="mt-1.5 text-2xl font-bold text-foreground leading-tight line-clamp-2">
+              <span className="mt-1 text-sm font-bold text-foreground leading-snug break-words line-clamp-2">
                 {c.name}
               </span>
             </div>
