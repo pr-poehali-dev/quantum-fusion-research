@@ -125,6 +125,25 @@ export default function Faq() {
                 )
               })}
             </div>
+
+            {/* Не нашли ответ — связь в Telegram */}
+            <div className="mt-10 flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-6 py-8 text-center">
+              <Icon name="MessageCircleQuestion" fallback="MessagesSquare" size={36} className="text-primary" />
+              <div>
+                <p className="text-lg font-medium text-foreground">Не нашли ответ на свой вопрос?</p>
+                <p className="mt-1 text-sm text-foreground/50">Напишите нам — ответим и поможем с выбором.</p>
+              </div>
+              <a
+                href="https://t.me/BeGraphicsPC"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                style={{ cursor: "pointer" }}
+              >
+                <Icon name="Send" size={16} />
+                Написать в Telegram
+              </a>
+            </div>
           </>
         )}
       </div>

@@ -118,6 +118,25 @@ export function FaqSection() {
             )
           })}
         </div>
+
+        {/* Не нашли ответ — связь в Telegram */}
+        <div
+          className={`mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm transition-all duration-700 delay-300 ${
+            isVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+          }`}
+        >
+          <span className="text-foreground/50">Не нашли ответ на свой вопрос?</span>
+          <a
+            href="https://t.me/BeGraphicsPC"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-medium text-primary transition-opacity hover:opacity-80"
+            style={{ cursor: "pointer" }}
+          >
+            <Icon name="Send" size={14} />
+            Напишите нам в Telegram
+          </a>
+        </div>
       </div>
     </section>
   )
