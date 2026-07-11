@@ -18,6 +18,7 @@ const TABS: Array<Tab | "sep"> = [
   "sep",
   { label: "Статьи", icon: "BookOpen", path: "/articles" },
   { label: "Тир-листы", icon: "Trophy", path: "/tier-lists" },
+  { label: "Вопрос-ответ", icon: "MessagesSquare", path: "/faq" },
 ]
 
 const ITEMS = TABS.filter((t): t is Tab => t !== "sep")

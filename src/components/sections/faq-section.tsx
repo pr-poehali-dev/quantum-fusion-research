@@ -52,7 +52,7 @@ export function FaqSection() {
             Помощь
           </p>
           <h2 className="font-sans text-4xl font-light tracking-tight text-foreground md:text-5xl">
-            Вопросы и ответы
+            Вопрос-ответ
           </h2>
         </div>
 
