@@ -257,7 +257,7 @@ export default function AdminTabsNav({ allTabs, activeTab, onSelect, badges }: {
         <div key={row.id}
           onDragOver={e => { if (editing && dragKey) { e.preventDefault() } }}
           onDrop={e => { if (editing && dragKey) { e.preventDefault(); moveTab(dragKey, row.id, null); endDrag() } }}
-          className={`flex items-center gap-1 ${editing ? "min-h-[46px] rounded-lg py-1 hover:bg-muted/30" : ""}`}>
+          className={`relative flex items-center gap-1 ${editing ? "min-h-[46px] rounded-lg py-1 hover:bg-muted/30" : ""}`}>
           {editing && (
             <div className="relative flex shrink-0 items-center gap-1 pr-2">
               <button onClick={() => setIconPickerRow(row.id)}
@@ -279,7 +279,7 @@ export default function AdminTabsNav({ allTabs, activeTab, onSelect, badges }: {
             </div>
           )}
           {!editing && row.label?.trim() && row.tabs.length > 0 && (
-            <div className="flex shrink-0 items-center gap-1.5 pr-3 text-xs font-semibold uppercase tracking-wide text-primary">
+            <div className="pointer-events-none absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
               <Icon name={row.icon || "LayoutGrid"} size={13} />
               <span className="hidden lg:inline">{row.label}</span>
             </div>
