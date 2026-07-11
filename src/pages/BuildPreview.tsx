@@ -1052,12 +1052,11 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
 
   // Опорные точки подписей вокруг центра (левый столбец сверху вниз, затем правый)
   const anchors = [
-    { x: 7, y: 22, side: "left" }, { x: 7, y: 46, side: "left" },
-    { x: 7, y: 70, side: "left" }, { x: 7, y: 92, side: "left" },
-    { x: 93, y: 24, side: "right" }, { x: 93, y: 52, side: "right" },
-    { x: 93, y: 80, side: "right" },
+    { x: 4, y: 30, side: "left" }, { x: 4, y: 50, side: "left" },
+    { x: 4, y: 70, side: "left" }, { x: 4, y: 90, side: "left" },
+    { x: 96, y: 34, side: "right" }, { x: 96, y: 54, side: "right" },
+    { x: 96, y: 74, side: "right" },
   ] as const
-  const cx = 50, cy = 50
 
   return (
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
@@ -1076,20 +1075,22 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         <h1 className="font-light tracking-tight text-foreground drop-shadow-lg" style={{ fontSize: "clamp(1.5rem, 3.5vw, 2.75rem)" }}>{buildName}</h1>
       </div>
 
-      {/* Линии-стрелки к центру */}
+      {/* Строго горизонтальные линии-стрелки (влево/вправо), на высоте бокса */}
       <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
         <defs>
-          <marker id="bss-arrow" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
-            <path d="M0,0 L5,3 L0,6 Z" fill="hsl(var(--primary))" />
+          <marker id="bss-arrow" markerWidth="9" markerHeight="9" refX="5" refY="4.5" orient="auto">
+            <path d="M0,0 L8,4.5 L0,9 Z" fill="hsl(var(--primary))" />
           </marker>
         </defs>
         {items.map((_, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
-          const tx = cx + (a.side === "left" ? -12 : 12)
+          // от края подписи ровно по горизонтали внутрь фото (та же y)
+          const x1 = a.side === "left" ? a.x + 20 : a.x - 20
+          const x2 = a.side === "left" ? a.x + 34 : a.x - 34
           return (
-            <line key={i} x1={a.x} y1={a.y} x2={tx} y2={cy}
-              stroke="hsl(var(--primary))" strokeWidth="0.35" strokeOpacity="0.7"
+            <line key={i} x1={x1} y1={a.y} x2={x2} y2={a.y}
+              stroke="hsl(var(--primary))" strokeWidth="0.4" strokeOpacity="0.75"
               markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke"
               style={{ transition: "opacity 500ms ease", opacity: 1 }} />
           )
@@ -1102,18 +1103,18 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         if (!a) return null
         const visible = i < shown
         return (
-          <div key={i} className="absolute z-10 max-w-[40%]"
+          <div key={i} className="absolute z-10 max-w-[46%]"
             style={{
               left: `${a.x}%`, top: `${a.y}%`,
-              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "10px"}) scale(${visible ? 1 : 0.96})`,
+              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "14px"}) scale(${visible ? 1 : 0.94})`,
               opacity: visible ? 1 : 0,
               transition: "opacity 600ms ease, transform 600ms cubic-bezier(0.22,1,0.36,1)",
             }}>
-            <div className="inline-flex flex-col rounded-lg border border-primary/30 bg-background/80 px-3 py-1.5 shadow-xl backdrop-blur-md">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-primary leading-none">
+            <div className="inline-flex flex-col rounded-2xl border-2 border-primary/40 bg-background/80 px-6 py-4 shadow-2xl backdrop-blur-md">
+              <span className="text-lg font-semibold uppercase tracking-wide text-primary leading-none">
                 {SLOT_NAMES[c.slot] || c.slot}
               </span>
-              <span className="mt-0.5 text-xs font-semibold text-foreground leading-tight line-clamp-1">
+              <span className="mt-1.5 text-2xl font-bold text-foreground leading-tight line-clamp-2">
                 {c.name}
               </span>
             </div>
