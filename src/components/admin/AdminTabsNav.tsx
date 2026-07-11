@@ -279,12 +279,12 @@ export default function AdminTabsNav({ allTabs, activeTab, onSelect, badges }: {
             </div>
           )}
           {!editing && row.label?.trim() && row.tabs.length > 0 && (
-            <div className="flex shrink-0 items-center gap-1.5 pr-3 text-xs font-semibold uppercase tracking-wide text-foreground/40">
+            <div className="flex shrink-0 items-center gap-1.5 pr-3 text-xs font-semibold uppercase tracking-wide text-primary">
               <Icon name={row.icon || "LayoutGrid"} size={13} />
               <span className="hidden lg:inline">{row.label}</span>
             </div>
           )}
-          <div className={`flex flex-1 items-center gap-0 overflow-x-auto ${editing || (row.label?.trim() && row.tabs.length > 0) ? "" : "justify-center"}`}>
+          <div className={`flex flex-1 items-center gap-0 overflow-x-auto ${editing ? "" : "justify-center"}`}>
             {row.tabs.map(k => renderTile(k, row.id))}
             {editing && !row.tabs.length && (
               <span className="px-3 py-2 text-xs text-foreground/30">Перетащите плитки сюда</span>
