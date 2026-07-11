@@ -1228,6 +1228,19 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
   const photos = comp.image_urls?.length ? comp.image_urls : comp.image_url ? [comp.image_url] : []
   const hasPhoto = photos.length > 0
 
+  // Длинное описание сворачиваем, чтобы не распирало слайд (фикс. высота экрана).
+  const [descExpanded, setDescExpanded] = useState(false)
+  const descRef = useRef<HTMLDivElement>(null)
+  const [descOverflow, setDescOverflow] = useState(false)
+  const COLLAPSED_DESC_PX = 132
+  useEffect(() => {
+    const el = descRef.current
+    if (!el) return
+    setDescOverflow(el.scrollHeight > COLLAPSED_DESC_PX + 8)
+  }, [comp.description])
+  // При смене слайда/компонента сбрасываем раскрытие
+  useEffect(() => { setDescExpanded(false) }, [comp.name, active])
+
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden bg-background">
 
@@ -1265,7 +1278,28 @@ function ComponentSection({ comp, index, total, active, onNext, onPrev }: {
           </h2>
           <p className="mb-4 font-bold text-primary" style={{ fontSize: "clamp(1.3rem, 3vw, 2rem)" }}>{fmt(price)}</p>
           {comp.description && (
-            <div className="mb-5 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md rich-content" dangerouslySetInnerHTML={{ __html: comp.description }} />
+            <div className="mb-5 max-w-md">
+              <div className="relative">
+                <div
+                  ref={descRef}
+                  className="overflow-hidden text-sm sm:text-base leading-relaxed text-muted-foreground rich-content transition-[max-height] duration-500 ease-in-out"
+                  style={{ maxHeight: descExpanded ? "60vh" : `${COLLAPSED_DESC_PX}px`, overflowY: descExpanded ? "auto" : "hidden" }}
+                  dangerouslySetInnerHTML={{ __html: comp.description }}
+                />
+                {/* Градиент-затухание внизу, когда свёрнуто и есть что раскрыть */}
+                {!descExpanded && descOverflow && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12"
+                    style={{ background: "linear-gradient(to bottom, transparent, hsl(var(--background)))" }} />
+                )}
+              </div>
+              {descOverflow && (
+                <button type="button" onClick={() => setDescExpanded(v => !v)} style={{ cursor: "pointer" }}
+                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                  {descExpanded ? "Свернуть" : "Показать полностью"}
+                  <Icon name={descExpanded ? "ChevronUp" : "ChevronDown"} size={13} />
+                </button>
+              )}
+            </div>
           )}
           {/* Мобайл — фото под текстом */}
           {hasPhoto && (
