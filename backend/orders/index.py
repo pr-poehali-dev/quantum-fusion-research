@@ -38,11 +38,14 @@ def build_pc_snapshot(cur, schema, order_id, order_items, build_id, wip_row, bui
     """
     raw_items = order_items or []
 
-    # Финальные цены / серийники / статусы / гарантии из существующих items (по slot)
-    slot_serials = {}
-    slot_final_price = {}
-    slot_item_status = {}
-    slot_warranty = {}
+    # Финальные цены / серийники / статусы / гарантии из существующих items.
+    # Ключуем по (slot, id) — в сборке бывает несколько позиций с одним slot
+    # (напр. корпус + доп. дисплей в slot='case'); ключ только по slot приводил
+    # бы к перезаписи цены одной позиции ценой другой.
+    slot_serials = {}          # по slot (для обратной совместимости serial-логики)
+    slot_final_price = {}      # (slot, id) -> final_price
+    slot_item_status = {}      # (slot, id) -> status
+    slot_warranty = {}         # (slot, id) -> warranty_months
     for it in raw_items:
         stored = it.get("slot_serials") or {}
         for s, sn in stored.items():
@@ -50,17 +53,18 @@ def build_pc_snapshot(cur, schema, order_id, order_items, build_id, wip_row, bui
     for it in raw_items:
         s = it.get("slot")
         if s:
+            key = (s, it.get("id"))
             sn = it.get("serial_numbers") or []
             if not sn and it.get("serial_number"):
                 sn = [it["serial_number"]]
             if sn:
                 slot_serials[s] = [x for x in sn if x and str(x).strip()]
             if it.get("final_price") is not None:
-                slot_final_price[s] = float(it["final_price"])
+                slot_final_price[key] = float(it["final_price"])
             if it.get("item_status"):
-                slot_item_status[s] = it["item_status"]
+                slot_item_status[key] = it["item_status"]
             if it.get("warranty_months") is not None:
-                slot_warranty[s] = it["warranty_months"]
+                slot_warranty[key] = it["warranty_months"]
 
     # Гарантия / серийник / финальная цена услуги сборки
     assembly_warranty = 12
@@ -107,18 +111,19 @@ def build_pc_snapshot(cur, schema, order_id, order_items, build_id, wip_row, bui
                 product_id = pr[0]
         slot_qty = int(comp.get("qty", 1)) * build_qty
         raw_price = float(comp.get("price", 0) or 0)
+        key = (slot, product_id)
         snapshot.append({
             "id": product_id,
             "name": name,
             "slot": slot,
             "slot_label": SLOT_LABELS.get(slot, slot),
             "price": raw_price,
-            "final_price": slot_final_price.get(slot),
+            "final_price": slot_final_price.get(key),
             "quantity": slot_qty,
             "item_type": "product",
-            "warranty_months": slot_warranty.get(slot),
+            "warranty_months": slot_warranty.get(key),
             "serial_numbers": slot_serials.get(slot, []),
-            "item_status": slot_item_status.get(slot),
+            "item_status": slot_item_status.get(key),
         })
 
     # Строка услуги сборки
@@ -957,7 +962,7 @@ def handler(event: dict, context) -> dict:
                 slot = body.get("slot")
                 # Узнаём тип заказа и сборку (для ПК-сборок)
                 cur.execute(
-                    "SELECT pb.sell_with_vat, pb.id FROM pc_builds pb "
+                    "SELECT pb.sell_with_vat, pb.id, COALESCE(pb.lock_prices, FALSE) FROM pc_builds pb "
                     "JOIN wip_builds wb ON wb.build_id = pb.id "
                     "WHERE wb.order_id = %s LIMIT 1",
                     (order_id,),
@@ -965,29 +970,33 @@ def handler(event: dict, context) -> dict:
                 vat_row = cur.fetchone()
                 is_vat = bool(vat_row[0]) if vat_row else False
                 build_id = vat_row[1] if vat_row else None
+                lock_prices = bool(vat_row[2]) if vat_row else False
 
                 if build_id and slot:
                     # ПК-сборка: orders.items — источник истины (снимок). Пишем
-                    # final_price в строку по slot, пересчитываем total, затем
-                    # зеркалим цену в pc_builds.components (assembly → assembly_fee).
-                    # Текущую цену для проверки НДС берём из строки снимка по slot.
-                    cur_price = 0.0
-                    for it in items:
-                        if it.get("slot") == slot:
-                            cp = it.get("final_price")
-                            if cp is None:
-                                cp = it.get("price", 0)
-                            cur_price = float(cp or 0)
-                            break
+                    # final_price СТРОГО в позицию по item_idx (важно: в сборке
+                    # может быть несколько позиций с одним slot — напр. корпус и
+                    # доп. дисплей в slot='case'; поиск по slot затронул бы обе).
+                    # Фолбэк на первую позицию слота — только если индекс не передан.
+                    target_idx = item_idx if (item_idx is not None and 0 <= item_idx < len(items)
+                                              and items[item_idx].get("slot") == slot) else None
+                    if target_idx is None:
+                        target_idx = next((i for i, it in enumerate(items) if it.get("slot") == slot), None)
+                    if target_idx is None:
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                            "error": "item_not_found", "message": "Позиция не найдена"})}
+                    target_item = items[target_idx]
+                    cp = target_item.get("final_price")
+                    if cp is None:
+                        cp = target_item.get("price", 0)
+                    cur_price = float(cp or 0)
                     if is_vat and new_price < cur_price:
                         return {"statusCode": 400, "headers": cors, "body": json.dumps({
                             "error": "vat_no_discount",
                             "message": "Товар с НДС: цену можно только повысить, скидка недоступна.",
                         })}
-                    # 1) Пишем в orders.items по slot
-                    for it in items:
-                        if it.get("slot") == slot:
-                            it["final_price"] = new_price
+                    # 1) Пишем final_price ТОЛЬКО в целевую позицию
+                    target_item["final_price"] = new_price
                     total = sum(
                         (it.get("final_price") if it.get("final_price") is not None
                          else it.get("price", 0)) * it.get("quantity", 1)
@@ -996,21 +1005,30 @@ def handler(event: dict, context) -> dict:
                     )
                     cur.execute("UPDATE orders SET items=%s, total=%s, updated_at=NOW() WHERE id=%s",
                                 (json.dumps(items), total, order_id))
-                    # 2) Зеркалим в pc_builds.components / assembly_fee
-                    if slot == "assembly":
-                        cur.execute(f"UPDATE {schema}.pc_builds SET assembly_fee=%s WHERE id=%s",
-                                    (new_price, build_id))
-                    else:
-                        cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id,))
-                        pc_row = cur.fetchone()
-                        comps = []
-                        if pc_row and pc_row[0]:
-                            comps = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
-                        target = next((c for c in comps if c.get("slot") == slot), None)
-                        if target is not None:
-                            target["price"] = new_price
-                            cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
-                                        (json.dumps(comps), build_id))
+                    # 2) Зеркалим цену в конфиг сборки ТОЛЬКО при lock_prices=TRUE.
+                    #    Если цены не зафиксированы — заказ живёт своей жизнью
+                    #    (одностороннее изменение цены без фидбека в конфигуратор).
+                    if lock_prices:
+                        if slot == "assembly":
+                            cur.execute(f"UPDATE {schema}.pc_builds SET assembly_fee=%s WHERE id=%s",
+                                        (new_price, build_id))
+                        else:
+                            cur.execute(f"SELECT components FROM {schema}.pc_builds WHERE id=%s", (build_id,))
+                            pc_row = cur.fetchone()
+                            comps = []
+                            if pc_row and pc_row[0]:
+                                comps = pc_row[0] if isinstance(pc_row[0], list) else json.loads(pc_row[0])
+                            # Ищем конкретный компонент по (slot, source_id), а не только по slot,
+                            # чтобы не перепутать позиции с одинаковым слотом.
+                            tid = target_item.get("id")
+                            target = next((c for c in comps
+                                           if c.get("slot") == slot and c.get("source_id") == tid), None)
+                            if target is None:
+                                target = next((c for c in comps if c.get("slot") == slot), None)
+                            if target is not None:
+                                target["price"] = new_price
+                                cur.execute(f"UPDATE {schema}.pc_builds SET components=%s WHERE id=%s",
+                                            (json.dumps(comps), build_id))
                 else:
                     # Обычный заказ: цена позиции в orders.items[item_idx]
                     cur_price = items[item_idx].get("final_price")
