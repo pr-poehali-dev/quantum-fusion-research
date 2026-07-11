@@ -2,22 +2,25 @@ import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
-import WarehouseTab from "@/components/admin/WarehouseTab"
-import SnArchiveTab from "@/components/admin/SnArchiveTab"
-import CompatibilityTab from "@/components/admin/CompatibilityTab"
-import ScheduleTab from "@/components/admin/ScheduleTab"
-import CalendarTab from "@/components/admin/CalendarTab"
-import FinanceTab from "@/components/admin/FinanceTab"
-import AnalyticsTab from "@/components/admin/AnalyticsTab"
+import { lazy, Suspense } from "react"
+// Тяжёлые вкладки грузятся лениво — каждая своим чанком, только при открытии.
+// Это резко уменьшает первичный бандл админки (открыта всегда одна вкладка).
+const WarehouseTab = lazy(() => import("@/components/admin/WarehouseTab"))
+const SnArchiveTab = lazy(() => import("@/components/admin/SnArchiveTab"))
+const CompatibilityTab = lazy(() => import("@/components/admin/CompatibilityTab"))
+const ScheduleTab = lazy(() => import("@/components/admin/ScheduleTab"))
+const CalendarTab = lazy(() => import("@/components/admin/CalendarTab"))
+const FinanceTab = lazy(() => import("@/components/admin/FinanceTab"))
+const AnalyticsTab = lazy(() => import("@/components/admin/AnalyticsTab"))
+const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
+const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
+const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
+const StressTestsTab = lazy(() => import("@/components/admin/StressTestsTab"))
+const CompanySettings = lazy(() => import("@/components/admin/CompanySettings"))
+const AdminCatalogTab = lazy(() => import("@/components/admin/AdminCatalogTab").then(m => ({ default: m.AdminCatalogTab })))
+const AdminUsersTab = lazy(() => import("@/components/admin/AdminUsersTab").then(m => ({ default: m.AdminUsersTab })))
 import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
-import { AdminCatalogTab } from "@/components/admin/AdminCatalogTab"
-import { AdminUsersTab } from "@/components/admin/AdminUsersTab"
-import RmaTab from "@/components/admin/RmaTab"
-import QuizRequestsTab from "@/components/admin/QuizRequestsTab"
-import PriceMonitorTab from "@/components/admin/PriceMonitorTab"
-import StressTestsTab from "@/components/admin/StressTestsTab"
-import CompanySettings from "@/components/admin/CompanySettings"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import {
   ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
@@ -300,6 +303,7 @@ export default function Admin() {
           )}
         </div>
 
+        <Suspense fallback={<div className="py-16 text-center text-foreground/40">Загрузка…</div>}>
         {/* ORDERS */}
         {(tab === "orders" || tab === "orders_archive") && (
           <AdminOrdersTab tab={tab} orders={orders} loading={loading} setOrders={setOrders} setTab={setTab} />
@@ -367,8 +371,10 @@ export default function Admin() {
 
         {/* STRESS — результаты стресс-тестов от desktop-приложения */}
         {tab === "stress" && <StressTestsTab />}
+        </Suspense>
       </div>
 
+      <Suspense fallback={<div className="py-16 text-center text-foreground/40">Загрузка…</div>}>
       {/* WAREHOUSE — на всю ширину браузера с отступами 50px */}
       {tab === "warehouse" && (
         <div style={{ padding: "32px 50px 48px" }}>
@@ -389,6 +395,7 @@ export default function Admin() {
           <CompatibilityTab />
         </div>
       )}
+      </Suspense>
     </div>
   )
 }

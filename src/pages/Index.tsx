@@ -1,4 +1,4 @@
-import { Shader, ChromaFlow, Swirl } from "shaders/react"
+import { lazy, Suspense } from "react"
 import { CustomCursor } from "@/components/custom-cursor"
 import { GrainOverlay } from "@/components/grain-overlay"
 import { WorkSection } from "@/components/sections/work-section"
@@ -16,6 +16,9 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import { useTheme } from "@/store/theme"
 import { useGpuDetection } from "@/hooks/useGpuDetection"
+
+// Тяжёлый WebGL-фон грузится отдельным чанком только когда включён (см. ниже).
+const ShaderBackground = lazy(() => import("@/components/ShaderBackground"))
 
 export default function Index() {
   const navigate = useNavigate()
@@ -216,33 +219,9 @@ export default function Index() {
 
         {shaderEnabled && (
           <>
-            <Shader className="absolute inset-0 h-full w-full">
-              <Swirl
-                colorA={shaderColors.colorA}
-                colorB={shaderColors.colorB}
-                speed={0.5}
-                detail={0.6}
-                blend={55}
-                coarseX={45}
-                coarseY={45}
-                mediumX={45}
-                mediumY={45}
-                fineX={45}
-                fineY={45}
-              />
-              <ChromaFlow
-                baseColor={shaderColors.base}
-                upColor={shaderColors.base}
-                downColor={mode === "light" ? "#dddddd" : "#080000"}
-                leftColor={shaderColors.base}
-                rightColor={shaderColors.base}
-                intensity={mode === "light" ? 0.5 : 0.7}
-                radius={1.9}
-                momentum={22}
-                maskType="alpha"
-                opacity={mode === "light" ? 0.55 : 0.8}
-              />
-            </Shader>
+            <Suspense fallback={null}>
+              <ShaderBackground shaderColors={shaderColors} mode={mode} />
+            </Suspense>
 
             <div
               className="absolute inset-0 transition-opacity duration-500"
