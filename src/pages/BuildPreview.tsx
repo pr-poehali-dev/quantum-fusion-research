@@ -1166,7 +1166,9 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         )
       })}
 
-      {/* Плашки с названиями — плавное появление */}
+      {/* Плашки с названиями — появление fadeInUp (animate.css style).
+          Внешний div — позиционирование (не трогаем при анимации),
+          внутренний — сама анимация fadeInUp через opacity + translateY. */}
       {items.map((c, i) => {
         const a = anchors[i]
         if (!a) return null
@@ -1176,11 +1178,15 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
             style={{
               left: `${a.x}%`, top: `${a.y}%`,
               width: "min(24%, 220px)",
-              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%) translateY(${visible ? "0" : "14px"}) scale(${visible ? 1 : 0.94})`,
-              opacity: visible ? 1 : 0,
-              transition: "opacity 600ms ease, transform 600ms cubic-bezier(0.22,1,0.36,1)",
+              transform: `translate(${a.side === "left" ? "0" : "-100%"}, -50%)`,
             }}>
-            <div className={`flex w-full flex-col rounded-xl border border-primary/40 bg-background/80 px-3 py-2 shadow-xl backdrop-blur-md ${a.side === "right" ? "items-end text-right" : ""}`}>
+            <div className={`flex w-full flex-col rounded-xl border border-primary/40 bg-background/80 px-3 py-2 shadow-xl backdrop-blur-md ${a.side === "right" ? "items-end text-right" : ""}`}
+              style={{
+                opacity: visible ? 1 : 0,
+                transform: visible ? "translateY(0)" : "translateY(40px)",
+                transition: "opacity 600ms ease, transform 600ms cubic-bezier(0.19,1,0.22,1)",
+                willChange: "opacity, transform",
+              }}>
               <span className="text-[11px] font-semibold uppercase tracking-wide text-primary leading-none">
                 {SLOT_NAMES[c.slot] || c.slot}
               </span>
