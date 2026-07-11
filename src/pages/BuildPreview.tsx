@@ -1095,18 +1095,40 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
 
     const res: Record<number, { x: number; y: number; side: "left" | "right" }> = {}
     const place = (arr: { c: Component; i: number }[], side: "left" | "right") => {
-      // Общая точка-старт колонки (у её края, по центру высоты) — для угла луча
-      const startX = side === "left" ? LX + 26 : RX - 26
+      const x1 = side === "left" ? LX + 14 : RX - 14   // реальный старт луча
+      const m = arr.length
+      const labelY = (k: number) => m === 1 ? (YT + YB) / 2 : YT + (YB - YT) * (k / (m - 1))
+      // Стартовый порядок — по углу от точки-старта колонки
       const sorted = [...arr].sort((a, b) => {
         const ca = compCenter(a.c), cb = compCenter(b.c)
-        const angA = ca ? Math.atan2(ca.y - 50, ca.x - startX) : 9
-        const angB = cb ? Math.atan2(cb.y - 50, cb.x - startX) : 9
+        const angA = ca ? Math.atan2(ca.y - 50, ca.x - x1) : 9
+        const angB = cb ? Math.atan2(cb.y - 50, cb.x - x1) : 9
         return angA - angB
       })
-      const m = sorted.length
+      // Устранение пересечений обменом соседей: если луч k пересекает луч k+1,
+      // меняем подписи местами. Повторяем, пока пересечения есть (сходится).
+      const seg = (idx: number) => {
+        const ctr = compCenter(sorted[idx].c) || { x: x1, y: labelY(idx) }
+        return { ax: x1, ay: labelY(idx), bx: ctr.x, by: ctr.y }
+      }
+      const cross = (s1: ReturnType<typeof seg>, s2: ReturnType<typeof seg>) => {
+        const ccw = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
+          (cy - ay) * (bx - ax) > (by - ay) * (cx - ax)
+        return ccw(s1.ax, s1.ay, s2.bx, s2.by, s2.ax, s2.ay) !== ccw(s1.bx, s1.by, s2.bx, s2.by, s2.ax, s2.ay)
+          && ccw(s1.ax, s1.ay, s1.bx, s1.by, s2.ax, s2.ay) !== ccw(s1.ax, s1.ay, s1.bx, s1.by, s2.bx, s2.by)
+      }
+      for (let pass = 0; pass < m; pass++) {
+        let swapped = false
+        for (let k = 0; k < m - 1; k++) {
+          if (cross(seg(k), seg(k + 1))) {
+            [sorted[k], sorted[k + 1]] = [sorted[k + 1], sorted[k]]
+            swapped = true
+          }
+        }
+        if (!swapped) break
+      }
       sorted.forEach((it, k) => {
-        const y = m === 1 ? (YT + YB) / 2 : YT + (YB - YT) * (k / (m - 1))
-        res[it.i] = { x: side === "left" ? LX : RX, y, side }
+        res[it.i] = { x: side === "left" ? LX : RX, y: labelY(k), side }
       })
     }
     place(left, "left")
@@ -1143,8 +1165,11 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         {items.map((c, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
-          const x1 = a.side === "left" ? a.x + 20 : a.x - 20
-          const leadX = a.side === "left" ? x1 + 6 : x1 - 6
+          // Старт луча сразу за плашкой (совпадает с startX в anchors = край±14).
+          // Поводок минимальный → луч почти прямой; прямые лучи при сортировке
+          // по углу НЕ пересекаются.
+          const x1 = a.side === "left" ? a.x + 14 : a.x - 14
+          const leadX = a.side === "left" ? x1 + 1 : x1 - 1
           const pointsArr = compPoints(c)
           // Если у компонента несколько точек (qty>1) — от бокса тянем луч
           // к КАЖДОЙ точке. Общий короткий «поводок» у подписи, затем ветки.
