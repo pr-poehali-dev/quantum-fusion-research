@@ -31,6 +31,23 @@ interface Component {
   slot: string; name: string; price: number; current_price?: number; qty?: number
   source_id?: number; image_url?: string; image_urls?: string[]; description?: string; specs?: Record<string, string>
   point?: { x: number; y: number } | null
+  points?: { x: number; y: number }[] | null  // несколько точек (для qty>1)
+}
+
+// Все точки компонента на фото (несколько — для qty>1). Совмещает новое поле
+// points и старое одиночное point (обратная совместимость).
+function compPoints(c: Component): { x: number; y: number }[] {
+  if (c.points && c.points.length) return c.points
+  if (c.point) return [c.point]
+  return []
+}
+// Репрезентативная точка (центр всех) — для выбора стороны/угла подписи.
+function compCenter(c: Component): { x: number; y: number } | null {
+  const pts = compPoints(c)
+  if (!pts.length) return null
+  const x = pts.reduce((s, p) => s + p.x, 0) / pts.length
+  const y = pts.reduce((s, p) => s + p.y, 0) / pts.length
+  return { x, y }
 }
 
 interface BuildTag { id: number; name: string; color: string }
@@ -1070,8 +1087,9 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
     const right: { c: Component; i: number }[] = []
     const noPt: { c: Component; i: number }[] = []
     for (const it of withIdx) {
-      if (!it.c.point) { noPt.push(it); continue }
-      (it.c.point.x < 50 ? left : right).push(it)
+      const ctr = compCenter(it.c)
+      if (!ctr) { noPt.push(it); continue }
+      (ctr.x < 50 ? left : right).push(it)
     }
     for (const it of noPt) (left.length <= right.length ? left : right).push(it)
 
@@ -1080,8 +1098,9 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
       // Общая точка-старт колонки (у её края, по центру высоты) — для угла луча
       const startX = side === "left" ? LX + 26 : RX - 26
       const sorted = [...arr].sort((a, b) => {
-        const angA = a.c.point ? Math.atan2(a.c.point.y - 50, a.c.point.x - startX) : 9
-        const angB = b.c.point ? Math.atan2(b.c.point.y - 50, b.c.point.x - startX) : 9
+        const ca = compCenter(a.c), cb = compCenter(b.c)
+        const angA = ca ? Math.atan2(ca.y - 50, ca.x - startX) : 9
+        const angB = cb ? Math.atan2(cb.y - 50, cb.x - startX) : 9
         return angA - angB
       })
       const m = sorted.length
@@ -1124,47 +1143,48 @@ function BuildShowcaseSlide({ images, components, active, buildName, onNext }: {
         {items.map((c, i) => {
           const a = anchors[i]
           if (!a || i >= shown) return null
-          // Старт линии — у края подписи
           const x1 = a.side === "left" ? a.x + 20 : a.x - 20
-          let pts: string
-          if (c.point) {
-            // Короткий горизонтальный «поводок» у подписи (~6%), затем ПРЯМАЯ
-            // линия к точке. Прямые лучи при сортировке подписей по Y точки
-            // не пересекаются (в отличие от длинных «полочек» на разной высоте).
-            const leadX = a.side === "left" ? x1 + 6 : x1 - 6
-            pts = `${x1},${a.y} ${leadX},${a.y} ${c.point.x},${c.point.y}`
-          } else {
-            // фолбэк без точки — короткая горизонталь с лёгким изломом вверх
-            const midX = a.side === "left" ? x1 + 8 : x1 - 8
-            const endX = a.side === "left" ? x1 + 16 : x1 - 16
-            pts = `${x1},${a.y} ${midX},${a.y} ${endX},${a.y - 4}`
-          }
+          const leadX = a.side === "left" ? x1 + 6 : x1 - 6
+          const pointsArr = compPoints(c)
+          // Если у компонента несколько точек (qty>1) — от бокса тянем луч
+          // к КАЖДОЙ точке. Общий короткий «поводок» у подписи, затем ветки.
+          const rays: string[] = pointsArr.length
+            ? pointsArr.map(p => `${x1},${a.y} ${leadX},${a.y} ${p.x},${p.y}`)
+            : [(() => {
+                // фолбэк без точки — короткая горизонталь с лёгким изломом вверх
+                const midX = a.side === "left" ? x1 + 8 : x1 - 8
+                const endX = a.side === "left" ? x1 + 16 : x1 - 16
+                return `${x1},${a.y} ${midX},${a.y} ${endX},${a.y - 4}`
+              })()]
           return (
             <g key={i} style={{ transition: "opacity 500ms ease", opacity: 1 }}>
-              <polyline points={pts} fill="none"
-                stroke="hsl(var(--background))" strokeOpacity="0.65"
-                strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"
-                vectorEffect="non-scaling-stroke" />
-              <polyline points={pts} fill="none"
-                stroke="hsl(var(--primary))" strokeOpacity="0.95"
-                strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"
-                markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke" />
+              {rays.map((pts, ri) => (
+                <g key={ri}>
+                  <polyline points={pts} fill="none"
+                    stroke="hsl(var(--background))" strokeOpacity="0.65"
+                    strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke" />
+                  <polyline points={pts} fill="none"
+                    stroke="hsl(var(--primary))" strokeOpacity="0.95"
+                    strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"
+                    markerEnd="url(#bss-arrow)" vectorEffect="non-scaling-stroke" />
+                </g>
+              ))}
             </g>
           )
         })}
       </svg>
 
-      {/* Маркеры-точки на фото для железок с заданной точкой */}
-      {items.map((c, i) => {
-        if (!c.point || i >= shown) return null
-        return (
-          <div key={`pt-${i}`} className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${c.point.x}%`, top: `${c.point.y}%`,
-              opacity: i < shown ? 1 : 0, transition: "opacity 500ms ease" }}>
+      {/* Маркеры-точки на фото — по одному на каждую точку компонента */}
+      {items.map((c, i) => (
+        i < shown ? compPoints(c).map((p, pi) => (
+          <div key={`pt-${i}-${pi}`} className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${p.x}%`, top: `${p.y}%`,
+              opacity: 1, transition: "opacity 500ms ease" }}>
             <span className="block h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-primary/40 ring-offset-1 ring-offset-background/50" />
           </div>
-        )
-      })}
+        )) : null
+      ))}
 
       {/* Плашки с названиями — появление fadeInUp (animate.css style).
           Внешний div — позиционирование (не трогаем при анимации),

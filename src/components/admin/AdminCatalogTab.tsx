@@ -215,6 +215,7 @@ export function AdminCatalogTab({
   const [buildComponents, setBuildComponents] = useState<Array<{
     slot: string; source: "catalog" | "custom"; source_id?: number; name: string; price: number; current_price?: number; qty: number; image_urls?: string[]
     point?: { x: number; y: number } | null
+    points?: { x: number; y: number }[] | null  // несколько точек (для qty>1)
   }>>([])
   const [expandedComponent, setExpandedComponent] = useState<number | null>(null)
   // Индекс железки, для которой сейчас ставим точку на общем фото сборки
@@ -260,6 +261,7 @@ export function AdminCatalogTab({
       current_price: c.current_price ?? c.price ?? 0,
       qty: c.qty || 1, image_urls: [],
       point: c.point ?? null,
+      points: c.points ?? (c.point ? [c.point] : null),
     })) || [])
     setBuildTagIds(b.tags?.map(t => t.id) || [])
     setTab("add_build")
@@ -295,7 +297,10 @@ export function AdminCatalogTab({
         // Если цены зафиксированы, сохраняем то, что видит админ (current_price).
         name: c.name, price: buildForm.lock_prices ? compPrice(c) : c.price,
         qty: c.qty, image_urls: c.image_urls,
-        point: c.point ?? null,  // точка на фото сборки для витрины (в %)
+        // точки на фото сборки для витрины (в %). points — массив (для qty>1),
+        // point дублируем первой точкой для обратной совместимости.
+        points: c.points ?? (c.point ? [c.point] : null),
+        point: (c.points && c.points[0]) ?? c.point ?? null,
       })),
     }
     let savedId: number
@@ -927,31 +932,34 @@ export function AdminCatalogTab({
               <div className="mb-2 flex items-center gap-2">
                 <Icon name="MapPin" size={14} className="text-primary" />
                 <h3 className="text-sm font-medium text-foreground">Точки железок на фото</h3>
-                <span className="text-xs text-foreground/40">выберите железку и кликните по фото</span>
+                <span className="text-xs text-foreground/40">выберите железку и кликайте по фото (можно несколько точек)</span>
               </div>
               <div className="flex flex-col gap-4 md:flex-row">
                 {/* Список железок слева */}
-                <div className="w-full shrink-0 space-y-1 md:w-56">
-                  {buildComponents.map((c, i) => (
+                <div className="w-full shrink-0 space-y-1 md:w-64">
+                  {buildComponents.map((c, i) => {
+                    const pts = c.points ?? (c.point ? [c.point] : [])
+                    return (
                     <div key={i}
                       className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${pointPickIdx === i ? "border-primary bg-primary/10" : "border-border/50 hover:border-primary/50"}`}>
                       <button type="button" onClick={() => setPointPickIdx(pointPickIdx === i ? null : i)}
-                        className="flex flex-1 items-center gap-2 text-left" style={{ cursor: "pointer" }}>
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left" style={{ cursor: "pointer" }}>
                         <span className="w-16 shrink-0 truncate font-mono text-foreground/50">{c.slot}</span>
-                        <span className="flex-1 truncate text-foreground">{c.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-foreground">{c.name}</span>
+                        {(c.qty || 1) > 1 && <span className="shrink-0 rounded bg-primary/15 px-1 text-[9px] font-bold text-primary">×{c.qty}</span>}
                       </button>
-                      {c.point ? (
+                      {pts.length > 0 ? (
                         <span className="flex shrink-0 items-center gap-1">
-                          <Icon name="MapPin" size={11} className="text-emerald-400" />
-                          <button type="button" title="Убрать точку"
-                            onClick={() => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, point: null } : comp))}
+                          <span className="flex items-center gap-0.5 text-emerald-400"><Icon name="MapPin" size={11} />{pts.length}</span>
+                          <button type="button" title="Убрать все точки"
+                            onClick={() => setBuildComponents(cs => cs.map((comp, ci) => ci === i ? { ...comp, point: null, points: null } : comp))}
                             className="text-foreground/30 hover:text-red-400" style={{ cursor: "pointer" }}><Icon name="X" size={11} /></button>
                         </span>
                       ) : (
                         <span className="shrink-0 text-[10px] text-foreground/30">нет</span>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
                 {/* Фото сборки с точками */}
                 <div className="flex-1">
@@ -964,19 +972,39 @@ export function AdminCatalogTab({
                       const x = Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))
                       const y = Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100))
                       const pt = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }
-                      setBuildComponents(cs => cs.map((comp, ci) => ci === pointPickIdx ? { ...comp, point: pt } : comp))
+                      // ДОБАВЛЯЕМ точку в список (не заменяем) — можно несколько на железку
+                      setBuildComponents(cs => cs.map((comp, ci) => {
+                        if (ci !== pointPickIdx) return comp
+                        const cur = comp.points ?? (comp.point ? [comp.point] : [])
+                        return { ...comp, points: [...cur, pt], point: cur[0] ?? pt }
+                      }))
                     }}>
                     <img src={buildForm.image_urls[0]} alt="" className="block w-full select-none" draggable={false} />
-                    {buildComponents.map((c, i) => c.point && (
-                      <div key={i} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
-                        style={{ left: `${c.point.x}%`, top: `${c.point.y}%` }}>
-                        <div className={`h-4 w-4 rounded-full border-2 border-white shadow-lg ${pointPickIdx === i ? "bg-emerald-400 ring-2 ring-emerald-300/50" : "bg-primary ring-2 ring-primary/40"}`} />
-                        <span className="absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap rounded bg-background/85 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow backdrop-blur-sm">{c.name.slice(0, 18)}</span>
-                      </div>
-                    ))}
+                    {buildComponents.map((c, i) => {
+                      const pts = c.points ?? (c.point ? [c.point] : [])
+                      return pts.map((p, pi) => (
+                        <div key={`${i}-${pi}`} className="absolute -translate-x-1/2 -translate-y-1/2"
+                          style={{ left: `${p.x}%`, top: `${p.y}%` }}>
+                          {/* Клик по точке в режиме её железки — удаляет эту точку */}
+                          <button type="button" title="Удалить точку"
+                            onClick={ev => {
+                              ev.stopPropagation()
+                              if (pointPickIdx !== i) { setPointPickIdx(i); return }
+                              setBuildComponents(cs => cs.map((comp, ci) => {
+                                if (ci !== i) return comp
+                                const cur = (comp.points ?? (comp.point ? [comp.point] : [])).filter((_, k) => k !== pi)
+                                return { ...comp, points: cur.length ? cur : null, point: cur[0] ?? null }
+                              }))
+                            }}
+                            className={`block h-4 w-4 rounded-full border-2 border-white shadow-lg ${pointPickIdx === i ? "bg-emerald-400 ring-2 ring-emerald-300/50" : "bg-primary ring-2 ring-primary/40"}`}
+                            style={{ cursor: "pointer" }} />
+                          <span className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap rounded bg-background/85 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow backdrop-blur-sm">{c.name.slice(0, 18)}{pts.length > 1 ? ` #${pi + 1}` : ""}</span>
+                        </div>
+                      ))
+                    })}
                   </div>
                   {pointPickIdx !== null && (
-                    <p className="mt-1.5 text-xs text-primary">Кликните по фото — поставите точку для: <b>{buildComponents[pointPickIdx]?.name}</b></p>
+                    <p className="mt-1.5 text-xs text-primary">Кликайте по фото — добавляете точки для: <b>{buildComponents[pointPickIdx]?.name}</b>. Клик по точке — удалить её.</p>
                   )}
                 </div>
               </div>
