@@ -26,8 +26,11 @@
   src/components/admin/PromoTab.tsx (CRUD со всеми настройками типов и лимитов;
   зарегистрирована в Admin.tsx financeTabs + рендер, тип promos в admin/types.ts).
   Главная: src/components/sections/promo-section.tsx — секция «Акции и промокоды»
-  (публичные промо, копирование кода), вставлена в Index.tsx перед ContactSection
-  (главная теперь 10 секций: пределы навигации <9/<=9, 10 точек).
+  (публичные промо, копирование кода), в Index.tsx стоит СРАЗУ ПОД ShopSection
+  (главная 10 секций: пределы навигации <9/<=9, 10 точек).
+  Отдельная страница: src/pages/Promo.tsx (маршрут /promo в App.tsx, layout
+  Seo+CatalogTabs+Footer, как у /faq). Ссылка «Акции» в шапке — CatalogTabs.tsx
+  (icon BadgePercent, после «Наши ПК»). /promo добавлен в sitemap (backend/sitemap).
 
 ## FAQ — вопросы и ответы (v6.82)
 - backend/faq (URL .../b058cfaf-eb48-4710-90b0-f38899b0b16a) — категории и

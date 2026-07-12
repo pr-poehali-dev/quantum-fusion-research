@@ -13,6 +13,7 @@ STATIC = [
     ("/configurator", "0.7", "weekly"),
     ("/tier-lists", "0.6", "weekly"),
     ("/faq", "0.5", "monthly"),
+    ("/promo", "0.7", "weekly"),
     ("/cables", "0.5", "monthly"),
     ("/service", "0.6", "monthly"),
     ("/b2b", "0.5", "monthly"),

@@ -373,12 +373,12 @@ export default function Index() {
 
         <WorkSection />
         <ShopSection />
+        <PromoSection />
         <ServicesSection />
         <ConfiguratorSection />
         <AboutSection scrollToSection={scrollToSection} />
         <ArticlesSection />
         <FaqSection />
-        <PromoSection />
         <ContactSection />
       </div>
 

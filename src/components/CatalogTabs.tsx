@@ -12,6 +12,7 @@ const TABS: Array<Tab | "sep"> = [
   "sep",
   { label: "Каталог товаров", icon: "Package", path: "/shop" },
   { label: "Наши ПК", icon: "Monitor", path: "/builds" },
+  { label: "Акции", icon: "BadgePercent", path: "/promo" },
   "sep",
   { label: "Конфигуратор", icon: "Cpu", path: "/configurator" },
   { label: "Сборки сообщества", icon: "Users", path: "/community-builds" },
