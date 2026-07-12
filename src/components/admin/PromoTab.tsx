@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, lazy, Suspense } from "react"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
 import { getAdminKey } from "@/pages/admin/types"
+
+const RichTextEditor = lazy(() => import("@/components/ui/rich-text-editor"))
 
 const INPUT = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
 const LABEL = "mb-1 block text-xs text-foreground/60"
@@ -49,9 +51,20 @@ const emptyDraft = (): Draft => ({
   is_active: true, is_public: false, sort_order: 0,
 })
 
-// datetime-local <-> ISO
-const toLocal = (v?: string | null) => (v ? v.slice(0, 16) : "")
-const fromLocal = (v: string) => (v ? v : null)
+// datetime-local <-> UTC ISO.
+// В БД время хранится в UTC, а поле datetime-local работает в локальном времени
+// пользователя. Конвертируем в обе стороны, чтобы «действует с 19:56 МСК»
+// не превращалось в 19:56 UTC (иначе акция «не началась» на 3 часа).
+const toLocal = (v?: string | null) => {
+  if (!v) return ""
+  // Значение из БД — UTC (может быть без 'Z'). Приводим к Date и берём локальные части.
+  const iso = v.endsWith("Z") || /[+-]\d\d:?\d\d$/.test(v) ? v : v + "Z"
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ""
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+const fromLocal = (v: string) => (v ? new Date(v).toISOString() : null)
 
 export default function PromoTab() {
   const ak = getAdminKey()
@@ -85,8 +98,8 @@ export default function PromoTab() {
     const payload = {
       ...draft,
       code: draft.code.trim().toUpperCase(),
-      starts_at: fromLocal(toLocal(draft.starts_at)),
-      expires_at: fromLocal(toLocal(draft.expires_at)),
+      starts_at: draft.starts_at || null,
+      expires_at: draft.expires_at || null,
     }
     const res = await api.promos.save(payload, ak)
     setSaving(false)
@@ -192,8 +205,10 @@ export default function PromoTab() {
 
               <div>
                 <label className={LABEL}>Описание (показывается в акциях)</label>
-                <textarea rows={2} value={draft.description || ""} onChange={e => setDraft(d => ({ ...d!, description: e.target.value }))}
-                  className={INPUT + " resize-none"} placeholder="Условия акции…" style={{ cursor: "text" }} />
+                <Suspense fallback={<div className="py-6 text-center text-sm text-foreground/40">Загрузка редактора…</div>}>
+                  <RichTextEditor value={draft.description || ""} onChange={v => setDraft(d => ({ ...d!, description: v }))}
+                    placeholder="Условия акции…" folder="promos" className="min-h-[140px]" />
+                </Suspense>
               </div>
 
               {/* Тип действия */}
@@ -329,13 +344,13 @@ export default function PromoTab() {
                 <div>
                   <label className={LABEL}>Действует с</label>
                   <input type="datetime-local" value={toLocal(draft.starts_at)}
-                    onChange={e => setDraft(d => ({ ...d!, starts_at: e.target.value || null }))}
+                    onChange={e => setDraft(d => ({ ...d!, starts_at: fromLocal(e.target.value) }))}
                     className={INPUT} style={{ cursor: "text" }} />
                 </div>
                 <div>
                   <label className={LABEL}>Действует до</label>
                   <input type="datetime-local" value={toLocal(draft.expires_at)}
-                    onChange={e => setDraft(d => ({ ...d!, expires_at: e.target.value || null }))}
+                    onChange={e => setDraft(d => ({ ...d!, expires_at: fromLocal(e.target.value) }))}
                     className={INPUT} style={{ cursor: "text" }} />
                 </div>
               </div>

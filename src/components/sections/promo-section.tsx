@@ -77,7 +77,10 @@ export function PromoSection() {
                   )}
                 </div>
                 <h3 className="mb-1 text-lg font-medium text-foreground">{p.title || "Промокод"}</h3>
-                {p.description && <p className="mb-3 text-sm leading-relaxed text-foreground/60">{p.description}</p>}
+                {p.description && (
+                  <div className="rich-content mb-3 text-sm leading-relaxed text-foreground/60"
+                    dangerouslySetInnerHTML={{ __html: p.description }} />
+                )}
 
                 <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-foreground/45">
                   <span className="inline-flex items-center gap-1"><Icon name="Tag" size={12} />{SCOPE_LABEL[p.scope] || "Скидка"}</span>
