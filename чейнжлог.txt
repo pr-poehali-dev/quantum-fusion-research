@@ -3,6 +3,19 @@
 
 ---
 
+## v7.03 | 2026-07-12 | Склад: новые категории сохраняются в БД (фикс исчезновения)
+
+- Баг: новая категория склада добавлялась только в локальный state (без запроса
+  на сервер), т.к. список категорий строился из DISTINCT category у товаров.
+  Категория без товаров исчезала после перезагрузки вкладки.
+- db_migrations/V0191: новая таблица warehouse_categories (id, name UNIQUE),
+  заполнена существующими категориями товаров.
+- backend/warehouse: +action category_create (POST) — сохраняет категорию в
+  таблицу. GET categories теперь UNION категорий из товаров и таблицы.
+  category_rename/category_delete синхронизируют таблицу warehouse_categories.
+- src/lib/api.ts: +warehouse.createCategory(name).
+- WarehouseTab (CategoriesModal.add): вызывает createCategory + onSaved().
+
 ## v7.02 | 2026-07-12 | Конфигуратор: скрыт переключатель вида на мобилке
 
 - src/pages/Configurator.tsx: переключатель «Вид: Подробный/Компактный» скрыт

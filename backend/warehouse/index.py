@@ -725,12 +725,25 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "product_id": _pidr[0] if _pidr else None})}
 
+        if action == "category_create" and method == "POST":
+            name = body.get("name", "").strip()
+            if not name:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужно name"})}
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.warehouse_categories (name) VALUES ({esc(name)}) "
+                f"ON CONFLICT (name) DO NOTHING"
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
         if action == "category_rename" and method == "PUT":
             old_name = body.get("old_name", "").strip()
             new_name = body.get("new_name", "").strip()
             if not old_name or not new_name:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужны old_name и new_name"})}
             cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET category = {esc(new_name)} WHERE category = {esc(old_name)}")
+            cur.execute(f"DELETE FROM {SCHEMA}.warehouse_categories WHERE name = {esc(new_name)}")
+            cur.execute(f"UPDATE {SCHEMA}.warehouse_categories SET name = {esc(new_name)} WHERE name = {esc(old_name)}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
@@ -739,6 +752,7 @@ def handler(event: dict, context) -> dict:
             if not name:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужно name"})}
             cur.execute(f"UPDATE {SCHEMA}.warehouse_groups SET category = NULL WHERE category = {esc(name)}")
+            cur.execute(f"DELETE FROM {SCHEMA}.warehouse_categories WHERE name = {esc(name)}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
@@ -1241,9 +1255,13 @@ def handler(event: dict, context) -> dict:
 
         # ── КАТЕГОРИИ ─────────────────────────────────────────────────────────
         if action == "categories" and method == "GET":
+            # Объединяем категории из товаров (DISTINCT) и отдельную таблицу
+            # категорий (созданные вручную, но пока без товаров).
             cur.execute(
-                f"SELECT DISTINCT category FROM {SCHEMA}.warehouse_groups "
-                f"WHERE category IS NOT NULL AND category != '' ORDER BY category"
+                f"SELECT category AS name FROM {SCHEMA}.warehouse_groups "
+                f"WHERE category IS NOT NULL AND category != '' "
+                f"UNION SELECT name FROM {SCHEMA}.warehouse_categories "
+                f"ORDER BY name"
             )
             cats = [r[0] for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps(cats)}

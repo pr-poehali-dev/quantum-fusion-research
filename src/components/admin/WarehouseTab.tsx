@@ -1588,9 +1588,14 @@ function CategoriesModal({ categories, onClose, onSaved }: {
   const add = async () => {
     const val = newCat.trim()
     if (!val || list.includes(val)) return
-    // Категория появится в списке только после добавления товара — просто показываем её локально
+    setSaving(true)
+    // Сохраняем категорию на сервер (в таблицу warehouse_categories), чтобы она
+    // не исчезала после перезагрузки, даже если в ней ещё нет товаров.
+    await api.warehouse.createCategory(val)
     setList(prev => [...prev, val].sort())
     setNewCat("")
+    setSaving(false)
+    onSaved()
   }
 
   return (
