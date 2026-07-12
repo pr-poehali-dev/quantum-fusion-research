@@ -437,44 +437,45 @@ export function AdminWipTab({
     ? wipBuilds.filter(w => ["Архив", "Отменён", "Забрали"].includes(w.stage))
     : wipBuilds.filter(w => !["Архив", "Отменён"].includes(w.stage))
   const usedComps = WIP_COMPONENTS.filter(c => activeBuilds.some(w => !!(w as Record<string, string>)[c.key]))
-  // ── Быстрые кнопки шапки: показ/скрытие + порядок (локально на устройстве) ──
-  // Управляем только видимостью и порядком встроенных кнопок. Скрытые уходят
-  // в «карман», который раскрывается кнопкой «^» справа.
-  const QUICK_BTN_KEY = "wip_quick_buttons_v1"
-  const QUICK_BTN_DEFAULT = ["archive", "basket", "editHw", "newBuild"]
-  const [quickCfg, setQuickCfg] = useState<{ order: string[]; hidden: string[] }>(() => {
+  // ── Настраиваемые кнопки-действия в строке «Заказ» (локально на устройстве) ──
+  // Пользователь может скрывать/показывать и переупорядочивать эти кнопки.
+  // Скрытые уходят в «карман», раскрываемый кнопкой «^».
+  const ACT_KEY = "wip_row_actions_v1"
+  const ACT_DEFAULT = ["edit", "paste", "copy", "margin", "order", "contract", "sheet", "sync", "cancel"]
+  const ACT_LABELS: Record<string, string> = {
+    edit: "Редактировать", paste: "Вставить состав", copy: "Скопировать в новую",
+    margin: "Маржа сборки", order: "Обработать заказ", contract: "Договор поставки",
+    sheet: "Лист сборки", sync: "Выбить со склада", cancel: "Отменить заказ",
+  }
+  const [actCfg, setActCfg] = useState<{ order: string[]; hidden: string[] }>(() => {
     try {
-      const raw = localStorage.getItem(QUICK_BTN_KEY)
+      const raw = localStorage.getItem(ACT_KEY)
       if (raw) {
         const p = JSON.parse(raw)
-        const order: string[] = Array.isArray(p.order) ? p.order.filter((k: string) => QUICK_BTN_DEFAULT.includes(k)) : []
-        const hidden: string[] = Array.isArray(p.hidden) ? p.hidden.filter((k: string) => QUICK_BTN_DEFAULT.includes(k)) : []
-        // Досоздаём кнопки, которых нет в сохранёнке (после обновлений)
-        for (const k of QUICK_BTN_DEFAULT) if (!order.includes(k) && !hidden.includes(k)) order.push(k)
+        const order: string[] = Array.isArray(p.order) ? p.order.filter((k: string) => ACT_DEFAULT.includes(k)) : []
+        const hidden: string[] = Array.isArray(p.hidden) ? p.hidden.filter((k: string) => ACT_DEFAULT.includes(k)) : []
+        for (const k of ACT_DEFAULT) if (!order.includes(k) && !hidden.includes(k)) order.push(k)
         return { order, hidden }
       }
     } catch { /* noop */ }
-    return { order: [...QUICK_BTN_DEFAULT], hidden: [] }
+    return { order: [...ACT_DEFAULT], hidden: [] }
   })
-  const [quickEdit, setQuickEdit] = useState(false)
-  const [quickPocketOpen, setQuickPocketOpen] = useState(false)
-  const [quickDrag, setQuickDrag] = useState<string | null>(null)
-  const persistQuick = (next: { order: string[]; hidden: string[] }) => {
-    setQuickCfg(next)
-    try { localStorage.setItem(QUICK_BTN_KEY, JSON.stringify(next)) } catch { /* noop */ }
+  const [actEdit, setActEdit] = useState(false)
+  const [actPocketOpen, setActPocketOpen] = useState(false)
+  const [actDrag, setActDrag] = useState<string | null>(null)
+  const persistAct = (next: { order: string[]; hidden: string[] }) => {
+    setActCfg(next)
+    try { localStorage.setItem(ACT_KEY, JSON.stringify(next)) } catch { /* noop */ }
   }
-  const quickHide = (key: string) => persistQuick({ order: quickCfg.order.filter(k => k !== key), hidden: [...quickCfg.hidden, key] })
-  const quickShow = (key: string) => persistQuick({ order: [...quickCfg.order, key], hidden: quickCfg.hidden.filter(k => k !== key) })
-  const quickReorder = (from: string, to: string) => {
+  const actHide = (key: string) => persistAct({ order: actCfg.order.filter(k => k !== key), hidden: [...actCfg.hidden, key] })
+  const actShow = (key: string) => persistAct({ order: [...actCfg.order, key], hidden: actCfg.hidden.filter(k => k !== key) })
+  const actReorder = (from: string, to: string) => {
     if (from === to) return
-    const arr = [...quickCfg.order]
-    const fi = arr.indexOf(from), ti = arr.indexOf(to)
-    if (fi < 0 || ti < 0) return
-    arr.splice(fi, 1)
+    const arr = actCfg.order.filter(k => k !== from)
     arr.splice(arr.indexOf(to), 0, from)
-    persistQuick({ ...quickCfg, order: arr })
+    persistAct({ ...actCfg, order: arr })
   }
-  const quickReset = () => persistQuick({ order: [...QUICK_BTN_DEFAULT], hidden: [] })
+  const actReset = () => persistAct({ order: [...ACT_DEFAULT], hidden: [] })
 
   const rows: { key: string; label: string }[] = [
     { key: "_order", label: "Заказ" },
@@ -503,112 +504,43 @@ export function AdminWipTab({
               <Icon name="ArrowLeft" size={15} />
               К активным
             </button>
-          ) : (() => {
-            // Описание встроенных быстрых кнопок. Порядок и видимость — из quickCfg.
-            const defs: Record<string, { label: string; render: () => JSX.Element }> = {
-              archive: { label: "Архив", render: () => (
-                <button onClick={() => setViewArchive(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-                  style={{ cursor: "pointer" }}>
-                  <Icon name="Archive" size={15} />
-                  Архив
-                </button>
-              ) },
-              basket: { label: "Корзина закупки", render: () => (
-                <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
-                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                    totalNewCount > 0
-                      ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
-                      : totalDebtCount > 0
-                        ? "border-amber-400/40 bg-amber-400/5 text-amber-500 hover:bg-amber-400/10"
-                        : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
-                  }`}
-                  style={{ cursor: "pointer" }}>
-                  <Icon name="ShoppingCart" size={15} />
-                  Корзина закупки
-                  {totalNewCount > 0 && (
-                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-white">{totalNewCount}</span>
-                  )}
-                </button>
-              ) },
-              editHw: { label: "Ред. железо", render: () => (
-                <button onClick={() => setWipEditMode(v => !v)}
-                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
-                  style={{ cursor: "pointer" }}>
-                  <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
-                  {wipEditMode ? "Просмотр" : "Ред. железо"}
-                </button>
-              ) },
-              newBuild: { label: "Новая сборка", render: () => (
-                <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                  style={{ cursor: "pointer" }}>
-                  <Icon name="Plus" size={15} />Новая сборка
-                </button>
-              ) },
-            }
-            return (
-              <>
-                {quickCfg.order.filter(k => defs[k]).map(key => (
-                  <div key={key} className="relative"
-                    draggable={quickEdit}
-                    onDragStart={() => quickEdit && setQuickDrag(key)}
-                    onDragOver={e => { if (quickEdit && quickDrag) e.preventDefault() }}
-                    onDrop={() => { if (quickEdit && quickDrag) { quickReorder(quickDrag, key); setQuickDrag(null) } }}
-                    onDragEnd={() => setQuickDrag(null)}
-                    style={{ cursor: quickEdit ? "grab" : undefined }}>
-                    <div className={quickEdit ? "pointer-events-none opacity-90" : ""}>
-                      {defs[key].render()}
-                    </div>
-                    {quickEdit && (
-                      <button onClick={() => quickHide(key)} title="Скрыть кнопку"
-                        className="absolute -right-1.5 -top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-card text-foreground/50 hover:text-red-400 shadow"
-                        style={{ cursor: "pointer" }}>
-                        <Icon name="X" size={10} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-
-                {/* Кнопка «Настроить» */}
-                <button onClick={() => { setQuickEdit(v => !v); setQuickPocketOpen(false) }} title="Настроить кнопки"
-                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${quickEdit ? "bg-primary text-primary-foreground" : "text-foreground/40 hover:bg-muted hover:text-foreground"}`}
-                  style={{ cursor: "pointer" }}>
-                  <Icon name={quickEdit ? "Check" : "Settings2"} size={15} />
-                </button>
-
-                {/* Карман скрытых кнопок: раскрывается «^» */}
-                {quickCfg.hidden.length > 0 && (
-                  <div className="relative">
-                    <button onClick={() => setQuickPocketOpen(v => !v)} title="Скрытые кнопки"
-                      className="flex items-center justify-center rounded-lg border border-border px-2 py-2 text-foreground/50 hover:border-primary hover:text-foreground transition-colors"
-                      style={{ cursor: "pointer" }}>
-                      <Icon name={quickPocketOpen ? "ChevronUp" : "ChevronDown"} size={15} />
-                    </button>
-                    {quickPocketOpen && (
-                      <div className="absolute right-0 top-full z-30 mt-2 w-52 rounded-xl border border-border bg-card p-2 shadow-2xl">
-                        <p className="mb-1.5 px-1 text-[11px] uppercase tracking-wider text-foreground/40">Скрытые кнопки</p>
-                        {quickCfg.hidden.filter(k => defs[k]).map(key => (
-                          <button key={key} onClick={() => { quickShow(key); if (quickCfg.hidden.length <= 1) setQuickPocketOpen(false) }}
-                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground/70 hover:bg-muted hover:text-foreground transition-colors"
-                            style={{ cursor: "pointer" }}>
-                            <Icon name="Plus" size={13} className="text-foreground/40" />
-                            {defs[key].label}
-                          </button>
-                        ))}
-                        <button onClick={() => { quickReset(); setQuickPocketOpen(false) }}
-                          className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-foreground/40 hover:bg-muted hover:text-foreground transition-colors"
-                          style={{ cursor: "pointer" }}>
-                          <Icon name="RotateCcw" size={12} />
-                          Сбросить по умолчанию
-                        </button>
-                      </div>
-                    )}
-                  </div>
+          ) : (
+            <>
+              <button onClick={() => setViewArchive(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Archive" size={15} />
+                Архив
+              </button>
+              <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                  totalNewCount > 0
+                    ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
+                    : totalDebtCount > 0
+                      ? "border-amber-400/40 bg-amber-400/5 text-amber-500 hover:bg-amber-400/10"
+                      : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
+                }`}
+                style={{ cursor: "pointer" }}>
+                <Icon name="ShoppingCart" size={15} />
+                Корзина закупки
+                {totalNewCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-white">{totalNewCount}</span>
                 )}
-              </>
-            )
-          })()}
+              </button>
+
+              <button onClick={() => setWipEditMode(v => !v)}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}>
+                <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
+                {wipEditMode ? "Просмотр" : "Ред. железо"}
+              </button>
+              <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={15} />Новая сборка
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1002,48 +934,96 @@ export function AdminWipTab({
             <tbody>
               {rows.map(row => (
                 <tr key={row.key} className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-3 py-2 font-mono text-[10px] text-foreground/40 uppercase tracking-wide border-r border-border/30 whitespace-nowrap bg-muted/10">{row.label}</td>
+                  <td className="px-3 py-2 font-mono text-[10px] text-foreground/40 uppercase tracking-wide border-r border-border/30 whitespace-nowrap bg-muted/10 align-top">
+                    <div className="flex items-center gap-1.5">
+                      <span>{row.label}</span>
+                      {row.key === "_order" && (
+                        <>
+                          <button onClick={() => { setActEdit(v => !v); setActPocketOpen(false) }} title="Настроить кнопки строки"
+                            className={`flex items-center justify-center rounded p-0.5 transition-colors ${actEdit ? "bg-primary text-primary-foreground" : "text-foreground/30 hover:text-foreground"}`}
+                            style={{ cursor: "pointer" }}>
+                            <Icon name={actEdit ? "Check" : "Settings2"} size={12} />
+                          </button>
+                          {actCfg.hidden.length > 0 && (
+                            <div className="relative">
+                              <button onClick={() => setActPocketOpen(v => !v)} title="Скрытые кнопки"
+                                className="flex items-center justify-center rounded border border-border p-0.5 text-foreground/40 hover:text-foreground hover:border-primary transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name={actPocketOpen ? "ChevronUp" : "ChevronDown"} size={12} />
+                              </button>
+                              {actPocketOpen && (
+                                <div className="absolute left-0 top-full z-30 mt-1.5 w-52 rounded-xl border border-border bg-card p-2 shadow-2xl normal-case tracking-normal">
+                                  <p className="mb-1.5 px-1 text-[11px] text-foreground/40">Скрытые кнопки</p>
+                                  {actCfg.hidden.filter(k => ACT_LABELS[k]).map(key => (
+                                    <button key={key} onClick={() => { actShow(key); if (actCfg.hidden.length <= 1) setActPocketOpen(false) }}
+                                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-foreground/70 hover:bg-muted hover:text-foreground transition-colors"
+                                      style={{ cursor: "pointer" }}>
+                                      <Icon name="Plus" size={12} className="text-foreground/40" />
+                                      {ACT_LABELS[key]}
+                                    </button>
+                                  ))}
+                                  <button onClick={() => { actReset(); setActPocketOpen(false) }}
+                                    className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-foreground/40 hover:bg-muted hover:text-foreground transition-colors"
+                                    style={{ cursor: "pointer" }}>
+                                    <Icon name="RotateCcw" size={11} />
+                                    Сбросить по умолчанию
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
                   {activeBuilds.map(w => {
                     const bg = row.key.startsWith("_") ? "" : COMP_STATUS_BG[(w as Record<string, string>)[row.key + "_status"] || "pending"] || ""
                     return (
                       <td key={w.id} className={`px-3 py-2 align-top border-r border-border/20 last:border-0 ${bg} ${w.stage === "Забрали" ? "opacity-40" : ""}`}>
-                        {row.key === "_order" && (
-                          <div className="flex items-center gap-1.5">
-                            <button onClick={() => { setWipForm(w); setWipFormOpen(true) }}
-                              title="Редактировать сборку"
-                              className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-                              style={{ cursor: "pointer" }}>
-                              <Icon name="Pencil" size={13} />
-                            </button>
-                            <button onClick={() => setWipPasteId(w.id!)}
-                              title="Вставить состав"
-                              className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-                              style={{ cursor: "pointer" }}>
-                              <Icon name="Copy" size={13} />
-                            </button>
-                            <button onClick={() => copyWip(w)}
-                              title="Скопировать сборку в новую"
-                              className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary/5 p-1.5 text-primary hover:bg-primary/10 transition-colors"
-                              style={{ cursor: "pointer" }}>
-                              <Icon name="CopyPlus" size={13} />
-                            </button>
-                            {w.id && (
+                        {row.key === "_order" && (() => {
+                          // Каждая кнопка-действие по ключу. null — если недоступна для этой сборки.
+                          const actDefs: Record<string, () => JSX.Element | null> = {
+                            edit: () => (
+                              <button onClick={() => { setWipForm(w); setWipFormOpen(true) }}
+                                title="Редактировать сборку"
+                                className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="Pencil" size={13} />
+                              </button>
+                            ),
+                            paste: () => (
+                              <button onClick={() => setWipPasteId(w.id!)}
+                                title="Вставить состав"
+                                className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="Copy" size={13} />
+                              </button>
+                            ),
+                            copy: () => (
+                              <button onClick={() => copyWip(w)}
+                                title="Скопировать сборку в новую"
+                                className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary/5 p-1.5 text-primary hover:bg-primary/10 transition-colors"
+                                style={{ cursor: "pointer" }}>
+                                <Icon name="CopyPlus" size={13} />
+                              </button>
+                            ),
+                            margin: () => w.id ? (
                               <button onClick={() => setMarginWip(w)}
                                 title="Маржа сборки"
                                 className="flex items-center justify-center rounded-lg border border-green-400/30 bg-green-400/5 p-1.5 text-[13px] hover:bg-green-400/10 transition-colors"
                                 style={{ cursor: "pointer" }}>
                                 🤑
                               </button>
-                            )}
-                            {w.order_id && (
+                            ) : null,
+                            order: () => w.order_id ? (
                               <button onClick={() => navigate(`/admin/order/${w.order_id}`)}
                                 title="Обработать заказ"
                                 className="flex items-center justify-center rounded-lg border border-blue-400/30 bg-blue-400/5 p-1.5 text-blue-400 hover:bg-blue-400/10 transition-colors"
                                 style={{ cursor: "pointer" }}>
                                 <Icon name="ClipboardList" size={13} />
                               </button>
-                            )}
-                            {(w.build_id || w.order_id) && w.id && (
+                            ) : null,
+                            contract: () => ((w.build_id || w.order_id) && w.id) ? (
                               <button onClick={() => openWipContract(w)}
                                 disabled={contractWipId === w.id}
                                 title="Договор поставки (можно на этапе согласования, без резервов)"
@@ -1051,16 +1031,16 @@ export function AdminWipTab({
                                 style={{ cursor: "pointer" }}>
                                 <Icon name={contractWipId === w.id ? "Loader" : "FileSignature"} size={13} className={contractWipId === w.id ? "animate-spin" : ""} />
                               </button>
-                            )}
-                            {w.build_id && (
+                            ) : null,
+                            sheet: () => w.build_id ? (
                               <button onClick={() => navigate(`/order-sheet/${w.build_id}`)}
                                 title="Лист сборки — забрать железо со склада"
                                 className="flex items-center justify-center rounded-lg border border-border p-1.5 text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
                                 style={{ cursor: "pointer" }}>
                                 <Icon name="Warehouse" size={13} />
                               </button>
-                            )}
-                            {w.stage === "Заказ" && w.order_id && w.id && (
+                            ) : null,
+                            sync: () => (w.stage === "Заказ" && w.order_id && w.id) ? (
                               <button onClick={() => syncWipOrder(w)}
                                 disabled={syncingWipId === w.id}
                                 title="Выбить компоненты со склада и создать резервы"
@@ -1068,17 +1048,42 @@ export function AdminWipTab({
                                 style={{ cursor: "pointer" }}>
                                 <Icon name={syncingWipId === w.id ? "Loader" : syncDoneWipId === w.id ? "Check" : "RefreshCw"} size={13} className={syncingWipId === w.id ? "animate-spin" : ""} />
                               </button>
-                            )}
-                            {w.id && (
+                            ) : null,
+                            cancel: () => w.id ? (
                               <button onClick={() => openCancelModal(w)}
                                 title="Отменить заказ"
                                 className="flex items-center justify-center rounded-lg border border-red-400/20 p-1.5 text-red-400/50 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-colors"
                                 style={{ cursor: "pointer" }}>
                                 <Icon name="XCircle" size={13} />
                               </button>
-                            )}
-                          </div>
-                        )}
+                            ) : null,
+                          }
+                          return (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {actCfg.order.filter(k => actDefs[k]).map(key => {
+                                const el = actDefs[key]()
+                                if (!el) return null
+                                if (!actEdit) return <div key={key}>{el}</div>
+                                return (
+                                  <div key={key} className="relative"
+                                    draggable
+                                    onDragStart={() => setActDrag(key)}
+                                    onDragOver={e => { if (actDrag) e.preventDefault() }}
+                                    onDrop={() => { if (actDrag) { actReorder(actDrag, key); setActDrag(null) } }}
+                                    onDragEnd={() => setActDrag(null)}
+                                    style={{ cursor: "grab" }}>
+                                    <div className="pointer-events-none opacity-90">{el}</div>
+                                    <button onClick={() => actHide(key)} title="Скрыть кнопку"
+                                      className="absolute -right-1.5 -top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-card text-foreground/50 hover:text-red-400 shadow"
+                                      style={{ cursor: "pointer" }}>
+                                      <Icon name="X" size={10} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })()}
                         {row.key === "_stage" && (
                           <div className="flex flex-col items-start gap-1">
                             <select value={w.stage}
