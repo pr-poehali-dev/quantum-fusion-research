@@ -25,7 +25,46 @@ export default function Cart() {
   const [success, setSuccess] = useState(false)
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed")
 
+  // Промокод
+  const [promoInput, setPromoInput] = useState("")
+  const [promoChecking, setPromoChecking] = useState(false)
+  const [promoError, setPromoError] = useState("")
+  const [applied, setApplied] = useState<{ code: string; title?: string; discount: number } | null>(null)
+
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
+
+  const cartItemsPayload = () => items.map(i => ({
+    id: i.id, name: i.name, price: i.price, quantity: i.quantity,
+    item_type: i.type, assembly: i.assembly, components: i.components, preorder: i.preorder,
+  }))
+
+  const applyPromo = async () => {
+    const code = promoInput.trim()
+    if (!code) return
+    setPromoChecking(true)
+    setPromoError("")
+    try {
+      const res = await api.promos.validate(code, cartItemsPayload(), total(), form.phone || undefined, sessionId)
+      if (res.ok) {
+        setApplied({ code: res.promo.code, title: res.promo.title, discount: res.discount })
+      } else {
+        setApplied(null)
+        setPromoError(res.message || "Промокод не применён")
+      }
+    } catch {
+      setPromoError("Не удалось проверить промокод")
+    }
+    setPromoChecking(false)
+  }
+
+  const removePromo = () => {
+    setApplied(null)
+    setPromoInput("")
+    setPromoError("")
+  }
+
+  const discount = applied ? Math.min(applied.discount, total()) : 0
+  const finalTotal = Math.max(total() - discount, 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,8 +83,9 @@ export default function Cart() {
       customer_phone: form.phone,
       customer_email: form.contact_value ? `${form.contact_type}:${form.contact_value}` : undefined,
       order_type: orderType,
-      items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, item_type: i.type, assembly: i.assembly, components: i.components, preorder: i.preorder })),
+      items: cartItemsPayload(),
       total: total(),
+      promo_code: applied ? applied.code : undefined,
       comment,
       ...getUtm(),
     }, sessionId)
@@ -198,10 +238,62 @@ export default function Cart() {
             {/* Order form */}
             <div className="h-fit rounded-xl border border-border bg-card p-6">
               <h2 className="mb-4 text-lg font-medium text-foreground">Оформить заявку</h2>
+              {/* Промокод */}
+              <div className="mb-4">
+                <label className="mb-1 block text-xs text-foreground/60">Промокод</label>
+                {applied ? (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Icon name="BadgePercent" size={16} className="text-green-500 shrink-0" />
+                      <span className="truncate text-sm font-medium text-green-500">
+                        {applied.code}{applied.title ? ` · ${applied.title}` : ""}
+                      </span>
+                    </div>
+                    <button type="button" onClick={removePromo} title="Убрать промокод"
+                      className="shrink-0 text-foreground/40 hover:text-red-400 transition-colors" style={{ cursor: "pointer" }}>
+                      <Icon name="X" size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={promoInput}
+                        onChange={e => { setPromoInput(e.target.value); setPromoError("") }}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyPromo() } }}
+                        className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground uppercase placeholder:normal-case placeholder:text-foreground/30 focus:border-primary focus:outline-none"
+                        placeholder="Введите промокод"
+                        style={{ cursor: "text" }}
+                      />
+                      <button type="button" onClick={applyPromo} disabled={promoChecking || !promoInput.trim()}
+                        className="rounded-lg border border-primary/40 bg-primary/10 px-4 text-sm font-medium text-primary hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                        style={{ cursor: "pointer" }}>
+                        {promoChecking ? "..." : "Применить"}
+                      </button>
+                    </div>
+                    {promoError && <p className="mt-1.5 text-xs text-red-400">{promoError}</p>}
+                  </>
+                )}
+              </div>
+
               <div className="mb-6 border-t border-border pt-4">
+                {discount > 0 && (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-foreground/50">Сумма:</span>
+                      <span className="text-foreground/50">{fmt(total())}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-green-500">
+                      <span>Скидка по промокоду:</span>
+                      <span>−{fmt(discount)}</span>
+                    </div>
+                    <div className="my-2 border-t border-border/60" />
+                  </>
+                )}
                 <div className="flex items-center justify-between text-lg font-bold">
                   <span className="text-foreground/70">Итого:</span>
-                  <span className="text-foreground">{fmt(total())}</span>
+                  <span className="text-foreground">{fmt(finalTotal)}</span>
                 </div>
                 <p className="mt-1 text-xs text-foreground/40">Менеджер уточнит детали и подтвердит заказ</p>
               </div>

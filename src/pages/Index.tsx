@@ -8,6 +8,7 @@ import { AboutSection } from "@/components/sections/about-section"
 import { ContactSection } from "@/components/sections/contact-section"
 import { ArticlesSection } from "@/components/sections/articles-section"
 import { FaqSection } from "@/components/sections/faq-section"
+import { PromoSection } from "@/components/sections/promo-section"
 import { ConfiguratorSection } from "@/components/sections/configurator-section"
 import { MagneticButton } from "@/components/magnetic-button"
 import { useRef, useEffect, useState, useCallback } from "react"
@@ -111,7 +112,7 @@ export default function Index() {
       const deltaX = touchStartX.current - touchEndX
 
       if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
-        if (deltaY > 0 && currentSection < 8) {
+        if (deltaY > 0 && currentSection < 9) {
           scrollToSection(currentSection + 1)
         } else if (deltaY < 0 && currentSection > 0) {
           scrollToSection(currentSection - 1)
@@ -146,7 +147,7 @@ export default function Index() {
       wheelLockRef.current = true
       setTimeout(() => { wheelLockRef.current = false }, 900)
 
-      if (e.deltaY > 0 && currentSection < 8) {
+      if (e.deltaY > 0 && currentSection < 9) {
         scrollToSection(currentSection + 1)
       } else if (e.deltaY < 0 && currentSection > 0) {
         scrollToSection(currentSection - 1)
@@ -179,7 +180,7 @@ export default function Index() {
         const scrollTop = scrollContainerRef.current.scrollTop
         const newSection = Math.round(scrollTop / sectionHeight)
 
-        if (newSection !== currentSection && newSection >= 0 && newSection <= 8) {
+        if (newSection !== currentSection && newSection >= 0 && newSection <= 9) {
           setCurrentSection(newSection)
         }
 
@@ -312,7 +313,7 @@ export default function Index() {
 
       {/* Вертикальные точки-индикаторы */}
       <div className={`fixed right-6 top-1/2 z-50 -translate-y-1/2 flex flex-col gap-2 transition-opacity duration-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
-        {Array.from({ length: 9 }).map((_, i) => (
+        {Array.from({ length: 10 }).map((_, i) => (
           <button
             key={i}
             onClick={() => scrollToSection(i)}
@@ -377,6 +378,7 @@ export default function Index() {
         <AboutSection scrollToSection={scrollToSection} />
         <ArticlesSection />
         <FaqSection />
+        <PromoSection />
         <ContactSection />
       </div>
 

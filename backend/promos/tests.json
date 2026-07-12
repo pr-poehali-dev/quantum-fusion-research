@@ -1,0 +1,42 @@
+{
+  "tests": [
+    {
+      "name": "Публичные акции доступны без ключа",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": { "promos": [] },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Список для админки без ключа запрещён",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Валидация: пустой код",
+      "method": "POST",
+      "path": "/?action=validate",
+      "body": { "code": "", "items": [], "total": 0 },
+      "expectedStatus": 200,
+      "expectedBody": { "ok": false, "error": "empty" },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Валидация: несуществующий код",
+      "method": "POST",
+      "path": "/?action=validate",
+      "body": { "code": "НЕТТАКОГО123", "items": [{ "id": 1, "name": "x", "price": 1000, "quantity": 1, "item_type": "product" }], "total": 1000 },
+      "expectedStatus": 200,
+      "expectedBody": { "ok": false, "error": "not_found" },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Категории для выбора",
+      "method": "GET",
+      "path": "/?action=categories",
+      "expectedStatus": 200
+    }
+  ]
+}

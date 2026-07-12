@@ -1,6 +1,34 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
+## Промокоды и акции (v7.06)
+- backend/promos (URL .../b70b011e-6249-4d99-8b90-f0f695e62cae) — система скидок
+  в корзине + публичные акции для сайта + CRUD для админки.
+  Actions:
+    • GET / (или public) — публичные активные акции (is_public) для сайта.
+    • POST validate — проверка кода и расчёт скидки в корзине
+      (body: code, items[], total, customer_phone?; user_id по X-Session-Id).
+    • GET categories — список категорий для выбора в админке.
+    • Админка (X-Admin-Key = секрет ADMIN_KEY): list / save / delete.
+  promo_logic.py — единая логика validate_and_calc (скопирована и в backend/orders):
+    типы (scope): cart (вся корзина), category (категории/товары),
+    build (сборка ПК: build_part all|hardware|assembly), combo (набор из
+    слотов — скидка при наличии товара из каждого слота), first (первый заказ).
+    Скидка percent|amount, с max_discount, min_order_amount, лимитами по
+    сроку (starts_at/expires_at) и активациям (max_uses/used_count).
+- backend/orders POST: принимает promo_code, СЕРВЕРНО валидирует через
+  promo_logic, вычитает скидку из total, сохраняет promo_code/discount_amount/
+  promo_id, инкрементит promos.used_count. Значениям с фронта НЕ доверяет.
+- БД (V0193): таблица promos; orders +promo_code +discount_amount +promo_id.
+- Фронт: api.promos.* в src/lib/api.ts (getPublic/validate/categories/list/save/
+  delete). Корзина src/pages/Cart.tsx — поле ввода промокода, строка «Скидка»,
+  итог со скидкой, promo_code уходит в заказ. Админка: вкладка «Промокоды»
+  src/components/admin/PromoTab.tsx (CRUD со всеми настройками типов и лимитов;
+  зарегистрирована в Admin.tsx financeTabs + рендер, тип promos в admin/types.ts).
+  Главная: src/components/sections/promo-section.tsx — секция «Акции и промокоды»
+  (публичные промо, копирование кода), вставлена в Index.tsx перед ContactSection
+  (главная теперь 10 секций: пределы навигации <9/<=9, 10 точек).
+
 ## FAQ — вопросы и ответы (v6.82)
 - backend/faq (URL .../b058cfaf-eb48-4710-90b0-f38899b0b16a) — категории и
   вопросы-ответы. GET / (или action=public) — публичный список для сайта

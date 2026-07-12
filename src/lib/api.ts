@@ -25,6 +25,7 @@ const URLS = {
   receiptScan: "https://functions.poehali.dev/de7a55a6-8858-43db-b39f-e5d791bc39b4",
   marketing: "https://functions.poehali.dev/1683aaf5-e13f-4ef7-9848-9ca2ecf03b8a",
   faq: "https://functions.poehali.dev/b058cfaf-eb48-4710-90b0-f38899b0b16a",
+  promos: "https://functions.poehali.dev/b70b011e-6249-4d99-8b90-f0f695e62cae",
 }
 
 function authHeaders(session?: string | null) {
@@ -98,6 +99,21 @@ export const api = {
     getItems: () => fetch(`${URLS.faq}?action=items`).then(r => r.json()),
     saveItem: (data: { id?: number; category_id?: number | null; question: string; answer?: string; sort_order?: number; is_published?: boolean }) => fetch(URLS.faq, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "item_save", ...data }) }).then(r => r.json()),
     deleteItem: (id: number) => fetch(URLS.faq, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "item_delete", id }) }).then(r => r.json()),
+  },
+  promos: {
+    getPublic: () => fetch(URLS.promos).then(r => r.json()),
+    validate: (code: string, items: unknown[], total: number, customerPhone?: string, session?: string | null) =>
+      fetch(`${URLS.promos}?action=validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(session ? { "X-Session-Id": session } : {}) },
+        body: JSON.stringify({ code, items, total, customer_phone: customerPhone }),
+      }).then(r => r.json()),
+    categories: () => fetch(`${URLS.promos}?action=categories`).then(r => r.json()),
+    list: (ak: string) => fetch(`${URLS.promos}?action=list`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
+    save: (data: unknown, ak: string) =>
+      fetch(URLS.promos, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "save", ...(data as object), ak }) }).then(r => r.json()),
+    delete: (id: number, ak: string) =>
+      fetch(URLS.promos, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "delete", id, ak }) }).then(r => r.json()),
   },
   priceMonitor: {
     list: (adminKey: string, kind?: string) =>

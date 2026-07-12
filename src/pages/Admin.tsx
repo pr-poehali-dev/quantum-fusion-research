@@ -13,6 +13,7 @@ const CalendarTab = lazy(() => import("@/components/admin/CalendarTab"))
 const FinanceTab = lazy(() => import("@/components/admin/FinanceTab"))
 const AnalyticsTab = lazy(() => import("@/components/admin/AnalyticsTab"))
 const FaqTab = lazy(() => import("@/components/admin/FaqTab"))
+const PromoTab = lazy(() => import("@/components/admin/PromoTab"))
 const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
 const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
 const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
@@ -206,6 +207,7 @@ export default function Admin() {
     { key: "finance", label: "Финансы", icon: "Wallet" },
     { key: "analytics", label: "Аналитика", icon: "ChartColumnBig" },
     { key: "faq", label: "Вопросы (FAQ)", icon: "MessagesSquare" },
+    { key: "promos", label: "Промокоды", icon: "BadgePercent" },
     { key: "company_settings", label: "Реквизиты", icon: "Building2" },
   ]
   // Группа 4 — Быстрый доступ
@@ -346,6 +348,9 @@ export default function Admin() {
 
         {/* FAQ — вопросы и ответы */}
         {tab === "faq" && <FaqTab />}
+
+        {/* PROMOS — промокоды и акции */}
+        {tab === "promos" && <PromoTab />}
 
         {/* COMPANY SETTINGS (реквизиты для договора) */}
         {tab === "company_settings" && (

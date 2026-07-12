@@ -201,6 +201,31 @@ def handler(event: dict, context) -> dict:
             user_id = get_user_by_session(cur, session_id)
             quiz_request_id = body.get("quiz_request_id")  # привязка к заявке (опц.)
 
+            # ─── Промокод: серверная валидация и расчёт скидки ───
+            # Итоговая сумма total уменьшается на скидку. Значения из тела
+            # запроса НЕ доверяем — считаем заново по актуальному промокоду.
+            SCHEMA = "t_p72635010_quantum_fusion_resea"
+            promo_code = None
+            promo_id = None
+            discount_amount = 0.0
+            _raw_total = float(body.get("total") or 0)
+            _promo_input = (body.get("promo_code") or "").strip()
+            if _promo_input:
+                try:
+                    from promo_logic import validate_and_calc
+                    _pr = validate_and_calc(
+                        cur, SCHEMA, _promo_input, body.get("items") or [], _raw_total,
+                        user_id=user_id, customer_phone=body.get("customer_phone"),
+                    )
+                    if _pr.get("ok"):
+                        promo_code = _pr["promo"]["code"]
+                        promo_id = _pr["promo"]["id"]
+                        discount_amount = float(_pr.get("discount") or 0)
+                except Exception:
+                    pass
+            final_total = max(round(_raw_total - discount_amount, 2), 0)
+            body["total"] = final_total  # дальнейшая логика (уведомления и пр.) видит итог со скидкой
+
             # Источник клиента: явный source_id или авто-подбор по utm_source.
             utm_source = (body.get("utm_source") or "").strip() or None
             utm_medium = (body.get("utm_medium") or "").strip() or None
@@ -220,15 +245,24 @@ def handler(event: dict, context) -> dict:
             cur.execute(
                 """INSERT INTO orders (customer_name, customer_phone, customer_email, order_type,
                    items, total, comment, status, user_id, quiz_request_id,
-                   source_id, utm_source, utm_medium, utm_campaign, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, %s, %s, %s, %s, NOW(), NOW()) RETURNING id""",
+                   source_id, utm_source, utm_medium, utm_campaign,
+                   promo_code, discount_amount, promo_id, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'new', %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()) RETURNING id""",
                 (body["customer_name"], body["customer_phone"],
                  body.get("customer_email"), body.get("order_type", "cart"),
                  json.dumps(body["items"]), body["total"],
                  body.get("comment"), user_id, quiz_request_id,
-                 source_id, utm_source, utm_medium, utm_campaign)
+                 source_id, utm_source, utm_medium, utm_campaign,
+                 promo_code, discount_amount, promo_id)
             )
             order_id = cur.fetchone()[0]
+
+            # Учёт использования промокода
+            if promo_id:
+                cur.execute(
+                    f"UPDATE {SCHEMA}.promos SET used_count = used_count + 1 WHERE id = %s",
+                    (promo_id,),
+                )
 
             # Если заказ создан из заявки — помечаем заявку обработанной
             if quiz_request_id:
