@@ -28,6 +28,17 @@ interface Article {
   slug?: string
   image_url?: string | null
 }
+interface HomePromo {
+  id: number
+  code: string
+  title: string | null
+  description: string | null
+  scope: string
+  discount_type: string
+  discount_value: number
+  min_order_amount: number
+  expires_at: string | null
+}
 interface CatalogBuild {
   id: number
   name: string
@@ -71,6 +82,8 @@ export default function HomeStonks() {
   const [artIdx, setArtIdx] = useState(0)
   const artPaused = useRef(false)
   const [quizInProgress, setQuizInProgress] = useState(false)
+  const [promos, setPromos] = useState<HomePromo[]>([])
+  const [copiedPromo, setCopiedPromo] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -115,7 +128,18 @@ export default function HomeStonks() {
         setCatalogBuilds(roots.slice(0, 3))
       }).catch(() => {})
       .finally(() => setCatalogLoading(false))
+    api.promos.getPublic()
+      .then(d => setPromos((d.promos || []).slice(0, 4)))
+      .catch(() => {})
   }, [])
+
+  const copyPromo = (code: string) => {
+    navigator.clipboard?.writeText(code).catch(() => {})
+    setCopiedPromo(code)
+    setTimeout(() => setCopiedPromo(c => (c === code ? null : c)), 1800)
+  }
+  const promoDiscount = (p: HomePromo) =>
+    p.discount_type === "percent" ? `−${p.discount_value}%` : `−${fmtPrice(p.discount_value)}`
 
   const buildPrice = (b: CatalogBuild) => {
     // current_price подставлен бэкендом с учётом lock_prices; учитываем qty и НДС
@@ -271,6 +295,50 @@ export default function HomeStonks() {
                       </button>
                     )
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* Акции и промокоды */}
+            {promos.length > 0 && (
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-xl font-bold">Акции и промокоды</h3>
+                  <button onClick={() => navigate("/promo")} style={{ cursor: "pointer" }}
+                    className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                    Все акции <Icon name="ArrowRight" size={15} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {promos.map(p => (
+                    <div key={p.id} className="flex flex-col rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div className="flex h-12 min-w-12 items-center justify-center rounded-xl bg-primary/15 px-3 text-lg font-bold text-primary">
+                          {promoDiscount(p)}
+                        </div>
+                        {p.scope === "first" && (
+                          <span className="rounded-full bg-green-500/15 px-2.5 py-1 text-[11px] font-medium text-green-500">Новичкам</span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold leading-snug">{p.title || "Промокод"}</p>
+                      {p.description && (
+                        <div className="rich-content mt-1 line-clamp-2 text-xs leading-relaxed text-foreground/55"
+                          dangerouslySetInnerHTML={{ __html: p.description }} />
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-foreground/45">
+                        {p.min_order_amount > 0 && <span>от {fmtPrice(p.min_order_amount)}</span>}
+                        {p.expires_at && <span>до {new Date(p.expires_at).toLocaleDateString("ru-RU")}</span>}
+                      </div>
+                      <button onClick={() => copyPromo(p.code)} style={{ cursor: "pointer" }}
+                        className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-dashed border-primary/40 bg-background/40 px-3 py-2 text-left transition-colors hover:border-primary">
+                        <span className="font-mono text-sm font-semibold tracking-wider">{p.code}</span>
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary">
+                          <Icon name={copiedPromo === p.code ? "Check" : "Copy"} size={13} />
+                          {copiedPromo === p.code ? "Скопировано" : "Копировать"}
+                        </span>
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
