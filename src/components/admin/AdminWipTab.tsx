@@ -437,6 +437,45 @@ export function AdminWipTab({
     ? wipBuilds.filter(w => ["Архив", "Отменён", "Забрали"].includes(w.stage))
     : wipBuilds.filter(w => !["Архив", "Отменён"].includes(w.stage))
   const usedComps = WIP_COMPONENTS.filter(c => activeBuilds.some(w => !!(w as Record<string, string>)[c.key]))
+  // ── Быстрые кнопки шапки: показ/скрытие + порядок (локально на устройстве) ──
+  // Управляем только видимостью и порядком встроенных кнопок. Скрытые уходят
+  // в «карман», который раскрывается кнопкой «^» справа.
+  const QUICK_BTN_KEY = "wip_quick_buttons_v1"
+  const QUICK_BTN_DEFAULT = ["archive", "basket", "editHw", "newBuild"]
+  const [quickCfg, setQuickCfg] = useState<{ order: string[]; hidden: string[] }>(() => {
+    try {
+      const raw = localStorage.getItem(QUICK_BTN_KEY)
+      if (raw) {
+        const p = JSON.parse(raw)
+        const order: string[] = Array.isArray(p.order) ? p.order.filter((k: string) => QUICK_BTN_DEFAULT.includes(k)) : []
+        const hidden: string[] = Array.isArray(p.hidden) ? p.hidden.filter((k: string) => QUICK_BTN_DEFAULT.includes(k)) : []
+        // Досоздаём кнопки, которых нет в сохранёнке (после обновлений)
+        for (const k of QUICK_BTN_DEFAULT) if (!order.includes(k) && !hidden.includes(k)) order.push(k)
+        return { order, hidden }
+      }
+    } catch { /* noop */ }
+    return { order: [...QUICK_BTN_DEFAULT], hidden: [] }
+  })
+  const [quickEdit, setQuickEdit] = useState(false)
+  const [quickPocketOpen, setQuickPocketOpen] = useState(false)
+  const [quickDrag, setQuickDrag] = useState<string | null>(null)
+  const persistQuick = (next: { order: string[]; hidden: string[] }) => {
+    setQuickCfg(next)
+    try { localStorage.setItem(QUICK_BTN_KEY, JSON.stringify(next)) } catch { /* noop */ }
+  }
+  const quickHide = (key: string) => persistQuick({ order: quickCfg.order.filter(k => k !== key), hidden: [...quickCfg.hidden, key] })
+  const quickShow = (key: string) => persistQuick({ order: [...quickCfg.order, key], hidden: quickCfg.hidden.filter(k => k !== key) })
+  const quickReorder = (from: string, to: string) => {
+    if (from === to) return
+    const arr = [...quickCfg.order]
+    const fi = arr.indexOf(from), ti = arr.indexOf(to)
+    if (fi < 0 || ti < 0) return
+    arr.splice(fi, 1)
+    arr.splice(arr.indexOf(to), 0, from)
+    persistQuick({ ...quickCfg, order: arr })
+  }
+  const quickReset = () => persistQuick({ order: [...QUICK_BTN_DEFAULT], hidden: [] })
+
   const rows: { key: string; label: string }[] = [
     { key: "_order", label: "Заказ" },
     { key: "_stage", label: "Этап" },
@@ -464,43 +503,112 @@ export function AdminWipTab({
               <Icon name="ArrowLeft" size={15} />
               К активным
             </button>
-          ) : (
-            <>
-              <button onClick={() => setViewArchive(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
-                style={{ cursor: "pointer" }}>
-                <Icon name="Archive" size={15} />
-                Архив
-              </button>
-              <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                  totalNewCount > 0
-                    ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
-                    : totalDebtCount > 0
-                      ? "border-amber-400/40 bg-amber-400/5 text-amber-500 hover:bg-amber-400/10"
-                      : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
-                }`}
-                style={{ cursor: "pointer" }}>
-                <Icon name="ShoppingCart" size={15} />
-                Корзина закупки
-                {totalNewCount > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-white">{totalNewCount}</span>
-                )}
-              </button>
+          ) : (() => {
+            // Описание встроенных быстрых кнопок. Порядок и видимость — из quickCfg.
+            const defs: Record<string, { label: string; render: () => JSX.Element }> = {
+              archive: { label: "Архив", render: () => (
+                <button onClick={() => setViewArchive(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/60 hover:border-primary hover:text-foreground transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="Archive" size={15} />
+                  Архив
+                </button>
+              ) },
+              basket: { label: "Корзина закупки", render: () => (
+                <button onClick={() => { setBasketOpen(v => !v); if (!basketOpen) loadBasket() }}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                    totalNewCount > 0
+                      ? "border-orange-400/40 bg-orange-400/5 text-orange-400 hover:bg-orange-400/10"
+                      : totalDebtCount > 0
+                        ? "border-amber-400/40 bg-amber-400/5 text-amber-500 hover:bg-amber-400/10"
+                        : basketOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-orange-400 hover:text-orange-400"
+                  }`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="ShoppingCart" size={15} />
+                  Корзина закупки
+                  {totalNewCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-white">{totalNewCount}</span>
+                  )}
+                </button>
+              ) },
+              editHw: { label: "Ред. железо", render: () => (
+                <button onClick={() => setWipEditMode(v => !v)}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
+                  {wipEditMode ? "Просмотр" : "Ред. железо"}
+                </button>
+              ) },
+              newBuild: { label: "Новая сборка", render: () => (
+                <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="Plus" size={15} />Новая сборка
+                </button>
+              ) },
+            }
+            return (
+              <>
+                {quickCfg.order.filter(k => defs[k]).map(key => (
+                  <div key={key} className="relative"
+                    draggable={quickEdit}
+                    onDragStart={() => quickEdit && setQuickDrag(key)}
+                    onDragOver={e => { if (quickEdit && quickDrag) e.preventDefault() }}
+                    onDrop={() => { if (quickEdit && quickDrag) { quickReorder(quickDrag, key); setQuickDrag(null) } }}
+                    onDragEnd={() => setQuickDrag(null)}
+                    style={{ cursor: quickEdit ? "grab" : undefined }}>
+                    <div className={quickEdit ? "pointer-events-none opacity-90" : ""}>
+                      {defs[key].render()}
+                    </div>
+                    {quickEdit && (
+                      <button onClick={() => quickHide(key)} title="Скрыть кнопку"
+                        className="absolute -right-1.5 -top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-card text-foreground/50 hover:text-red-400 shadow"
+                        style={{ cursor: "pointer" }}>
+                        <Icon name="X" size={10} />
+                      </button>
+                    )}
+                  </div>
+                ))}
 
-              <button onClick={() => setWipEditMode(v => !v)}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${wipEditMode ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:border-primary hover:text-foreground"}`}
-                style={{ cursor: "pointer" }}>
-                <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
-                {wipEditMode ? "Просмотр" : "Ред. железо"}
-              </button>
-              <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={15} />Новая сборка
-              </button>
-            </>
-          )}
+                {/* Кнопка «Настроить» */}
+                <button onClick={() => { setQuickEdit(v => !v); setQuickPocketOpen(false) }} title="Настроить кнопки"
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${quickEdit ? "bg-primary text-primary-foreground" : "text-foreground/40 hover:bg-muted hover:text-foreground"}`}
+                  style={{ cursor: "pointer" }}>
+                  <Icon name={quickEdit ? "Check" : "Settings2"} size={15} />
+                </button>
+
+                {/* Карман скрытых кнопок: раскрывается «^» */}
+                {quickCfg.hidden.length > 0 && (
+                  <div className="relative">
+                    <button onClick={() => setQuickPocketOpen(v => !v)} title="Скрытые кнопки"
+                      className="flex items-center justify-center rounded-lg border border-border px-2 py-2 text-foreground/50 hover:border-primary hover:text-foreground transition-colors"
+                      style={{ cursor: "pointer" }}>
+                      <Icon name={quickPocketOpen ? "ChevronUp" : "ChevronDown"} size={15} />
+                    </button>
+                    {quickPocketOpen && (
+                      <div className="absolute right-0 top-full z-30 mt-2 w-52 rounded-xl border border-border bg-card p-2 shadow-2xl">
+                        <p className="mb-1.5 px-1 text-[11px] uppercase tracking-wider text-foreground/40">Скрытые кнопки</p>
+                        {quickCfg.hidden.filter(k => defs[k]).map(key => (
+                          <button key={key} onClick={() => { quickShow(key); if (quickCfg.hidden.length <= 1) setQuickPocketOpen(false) }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground/70 hover:bg-muted hover:text-foreground transition-colors"
+                            style={{ cursor: "pointer" }}>
+                            <Icon name="Plus" size={13} className="text-foreground/40" />
+                            {defs[key].label}
+                          </button>
+                        ))}
+                        <button onClick={() => { quickReset(); setQuickPocketOpen(false) }}
+                          className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-foreground/40 hover:bg-muted hover:text-foreground transition-colors"
+                          style={{ cursor: "pointer" }}>
+                          <Icon name="RotateCcw" size={12} />
+                          Сбросить по умолчанию
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
       </div>
 
