@@ -718,8 +718,9 @@ export default function Configurator() {
           )}
         </div>
 
-        {/* View toggle: подробный (с превью, как в корзине) / компактный */}
-        {!(buildToken && isReadOnly) && (
+        {/* View toggle: подробный (с превью, как в корзине) / компактный.
+            На мобилке скрыт — там карточка всегда в своём компактном виде. */}
+        {!(buildToken && isReadOnly) && !isMobile && (
         <div className="mb-6 flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
           <span className="mr-1 text-xs text-foreground/40">Вид:</span>
           <button onClick={() => setViewMode("detailed")} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "detailed" ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/60 hover:text-foreground hover:border-primary/40"}`} style={{ cursor: "pointer" }}>
