@@ -261,6 +261,7 @@ export const api = {
     },
     getCategories: () => fetch(`${URLS.warehouse}?action=categories`).then(r => r.json()),
     createCategory: (name: string) => fetch(URLS.warehouse, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_create", name }) }).then(r => r.json()),
+    reorderCategories: (names: string[]) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_reorder", names }) }).then(r => r.json()),
     renameCategory: (oldName: string, newName: string) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_rename", old_name: oldName, new_name: newName }) }).then(r => r.json()),
     deleteCategory: (name: string) => fetch(URLS.warehouse, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "category_delete", name }) }).then(r => r.json()),
     searchProducts: (q: string) => fetch(`${URLS.warehouse}?action=search_products&q=${encodeURIComponent(q)}`).then(r => r.json()),

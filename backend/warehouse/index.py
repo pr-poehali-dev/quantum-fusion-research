@@ -729,10 +729,31 @@ def handler(event: dict, context) -> dict:
             name = body.get("name", "").strip()
             if not name:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужно name"})}
+            # Новая категория встаёт в конец списка (max sort_order + 10)
+            cur.execute(f"SELECT COALESCE(MAX(sort_order), 0) + 10 FROM {SCHEMA}.warehouse_categories")
+            next_order = cur.fetchone()[0]
             cur.execute(
-                f"INSERT INTO {SCHEMA}.warehouse_categories (name) VALUES ({esc(name)}) "
-                f"ON CONFLICT (name) DO NOTHING"
+                f"INSERT INTO {SCHEMA}.warehouse_categories (name, sort_order) "
+                f"VALUES ({esc(name)}, {int(next_order)}) ON CONFLICT (name) DO NOTHING"
             )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        if action == "category_reorder" and method == "PUT":
+            names = body.get("names", [])
+            if not isinstance(names, list):
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нужен names[]"})}
+            for i, nm in enumerate(names):
+                nm = str(nm).strip()
+                if not nm:
+                    continue
+                order = (i + 1) * 10
+                # Категория могла существовать только у товаров — заводим в таблицу
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_categories (name, sort_order) "
+                    f"VALUES ({esc(nm)}, {order}) "
+                    f"ON CONFLICT (name) DO UPDATE SET sort_order = {order}"
+                )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 
@@ -1255,13 +1276,21 @@ def handler(event: dict, context) -> dict:
 
         # ── КАТЕГОРИИ ─────────────────────────────────────────────────────────
         if action == "categories" and method == "GET":
-            # Объединяем категории из товаров (DISTINCT) и отдельную таблицу
-            # категорий (созданные вручную, но пока без товаров).
+            # Категории из товаров, которых ещё нет в таблице сортировки, заводим
+            # в неё в конец — тогда у всех категорий есть свой ручной порядок.
             cur.execute(
-                f"SELECT category AS name FROM {SCHEMA}.warehouse_groups "
-                f"WHERE category IS NOT NULL AND category != '' "
-                f"UNION SELECT name FROM {SCHEMA}.warehouse_categories "
-                f"ORDER BY name"
+                f"INSERT INTO {SCHEMA}.warehouse_categories (name, sort_order) "
+                f"SELECT DISTINCT g.category, "
+                f"  (SELECT COALESCE(MAX(sort_order), 0) FROM {SCHEMA}.warehouse_categories) + 10 "
+                f"FROM {SCHEMA}.warehouse_groups g "
+                f"WHERE g.category IS NOT NULL AND g.category != '' "
+                f"  AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.warehouse_categories c WHERE c.name = g.category) "
+                f"ON CONFLICT (name) DO NOTHING"
+            )
+            conn.commit()
+            # Возвращаем в ручном порядке (sort_order), затем по имени.
+            cur.execute(
+                f"SELECT name FROM {SCHEMA}.warehouse_categories ORDER BY sort_order, name"
             )
             cats = [r[0] for r in cur.fetchall()]
             return {"statusCode": 200, "headers": cors, "body": json.dumps(cats)}

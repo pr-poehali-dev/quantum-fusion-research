@@ -1563,6 +1563,24 @@ function CategoriesModal({ categories, onClose, onSaved }: {
   const [editVal, setEditVal] = useState("")
   const [newCat, setNewCat] = useState("")
   const [saving, setSaving] = useState(false)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [overIdx, setOverIdx] = useState<number | null>(null)
+
+  // Перетаскивание: меняем позицию в списке и сохраняем порядок на сервер
+  const onDrop = async (to: number) => {
+    const from = dragIdx
+    setDragIdx(null)
+    setOverIdx(null)
+    if (from === null || from === to) return
+    const next = [...list]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setList(next)
+    setSaving(true)
+    await api.warehouse.reorderCategories(next)
+    setSaving(false)
+    onSaved()
+  }
 
   const rename = async (idx: number) => {
     const old = list[idx]
@@ -1592,7 +1610,7 @@ function CategoriesModal({ categories, onClose, onSaved }: {
     // Сохраняем категорию на сервер (в таблицу warehouse_categories), чтобы она
     // не исчезала после перезагрузки, даже если в ней ещё нет товаров.
     await api.warehouse.createCategory(val)
-    setList(prev => [...prev, val].sort())
+    setList(prev => [...prev, val])
     setNewCat("")
     setSaving(false)
     onSaved()
@@ -1608,7 +1626,18 @@ function CategoriesModal({ categories, onClose, onSaved }: {
 
         <div className="mb-4 space-y-1.5 max-h-72 overflow-y-auto">
           {list.map((cat, i) => (
-            <div key={cat} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+            <div key={cat}
+              draggable={editIdx === null}
+              onDragStart={() => setDragIdx(i)}
+              onDragOver={e => { e.preventDefault(); setOverIdx(i) }}
+              onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+              onDrop={() => onDrop(i)}
+              className={`flex items-center gap-2 rounded-lg border bg-background px-3 py-2 transition-colors ${overIdx === i && dragIdx !== null && dragIdx !== i ? "border-primary" : "border-border"} ${dragIdx === i ? "opacity-40" : ""}`}>
+              {editIdx === i ? null : (
+                <span className="shrink-0 text-foreground/25 hover:text-foreground/50" style={{ cursor: "grab" }} title="Перетащите, чтобы изменить порядок">
+                  <Icon name="GripVertical" size={14} />
+                </span>
+              )}
               {editIdx === i ? (
                 <input
                   autoFocus

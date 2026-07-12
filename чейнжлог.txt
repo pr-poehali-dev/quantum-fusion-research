@@ -3,6 +3,20 @@
 
 ---
 
+## v7.04 | 2026-07-12 | Склад: ручная сортировка категорий (drag&drop)
+
+- db_migrations/V0192: колонка sort_order в warehouse_categories, заполнена по
+  алфавиту с шагом 10.
+- backend/warehouse: +action category_reorder (PUT, names[]) — сохраняет порядок.
+  category_create ставит новую категорию в конец (max sort_order + 10).
+  GET categories теперь досоздаёт недостающие категории товаров в таблицу и
+  возвращает их в ручном порядке (ORDER BY sort_order, name).
+- src/lib/api.ts: +warehouse.reorderCategories(names).
+- WarehouseTab (CategoriesModal): drag&drop категорий через нативный HTML5 DnD
+  (ручка GripVertical), сохранение порядка на сервер + onSaved(). Убрана
+  алфавитная .sort() при добавлении — новая категория встаёт в конец.
+  Порядок применяется и в фильтре, и в выпадашках выбора категории.
+
 ## v7.03 | 2026-07-12 | Склад: новые категории сохраняются в БД (фикс исчезновения)
 
 - Баг: новая категория склада добавлялась только в локальный state (без запроса
