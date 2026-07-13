@@ -177,6 +177,18 @@ src/pages/build-preview/:
   BuildPreview.tsx = главный компонент страницы (загрузка сборки/варианты/WIP,
   скролл по секциям, свайпы, оформление заказа) + импорт вынесенных частей.
 
+РЕФАКТОРИНГ Shop (готово): монолит был 1478 стр. → стал 737.
+Магазин (страница /shop). В папке src/components/shop/ (рядом с ShopFilters):
+  - shared.ts — типы (Product/Category/BuildTag/Build/CommunityBuild), константы
+    (TAG_COLOR_MAP, SLOT_NAMES, SLOT_ICONS) и хелперы (getTagClass, levenshtein,
+    matchCategory — нечёткий поиск категории с опечатками).
+  - cards.tsx — 7 самостоятельных под-компонентов: ProductImageCarousel,
+    ProductCard, BuildTagChip, BuildCard, ProductModal, BuildModal,
+    CommunityBuildCard.
+  - ShopFilters.tsx — фильтры/сортировка по характеристикам (было ранее).
+  Shop.tsx = главный компонент (загрузка товаров/сборок/community, вкладки,
+  поиск, фильтры, корзина, роутинг) + импорт вынесенных частей.
+
 ## Оптимизация изображений (v6.20-6.21)
 - backend/img-optimize (URL .../f8ab2fb6-...) — сжимает картинку по URL в WebP
   в размерах 480/768/1024 (для srcset) и кладёт в S3 в optimized/ с длинным кешем.
