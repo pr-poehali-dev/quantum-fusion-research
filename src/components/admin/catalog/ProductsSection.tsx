@@ -70,11 +70,12 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     setSelected(new Set())
     setBulkLoading(false)
   }
-  const [productForm, setProductForm] = useState({
+  const EMPTY_FORM = {
     id: null as number | null,
     category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0",
     image_urls: [] as string[], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0",
-  })
+  }
+  const [productForm, setProductForm] = useState(EMPTY_FORM)
 
   const [importLoading, setImportLoading] = useState(false)
   const [exportLoading, setExportLoading] = useState(false)
@@ -89,7 +90,7 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     await api.products.delete(id)
     setProducts(ps => ps.filter(p => p.id !== id))
   }
-  const editProduct = (p: Product) => {
+  const buildFormFromProduct = (p: Product) => {
     // Отрезаем префикс бренда от имени, чтобы поле «Название» было без бренда
     // (в БД имя хранится цельным: "{Бренд} {Название}").
     const brandName = p.brand_id ? (brands.find(b => b.id === p.brand_id)?.name || p.brand || "") : ""
@@ -97,9 +98,13 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     if (brandName && p.name.toLowerCase().startsWith(brandName.toLowerCase() + " ")) {
       nameNoBrand = p.name.slice(brandName.length).trimStart()
     }
-    setProductForm({
+    // category_id: сначала по прямому id из p.category, иначе по имени в справочнике
+    const catId = (p.category && "id" in p.category && (p.category as { id?: number }).id)
+      ? String((p.category as { id: number }).id)
+      : (p.category ? String(categories.find(c => c.name === p.category?.name)?.id || "") : "")
+    return {
       id: p.id,
-      category_id: p.category ? String(categories.find(c => c.name === p.category?.name)?.id || "") : "",
+      category_id: catId,
       brand_id: p.brand_id ? String(p.brand_id) : "",
       name: nameNoBrand, description: p.description || "",
       price: String(p.price), old_price: p.old_price ? String(p.old_price) : "",
@@ -107,9 +112,27 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
       image_urls: p.image_urls?.length ? p.image_urls : (p.image_url ? [p.image_url] : []),
       specs: JSON.stringify(p.specs || {}),
       in_stock: p.in_stock, is_featured: p.is_featured, is_used: !!p.is_used, sort_order: String(p.sort_order || 0),
-    })
+    }
+  }
+
+  // Какой товар редактируем (id переживает навигацию/подгрузку списка).
+  const [editingId, setEditingId] = useState<number | null>(null)
+
+  const editProduct = (p: Product) => {
+    setEditingId(p.id)
+    setProductForm(buildFormFromProduct(p))
     setTab("add_product")
   }
+
+  // Если список товаров/справочники подгрузились ПОСЛЕ открытия редактирования
+  // (навигация на add_product перезапрашивает products), заново наполняем форму
+  // из актуальных данных, чтобы карточка не «схлопывалась» в пустое создание.
+  useEffect(() => {
+    if (editingId == null) return
+    const p = products.find(pr => pr.id === editingId) || archivedProducts.find(pr => pr.id === editingId)
+    if (p) setProductForm(prev => (prev.id === editingId ? prev : buildFormFromProduct(p)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId, products, archivedProducts, categories, brands])
   const submitProduct = async (e: React.FormEvent) => {
     e.preventDefault()
     // Цена и гарантия подтягиваются со склада, обязательна только категория
@@ -137,7 +160,8 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     if (productForm.id) await api.products.update(payload)
     else await api.products.create(payload)
     setTab("products")
-    setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" })
+    setEditingId(null)
+    setProductForm(EMPTY_FORM)
   }
   const handleExportExcel = async () => {
     setExportLoading(true)
@@ -211,7 +235,7 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
                 <Icon name={importLoading ? "Loader" : "Upload"} size={14} />Импорт
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = "" }} />
               </label>
-              <button onClick={() => { setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }); setTab("add_product") }} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+              <button onClick={() => { setEditingId(null); setProductForm(EMPTY_FORM); setTab("add_product") }} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={16} />Добавить
               </button>
             </div>
@@ -402,7 +426,7 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {productForm.id ? "Сохранить" : "Добавить"}
           </button>
-          <button type="button" onClick={() => { setTab("products"); setProductForm({ id: null, category_id: "", brand_id: "", name: "", description: "", price: "", old_price: "", warranty_months: "0", image_urls: [], specs: "", in_stock: true, is_featured: false, is_used: false, sort_order: "0" }) }}
+          <button type="button" onClick={() => { setTab("products"); setEditingId(null); setProductForm(EMPTY_FORM) }}
             className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
