@@ -288,6 +288,7 @@ def fmt_group(row):
         "avg_cost": float(row[17]) if row[17] else 0,
         "cell": row[18] if len(row) > 18 else None,
         "qty_negative": int(row[19]) if len(row) > 19 and row[19] else 0,
+        "is_used": bool(row[20]) if len(row) > 20 else False,
     }
 
 
@@ -426,7 +427,8 @@ def handler(event: dict, context) -> dict:
                 f"COALESCE(SUM(s.qty_reserved), 0) as qty_reserved, "
                 f"COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) as avg_cost, "
                 f"g.cell, "
-                f"COALESCE(SUM(s.qty_negative), 0) as qty_negative "
+                f"COALESCE(SUM(s.qty_negative), 0) as qty_negative, "
+                f"g.is_used "
                 f"FROM {SCHEMA}.warehouse_groups g "
                 f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
                 f"LEFT JOIN {SCHEMA}.products p ON p.id = g.product_id "
@@ -844,6 +846,65 @@ def handler(event: dict, context) -> dict:
                     discount_pct = 0.0
                 cost_price = round(price_in * (1 - discount_pct / 100), 2)
 
+            # ── Б/У: отдельная ячейка склада + карточка товара ────────────────
+            # Каждая Б/У-деталь — самостоятельный экземпляр со своим наличием.
+            # Партия НЕ идёт в исходную группу, а кладётся в НОВУЮ отдельную
+            # группу склада (свой SKU/id, is_used=TRUE), к которой привязана
+            # новая карточка товара для сайта (в родной категории, is_used=TRUE).
+            # Наличие Б/У-карточки = ровно эта партия.
+            used_product_id = None
+            if is_used:
+                # Данные исходного товара (категория, имя, цена продажи)
+                src_cat_id = None
+                src_price = 0
+                src_name = "Товар"
+                src_category_txt = ""
+                cur.execute(f"SELECT product_id, name, category FROM {SCHEMA}.warehouse_groups WHERE id = {int(group_id)}")
+                _grp = cur.fetchone()
+                src_category_txt = (_grp[2] if _grp else "") or ""
+                if _grp and _grp[0]:
+                    cur.execute(
+                        f"SELECT category_id, price, name FROM {SCHEMA}.products WHERE id = %s",
+                        (_grp[0],)
+                    )
+                    _sp = cur.fetchone()
+                    if _sp:
+                        src_cat_id = _sp[0]
+                        src_price = float(_sp[1]) if _sp[1] is not None else 0
+                        src_name = _sp[2] or (_grp[1] if _grp else "Товар")
+                elif _grp:
+                    src_name = _grp[1] or "Товар"
+
+                used_name = f"{src_name} (Б/У)"
+                # Новая карточка товара (для сайта) — пустая, менеджер дозаполнит
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.products "
+                    f"(name, category_id, price, in_stock, stock_qty, is_used, warranty_months, created_at) "
+                    f"VALUES ({esc(used_name)}, "
+                    f"{int(src_cat_id) if src_cat_id else 'NULL'}, {src_price}, "
+                    f"FALSE, 0, TRUE, 0, NOW()) RETURNING id"
+                )
+                used_product_id = cur.fetchone()[0]
+
+                # Отдельная группа склада под Б/У экземпляр (свой уникальный SKU)
+                used_sku = gen_sku()
+                for _ in range(10):
+                    cur.execute(f"SELECT id FROM {SCHEMA}.warehouse_groups WHERE sku = {esc(used_sku)}")
+                    if not cur.fetchone():
+                        break
+                    used_sku = gen_sku()
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_groups "
+                    f"(product_id, name, sku, category, price_retail, is_used) "
+                    f"VALUES ({used_product_id}, {esc(used_name)}, {esc(used_sku)}, "
+                    f"{esc(src_category_txt)}, {src_price}, TRUE) RETURNING id"
+                )
+                used_group_id = cur.fetchone()[0]
+                cur.execute(f"UPDATE {SCHEMA}.products SET warehouse_group_id = {used_group_id} WHERE id = {used_product_id}")
+                ensure_product_specs(cur, used_product_id, src_category_txt)
+                # Дальше вся приёмка идёт в НОВУЮ Б/У-группу
+                group_id = used_group_id
+
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_supplies "
                 f"(group_id, store_id, qty, cost_price, cell, purchase_date, warranty_until, has_vat, price_with_vat, is_used) "
@@ -891,36 +952,10 @@ def handler(event: dict, context) -> dict:
                 if prow:
                     prod_name = prow[0]
 
-            # ── Б/У: создаём отдельную карточку товара для сайта ──────────────
-            # Партия уже помечена is_used=TRUE выше. Карточка создаётся в РОДНОЙ
-            # категории исходного товара, с флагом is_used, наличием (в 1 шт.,
-            # т.к. это конкретный б/у экземпляр) — цену/описание менеджер заполнит
-            # вручную (карточка появляется в каталоге «Б/У» для доработки).
-            used_product_id = None
-            if is_used:
-                src_cat_id = None
-                src_price = 0
-                src_name = prod_name
-                if grp_product_id:
-                    cur.execute(
-                        f"SELECT category_id, price, name FROM {SCHEMA}.products WHERE id = %s",
-                        (grp_product_id,)
-                    )
-                    srow = cur.fetchone()
-                    if srow:
-                        src_cat_id = srow[0]
-                        src_price = float(srow[1]) if srow[1] is not None else 0
-                        src_name = srow[2] or prod_name
-                cur.execute(
-                    f"INSERT INTO {SCHEMA}.products "
-                    f"(name, category_id, price, in_stock, stock_qty, is_used, warranty_months, created_at) "
-                    f"VALUES ({esc(src_name + ' (Б/У)')}, "
-                    f"{int(src_cat_id) if src_cat_id else 'NULL'}, {src_price}, "
-                    f"TRUE, {max(qty, 1)}, TRUE, 0, NOW()) RETURNING id"
-                )
-                used_product_id = cur.fetchone()[0]
+            # Б/У-карточка/группа уже созданы выше, приёмка ушла в Б/У-группу.
+            if is_used and used_product_id:
                 log_movement(cur, group_id, supply_id, None, None, "used_card_created", 0,
-                             note=f"Создана Б/У карточка товара #{used_product_id}: {src_name}")
+                             note=f"Создана Б/У карточка товара #{used_product_id}: {prod_name}")
 
             # Гасим NEGATIVE-резервы FIFO по дате заказа: товар приехал → закрываем
             # минус-резерв, переводим его в POSITIVE под заказ и уведомляем заказчика.

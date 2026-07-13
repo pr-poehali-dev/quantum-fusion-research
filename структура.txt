@@ -144,9 +144,12 @@
   - serialCheck.ts — checkSerialSound() + useArchivedSerialCheck().
   - InventoryModal.tsx — окно инвентаризации + приёмки излишков.
   - QuickSupplyModal.tsx — быстрая приёмка поставки с вводом серийников.
-      Галочка «Товар Б/У» (v7.21): партия помечается is_used, а на сайте
-      создаётся отдельная карточка товара в родной категории (is_used) для
-      дозаполнения. Флаг is_used уходит в supply_create.
+      Галочка «Товар Б/У» (v7.21, доработано v7.22): supply_create создаёт
+      ОТДЕЛЬНУЮ группу склада (свой SKU, is_used=TRUE) + карточку товара для
+      сайта, привязанную к ней; партия кладётся в эту новую группу — наличие
+      Б/У-карточки = ровно эта партия, исходная группа не затрагивается. В
+      таблице склада у Б/У-позиции бейдж «Б/У» (WarehouseTable).
+      warehouse_groups.is_used и warehouse_supplies.is_used — флаги Б/У.
   - SupplyModal.tsx — приёмка/редактирование поставки + ввод серийников.
   - StoresModal.tsx — StoresModal (магазины) + SupplySerialsModal (дозаполнение SN).
   - modals.tsx — DiscountModal (настройки закупки), CategoriesModal (drag&drop

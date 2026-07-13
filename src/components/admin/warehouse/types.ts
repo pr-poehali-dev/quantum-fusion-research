@@ -51,6 +51,7 @@ export interface Group {
   qty_negative: number
   avg_cost: number
   cell: string | null
+  is_used?: boolean
   price_history: PricePoint[]
   supplies?: Supply[]
 }

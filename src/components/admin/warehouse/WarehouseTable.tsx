@@ -95,6 +95,11 @@ export function GroupRow({ group, stores, onEdit, onArchive, onUnarchive, onRefr
             <Icon name={expanded ? "ChevronDown" : "ChevronRight"} size={14} className="text-foreground/30 shrink-0" />
             <div className="min-w-0">
               <span className="font-medium text-sm">{group.name}</span>
+              {group.is_used && (
+                <span className="ml-1.5 inline-flex items-center rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500 align-middle">
+                  Б/У
+                </span>
+              )}
               {group.qty_negative > 0 && (
                 <div className="flex items-center gap-1 mt-0.5">
                   <Icon name="AlertTriangle" size={10} className="text-red-400 shrink-0" />
