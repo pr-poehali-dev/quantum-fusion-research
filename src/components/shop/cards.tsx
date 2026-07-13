@@ -55,7 +55,7 @@ export function ProductImageCarousel({ images, name, inStock }: { images: string
 
 // ── ProductCard с кнопкой «в корзине» ──
 export function ProductCard({
-  product: p, onOpen, onAddCart, onPreorder, onUpdateQty, cartQty, fmt, onNavigate
+  product: p, onOpen, onAddCart, onPreorder, onUpdateQty, cartQty, fmt, onNavigate, promo
 }: {
   product: Product
   onOpen: () => void
@@ -65,6 +65,7 @@ export function ProductCard({
   cartQty: number
   fmt: (n: number) => string
   onNavigate: () => void
+  promo?: { code: string; title: string | null; discount_type: string; discount_value: number } | null
 }) {
   const images = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
   return (
@@ -74,6 +75,13 @@ export function ProductCard({
         {p.is_used && (
           <span className="absolute left-2 top-2 z-10 rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
             Б/У
+          </span>
+        )}
+        {promo && (
+          <span className={`absolute left-2 z-10 inline-flex items-center gap-1 rounded bg-red-500 px-2 py-0.5 text-xs font-bold text-white ${p.is_used ? "top-9" : "top-2"}`}
+            title={`Акция ${promo.code}: ${promo.discount_type === "percent" ? `−${promo.discount_value}%` : `−${fmt(promo.discount_value)}`}. Введите код в корзине.`}>
+            <Icon name="Flame" size={12} />
+            Акция
           </span>
         )}
         {p.old_price && p.in_stock && (

@@ -110,6 +110,8 @@ export const api = {
         body: JSON.stringify({ code, items, total, customer_phone: customerPhone }),
       }).then(r => r.json()),
     categories: () => fetch(`${URLS.promos}?action=categories`).then(r => r.json()),
+    productsSearch: (q: string) => fetch(`${URLS.promos}?action=products_search&q=${encodeURIComponent(q)}`).then(r => r.json()),
+    promoProducts: () => fetch(`${URLS.promos}?action=promo_products`).then(r => r.json()),
     list: (ak: string) => fetch(`${URLS.promos}?action=list`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
     save: (data: unknown, ak: string) =>
       fetch(URLS.promos, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "save", ...(data as object), ak }) }).then(r => r.json()),

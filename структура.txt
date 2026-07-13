@@ -9,9 +9,15 @@
     • POST validate — проверка кода и расчёт скидки в корзине
       (body: code, items[], total, customer_phone?; user_id по X-Session-Id).
     • GET categories — список категорий для выбора в админке.
+    • GET products_search&q= — поиск товаров для типа «Конкретный товар» (v7.31).
+    • GET promo_products — map product_id→{code,скидка} по активным публичным
+      product-акциям (для бейджа «Акция» на карточках витрины) (v7.31).
     • Админка (X-Admin-Key = секрет ADMIN_KEY): list / save / delete.
+  publicный список отдаёт activations_left/activations_total (остаток и лимит
+  активаций) вместо сырого used_count (v7.31).
   promo_logic.py — единая логика validate_and_calc (скопирована и в backend/orders):
     типы (scope): cart (вся корзина), category (категории/товары),
+    product (конкретные товары по product_ids — v7.31),
     build (сборка ПК: build_part all|hardware|assembly), combo (набор из
     слотов — скидка при наличии товара из каждого слота), first (первый заказ).
     Скидка percent|amount, с max_discount, min_order_amount, лимитами по
@@ -31,6 +37,11 @@
   Отдельная страница: src/pages/Promo.tsx (маршрут /promo в App.tsx, layout
   Seo+CatalogTabs+Footer, как у /faq). Ссылка «Акции» в шапке — CatalogTabs.tsx
   (icon BadgePercent, после «Наши ПК»). /promo добавлен в sitemap (backend/sitemap).
+  v7.31: на /promo — «Осталось N из M активаций» + обратный отсчёт до конца
+  (тикает раз в минуту). Бейдж «Акция» (Flame) на карточке товара витрины —
+  ProductCard принимает prop promo; Shop.tsx грузит promoMap через
+  api.promos.promoProducts. Тип «Конкретный товар» в PromoTab — поиск+выбор
+  товаров (api.promos.productsSearch), product_ids.
 
 ## FAQ — вопросы и ответы (v6.82)
 - backend/faq (URL .../b058cfaf-eb48-4710-90b0-f38899b0b16a) — категории и

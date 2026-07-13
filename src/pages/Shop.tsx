@@ -32,6 +32,8 @@ export default function Shop() {
   const [search, setSearch] = useState("")
   const [searchFocused, setSearchFocused] = useState(false)
   const [usedOnly, setUsedOnly] = useState(false)
+  // Товары под публичными акциями (product_id → инфо об акции) — для бейджа
+  const [promoMap, setPromoMap] = useState<Record<number, { code: string; title: string | null; discount_type: string; discount_value: number }>>({})
   // Фильтры по характеристикам/бренду для выбранной категории
   const [specAttrs, setSpecAttrs] = useState<ShopAttr[]>([])
   const [specProducts, setSpecProducts] = useState<ShopSpecProduct[]>([])
@@ -80,6 +82,11 @@ export default function Shop() {
     api.products.getAll({}).then(data => {
       setAllProducts(data.products || [])
     })
+  }, [])
+
+  // Товары под публичными акциями — для бейджа «Акция» на карточках
+  useEffect(() => {
+    api.promos.promoProducts().then(d => setPromoMap(d.products || {})).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -440,6 +447,7 @@ export default function Shop() {
                                 <ProductCard
                                   key={p.id}
                                   product={p}
+                                  promo={promoMap[p.id]}
                                   onOpen={() => setSelectedProduct(p)}
                                   onAddCart={() => handleAddToCart(p)}
                                   onPreorder={() => handleAddToCart(p, true)}
@@ -484,6 +492,7 @@ export default function Shop() {
                 <ProductCard
                   key={p.id}
                   product={p}
+                  promo={promoMap[p.id]}
                   onOpen={() => setSelectedProduct(p)}
                   onAddCart={() => handleAddToCart(p)}
                   onPreorder={() => handleAddToCart(p, true)}

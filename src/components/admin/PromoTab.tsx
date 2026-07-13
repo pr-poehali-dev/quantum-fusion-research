@@ -38,6 +38,7 @@ type Draft = Partial<Promo>
 const SCOPES: { key: string; label: string; hint: string }[] = [
   { key: "cart", label: "Вся корзина", hint: "Скидка на весь заказ" },
   { key: "category", label: "Категории / товары", hint: "Скидка на выбранные позиции в корзине" },
+  { key: "product", label: "Конкретный товар", hint: "Скидка на выбранные товары / компы" },
   { key: "build", label: "Сборка ПК", hint: "Скидка на железо или работу в сборках" },
   { key: "combo", label: "Набор / комбо", hint: "Скидка при покупке всех слотов набора" },
   { key: "first", label: "Первый заказ", hint: "Только для первого заказа покупателя" },
@@ -74,6 +75,10 @@ export default function PromoTab() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState("")
+  // Поиск товаров для типа «Конкретный товар»
+  const [prodQuery, setProdQuery] = useState("")
+  const [prodResults, setProdResults] = useState<{ id: number; name: string; price: number; category: string | null }[]>([])
+  const [prodPicked, setProdPicked] = useState<Record<number, { name: string; price: number }>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,6 +88,33 @@ export default function PromoTab() {
     setLoading(false)
   }, [ak])
   useEffect(() => { load() }, [load])
+
+  // Живой поиск товаров (debounce) для типа «Конкретный товар»
+  useEffect(() => {
+    if (draft?.scope !== "product") return
+    if (prodQuery.trim().length < 2) { setProdResults([]); return }
+    const t = setTimeout(() => {
+      api.promos.productsSearch(prodQuery.trim())
+        .then(d => setProdResults(d.products || []))
+        .catch(() => setProdResults([]))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [prodQuery, draft?.scope])
+
+  // При открытии акции на редактирование подтягиваем имена уже выбранных товаров
+  useEffect(() => {
+    const ids = draft?.product_ids || []
+    const missing = ids.filter(id => !prodPicked[id])
+    if (draft?.scope === "product" && missing.length) {
+      // Догружаем имена через общий поиск товаров (по каждому нет — берём из products.getAll)
+      api.products.getAll().then((d: { products?: { id: number; name: string; price: number }[] }) => {
+        const map: Record<number, { name: string; price: number }> = {}
+        for (const p of (d.products || [])) if (ids.includes(p.id)) map[p.id] = { name: p.name, price: p.price }
+        setProdPicked(prev => ({ ...map, ...prev }))
+      }).catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.id, draft?.scope])
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -254,6 +286,56 @@ export default function PromoTab() {
                     ))}
                   </div>
                   <p className="mt-1.5 text-[11px] text-foreground/40">Скидка применится только к товарам выбранных категорий в корзине.</p>
+                </div>
+              )}
+
+              {/* Настройки для scope=product — выбор конкретных товаров/компов */}
+              {draft.scope === "product" && (
+                <div>
+                  <label className={LABEL}>Конкретные товары</label>
+                  {/* Выбранные товары */}
+                  {(draft.product_ids || []).length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {(draft.product_ids || []).map(id => (
+                        <span key={id} className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs text-primary">
+                          {prodPicked[id]?.name || `#${id}`}
+                          <button type="button" onClick={() => setDraft(d => ({ ...d!, product_ids: (d!.product_ids || []).filter(x => x !== id) }))}
+                            className="text-primary/70 hover:text-primary" style={{ cursor: "pointer" }}>
+                            <Icon name="X" size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Поиск */}
+                  <input value={prodQuery} onChange={e => setProdQuery(e.target.value)}
+                    className={INPUT} placeholder="Начните вводить название товара…" />
+                  {prodResults.length > 0 && (
+                    <div className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-border">
+                      {prodResults.map(p => {
+                        const picked = (draft.product_ids || []).includes(p.id)
+                        return (
+                          <button key={p.id} type="button"
+                            onClick={() => {
+                              setProdPicked(prev => ({ ...prev, [p.id]: { name: p.name, price: p.price } }))
+                              setDraft(d => ({ ...d!, product_ids: picked ? (d!.product_ids || []).filter(x => x !== p.id) : [...(d!.product_ids || []), p.id] }))
+                            }}
+                            className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${picked ? "bg-primary/5" : ""}`}
+                            style={{ cursor: "pointer" }}>
+                            <span>
+                              <span className="font-medium text-foreground">{p.name}</span>
+                              {p.category && <span className="ml-1 text-foreground/40">· {p.category}</span>}
+                            </span>
+                            <span className="flex items-center gap-2 shrink-0">
+                              <span className="text-foreground/50">{fmt(p.price)}</span>
+                              {picked && <Icon name="Check" size={13} className="text-primary" />}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-[11px] text-foreground/40">Скидка применится только к выбранным товарам. Если акция публичная — на карточках появится бейдж акции.</p>
                 </div>
               )}
 

@@ -17,14 +17,31 @@ interface Promo {
   discount_value: number
   min_order_amount: number
   expires_at: string | null
+  activations_left: number | null
+  activations_total: number | null
 }
 
 const SCOPE_LABEL: Record<string, string> = {
   cart: "На весь заказ",
   category: "На выбранные товары",
+  product: "На конкретные товары",
   build: "На сборку ПК",
   combo: "Набор со скидкой",
   first: "Только для первого заказа",
+}
+
+// Обратный отсчёт до конца акции: «5 дн 3 ч» / «12 ч 40 мин» / «45 мин»
+function countdown(iso: string, nowMs: number): string | null {
+  const end = new Date(iso.endsWith("Z") || /[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z").getTime()
+  const diff = end - nowMs
+  if (isNaN(end) || diff <= 0) return null
+  const m = Math.floor(diff / 60000)
+  const days = Math.floor(m / 1440)
+  const hours = Math.floor((m % 1440) / 60)
+  const mins = m % 60
+  if (days > 0) return `${days} дн ${hours} ч`
+  if (hours > 0) return `${hours} ч ${mins} мин`
+  return `${mins} мин`
 }
 
 export default function Promo() {
@@ -32,12 +49,19 @@ export default function Promo() {
   const [promos, setPromos] = useState<Promo[]>([])
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState<string | null>(null)
+  const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
     api.promos.getPublic()
       .then(d => setPromos(d.promos || []))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [])
+
+  // Тикаем раз в минуту — обновляем обратный отсчёт до конца акций
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(t)
   }, [])
 
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
@@ -109,6 +133,24 @@ export default function Promo() {
                   {p.min_order_amount > 0 && <span className="inline-flex items-center gap-1"><Icon name="Wallet" size={12} />от {fmt(p.min_order_amount)}</span>}
                   {p.expires_at && <span className="inline-flex items-center gap-1"><Icon name="Clock" size={12} />до {new Date(p.expires_at).toLocaleDateString("ru-RU")}</span>}
                 </div>
+
+                {/* Остаток активаций и обратный отсчёт */}
+                {(p.activations_total != null || (p.expires_at && countdown(p.expires_at, now))) && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+                    {p.activations_total != null && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 font-medium text-amber-500">
+                        <Icon name="Ticket" size={12} />
+                        Осталось {p.activations_left ?? 0} из {p.activations_total}
+                      </span>
+                    )}
+                    {p.expires_at && countdown(p.expires_at, now) && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-500">
+                        <Icon name="Timer" size={12} />
+                        До конца: {countdown(p.expires_at, now)}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <button
                   onClick={() => copy(p.code)}

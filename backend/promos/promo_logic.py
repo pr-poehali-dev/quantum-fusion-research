@@ -74,6 +74,18 @@ def _eligible_base(cur, schema, promo, items):
                 base += _num(i.get("price")) * int(i.get("quantity", 1) or 1)
         return base
 
+    if scope == "product":
+        # Скидка только на КОНКРЕТНЫЕ товары (по product_ids).
+        prod_ids = set(int(x) for x in promo["product_ids"])
+        base = 0.0
+        for i in items:
+            if i.get("item_type") != "product":
+                continue
+            pid = int(i["id"]) if i.get("id") else None
+            if pid and pid in prod_ids:
+                base += _num(i.get("price")) * int(i.get("quantity", 1) or 1)
+        return base
+
     if scope == "build":
         part = promo.get("build_part") or "all"
         base = 0.0

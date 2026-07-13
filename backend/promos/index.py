@@ -101,10 +101,14 @@ def handler(event: dict, context) -> dict:
                 f"ORDER BY sort_order, id DESC"
             )
             rows = [_promo_row(r) for r in cur.fetchall()]
-            # Для публичной выдачи не раскрываем used_count/лимиты детально
+            # Для витрины отдаём остаток активаций (лимит − использовано) и лимит,
+            # но не «сырой» used_count.
             for p in rows:
+                mu = p.get("max_uses")
+                uc = p.get("used_count") or 0
+                p["activations_left"] = (max(0, mu - uc) if mu is not None else None)
+                p["activations_total"] = mu
                 p.pop("used_count", None)
-                p.pop("max_uses", None)
             return _resp(200, {"promos": rows})
 
         # ─────────── ВАЛИДАЦИЯ В КОРЗИНЕ ───────────
@@ -123,6 +127,41 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"SELECT id, name FROM {SCHEMA}.categories ORDER BY sort_order, name")
             cats = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
             return _resp(200, {"categories": cats})
+
+        # ─────────── ПОИСК ТОВАРОВ (для выбора конкретного товара в админке) ───────────
+        if action == "products_search" and method == "GET":
+            q = (params.get("q") or "").strip()
+            like = "%" + q.replace("%", "") + "%"
+            cur.execute(
+                f"SELECT p.id, p.name, p.price, c.name FROM {SCHEMA}.products p "
+                f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+                f"WHERE p.is_archived = FALSE AND (%s = '' OR p.name ILIKE %s) "
+                f"ORDER BY p.name LIMIT 30",
+                (q, like),
+            )
+            prods = [{"id": r[0], "name": r[1], "price": float(r[2]) if r[2] else 0, "category": r[3]}
+                     for r in cur.fetchall()]
+            return _resp(200, {"products": prods})
+
+        # ─────────── ТОВАРЫ ПОД ПУБЛИЧНЫМИ АКЦИЯМИ (для бейджей на витрине) ───────────
+        if action == "promo_products" and method == "GET":
+            cur.execute(
+                f"SELECT id, code, title, product_ids, discount_type, discount_value "
+                f"FROM {SCHEMA}.promos "
+                f"WHERE is_public = TRUE AND is_active = TRUE AND scope = 'product' "
+                f"AND (starts_at IS NULL OR starts_at <= NOW()) "
+                f"AND (expires_at IS NULL OR expires_at >= NOW()) "
+                f"AND (max_uses IS NULL OR used_count < max_uses)"
+            )
+            # product_id → {code, title, discount_type, discount_value}
+            promo_map = {}
+            for r in cur.fetchall():
+                pids = r[3] or []
+                info = {"promo_id": r[0], "code": r[1], "title": r[2],
+                        "discount_type": r[4], "discount_value": float(r[5])}
+                for pid in pids:
+                    promo_map[int(pid)] = info
+            return _resp(200, {"products": promo_map})
 
         # ─────────── АДМИНКА (требует ключ) ───────────
         if action in ("list", "save", "delete"):

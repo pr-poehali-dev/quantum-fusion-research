@@ -37,6 +37,20 @@
       "method": "GET",
       "path": "/?action=categories",
       "expectedStatus": 200
+    },
+    {
+      "name": "Поиск товаров для акции",
+      "method": "GET",
+      "path": "/?action=products_search&q=rtx",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Товары под публичными акциями",
+      "method": "GET",
+      "path": "/?action=promo_products",
+      "expectedStatus": 200,
+      "expectedBody": { "products": {} },
+      "bodyMatcher": "partial"
     }
   ]
 }
