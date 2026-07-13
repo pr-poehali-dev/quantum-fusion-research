@@ -75,15 +75,35 @@ def _eligible_base(cur, schema, promo, items):
         return base
 
     if scope == "product":
-        # Скидка только на КОНКРЕТНЫЕ товары (по product_ids).
-        prod_ids = set(int(x) for x in promo["product_ids"])
+        # Скидка только на КОНКРЕТНЫЕ товары И/ИЛИ сборки (по product_ids).
+        # В product_ids товары хранятся как числа, а сборки — как строки
+        # "build:<id>". Разбираем на два множества.
+        prod_ids = set()
+        build_ids = set()
+        for x in promo["product_ids"]:
+            xs = str(x)
+            if xs.startswith("build:"):
+                try:
+                    build_ids.add(int(xs.split(":", 1)[1]))
+                except (ValueError, IndexError):
+                    pass
+            else:
+                try:
+                    prod_ids.add(int(x))
+                except (ValueError, TypeError):
+                    pass
         base = 0.0
         for i in items:
-            if i.get("item_type") != "product":
-                continue
-            pid = int(i["id"]) if i.get("id") else None
-            if pid and pid in prod_ids:
-                base += _num(i.get("price")) * int(i.get("quantity", 1) or 1)
+            iid = i.get("id")
+            itype = i.get("item_type")
+            line = _num(i.get("price")) * int(i.get("quantity", 1) or 1)
+            if itype == "product":
+                if iid and int(iid) in prod_ids:
+                    base += line
+            elif itype in ("config", "assembly") or i.get("assembly"):
+                # позиция-сборка: её id — это pc_builds.id
+                if iid and int(iid) in build_ids:
+                    base += line
         return base
 
     if scope == "build":

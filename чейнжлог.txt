@@ -3,6 +3,20 @@
 
 ---
 
+## v7.37 | 2026-07-13 | Акция «Конкретный товар»: поиск находит и сборки ПК
+
+- В типе scope=product поиск теперь находит и обычные товары, И готовые сборки
+  ПК («Наши ПК», status=catalog). Сборки в product_ids хранятся как строки
+  "build:<id>" (чтобы не путать с id товаров), товары — как числа.
+- Backend promos.products_search: возвращает товары (kind=product) + сборки
+  (kind=build, id="build:<id>"). promo_logic (promos И orders — копии): scope=
+  product матчит и товары (item_type=product), и сборки (item_type=config/
+  assembly по build:<id>). В orders/promo_logic scope=product ранее вообще
+  отсутствовал — добавлен.
+- Frontend PromoTab: product_ids теперь (number|string)[]; в поиске/выбранных
+  сборки со значком Cpu; при редактировании имена сборок догружаются через
+  builds.getAll(status=catalog). Тесты promos 7/7, orders 2/2.
+
 ## v7.36 | 2026-07-13 | Заказы: select статуса → кнопка «Вернуть в работу»
 
 - В списке заказов (AdminOrdersTab) выпадающий select смены статуса

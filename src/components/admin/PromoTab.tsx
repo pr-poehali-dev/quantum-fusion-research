@@ -18,7 +18,7 @@ type Promo = {
   scope: string
   build_part: string
   category_ids: number[]
-  product_ids: number[]
+  product_ids: (number | string)[]
   combo_slots: ComboSlot[]
   discount_type: string
   discount_value: number
@@ -75,10 +75,11 @@ export default function PromoTab() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState("")
-  // Поиск товаров для типа «Конкретный товар»
+  // Поиск товаров И СБОРОК для типа «Конкретный товар».
+  // id товара — число, id сборки — строка "build:<id>".
   const [prodQuery, setProdQuery] = useState("")
-  const [prodResults, setProdResults] = useState<{ id: number; name: string; price: number; category: string | null }[]>([])
-  const [prodPicked, setProdPicked] = useState<Record<number, { name: string; price: number }>>({})
+  const [prodResults, setProdResults] = useState<{ id: number | string; name: string; price: number; category: string | null; kind?: string }[]>([])
+  const [prodPicked, setProdPicked] = useState<Record<string, { name: string; price: number; kind?: string }>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -101,15 +102,26 @@ export default function PromoTab() {
     return () => clearTimeout(t)
   }, [prodQuery, draft?.scope])
 
-  // При открытии акции на редактирование подтягиваем имена уже выбранных товаров
+  // При открытии акции на редактирование подтягиваем имена уже выбранных
+  // товаров И сборок (id сборок — строки "build:<id>").
   useEffect(() => {
-    const ids = draft?.product_ids || []
+    const ids = (draft?.product_ids || []).map(String)
     const missing = ids.filter(id => !prodPicked[id])
-    if (draft?.scope === "product" && missing.length) {
-      // Догружаем имена через общий поиск товаров (по каждому нет — берём из products.getAll)
+    if (draft?.scope !== "product" || !missing.length) return
+    const prodIds = new Set(ids.filter(id => !id.startsWith("build:")))
+    const buildIds = new Set(ids.filter(id => id.startsWith("build:")).map(id => id.slice(6)))
+    if (prodIds.size) {
       api.products.getAll().then((d: { products?: { id: number; name: string; price: number }[] }) => {
-        const map: Record<number, { name: string; price: number }> = {}
-        for (const p of (d.products || [])) if (ids.includes(p.id)) map[p.id] = { name: p.name, price: p.price }
+        const map: Record<string, { name: string; price: number }> = {}
+        for (const p of (d.products || [])) if (prodIds.has(String(p.id))) map[String(p.id)] = { name: p.name, price: p.price }
+        setProdPicked(prev => ({ ...map, ...prev }))
+      }).catch(() => {})
+    }
+    if (buildIds.size) {
+      api.builds.getAll({ status: "catalog" }).then((d: { builds?: { id: number; name: string; total_price: number }[] } | { id: number; name: string; total_price: number }[]) => {
+        const list = Array.isArray(d) ? d : (d.builds || [])
+        const map: Record<string, { name: string; price: number; kind: string }> = {}
+        for (const b of list) if (buildIds.has(String(b.id))) map[`build:${b.id}`] = { name: b.name, price: b.total_price, kind: "build" }
         setProdPicked(prev => ({ ...map, ...prev }))
       }).catch(() => {})
     }
@@ -289,42 +301,48 @@ export default function PromoTab() {
                 </div>
               )}
 
-              {/* Настройки для scope=product — выбор конкретных товаров/компов */}
+              {/* Настройки для scope=product — выбор конкретных товаров И СБОРОК */}
               {draft.scope === "product" && (
                 <div>
-                  <label className={LABEL}>Конкретные товары</label>
-                  {/* Выбранные товары */}
+                  <label className={LABEL}>Конкретные товары и сборки</label>
+                  {/* Выбранные */}
                   {(draft.product_ids || []).length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-1.5">
-                      {(draft.product_ids || []).map(id => (
-                        <span key={id} className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs text-primary">
-                          {prodPicked[id]?.name || `#${id}`}
-                          <button type="button" onClick={() => setDraft(d => ({ ...d!, product_ids: (d!.product_ids || []).filter(x => x !== id) }))}
-                            className="text-primary/70 hover:text-primary" style={{ cursor: "pointer" }}>
-                            <Icon name="X" size={12} />
-                          </button>
-                        </span>
-                      ))}
+                      {(draft.product_ids || []).map(id => {
+                        const isBuild = String(id).startsWith("build:")
+                        return (
+                          <span key={String(id)} className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs text-primary">
+                            {isBuild && <Icon name="Cpu" size={11} />}
+                            {prodPicked[String(id)]?.name || `#${id}`}
+                            <button type="button" onClick={() => setDraft(d => ({ ...d!, product_ids: (d!.product_ids || []).filter(x => String(x) !== String(id)) }))}
+                              className="text-primary/70 hover:text-primary" style={{ cursor: "pointer" }}>
+                              <Icon name="X" size={12} />
+                            </button>
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                   {/* Поиск */}
                   <input value={prodQuery} onChange={e => setProdQuery(e.target.value)}
-                    className={INPUT} placeholder="Начните вводить название товара…" />
+                    className={INPUT} placeholder="Введите название товара или сборки…" />
                   {prodResults.length > 0 && (
                     <div className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-border">
                       {prodResults.map(p => {
-                        const picked = (draft.product_ids || []).includes(p.id)
+                        const picked = (draft.product_ids || []).some(x => String(x) === String(p.id))
+                        const isBuild = p.kind === "build"
                         return (
-                          <button key={p.id} type="button"
+                          <button key={String(p.id)} type="button"
                             onClick={() => {
-                              setProdPicked(prev => ({ ...prev, [p.id]: { name: p.name, price: p.price } }))
-                              setDraft(d => ({ ...d!, product_ids: picked ? (d!.product_ids || []).filter(x => x !== p.id) : [...(d!.product_ids || []), p.id] }))
+                              setProdPicked(prev => ({ ...prev, [String(p.id)]: { name: p.name, price: p.price, kind: p.kind } }))
+                              setDraft(d => ({ ...d!, product_ids: picked ? (d!.product_ids || []).filter(x => String(x) !== String(p.id)) : [...(d!.product_ids || []), p.id] }))
                             }}
                             className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${picked ? "bg-primary/5" : ""}`}
                             style={{ cursor: "pointer" }}>
-                            <span>
+                            <span className="flex items-center gap-1.5">
+                              {isBuild && <Icon name="Cpu" size={12} className="text-primary shrink-0" />}
                               <span className="font-medium text-foreground">{p.name}</span>
-                              {p.category && <span className="ml-1 text-foreground/40">· {p.category}</span>}
+                              {p.category && <span className="text-foreground/40">· {p.category}</span>}
                             </span>
                             <span className="flex items-center gap-2 shrink-0">
                               <span className="text-foreground/50">{fmt(p.price)}</span>
@@ -335,7 +353,7 @@ export default function PromoTab() {
                       })}
                     </div>
                   )}
-                  <p className="mt-1.5 text-[11px] text-foreground/40">Скидка применится только к выбранным товарам. Если акция публичная — на карточках появится бейдж акции.</p>
+                  <p className="mt-1.5 text-[11px] text-foreground/40">Ищутся и товары, и готовые сборки ПК (значок процессора). Скидка применится только к выбранным. Публичная акция — бейдж на карточках товаров.</p>
                 </div>
               )}
 

@@ -128,20 +128,34 @@ def handler(event: dict, context) -> dict:
             cats = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
             return _resp(200, {"categories": cats})
 
-        # ─────────── ПОИСК ТОВАРОВ (для выбора конкретного товара в админке) ───────────
+        # ─────────── ПОИСК ТОВАРОВ + СБОРОК (для типа «Конкретный товар») ───────────
         if action == "products_search" and method == "GET":
             q = (params.get("q") or "").strip()
             like = "%" + q.replace("%", "") + "%"
+            # Обычные товары каталога
             cur.execute(
                 f"SELECT p.id, p.name, p.price, c.name FROM {SCHEMA}.products p "
                 f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
                 f"WHERE p.is_archived = FALSE AND (%s = '' OR p.name ILIKE %s) "
-                f"ORDER BY p.name LIMIT 30",
+                f"ORDER BY p.name LIMIT 25",
                 (q, like),
             )
-            prods = [{"id": r[0], "name": r[1], "price": float(r[2]) if r[2] else 0, "category": r[3]}
+            prods = [{"id": r[0], "name": r[1], "price": float(r[2]) if r[2] else 0,
+                      "category": r[3], "kind": "product"}
                      for r in cur.fetchall()]
-            return _resp(200, {"products": prods})
+            # Готовые сборки ПК из каталога («Наши ПК»). id храним как строку
+            # "build:<id>", чтобы не путать с id товаров.
+            cur.execute(
+                f"SELECT id, name, total_price FROM {SCHEMA}.pc_builds "
+                f"WHERE status = 'catalog' AND (%s = '' OR name ILIKE %s) "
+                f"ORDER BY name LIMIT 25",
+                (q, like),
+            )
+            builds = [{"id": f"build:{r[0]}", "name": r[1],
+                       "price": float(r[2]) if r[2] else 0,
+                       "category": "Сборка ПК", "kind": "build"}
+                      for r in cur.fetchall()]
+            return _resp(200, {"products": prods + builds})
 
         # ─────────── ТОВАРЫ ПОД ПУБЛИЧНЫМИ АКЦИЯМИ (для бейджей на витрине) ───────────
         if action == "promo_products" and method == "GET":
