@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ImageUploader } from "@/components/image-uploader"
@@ -117,19 +117,25 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
 
   // Какой товар редактируем (id переживает навигацию/подгрузку списка).
   const [editingId, setEditingId] = useState<number | null>(null)
+  // Снимок редактируемого товара — не зависит от перезагрузки списка products.
+  const editingProductRef = useRef<Product | null>(null)
 
   const editProduct = (p: Product) => {
+    editingProductRef.current = p
     setEditingId(p.id)
     setProductForm(buildFormFromProduct(p))
     setTab("add_product")
+    // на всякий случай — прокрутить наверх к форме
+    try { window.scrollTo({ top: 0 }) } catch { /* noop */ }
   }
 
-  // Если список товаров/справочники подгрузились ПОСЛЕ открытия редактирования
-  // (навигация на add_product перезапрашивает products), заново наполняем форму
-  // из актуальных данных, чтобы карточка не «схлопывалась» в пустое создание.
+  // Если форма «схлопнулась» (например при перерисовке/навигации), восстанавливаем
+  // её из снимка редактируемого товара. Не зависит от списка products.
   useEffect(() => {
     if (editingId == null) return
-    const p = products.find(pr => pr.id === editingId) || archivedProducts.find(pr => pr.id === editingId)
+    const snap = editingProductRef.current
+    const p = (snap && snap.id === editingId) ? snap
+      : (products.find(pr => pr.id === editingId) || archivedProducts.find(pr => pr.id === editingId) || null)
     if (p) setProductForm(prev => (prev.id === editingId ? prev : buildFormFromProduct(p)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId, products, archivedProducts, categories, brands])
@@ -160,6 +166,7 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     if (productForm.id) await api.products.update(payload)
     else await api.products.create(payload)
     setTab("products")
+    editingProductRef.current = null
     setEditingId(null)
     setProductForm(EMPTY_FORM)
   }
@@ -235,7 +242,7 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
                 <Icon name={importLoading ? "Loader" : "Upload"} size={14} />Импорт
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = "" }} />
               </label>
-              <button onClick={() => { setEditingId(null); setProductForm(EMPTY_FORM); setTab("add_product") }} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
+              <button onClick={() => { editingProductRef.current = null; setEditingId(null); setProductForm(EMPTY_FORM); setTab("add_product") }} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={16} />Добавить
               </button>
             </div>
@@ -341,7 +348,8 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
   }
 
   // ADD/EDIT PRODUCT
-  if (tab === "add_product") return (
+  if (tab === "add_product") {
+    return (
     <div className="max-w-2xl">
       <h2 className="mb-6 text-xl font-light text-foreground">{productForm.id ? "Редактировать товар" : "Добавить товар"}</h2>
       <form onSubmit={submitProduct} className="space-y-4">
@@ -426,14 +434,15 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {productForm.id ? "Сохранить" : "Добавить"}
           </button>
-          <button type="button" onClick={() => { setTab("products"); setEditingId(null); setProductForm(EMPTY_FORM) }}
+          <button type="button" onClick={() => { setTab("products"); editingProductRef.current = null; setEditingId(null); setProductForm(EMPTY_FORM) }}
             className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
         </div>
       </form>
     </div>
-  )
+    )
+  }
 
   return null
 }
