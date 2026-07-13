@@ -3,6 +3,19 @@
 
 ---
 
+## v7.11 | 2026-07-13 | Рефакторинг WarehouseTab (этап 2 — завершён)
+
+- Монолит WarehouseTab.tsx полностью разобран: 2733 → 661 строка.
+- Довынесены в src/components/admin/warehouse/:
+  · SupplyModal.tsx — приёмка/редактирование поставки + ввод серийников.
+  · StoresModal.tsx — StoresModal + SupplySerialsModal.
+  · modals.tsx — DiscountModal, CategoriesModal, ReservesModal.
+  · WarehouseTable.tsx — GroupRow (строка товара) + PriceHistoryBadge.
+- WarehouseTab.tsx теперь содержит только главный компонент (таблица,
+  фильтры, пагинация, массовые операции) + импорты частей.
+- Чистое перемещение кода, логика не менялась. Сборка проходит после
+  каждого шага. Следующий файл по плану — AdminCatalogTab.tsx.
+
 ## v7.10 | 2026-07-13 | Рефакторинг WarehouseTab (этап 1)
 
 - Начато дробление монолита WarehouseTab.tsx (был 2733 строки → стал 1697).

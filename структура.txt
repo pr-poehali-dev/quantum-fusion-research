@@ -136,16 +136,22 @@
 - воркер-сервер/worker.py + ИНСТРУКЦИЯ.txt — локальный FastAPI/Ollama-воркер
   (модель qwen2-vl:7b), НЕ часть деплоя, ставится на сервер пользователя.
 
-РЕФАКТОРИНГ WarehouseTab (в процессе): монолит WarehouseTab.tsx (был 2733 стр.)
-дробится на папку src/components/admin/warehouse/:
+РЕФАКТОРИНГ WarehouseTab (готово): монолит был 2733 стр. → стал 661 стр.
+Логика склада разложена по папке src/components/admin/warehouse/:
   - types.ts — общие типы (Store, Supply, PricePoint, Group, RemoteHit,
     ReserveFilter, InvItem, InventoryRecord, OverflowItem).
   - utils.ts — форматтеры fmt/fmtNum.
   - serialCheck.ts — checkSerialSound() + useArchivedSerialCheck().
   - InventoryModal.tsx — окно инвентаризации + приёмки излишков.
   - QuickSupplyModal.tsx — быстрая приёмка поставки с вводом серийников.
-  WarehouseTab.tsx сейчас ~1697 стр. (осталось вынести SupplyModal,
-  CategoriesModal, GroupRow, StoresModal, SupplySerialsModal, ReservesModal).
+  - SupplyModal.tsx — приёмка/редактирование поставки + ввод серийников.
+  - StoresModal.tsx — StoresModal (магазины) + SupplySerialsModal (дозаполнение SN).
+  - modals.tsx — DiscountModal (настройки закупки), CategoriesModal (drag&drop
+    категории), ReservesModal (резервы по заказам).
+  - WarehouseTable.tsx — GroupRow (строка товара с разворотом поставок) +
+    PriceHistoryBadge.
+  WarehouseTab.tsx = только главный компонент (таблица, фильтры, пагинация,
+  массовые операции, ресайз колонок) + импорт вынесенных частей.
 
 ## Оптимизация изображений (v6.20-6.21)
 - backend/img-optimize (URL .../f8ab2fb6-...) — сжимает картинку по URL в WebP
