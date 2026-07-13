@@ -204,7 +204,7 @@ export function BuildsSection({
         loading={loading}
         expandedVariants={expandedVariants} setExpandedVariants={setExpandedVariants}
         dupeLoading={dupeLoading} copiedBuildId={copiedBuildId} fmt={fmt}
-        onNew={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [] }); setBuildComponents([]); setTab("add_build") }}
+        onNew={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null }); setBuildComponents([]); setTab("add_build") }}
         onEdit={editBuild} onDupe={duplicateBuild} onLink={generateClientLink}
         onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id || bb.parent_id === b.id ? { ...bb, status } : bb)) }}
         onDelete={deleteBuild} isArchive={showArchive}
