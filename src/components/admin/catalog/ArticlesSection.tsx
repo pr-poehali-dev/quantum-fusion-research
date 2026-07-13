@@ -103,11 +103,13 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
+    setPendingEditId(null)
     setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] })
     setTab("articles")
   }
 
-  const editArticle = (a: Article) => {
+  // Наполнить форму по данным статьи из списка + догрузить полный контент.
+  const fillArticleForm = (a: Article) => {
     setArticleForm({
       id: a.id, title: a.title, slug: a.slug,
       excerpt: a.excerpt || "", content: "",
@@ -116,10 +118,33 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
       is_published: a.is_published, html_attachment: "", toc: [], tier_cards: [],
     })
     api.articles.getById(a.id, true).then(full => {
-      setArticleForm(f => ({ ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [], categories: (full.categories && full.categories.length ? full.categories : f.categories) }))
+      setArticleForm(f => f.id === a.id ? { ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [], categories: (full.categories && full.categories.length ? full.categories : f.categories) } : f)
     })
+  }
+
+  // Какую статью сейчас редактируем. id переживает навигацию/перемонтирование
+  // компонента — тот же надёжный подход, что и в BuildsSection (иначе форма
+  // сбрасывалась в «создание новой» при переключении вкладки на add_article).
+  const [pendingEditId, setPendingEditId] = useState<number | null>(null)
+
+  const editArticle = (a: Article) => {
+    setPendingEditId(a.id)
+    fillArticleForm(a)
     setTab("add_article")
   }
+
+  // Надёжно наполняем форму по pendingEditId, как только статья есть в списке.
+  // one-shot: после наполнения id сбрасываем, чтобы не «тянуть» назад в форму.
+  useEffect(() => {
+    if (!pendingEditId) return
+    const a = articles.find(x => x.id === pendingEditId)
+    if (a) {
+      fillArticleForm(a)
+      setTab("add_article")
+      setPendingEditId(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEditId, articles])
 
   const deleteArticle = async (id: number) => {
     if (!confirm("Удалить статью?")) return
@@ -132,7 +157,7 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
     <div>
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
-        <button onClick={() => { setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
+        <button onClick={() => { setPendingEditId(null); setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Plus" size={15} />Новая статья
         </button>
@@ -490,7 +515,7 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {articleForm.id ? "Сохранить" : "Создать статью"}
           </button>
-          <button type="button" onClick={() => setTab("articles")} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <button type="button" onClick={() => { setPendingEditId(null); setTab("articles") }} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
         </div>
