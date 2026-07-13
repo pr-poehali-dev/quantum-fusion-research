@@ -35,6 +35,12 @@
       "method": "GET",
       "path": "/?action=spec_attr_suggest&attribute_id=67",
       "expectedStatus": 200
+    },
+    {
+      "name": "Export warehouse to Excel",
+      "method": "GET",
+      "path": "/?action=export_excel",
+      "expectedStatus": 200
     }
   ]
 }

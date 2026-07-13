@@ -176,6 +176,52 @@ export default function WarehouseTab() {
     load()
   }
 
+  // Экспорт всего склада в Excel
+  const [exporting, setExporting] = useState(false)
+  const handleExportExcel = async () => {
+    setExporting(true)
+    const res = await api.warehouse.exportExcel().catch(() => null)
+    setExporting(false)
+    if (!res?.file_b64) { alert("Не удалось сформировать файл склада"); return }
+    const bin = atob(res.file_b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = res.filename || "warehouse.xlsx"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Промпт для нейросети — копируется в буфер (Excel прикладывается отдельно)
+  const [promptCopied, setPromptCopied] = useState(false)
+  const handleCopyWarehousePrompt = async () => {
+    const prompt = [
+      "Ты — аналитик склада магазина ПК-комплектующих. Я приложу Excel-выгрузку склада (warehouse.xlsx).",
+      "",
+      "Колонки: SKU, Название, Категория, Партномер, Цена продажи ₽, Себестоимость ₽,",
+      "Всего шт, В резерве шт, Свободно шт, Нехватка шт, Наценка ₽, Наценка %,",
+      "Гарантия мес, Ячейка, Б/У, В архиве. Внизу строка ИТОГО (розница/закупка/шт).",
+      "",
+      "Проанализируй и дай конкретные выводы с цифрами:",
+      "1) ЗАЛЕЖАВШИЕСЯ деньги: позиции с большим остатком и низкой наценкой — что распродать/уценить.",
+      "2) НЕХВАТКА: где Нехватка шт > 0 или Свободно шт ≤ 0 — что срочно дозаказать.",
+      "3) МАРЖА: товары/категории с самой высокой и самой низкой наценкой %.",
+      "4) СТРУКТУРА ЗАПАСОВ: в какие категории вложено больше всего денег (Себестоимость × Всего шт).",
+      "5) Б/У и архив: стоит ли что-то списать/убрать.",
+      "Ответь кратко, списком, приоритеты сверху.",
+    ].join("\n")
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setPromptCopied(true)
+      setTimeout(() => setPromptCopied(false), 2000)
+    } catch {
+      alert("Не удалось скопировать промпт")
+    }
+  }
+
   const handleArchive = async (g: Group) => {
     if (!confirm(`Архивировать «${g.name}»?`)) return
     await api.warehouse.archiveGroup(g.id)
@@ -354,6 +400,16 @@ export default function WarehouseTab() {
               <Icon name="Archive" size={14} className="mr-2" />
               {showArchived ? "Скрыть архив" : "Архив"}
               {showArchived && <Icon name="Check" size={13} className="ml-auto text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Выгрузка и анализ</DropdownMenuLabel>
+            <DropdownMenuItem onClick={handleExportExcel} disabled={exporting}>
+              <Icon name={exporting ? "Loader" : "FileSpreadsheet"} size={14} className={`mr-2 ${exporting ? "animate-spin" : ""}`} />
+              {exporting ? "Формирую файл..." : "Экспорт всего склада в Excel"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.preventDefault(); handleCopyWarehousePrompt() }}>
+              <Icon name={promptCopied ? "Check" : "Sparkles"} size={14} className="mr-2" />
+              {promptCopied ? "Промпт скопирован!" : "Промпт для нейросети"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

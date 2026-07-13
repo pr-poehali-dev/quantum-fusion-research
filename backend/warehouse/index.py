@@ -363,6 +363,70 @@ def handler(event: dict, context) -> dict:
     cur = conn.cursor()
 
     try:
+        # ── ЭКСПОРТ ВСЕГО СКЛАДА В EXCEL ──────────────────────────────────────
+        if action == "export_excel" and method == "GET":
+            import io
+            import base64
+            import openpyxl
+            # Позиции склада: агрегаты по группе + себестоимость по партиям.
+            cur.execute(
+                f"SELECT g.sku, g.name, g.category, g.part_number, "
+                f"       COALESCE(g.price_retail, 0) AS price_retail, "
+                f"       COALESCE(SUM(s.qty), 0) AS qty_total, "
+                f"       COALESCE(SUM(s.qty_reserved), 0) AS qty_reserved, "
+                f"       COALESCE(SUM(s.qty_negative), 0) AS qty_negative, "
+                f"       COALESCE(SUM(s.cost_price * s.qty) / NULLIF(SUM(s.qty), 0), 0) AS avg_cost, "
+                f"       g.warranty_months, g.cell, g.is_used, g.is_archived "
+                f"FROM {SCHEMA}.warehouse_groups g "
+                f"LEFT JOIN {SCHEMA}.warehouse_supplies s ON s.group_id = g.id "
+                f"GROUP BY g.id "
+                f"ORDER BY g.category NULLS LAST, g.name"
+            )
+            rows = cur.fetchall()
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Склад"
+            ws.append([
+                "SKU", "Название", "Категория", "Партномер", "Цена продажи ₽",
+                "Себестоимость ₽", "Всего шт", "В резерве шт", "Свободно шт",
+                "Нехватка шт", "Наценка ₽", "Наценка %", "Гарантия мес",
+                "Ячейка", "Б/У", "В архиве",
+            ])
+            for r in rows:
+                (sku, name, category, part_number, price_retail, qty_total,
+                 qty_reserved, qty_negative, avg_cost, warranty_months, cell,
+                 is_used, is_archived) = r
+                price_retail = float(price_retail or 0)
+                avg_cost = float(avg_cost or 0)
+                free = int(qty_total or 0) - int(qty_reserved or 0)
+                markup_rub = round(price_retail - avg_cost, 2) if avg_cost > 0 else None
+                markup_pct = (round((price_retail - avg_cost) / avg_cost * 100, 1)
+                              if avg_cost > 0 else None)
+                ws.append([
+                    sku, name, category or "", part_number or "",
+                    round(price_retail, 2), round(avg_cost, 2),
+                    int(qty_total or 0), int(qty_reserved or 0), free,
+                    int(qty_negative or 0),
+                    markup_rub if markup_rub is not None else "",
+                    markup_pct if markup_pct is not None else "",
+                    int(warranty_months or 0), cell or "",
+                    "Да" if is_used else "", "Да" if is_archived else "",
+                ])
+            # Итоговая строка
+            total_qty = sum(int(r[5] or 0) for r in rows)
+            total_purchase = sum(float(r[8] or 0) * int(r[5] or 0) for r in rows)
+            total_retail = sum(float(r[4] or 0) * int(r[5] or 0) for r in rows)
+            ws.append([])
+            ws.append(["ИТОГО", "", "", "", round(total_retail, 2),
+                       round(total_purchase, 2), total_qty])
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            file_b64 = base64.b64encode(buf.getvalue()).decode()
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"file_b64": file_b64, "filename": "warehouse.xlsx"})}
+
         # ── МАГАЗИНЫ ──────────────────────────────────────────────────────────
         if action == "stores" and method == "GET":
             cur.execute(f"SELECT id, name, code, created_at FROM {SCHEMA}.warehouse_stores ORDER BY name")
