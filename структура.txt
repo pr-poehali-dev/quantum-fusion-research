@@ -136,6 +136,17 @@
 - воркер-сервер/worker.py + ИНСТРУКЦИЯ.txt — локальный FastAPI/Ollama-воркер
   (модель qwen2-vl:7b), НЕ часть деплоя, ставится на сервер пользователя.
 
+РЕФАКТОРИНГ WarehouseTab (в процессе): монолит WarehouseTab.tsx (был 2733 стр.)
+дробится на папку src/components/admin/warehouse/:
+  - types.ts — общие типы (Store, Supply, PricePoint, Group, RemoteHit,
+    ReserveFilter, InvItem, InventoryRecord, OverflowItem).
+  - utils.ts — форматтеры fmt/fmtNum.
+  - serialCheck.ts — checkSerialSound() + useArchivedSerialCheck().
+  - InventoryModal.tsx — окно инвентаризации + приёмки излишков.
+  - QuickSupplyModal.tsx — быстрая приёмка поставки с вводом серийников.
+  WarehouseTab.tsx сейчас ~1697 стр. (осталось вынести SupplyModal,
+  CategoriesModal, GroupRow, StoresModal, SupplySerialsModal, ReservesModal).
+
 ## Оптимизация изображений (v6.20-6.21)
 - backend/img-optimize (URL .../f8ab2fb6-...) — сжимает картинку по URL в WebP
   в размерах 480/768/1024 (для srcset) и кладёт в S3 в optimized/ с длинным кешем.

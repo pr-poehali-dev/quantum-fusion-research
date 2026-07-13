@@ -3,6 +3,19 @@
 
 ---
 
+## v7.10 | 2026-07-13 | Рефакторинг WarehouseTab (этап 1)
+
+- Начато дробление монолита WarehouseTab.tsx (был 2733 строки → стал 1697).
+- Создана папка src/components/admin/warehouse/:
+  · types.ts — вынесены все общие типы склада.
+  · utils.ts — форматтеры fmt/fmtNum.
+  · serialCheck.ts — checkSerialSound() + хук useArchivedSerialCheck().
+  · InventoryModal.tsx — окно инвентаризации + приёмка излишков.
+  · QuickSupplyModal.tsx — быстрая приёмка поставки с вводом серийников.
+- Только перемещение кода, логика не менялась. Сборка проходит чисто.
+- Дальше по плану: вынести SupplyModal, CategoriesModal, GroupRow и мелкие
+  модалки, затем перейти к AdminCatalogTab, BuildPreview, Shop.
+
 ## v7.09 | 2026-07-12 | Акции на РЕАЛЬНОЙ главной (HomeStonks)
 
 - ВАЖНО: на маршруте "/" рендерится HomeStonks.tsx, а НЕ Index.tsx. Блок акций
