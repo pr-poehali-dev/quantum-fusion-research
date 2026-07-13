@@ -69,7 +69,8 @@ export function BuildsSection({
     ? Math.ceil(baseTotal * 1.22 / 250) * 250
     : baseTotal
 
-  const editBuild = (b: PCBuild) => {
+  // Наполнить форму данными сборки (без навигации).
+  const fillBuildForm = (b: PCBuild) => {
     setBuildForm({
       id: b.id, name: b.name, description: b.description || "",
       status: b.status, is_featured: b.is_featured, in_stock: b.in_stock ?? false,
@@ -89,19 +90,33 @@ export function BuildsSection({
       points: c.points ?? (c.point ? [c.point] : null),
     })) || [])
     setBuildTagIds(b.tags?.map(t => t.id) || [])
+  }
+
+  // Какую сборку сейчас редактируем (id переживает навигацию/перерисовку —
+  // тот же надёжный подход, что и авто-открытие из WIP через autoEditBuildId).
+  const [pendingEditId, setPendingEditId] = useState<number | null>(null)
+
+  const editBuild = (b: PCBuild) => {
+    setPendingEditId(b.id)
+    fillBuildForm(b)
     setTab("add_build")
   }
 
-  // Авто-открытие сборки на редактирование (по запросу из WIP)
+  // Наполняем форму из pendingEditId (клик «Ред.») ИЛИ autoEditBuildId (из WIP),
+  // как только сборка есть в списке. Устойчиво к перезагрузке списка/навигации.
+  // one-shot: после наполнения id сбрасываем, чтобы не «тянуть» назад в форму.
   useEffect(() => {
-    if (!autoEditBuildId) return
-    const b = builds.find(x => x.id === autoEditBuildId)
+    const wantId = pendingEditId ?? autoEditBuildId
+    if (!wantId) return
+    const b = builds.find(x => x.id === wantId)
     if (b) {
-      editBuild(b)
-      clearAutoEditBuildId?.()
+      fillBuildForm(b)
+      setTab("add_build")
+      setPendingEditId(null)
+      if (autoEditBuildId) clearAutoEditBuildId?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoEditBuildId, builds])
+  }, [pendingEditId, autoEditBuildId, builds])
 
   const submitBuild = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -145,6 +160,7 @@ export function BuildsSection({
     setBuildComponents([])
     setBuildTagIds([])
     setPointPickIdx(null)
+    setPendingEditId(null)
     setTab("builds")
   }
 
@@ -205,7 +221,7 @@ export function BuildsSection({
         loading={loading}
         expandedVariants={expandedVariants} setExpandedVariants={setExpandedVariants}
         dupeLoading={dupeLoading} copiedBuildId={copiedBuildId} fmt={fmt}
-        onNew={() => { setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null }); setBuildComponents([]); setTab("add_build") }}
+        onNew={() => { setPendingEditId(null); setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null }); setBuildComponents([]); setTab("add_build") }}
         onEdit={editBuild} onDupe={duplicateBuild} onLink={generateClientLink}
         onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id || bb.parent_id === b.id ? { ...bb, status } : bb)) }}
         onDelete={deleteBuild} isArchive={showArchive}
@@ -569,7 +585,7 @@ export function BuildsSection({
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {buildForm.id ? "Сохранить" : "Опубликовать сборку"}
           </button>
-          <button type="button" onClick={() => setTab("builds")} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <button type="button" onClick={() => { setPendingEditId(null); setTab("builds") }} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
         </div>
