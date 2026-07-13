@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ImageUploader } from "@/components/image-uploader"
@@ -115,30 +115,19 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     }
   }
 
-  // Какой товар редактируем (id переживает навигацию/подгрузку списка).
-  const [editingId, setEditingId] = useState<number | null>(null)
-  // Снимок редактируемого товара — не зависит от перезагрузки списка products.
-  const editingProductRef = useRef<Product | null>(null)
+  // Редактирование товара — во ВСПЛЫВАЮЩЕМ ОКНЕ (без смены вкладки/навигации),
+  // поэтому баг с «переходом на создание нового» больше невозможен.
+  const [editOpen, setEditOpen] = useState(false)
 
   const editProduct = (p: Product) => {
-    editingProductRef.current = p
-    setEditingId(p.id)
     setProductForm(buildFormFromProduct(p))
-    setTab("add_product")
-    // на всякий случай — прокрутить наверх к форме
-    try { window.scrollTo({ top: 0 }) } catch { /* noop */ }
+    setEditOpen(true)
   }
 
-  // Если форма «схлопнулась» (например при перерисовке/навигации), восстанавливаем
-  // её из снимка редактируемого товара. Не зависит от списка products.
-  useEffect(() => {
-    if (editingId == null) return
-    const snap = editingProductRef.current
-    const p = (snap && snap.id === editingId) ? snap
-      : (products.find(pr => pr.id === editingId) || archivedProducts.find(pr => pr.id === editingId) || null)
-    if (p) setProductForm(prev => (prev.id === editingId ? prev : buildFormFromProduct(p)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingId, products, archivedProducts, categories, brands])
+  const closeEdit = () => {
+    setEditOpen(false)
+    setProductForm(EMPTY_FORM)
+  }
   const submitProduct = async (e: React.FormEvent) => {
     e.preventDefault()
     // Цена и гарантия подтягиваются со склада, обязательна только категория
@@ -163,12 +152,12 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
       is_featured: productForm.is_featured, is_used: productForm.is_used,
       sort_order: Number(productForm.sort_order),
     }
-    if (productForm.id) await api.products.update(payload)
-    else await api.products.create(payload)
-    setTab("products")
-    editingProductRef.current = null
-    setEditingId(null)
-    setProductForm(EMPTY_FORM)
+    // Через раздел «Товары» доступно только РЕДАКТИРОВАНИЕ (create убран).
+    if (!productForm.id) { alert("Создание товара здесь недоступно — товары создаются на складе."); return }
+    await api.products.update(payload)
+    // Обновляем строку в списке локально, чтобы изменения были сразу видны
+    setProducts(ps => ps.map(p => p.id === productForm.id ? { ...p, ...payload, category: p.category } : p))
+    closeEdit()
   }
   const handleExportExcel = async () => {
     setExportLoading(true)
@@ -198,8 +187,8 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
     reader.readAsArrayBuffer(file)
   }
 
-  // PRODUCTS LIST
-  if (tab === "products") {
+  // PRODUCTS LIST (add_product больше не отдельная страница — редактирование в модалке)
+  if (tab === "products" || tab === "add_product") {
     const isNew = (p: Product) => !p.description && (!p.image_urls?.length && !p.image_url)
     const filtered = products
       .filter(p => productCatFilter === "all" || p.category?.name === productCatFilter)
@@ -242,9 +231,6 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
                 <Icon name={importLoading ? "Loader" : "Upload"} size={14} />Импорт
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = "" }} />
               </label>
-              <button onClick={() => { editingProductRef.current = null; setEditingId(null); setProductForm(EMPTY_FORM); setTab("add_product") }} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="Plus" size={16} />Добавить
-              </button>
             </div>
           </div>
         </div>
@@ -343,15 +329,15 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
           </>
           )
         })()}
-      </div>
-    )
-  }
 
-  // ADD/EDIT PRODUCT
-  if (tab === "add_product") {
-    return (
-    <div className="max-w-2xl">
-      <h2 className="mb-6 text-xl font-light text-foreground">{productForm.id ? "Редактировать товар" : "Добавить товар"}</h2>
+        {/* МОДАЛКА РЕДАКТИРОВАНИЯ ТОВАРА (без навигации — баг «создание нового» невозможен) */}
+        {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-10" style={{ cursor: "auto" }}>
+          <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <button onClick={closeEdit} className="absolute right-4 top-4 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+              <Icon name="X" size={18} />
+            </button>
+            <h2 className="mb-6 text-xl font-light text-foreground">Редактировать товар</h2>
       <form onSubmit={submitProduct} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -432,15 +418,18 @@ export function ProductsSection({ tab, setTab, loading, products, setProducts, c
         </div>
         <div className="flex gap-3 pt-2">
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
-            {productForm.id ? "Сохранить" : "Добавить"}
+            Сохранить
           </button>
-          <button type="button" onClick={() => { setTab("products"); editingProductRef.current = null; setEditingId(null); setProductForm(EMPTY_FORM) }}
+          <button type="button" onClick={closeEdit}
             className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
         </div>
       </form>
-    </div>
+          </div>
+        </div>
+        )}
+      </div>
     )
   }
 
