@@ -69,6 +69,9 @@ export default function Admin() {
   const [wipStages, setWipStages] = useState<string[]>([])
   // id сборки, которую надо открыть в редакторе каталога после перехода на add_build
   const [autoEditBuildId, setAutoEditBuildId] = useState<number | null>(null)
+  // Какую статью открыть на редактирование. Живёт в Admin (переживает remount
+  // поддерева по key={main-${tab}}), передаётся в ArticlesSection.
+  const [autoEditArticleId, setAutoEditArticleId] = useState<number | null>(null)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   // Счётчик необработанных предложений парсера цен (бейдж на вкладке «Цены»)
   const [parserPending, setParserPending] = useState(0)
@@ -336,6 +339,7 @@ export default function Admin() {
             tags={tags} setTags={setTags}
             articles={articles} setArticles={setArticles}
             autoEditBuildId={autoEditBuildId} clearAutoEditBuildId={() => setAutoEditBuildId(null)}
+            autoEditArticleId={autoEditArticleId} setAutoEditArticleId={setAutoEditArticleId}
           />
         )}
 

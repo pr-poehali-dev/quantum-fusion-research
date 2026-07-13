@@ -8,12 +8,16 @@ import { Product, Article, AdminTab } from "@/pages/admin/types"
 // Зарезервированный якорь оглавления для блока тир-листа статьи
 const TIER_ANCHOR = "__tierlist__"
 
-export function ArticlesSection({ tab, setTab, loading, articles, setArticles }: {
+export function ArticlesSection({ tab, setTab, loading, articles, setArticles, autoEditArticleId, setAutoEditArticleId }: {
   tab: AdminTab
   setTab: (t: AdminTab) => void
   loading: boolean
   articles: Article[]
   setArticles: React.Dispatch<React.SetStateAction<Article[]>>
+  // id статьи для авто-открытия на редактирование. Хранится в Admin, поэтому
+  // переживает remount поддерева (key={main-${tab}}) при переходе на add_article.
+  autoEditArticleId?: number | null
+  setAutoEditArticleId?: (id: number | null) => void
 }) {
   const [articleForm, setArticleForm] = useState({
     id: null as number | null,
@@ -103,7 +107,7 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
-    setPendingEditId(null)
+    setAutoEditArticleId?.(null)
     setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] })
     setTab("articles")
   }
@@ -122,29 +126,28 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
     })
   }
 
-  // Какую статью сейчас редактируем. id переживает навигацию/перемонтирование
-  // компонента — тот же надёжный подход, что и в BuildsSection (иначе форма
-  // сбрасывалась в «создание новой» при переключении вкладки на add_article).
-  const [pendingEditId, setPendingEditId] = useState<number | null>(null)
-
   const editArticle = (a: Article) => {
-    setPendingEditId(a.id)
+    // id храним в Admin (autoEditArticleId) — он переживает remount поддерева
+    // при переходе articles → add_article (key={main-${tab}} в Admin.tsx),
+    // иначе локальный стейт формы сбрасывался и открывалась «новая статья».
+    setAutoEditArticleId?.(a.id)
     fillArticleForm(a)
     setTab("add_article")
   }
 
-  // Надёжно наполняем форму по pendingEditId, как только статья есть в списке.
-  // one-shot: после наполнения id сбрасываем, чтобы не «тянуть» назад в форму.
+  // После remount на вкладке add_article наполняем форму по autoEditArticleId,
+  // как только статья появилась в списке. one-shot: затем сбрасываем id.
   useEffect(() => {
-    if (!pendingEditId) return
-    const a = articles.find(x => x.id === pendingEditId)
-    if (a) {
+    if (!autoEditArticleId) return
+    const a = articles.find(x => x.id === autoEditArticleId)
+    if (a && articleForm.id !== autoEditArticleId) {
       fillArticleForm(a)
       setTab("add_article")
-      setPendingEditId(null)
     }
+    // сбрасываем только когда форма уже наполнена нужной статьёй
+    if (a && articleForm.id === autoEditArticleId) setAutoEditArticleId?.(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingEditId, articles])
+  }, [autoEditArticleId, articles, articleForm.id])
 
   const deleteArticle = async (id: number) => {
     if (!confirm("Удалить статью?")) return
@@ -157,7 +160,7 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
     <div>
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
-        <button onClick={() => { setPendingEditId(null); setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
+        <button onClick={() => { setAutoEditArticleId?.(null); setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Plus" size={15} />Новая статья
         </button>
@@ -515,7 +518,7 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles }:
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {articleForm.id ? "Сохранить" : "Создать статью"}
           </button>
-          <button type="button" onClick={() => { setPendingEditId(null); setTab("articles") }} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <button type="button" onClick={() => { setAutoEditArticleId?.(null); setTab("articles") }} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
         </div>

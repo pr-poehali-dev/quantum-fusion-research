@@ -31,6 +31,9 @@ interface Props {
   // авто-открытие сборки на редактирование (из WIP)
   autoEditBuildId?: number | null
   clearAutoEditBuildId?: () => void
+  // авто-открытие статьи на редактирование (переживает remount поддерева)
+  autoEditArticleId?: number | null
+  setAutoEditArticleId?: (id: number | null) => void
 }
 
 export function AdminCatalogTab({
@@ -40,6 +43,7 @@ export function AdminCatalogTab({
   tags, setTags,
   articles, setArticles,
   autoEditBuildId, clearAutoEditBuildId,
+  autoEditArticleId, setAutoEditArticleId,
 }: Props) {
   // ── Products вынесены в ./catalog/ProductsSection.tsx ───────────────────────
   // ── Builds вынесены в ./catalog/BuildsSection.tsx ───────────────────────────
@@ -84,7 +88,8 @@ export function AdminCatalogTab({
 
   // ARTICLES — вынесено в ./catalog/ArticlesSection.tsx
   if (tab === "articles" || tab === "add_article")
-    return <ArticlesSection tab={tab} setTab={setTab} loading={loading} articles={articles} setArticles={setArticles} />
+    return <ArticlesSection tab={tab} setTab={setTab} loading={loading} articles={articles} setArticles={setArticles}
+      autoEditArticleId={autoEditArticleId} setAutoEditArticleId={setAutoEditArticleId} />
 
   return null
 }
