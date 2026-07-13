@@ -69,6 +69,15 @@
   хит/скоро закончится/дозаказать — ТОЛЬКО для регулярного спроса; разовые
   помечаются «разовая продажа». totals += regular/one_off. Промпт для ИИ
   копируется без CSV (CSV отдельной кнопкой).
+  [v7.27] +блок spec_groups: контроль остатков по ТИПУ комплектующего через
+  характеристики совместимости. Группируем по атрибутам spec_attributes с
+  affects_compat=true (select/multiselect): значение из product_spec_values.value
+  + разворот value_json (multiselect) через jsonb_array_elements_text. По
+  каждому (категория, характеристика, значение): товаров в группе, суммарный
+  остаток (ВСЕ товары типа), продано всего/регулярно, спрос по регулярным,
+  дней-хватит, дефицит, warning (нет в наличии/скоро закончится/дозаказать).
+  totals += spec_warnings. Фронт SalesReport: блок «Контроль по характеристикам»
+  (предупреждения по типам + таблица), второй CSV «by_specs».
 - Таблицы (V0185): marketing_source_groups, marketing_sources
   (utm_source для авто-привязки, is_paid, is_active), marketing_budgets
   (period_month, amount, leads_manual, UNIQUE group_id+month).

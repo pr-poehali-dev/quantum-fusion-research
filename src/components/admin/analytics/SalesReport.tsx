@@ -22,10 +22,24 @@ type Item = {
   deficit: number
   labels: string[]
 }
+type SpecGroup = {
+  category: string
+  attribute: string
+  value: string
+  products: number
+  stock: number
+  sold_total: number
+  sold_regular: number
+  daily_demand: number
+  days_cover: number | null
+  deficit: number
+  warning: string | null
+}
 type Report = {
   period: { from: string; to: string }
   items: Item[]
-  totals: { positions: number; units: number; revenue: number; margin: number; period_days: number; regular: number; one_off: number }
+  spec_groups: SpecGroup[]
+  totals: { positions: number; units: number; revenue: number; margin: number; period_days: number; regular: number; one_off: number; spec_warnings: number }
 }
 
 const money = (n: number | null) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU") + " ₽")
@@ -73,10 +87,18 @@ function buildPrompt(r: Report): string {
     "ВАЖНО: единичные/разовые продажи (Тип_спроса='разовый') НЕ считай реальным " +
       "спросом — не рекомендуй закупать их про запас, только отметь как возможный интерес.",
     "",
+    "Во втором CSV-файле — контроль остатков по ХАРАКТЕРИСТИКАМ совместимости " +
+      "(тип комплектующего). Колонки: Категория, Характеристика, Значение, " +
+      "Товаров_в_группе, Остаток_шт, Продано_всего, Продано_регулярно, " +
+      "Спрос_в_день, Хватит_дней, Дефицит_шт, Предупреждение. Это помогает " +
+      "заметить нехватку целого ТИПА (напр. мало корпусов формата mATX или " +
+      "плат под сокет AM5), даже если по отдельным моделям всё выглядит нормально.",
+    "",
     "Задача — дай конкретные рекомендации:",
     "1) ЧТО ЗАКУПИТЬ в первую очередь: регулярный спрос + хорошая маржа + мало/нет на складе. Укажи товар и рекомендуемое кол-во.",
     "2) ЧТО ИСКЛЮЧИТЬ / не закупать: низкая или отрицательная маржа, слабые/разовые продажи.",
     "3) На что обратить внимание: регулярный спрос, который скоро закончится (риск потери продаж).",
+    "4) ПРОБЕЛЫ ПО ТИПАМ: какие характеристики/типы (форм-фактор, сокет, тип памяти) в дефиците под спрос — их тоже пополнить.",
     "Ответь кратко, списком, с цифрами. Сначала топ-приоритеты.",
   ].join("\n")
 }
@@ -98,6 +120,25 @@ function toCSV(items: Item[]): string {
     i.margin_pct == null ? "" : i.margin_pct,
     i.stock_now, i.daily_demand, i.days_cover == null ? "" : i.days_cover,
     i.deficit, i.labels.join(" / "),
+  ].map(esc).join(";"))
+  return [head.join(";"), ...rows].join("\n")
+}
+
+// CSV по группам характеристик (контроль остатков по типу комплектующего)
+function specToCSV(groups: SpecGroup[]): string {
+  const head = [
+    "Категория", "Характеристика", "Значение", "Товаров_в_группе", "Остаток_шт",
+    "Продано_всего", "Продано_регулярно", "Спрос_в_день", "Хватит_дней",
+    "Дефицит_шт", "Предупреждение",
+  ]
+  const esc = (v: string | number | null) => {
+    const s = v == null ? "" : String(v)
+    return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const rows = groups.map(g => [
+    g.category, g.attribute, g.value, g.products, g.stock,
+    g.sold_total, g.sold_regular, g.daily_demand,
+    g.days_cover == null ? "" : g.days_cover, g.deficit, g.warning || "",
   ].map(esc).join(";"))
   return [head.join(";"), ...rows].join("\n")
 }
@@ -129,21 +170,33 @@ export default function SalesReport() {
     }
   }
 
-  const downloadCSV = () => {
-    if (!data) return
-    const blob = new Blob(["\uFEFF" + toCSV(data.items)], { type: "text/csv;charset=utf-8" })
+  const downloadFile = (name: string, content: string) => {
+    const blob = new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `sales_${range.from}_${range.to}.csv`
+    a.download = name
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const downloadCSV = () => {
+    if (!data) return
+    // Отчёт по товарам
+    downloadFile(`sales_${range.from}_${range.to}.csv`, toCSV(data.items))
+    // Отдельный CSV по характеристикам (контроль остатков по типу)
+    if (data.spec_groups?.length) {
+      downloadFile(`sales_by_specs_${range.from}_${range.to}.csv`, specToCSV(data.spec_groups))
+    }
   }
 
   // Предупреждаем только по РЕГУЛЯРНОМУ спросу — разовые продажи не считаем.
   const lowStock = (data?.items || []).filter(
     i => i.demand_type === "регулярный" && (i.stock_now === 0 || (i.days_cover != null && i.days_cover <= 14))
   )
+  // Группы характеристик: с предупреждением и топ по продажам
+  const specWarn = (data?.spec_groups || []).filter(g => g.warning)
+  const specTop = (data?.spec_groups || []).filter(g => g.sold_total > 0).slice(0, 12)
 
   return (
     <div className="space-y-5">
@@ -194,8 +247,9 @@ export default function SalesReport() {
               <div className="flex-1">
                 <p className="text-sm font-semibold">Отчёт для ИИ</p>
                 <p className="mt-0.5 text-xs text-foreground/60">
-                  1) Скопируйте промпт и вставьте в любую ИИ. 2) Скачайте CSV и приложите
-                  его файлом к тому же запросу — ИИ подскажет, что закупить, а что исключить.
+                  1) Скопируйте промпт и вставьте в любую ИИ. 2) Скачайте CSV (2 файла:
+                  по товарам и по характеристикам) и приложите к тому же запросу — ИИ
+                  подскажет, что закупить, а что исключить.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={copyPrompt}
@@ -235,6 +289,82 @@ export default function SalesReport() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Контроль по характеристикам (тип комплектующего) */}
+          {(data.spec_groups?.length ?? 0) > 0 && (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="mb-1 flex items-center gap-2 text-sm font-semibold">
+                <Icon name="Boxes" size={16} className="text-primary" />
+                Контроль по характеристикам совместимости
+              </p>
+              <p className="mb-3 text-xs text-foreground/50">
+                Остатки и спрос по ТИПУ комплектующего (форм-фактор, сокет, тип памяти…) —
+                чтобы заметить нехватку целого типа, даже если по моделям всё в норме.
+              </p>
+
+              {/* Предупреждения по типам */}
+              {specWarn.length > 0 && (
+                <div className="mb-3 space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                    <Icon name="TriangleAlert" size={13} /> Нехватка по типам ({specWarn.length})
+                  </p>
+                  {specWarn.map((g, k) => (
+                    <div key={k} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-foreground/80">{g.category} · {g.attribute}: <b>{g.value}</b></span>
+                      <span className="text-foreground/50">
+                        остаток <b className="text-foreground/70">{g.stock}</b> ·
+                        рег. спрос {g.daily_demand}/день ·
+                        {g.days_cover != null ? <> хватит <b className="text-amber-600">{g.days_cover}</b> дн.</> : " —"}
+                        {g.deficit > 0 && <> · дозаказать <b className="text-amber-600">{g.deficit}</b></>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Таблица по группам характеристик */}
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 text-xs text-foreground/50">
+                      <th className="px-3 py-2 text-left">Тип / характеристика</th>
+                      <th className="px-3 py-2 text-center">Остаток</th>
+                      <th className="px-3 py-2 text-center">Продано (всего / рег.)</th>
+                      <th className="px-3 py-2 text-center">Хватит</th>
+                      <th className="px-3 py-2 text-left">Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {specTop.map((g, k) => (
+                      <tr key={k} className={`border-b border-border/50 ${k % 2 ? "bg-muted/10" : ""}`}>
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{g.value}</span>
+                          <span className="ml-1 text-xs text-foreground/40">{g.category} · {g.attribute}</span>
+                        </td>
+                        <td className={`px-3 py-2 text-center ${g.stock === 0 ? "text-red-500 font-semibold" : ""}`}>{g.stock}</td>
+                        <td className="px-3 py-2 text-center">
+                          {g.sold_total}
+                          <span className="text-xs text-foreground/40"> / {g.sold_regular}</span>
+                        </td>
+                        <td className="px-3 py-2 text-center text-xs text-foreground/60">
+                          {g.days_cover == null ? "—" : `${g.days_cover} дн`}
+                        </td>
+                        <td className="px-3 py-2">
+                          {g.warning
+                            ? <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${g.warning === "нет в наличии" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-500"}`}>{g.warning}</span>
+                            : <span className="text-[10px] text-emerald-500">норма</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-foreground/40">
+                «Продано (всего / рег.)» — все продажи типа и только регулярные. Спрос и
+                статус считаются по регулярным. Полный список — в отдельном CSV «by_specs».
+              </p>
             </div>
           )}
 

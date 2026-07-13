@@ -465,6 +465,102 @@ def handler(event: dict, context) -> dict:
                     "labels": labels,
                 })
 
+            # ── ГРУППОВОЙ КОНТРОЛЬ ПО ХАРАКТЕРИСТИКАМ СОВМЕСТИМОСТИ ──────────────
+            # Строим подсказки не по конкретному товару, а по ТИПУ: например
+            # «Материнские платы · Форм-фактор · mATX». Группируем по атрибутам,
+            # влияющим на совместимость (affects_compat), типа select/multiselect
+            # (форм-фактор, сокет, тип памяти и т.п.). По каждому значению:
+            # остаток всех товаров с этой характеристикой, продано ВСЕГО и
+            # РЕГУЛЯРНО (две подсказки), спрос, дней-хватит, дефицит.
+            # Карты продаж по товару (из items выше)
+            sold_total_by_pid = {i["product_id"]: i["units_sold"] for i in items}
+            sold_reg_by_pid = {i["product_id"]: (i["units_sold"] if i["demand_type"] == "регулярный" else 0) for i in items}
+            reg_pid = {i["product_id"] for i in items if i["demand_type"] == "регулярный"}
+
+            # (категория, атрибут, значение) → product_id, для compat select/multiselect
+            cur.execute(
+                f"SELECT sc.name AS category, sa.name AS attr, "
+                f"       COALESCE(psv.value, elem.val) AS val, psv.product_id "
+                f"FROM {SCHEMA}.product_spec_values psv "
+                f"JOIN {SCHEMA}.spec_attributes sa ON sa.id = psv.attribute_id "
+                f"JOIN {SCHEMA}.spec_categories sc ON sc.id = sa.category_id "
+                f"LEFT JOIN LATERAL jsonb_array_elements_text("
+                f"  CASE WHEN jsonb_typeof(psv.value_json)='array' THEN psv.value_json ELSE '[]'::jsonb END"
+                f") AS elem(val) ON TRUE "
+                f"WHERE sa.affects_compat = TRUE AND sa.field_type IN ('select','multiselect') "
+                f"  AND COALESCE(psv.value, elem.val) IS NOT NULL "
+                f"  AND COALESCE(psv.value, elem.val) <> ''"
+            )
+            spec_rows = cur.fetchall()
+
+            # остаток по ВСЕМ товарам, встречающимся в характеристиках (не только проданным)
+            spec_pids = {int(r[3]) for r in spec_rows if r[3] is not None}
+            stock_by_pid = {}
+            if spec_pids:
+                ids_sql = ",".join(str(p) for p in spec_pids)
+                cur.execute(
+                    f"SELECT g.product_id, COALESCE(SUM(w.qty), 0) "
+                    f"FROM {SCHEMA}.warehouse_groups g "
+                    f"LEFT JOIN {SCHEMA}.warehouse_supplies w ON w.group_id = g.id "
+                    f"WHERE g.product_id IN ({ids_sql}) "
+                    f"GROUP BY g.product_id"
+                )
+                stock_by_pid = {int(r[0]): int(r[1] or 0) for r in cur.fetchall()}
+
+            # агрегируем по (категория, атрибут, значение)
+            groups_map = {}
+            for cat_name, attr_name, val, pid in spec_rows:
+                if pid is None:
+                    continue
+                pid = int(pid)
+                key = (cat_name, attr_name, val)
+                gg = groups_map.get(key)
+                if gg is None:
+                    gg = {"pids": set(), "sold": 0, "sold_reg": 0, "stock": 0}
+                    groups_map[key] = gg
+                if pid in gg["pids"]:
+                    continue
+                gg["pids"].add(pid)
+                gg["stock"] += stock_by_pid.get(pid, 0)
+                gg["sold"] += sold_total_by_pid.get(pid, 0)
+                gg["sold_reg"] += sold_reg_by_pid.get(pid, 0)
+
+            spec_groups = []
+            for (cat_name, attr_name, val), gg in groups_map.items():
+                sold = gg["sold"]
+                sold_reg = gg["sold_reg"]
+                stock = gg["stock"]
+                if sold == 0 and stock == 0:
+                    continue  # ничего интересного
+                # дневной спрос по группе — по РЕГУЛЯРНЫМ продажам (стабильный сигнал)
+                daily = round(sold_reg / period_days, 4) if sold_reg > 0 else 0
+                days_cover = round(stock / daily, 1) if daily > 0 else None
+                deficit = max(0, round(daily * 30 - stock)) if daily > 0 else 0
+                warn = None
+                if daily > 0:
+                    if stock == 0:
+                        warn = "нет в наличии"
+                    elif days_cover is not None and days_cover <= 14:
+                        warn = "скоро закончится"
+                    elif deficit > 0:
+                        warn = "дозаказать"
+                spec_groups.append({
+                    "category": cat_name,
+                    "attribute": attr_name,
+                    "value": val,
+                    "products": len(gg["pids"]),
+                    "stock": stock,
+                    "sold_total": sold,       # продано всего (вкл. разовые)
+                    "sold_regular": sold_reg,  # продано регулярно
+                    "daily_demand": daily,
+                    "days_cover": days_cover,
+                    "deficit": deficit,
+                    "warning": warn,
+                })
+            # сортировка: сначала группы с предупреждением, потом по продажам
+            _wrank = {"нет в наличии": 0, "скоро закончится": 1, "дозаказать": 2, None: 9}
+            spec_groups.sort(key=lambda x: (_wrank.get(x["warning"], 9), -x["sold_total"]))
+
             totals = {
                 "positions": len(items),
                 "units": sum(i["units_sold"] for i in items),
@@ -473,10 +569,12 @@ def handler(event: dict, context) -> dict:
                 "period_days": period_days,
                 "regular": sum(1 for i in items if i["demand_type"] == "регулярный"),
                 "one_off": sum(1 for i in items if i["demand_type"] == "разовый"),
+                "spec_warnings": sum(1 for g in spec_groups if g["warning"]),
             }
             return _resp(200, {
                 "period": {"from": str(d_from), "to": str(d_to)},
                 "items": items,
+                "spec_groups": spec_groups,
                 "totals": totals,
             })
 
