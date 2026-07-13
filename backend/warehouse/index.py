@@ -812,6 +812,9 @@ def handler(event: dict, context) -> dict:
             cell = body.get("cell", "")
             purchase_date = body.get("purchase_date")
             warranty_until = body.get("warranty_until")
+            # Б/У: партия помечается как бывшая в употреблении, а для сайта
+            # создаётся отдельная карточка товара (в родной категории, is_used=true).
+            is_used = body.get("is_used") is True
 
             # НДС: фронт шлёт price_with_vat (введённая цена) и has_vat.
             # Себестоимость (cost_price):
@@ -843,12 +846,13 @@ def handler(event: dict, context) -> dict:
 
             cur.execute(
                 f"INSERT INTO {SCHEMA}.warehouse_supplies "
-                f"(group_id, store_id, qty, cost_price, cell, purchase_date, warranty_until, has_vat, price_with_vat) "
+                f"(group_id, store_id, qty, cost_price, cell, purchase_date, warranty_until, has_vat, price_with_vat, is_used) "
                 f"VALUES ({group_id}, {store_id or 'NULL'}, {qty}, {cost_price}, "
                 f"{esc(cell)}, {esc(purchase_date) if purchase_date else 'NULL'}, "
                 f"{esc(warranty_until) if warranty_until else 'NULL'}, "
                 f"{'TRUE' if has_vat is True else 'FALSE' if has_vat is False else 'NULL'}, "
-                f"{price_in if price_with_vat is not None else 'NULL'}) RETURNING id"
+                f"{price_in if price_with_vat is not None else 'NULL'}, "
+                f"{'TRUE' if is_used else 'FALSE'}) RETURNING id"
             )
             supply_id = cur.fetchone()[0]
 
@@ -886,6 +890,37 @@ def handler(event: dict, context) -> dict:
                 prow = cur.fetchone()
                 if prow:
                     prod_name = prow[0]
+
+            # ── Б/У: создаём отдельную карточку товара для сайта ──────────────
+            # Партия уже помечена is_used=TRUE выше. Карточка создаётся в РОДНОЙ
+            # категории исходного товара, с флагом is_used, наличием (в 1 шт.,
+            # т.к. это конкретный б/у экземпляр) — цену/описание менеджер заполнит
+            # вручную (карточка появляется в каталоге «Б/У» для доработки).
+            used_product_id = None
+            if is_used:
+                src_cat_id = None
+                src_price = 0
+                src_name = prod_name
+                if grp_product_id:
+                    cur.execute(
+                        f"SELECT category_id, price, name FROM {SCHEMA}.products WHERE id = %s",
+                        (grp_product_id,)
+                    )
+                    srow = cur.fetchone()
+                    if srow:
+                        src_cat_id = srow[0]
+                        src_price = float(srow[1]) if srow[1] is not None else 0
+                        src_name = srow[2] or prod_name
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.products "
+                    f"(name, category_id, price, in_stock, stock_qty, is_used, warranty_months, created_at) "
+                    f"VALUES ({esc(src_name + ' (Б/У)')}, "
+                    f"{int(src_cat_id) if src_cat_id else 'NULL'}, {src_price}, "
+                    f"TRUE, {max(qty, 1)}, TRUE, 0, NOW()) RETURNING id"
+                )
+                used_product_id = cur.fetchone()[0]
+                log_movement(cur, group_id, supply_id, None, None, "used_card_created", 0,
+                             note=f"Создана Б/У карточка товара #{used_product_id}: {src_name}")
 
             # Гасим NEGATIVE-резервы FIFO по дате заказа: товар приехал → закрываем
             # минус-резерв, переводим его в POSITIVE под заказ и уведомляем заказчика.
@@ -1007,7 +1042,8 @@ def handler(event: dict, context) -> dict:
             notify_finance_supply_expense(store_id, purchase_date)
             return {"statusCode": 200, "headers": cors, "body": json.dumps({
                 "id": supply_id,
-                "negative_alerts": negative_alerts
+                "negative_alerts": negative_alerts,
+                "used_product_id": used_product_id
             })}
 
         if action == "supply_update" and method == "PUT":

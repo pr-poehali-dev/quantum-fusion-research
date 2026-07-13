@@ -144,6 +144,9 @@
   - serialCheck.ts — checkSerialSound() + useArchivedSerialCheck().
   - InventoryModal.tsx — окно инвентаризации + приёмки излишков.
   - QuickSupplyModal.tsx — быстрая приёмка поставки с вводом серийников.
+      Галочка «Товар Б/У» (v7.21): партия помечается is_used, а на сайте
+      создаётся отдельная карточка товара в родной категории (is_used) для
+      дозаполнения. Флаг is_used уходит в supply_create.
   - SupplyModal.tsx — приёмка/редактирование поставки + ввод серийников.
   - StoresModal.tsx — StoresModal (магазины) + SupplySerialsModal (дозаполнение SN).
   - modals.tsx — DiscountModal (настройки закупки), CategoriesModal (drag&drop

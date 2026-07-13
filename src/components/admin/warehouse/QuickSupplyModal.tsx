@@ -21,6 +21,7 @@ export function QuickSupplyModal({ stores, onClose, onSaved }: {
     cost_price: "" as string,
     purchase_date: new Date().toISOString().substring(0, 10),
     has_vat: null as boolean | null,
+    is_used: false,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -71,9 +72,17 @@ export function QuickSupplyModal({ stores, onClose, onSaved }: {
       price_with_vat: costNum,
       has_vat: form.has_vat,
       purchase_date: form.purchase_date,
+      is_used: form.is_used,
     })
     setLoading(false)
     if (data.error) { setError(data.error); return }
+    // Б/У: сервер создал отдельную карточку товара для сайта — сообщаем менеджеру.
+    if (form.is_used && data.used_product_id) {
+      alert(
+        `Партия принята как Б/У.\n\nСоздана отдельная карточка товара для сайта — ` +
+        `её нужно заполнить (описание, цена, фото) во вкладке «Товары».`
+      )
+    }
     // Категория с учётом серийников → переходим к вводу SN (не закрываем).
     if (needSerials && data.id && qtyNum > 0) {
       setSnSupplyId(data.id)
@@ -324,6 +333,20 @@ export function QuickSupplyModal({ stores, onClose, onSaved }: {
               </div>
               {showErrors && vatInvalid && <p className="mt-1 text-[11px] text-red-500">Укажите, товар с НДС или без</p>}
             </div>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 transition-colors hover:border-primary/40">
+              <input
+                type="checkbox"
+                checked={form.is_used}
+                onChange={e => setForm(p => ({ ...p, is_used: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+              />
+              <span className="text-sm">
+                <span className="font-medium">Товар Б/У (бывший в употреблении)</span>
+                <span className="mt-0.5 block text-xs text-foreground/50">
+                  Партия будет помечена как Б/У, и для сайта создастся отдельная карточка товара, которую нужно заполнить.
+                </span>
+              </span>
+            </label>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={onClose}>Отмена</Button>
