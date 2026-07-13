@@ -539,7 +539,6 @@ interface RichTextEditorProps {
 export default function RichTextEditor({ value, onChange, placeholder, className, folder = "articles" }: RichTextEditorProps) {
   const [modal, setModal] = useState<ModalMode>(null)
   const [chartModal, setChartModal] = useState(false)
-  const isInternalUpdate = useRef(false)
 
   const editor = useEditor({
     extensions: [
@@ -558,15 +557,22 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       },
     },
     onUpdate({ editor }) {
-      isInternalUpdate.current = true
       onChange(editor.getHTML())
     },
   })
 
+  // Синхронизация внешнего value → редактор (например при открытии карточки
+  // на редактирование). Сравниваем с текущим HTML: если совпадает — значит
+  // это эхо нашего же onChange, пропускаем; если отличается — применяем.
+  // Отдельного ref-флага не держим (он мог «залипать» и глотать первую
+  // подстановку, из-за чего форма редактирования открывалась пустой).
   useEffect(() => {
     if (!editor) return
-    if (isInternalUpdate.current) { isInternalUpdate.current = false; return }
-    if (value !== editor.getHTML()) editor.commands.setContent(value, false)
+    const current = editor.getHTML()
+    const next = value || ""
+    if (next !== current) {
+      editor.commands.setContent(next, false)
+    }
   }, [value, editor])
 
   const setLink = useCallback(() => {
