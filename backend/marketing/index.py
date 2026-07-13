@@ -335,6 +335,10 @@ def handler(event: dict, context) -> dict:
                 f"  MAX(c.name) AS category, "
                 f"  SUM(s.qty) AS units_sold, "
                 f"  COUNT(*) AS lines, "
+                f"  COUNT(DISTINCT s.order_id) AS orders_cnt, "
+                f"  COUNT(DISTINCT s.sale_day) AS distinct_days, "
+                f"  MIN(s.sale_day) AS first_day, "
+                f"  MAX(s.sale_day) AS last_day, "
                 f"  SUM(s.qty * s.sale_price) AS revenue, "
                 f"  ROUND(AVG(s.sale_price), 2) AS avg_price, "
                 f"  COALESCE(("
@@ -355,6 +359,8 @@ def handler(event: dict, context) -> dict:
                 f"  SELECT "
                 f"    (it->>'id')::int AS product_id, "
                 f"    it->>'name' AS raw_name, "
+                f"    o.id AS order_id, "
+                f"    o.created_at::date AS sale_day, "
                 f"    COALESCE((it->>'final_price')::numeric, (it->>'price')::numeric, 0) AS sale_price, "
                 f"    COALESCE((it->>'quantity')::int, 1) AS qty "
                 f"  FROM {SCHEMA}.orders o, LATERAL jsonb_array_elements(o.items) AS it "
@@ -372,35 +378,71 @@ def handler(event: dict, context) -> dict:
             items = []
             for r in cur.fetchall():
                 units = int(r[3] or 0)
-                revenue = float(r[5] or 0)
-                avg_price = float(r[6] or 0)
-                avg_cost = float(r[7] or 0)
-                stock_now = int(r[8] or 0)
+                orders_cnt = int(r[5] or 0)     # в скольких РАЗНЫХ заказах
+                distinct_days = int(r[6] or 0)  # в скольких РАЗНЫХ днях продавался
+                first_day = r[7]
+                last_day = r[8]
+                revenue = float(r[9] or 0)
+                avg_price = float(r[10] or 0)
+                avg_cost = float(r[11] or 0)
+                stock_now = int(r[12] or 0)
 
                 margin_rub = round(revenue - avg_cost * units, 2) if avg_cost > 0 else None
                 margin_pct = round(margin_rub / revenue * 100, 1) if (margin_rub is not None and revenue > 0) else None
 
-                # спрос: шт/день за период → на сколько дней хватит остатка
-                daily_demand = round(units / period_days, 4) if period_days > 0 else 0
-                days_cover = round(stock_now / daily_demand, 1) if daily_demand > 0 else None
-                # прогноз спроса на 30 дней и дефицит под него
-                demand_30d = daily_demand * 30
-                deficit = max(0, round(demand_30d - stock_now)) if daily_demand > 0 else 0
+                # ── ТИП СПРОСА: отличаем реальный спрос от разовой/случайной продажи ──
+                # Ключевой сигнал — ЧАСТОТА (в скольких разных заказах/днях покупали),
+                # а не просто число штук. 4 шт в одном заказе = разовая закупка, а
+                # 4 шт в 4 заказах в разные дни = регулярный спрос.
+                if orders_cnt == 0:
+                    demand_type = "нет данных"
+                elif orders_cnt >= 3 or distinct_days >= 3:
+                    demand_type = "регулярный"
+                elif orders_cnt >= 2 and distinct_days >= 2:
+                    demand_type = "регулярный"
+                else:
+                    demand_type = "разовый"   # 1 заказ / 1 день — вероятно случайность
+                is_regular = demand_type == "регулярный"
 
-                # метки-подсказки (скрипт-аналитика)
+                # ── Дневной спрос ──
+                # Для регулярного спроса считаем по фактическому промежутку между
+                # первой и последней продажей (реальный ритм), но не короче части
+                # периода, чтобы не завышать. Для разового — спрос не оцениваем.
+                daily_demand = 0
+                if is_regular and units > 0:
+                    span = period_days
+                    if first_day and last_day:
+                        span_days = (last_day - first_day).days + 1
+                        # берём наибольший из фактического окна продаж и его удвоения,
+                        # но не больше периода — сглаживаем всплески
+                        span = min(period_days, max(span_days * 2, span_days))
+                        span = max(span, 1)
+                    daily_demand = round(units / span, 4)
+
+                days_cover = round(stock_now / daily_demand, 1) if daily_demand > 0 else None
+                # прогноз спроса на 30 дней и дефицит — ТОЛЬКО для регулярного спроса
+                demand_30d = daily_demand * 30
+                deficit = max(0, round(demand_30d - stock_now)) if (is_regular and daily_demand > 0) else 0
+
+                # ── Метки-подсказки (скрипт-аналитика) ──
                 labels = []
-                if units >= 3:
+                # «хит» — только при регулярном спросе (частота), а не при разовой закупке
+                if is_regular and units >= 3:
                     labels.append("хит")
-                if stock_now == 0 and units > 0:
-                    labels.append("нет в наличии")
-                elif days_cover is not None and days_cover <= 14:
-                    labels.append("скоро закончится")
+                if demand_type == "разовый" and units > 0:
+                    labels.append("разовая продажа")
                 if margin_pct is not None and margin_pct < 10:
                     labels.append("низкая маржа")
-                if margin_pct is not None and margin_pct >= 25 and units >= 2:
+                if margin_pct is not None and margin_pct >= 25 and is_regular:
                     labels.append("хорошая маржа")
-                if deficit > 0:
-                    labels.append("дозаказать")
+                # предупреждения об остатке — только по регулярному спросу
+                if is_regular:
+                    if stock_now == 0:
+                        labels.append("нет в наличии")
+                    elif days_cover is not None and days_cover <= 14:
+                        labels.append("скоро закончится")
+                    if deficit > 0:
+                        labels.append("дозаказать")
 
                 items.append({
                     "product_id": r[0],
@@ -408,6 +450,9 @@ def handler(event: dict, context) -> dict:
                     "category": r[2] or "—",
                     "units_sold": units,
                     "lines": int(r[4] or 0),
+                    "orders_cnt": orders_cnt,
+                    "distinct_days": distinct_days,
+                    "demand_type": demand_type,
                     "revenue": round(revenue, 2),
                     "avg_price": avg_price,
                     "avg_cost": avg_cost,
@@ -426,6 +471,8 @@ def handler(event: dict, context) -> dict:
                 "revenue": round(sum(i["revenue"] for i in items), 2),
                 "margin": round(sum(i["margin_rub"] for i in items if i["margin_rub"] is not None), 2),
                 "period_days": period_days,
+                "regular": sum(1 for i in items if i["demand_type"] == "регулярный"),
+                "one_off": sum(1 for i in items if i["demand_type"] == "разовый"),
             }
             return _resp(200, {
                 "period": {"from": str(d_from), "to": str(d_to)},

@@ -8,6 +8,9 @@ type Item = {
   category: string
   units_sold: number
   lines: number
+  orders_cnt: number
+  distinct_days: number
+  demand_type: string
   revenue: number
   avg_price: number
   avg_cost: number
@@ -22,11 +25,10 @@ type Item = {
 type Report = {
   period: { from: string; to: string }
   items: Item[]
-  totals: { positions: number; units: number; revenue: number; margin: number; period_days: number }
+  totals: { positions: number; units: number; revenue: number; margin: number; period_days: number; regular: number; one_off: number }
 }
 
 const money = (n: number | null) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU") + " ₽")
-const num = (n: number | null) => (n == null ? "—" : String(n))
 
 // Первый день текущего месяца и завтра — период по умолчанию
 function defaultRange(): { from: string; to: string } {
@@ -45,38 +47,43 @@ const LABEL_STYLE: Record<string, string> = {
   "низкая маржа": "bg-red-500/15 text-red-500",
 }
 
-// Промпт для внешней ИИ — объясняет структуру CSV и что нужно вернуть
+// Промпт для внешней ИИ — только текст (CSV скачивается отдельно и
+// прикладывается пользователем к запросу).
 function buildPrompt(r: Report): string {
   return [
-    "Ты — аналитик по закупкам магазина ПК-комплектующих. Ниже CSV-отчёт продаж за период " +
-      `${r.period.from} — ${r.period.to} (${r.totals.period_days} дней).`,
+    "Ты — аналитик по закупкам магазина ПК-комплектующих. Я приложу CSV-отчёт продаж " +
+      `за период ${r.period.from} — ${r.period.to} (${r.totals.period_days} дней).`,
     "",
     "Колонки CSV:",
     "- Товар, Категория",
     "- Продано_шт: сколько штук выдано за период (только завершённые заказы)",
+    "- Заказов: в скольких разных заказах встречался товар (частота спроса)",
     "- Выручка_руб",
     "- Ср_цена_руб: средняя цена продажи",
     "- Себестоимость_руб: средняя закупочная цена за штуку",
     "- Маржа_руб, Маржа_проц: прибыль в рублях и процентах",
     "- Остаток_шт: сколько сейчас на складе",
     "- Спрос_шт_в_день: средний дневной спрос за период",
+    "- Тип_спроса: 'регулярный' (продаётся стабильно), 'разовый' (1-2 продажи — " +
+      "возможно случайность), 'нет данных'",
     "- Хватит_дней: на сколько дней хватит текущего остатка при таком спросе",
     "- Дефицит_шт: сколько не хватает под спрос на ближайшие 30 дней",
     "- Метки: авто-подсказки скрипта",
     "",
-    "Задача — дай конкретные рекомендации:",
-    "1) ЧТО ЗАКУПИТЬ в первую очередь (хорошо продаётся + хорошая маржа + мало/нет на складе). Укажи товар и рекомендуемое кол-во.",
-    "2) ЧТО ИСКЛЮЧИТЬ / не закупать (низкая или отрицательная маржа, слабые продажи).",
-    "3) На что обратить внимание (скоро закончится — риск потери продаж).",
-    "Ответь кратко, списком, с цифрами. Сначала топ-приоритеты.",
+    "ВАЖНО: единичные/разовые продажи (Тип_спроса='разовый') НЕ считай реальным " +
+      "спросом — не рекомендуй закупать их про запас, только отметь как возможный интерес.",
     "",
-    "=== CSV НИЖЕ ===",
+    "Задача — дай конкретные рекомендации:",
+    "1) ЧТО ЗАКУПИТЬ в первую очередь: регулярный спрос + хорошая маржа + мало/нет на складе. Укажи товар и рекомендуемое кол-во.",
+    "2) ЧТО ИСКЛЮЧИТЬ / не закупать: низкая или отрицательная маржа, слабые/разовые продажи.",
+    "3) На что обратить внимание: регулярный спрос, который скоро закончится (риск потери продаж).",
+    "Ответь кратко, списком, с цифрами. Сначала топ-приоритеты.",
   ].join("\n")
 }
 
 function toCSV(items: Item[]): string {
   const head = [
-    "Товар", "Категория", "Продано_шт", "Заказов", "Выручка_руб", "Ср_цена_руб",
+    "Товар", "Категория", "Продано_шт", "Заказов", "Тип_спроса", "Выручка_руб", "Ср_цена_руб",
     "Себестоимость_руб", "Маржа_руб", "Маржа_проц", "Остаток_шт",
     "Спрос_шт_в_день", "Хватит_дней", "Дефицит_шт", "Метки",
   ]
@@ -85,7 +92,7 @@ function toCSV(items: Item[]): string {
     return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const rows = items.map(i => [
-    i.name, i.category, i.units_sold, i.lines, Math.round(i.revenue),
+    i.name, i.category, i.units_sold, i.orders_cnt, i.demand_type, Math.round(i.revenue),
     Math.round(i.avg_price), Math.round(i.avg_cost),
     i.margin_rub == null ? "" : Math.round(i.margin_rub),
     i.margin_pct == null ? "" : i.margin_pct,
@@ -112,13 +119,13 @@ export default function SalesReport() {
 
   const copyPrompt = async () => {
     if (!data) return
-    const text = buildPrompt(data) + "\n" + toCSV(data.items)
+    // Копируем ТОЛЬКО промпт (без CSV) — CSV пользователь скачивает и прикладывает отдельно.
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(buildPrompt(data))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      alert("Не удалось скопировать. Скачайте CSV кнопкой ниже.")
+      alert("Не удалось скопировать промпт.")
     }
   }
 
@@ -133,8 +140,9 @@ export default function SalesReport() {
     URL.revokeObjectURL(url)
   }
 
+  // Предупреждаем только по РЕГУЛЯРНОМУ спросу — разовые продажи не считаем.
   const lowStock = (data?.items || []).filter(
-    i => i.units_sold > 0 && (i.stock_now === 0 || (i.days_cover != null && i.days_cover <= 14))
+    i => i.demand_type === "регулярный" && (i.stock_now === 0 || (i.days_cover != null && i.days_cover <= 14))
   )
 
   return (
@@ -186,8 +194,8 @@ export default function SalesReport() {
               <div className="flex-1">
                 <p className="text-sm font-semibold">Отчёт для ИИ</p>
                 <p className="mt-0.5 text-xs text-foreground/60">
-                  Скопируйте готовый промпт с данными и вставьте в любую ИИ — она подскажет,
-                  что закупить, а что исключить.
+                  1) Скопируйте промпт и вставьте в любую ИИ. 2) Скачайте CSV и приложите
+                  его файлом к тому же запросу — ИИ подскажет, что закупить, а что исключить.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={copyPrompt}
@@ -237,6 +245,7 @@ export default function SalesReport() {
                 <tr className="border-b border-border bg-muted/40 text-xs text-foreground/50">
                   <th className="px-3 py-2.5 text-left">Товар</th>
                   <th className="px-3 py-2.5 text-center">Продано</th>
+                  <th className="px-3 py-2.5 text-center">Спрос</th>
                   <th className="px-3 py-2.5 text-right">Выручка</th>
                   <th className="px-3 py-2.5 text-right">Маржа</th>
                   <th className="px-3 py-2.5 text-center">Остаток</th>
@@ -251,7 +260,15 @@ export default function SalesReport() {
                       <p className="font-medium">{i.name}</p>
                       <p className="text-xs text-foreground/40">{i.category}</p>
                     </td>
-                    <td className="px-3 py-2.5 text-center font-semibold">{i.units_sold}</td>
+                    <td className="px-3 py-2.5 text-center font-semibold">
+                      {i.units_sold}
+                      <span className="block text-[10px] font-normal text-foreground/40">{i.orders_cnt} зак.</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${i.demand_type === "регулярный" ? "bg-emerald-500/15 text-emerald-500" : i.demand_type === "разовый" ? "bg-foreground/10 text-foreground/50" : "bg-muted text-foreground/40"}`}>
+                        {i.demand_type}
+                      </span>
+                    </td>
                     <td className="px-3 py-2.5 text-right">{money(i.revenue)}</td>
                     <td className="px-3 py-2.5 text-right">
                       <span className={i.margin_pct == null ? "text-foreground/40" : i.margin_pct < 10 ? "text-red-500" : i.margin_pct >= 25 ? "text-emerald-500" : ""}>
@@ -276,8 +293,11 @@ export default function SalesReport() {
             </table>
           </div>
           <p className="text-xs text-foreground/40">
-            Метки считаются автоматически: <b>хит</b> — продано ≥3 шт; <b>хорошая маржа</b> — ≥25% и ≥2 продаж;
-            <b> низкая маржа</b> — &lt;10%; <b>скоро закончится</b> — хватит ≤14 дней; <b>дозаказать</b> — не хватит под спрос на 30 дней.
+            <b>Тип спроса</b>: «регулярный» — покупали в разных заказах/дни (реальный спрос);
+            «разовый» — 1 заказ (возможно случайность, не считается спросом).
+            Метки: <b>хит</b> — регулярный спрос ≥3 шт; <b>хорошая маржа</b> — ≥25%;
+            <b> низкая маржа</b> — &lt;10%; <b>скоро закончится</b> / <b>дозаказать</b> —
+            только по регулярному спросу (хватит ≤14 дней / не хватит на 30 дней).
           </p>
         </>
       )}
