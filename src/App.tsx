@@ -6,6 +6,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense, ComponentType } from "react";
 import AdminGuard from "@/components/admin/AdminGuard";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { captureUtm } from "@/lib/utm";
 
 // Обёртка для lazy-импортов: если после нового деплоя браузер держит ссылку
@@ -20,6 +21,7 @@ function lazyWithReload<T extends ComponentType<unknown>>(
     factory()
       .then((mod) => {
         sessionStorage.removeItem(key);
+        sessionStorage.removeItem("eb_chunk_reload");
         return mod;
       })
       .catch((err) => {
@@ -33,9 +35,9 @@ function lazyWithReload<T extends ComponentType<unknown>>(
   );
 }
 
-const ConsentModal = lazy(() => import("@/components/ConsentModal"));
-const Toaster = lazy(() => import("@/components/ui/toaster").then(m => ({ default: m.Toaster })));
-const Sonner = lazy(() => import("@/components/ui/sonner").then(m => ({ default: m.Toaster })));
+const ConsentModal = lazyWithReload(() => import("@/components/ConsentModal"));
+const Toaster = lazyWithReload(() => import("@/components/ui/toaster").then(m => ({ default: m.Toaster })));
+const Sonner = lazyWithReload(() => import("@/components/ui/sonner").then(m => ({ default: m.Toaster })));
 
 const Index = lazyWithReload(() => import("./pages/Index"));
 const Shop = lazyWithReload(() => import("./pages/Shop"));
@@ -90,6 +92,7 @@ const App = () => (
           <Sonner />
         </Suspense>
         <BrowserRouter>
+          <ErrorBoundary>
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen">
               <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -132,6 +135,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
           <Suspense fallback={null}>
             <ConsentModal />
           </Suspense>

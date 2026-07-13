@@ -3,6 +3,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useNavigate, useParams } from "react-router-dom"
 import { lazy, Suspense } from "react"
+import ErrorBoundary from "@/components/ErrorBoundary"
 // Тяжёлые вкладки грузятся лениво — каждая своим чанком, только при открытии.
 // Это резко уменьшает первичный бандл админки (открыта всегда одна вкладка).
 const WarehouseTab = lazy(() => import("@/components/admin/WarehouseTab"))
@@ -301,6 +302,7 @@ export default function Admin() {
           )}
         </div>
 
+        <ErrorBoundary key={`main-${tab}`}>
         <Suspense fallback={<div className="py-16 text-center text-foreground/40">Загрузка…</div>}>
         {/* ORDERS */}
         {(tab === "orders" || tab === "orders_archive") && (
@@ -376,8 +378,10 @@ export default function Admin() {
         {/* STRESS — результаты стресс-тестов от desktop-приложения */}
         {tab === "stress" && <StressTestsTab />}
         </Suspense>
+        </ErrorBoundary>
       </div>
 
+      <ErrorBoundary key={`wide-${tab}`}>
       <Suspense fallback={<div className="py-16 text-center text-foreground/40">Загрузка…</div>}>
       {/* WAREHOUSE — на всю ширину браузера с отступами 50px */}
       {tab === "warehouse" && (
@@ -400,6 +404,7 @@ export default function Admin() {
         </div>
       )}
       </Suspense>
+      </ErrorBoundary>
     </div>
   )
 }
