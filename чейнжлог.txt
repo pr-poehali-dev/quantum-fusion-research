@@ -3,6 +3,15 @@
 
 ---
 
+## v7.13 | 2026-07-13 | Рефакторинг AdminCatalogTab (этап 2)
+
+- AdminCatalogTab.tsx: 1031 → 642 строки (с исходных 1602).
+- Вынесена секция Products → catalog/ProductsSection.tsx (список товаров с
+  поиском/фильтрами/архивом/массовыми операциями/Excel + форма товара).
+- Сверено построчным diff (state/handlers и JSX) — байт-в-байт идентично.
+- buildsViewArchive и fmt оставлены в родителе (нужны секции Builds).
+- Осталось вынести секцию Builds.
+
 ## v7.12 | 2026-07-13 | Рефакторинг AdminCatalogTab (этап 1)
 
 - Монолит AdminCatalogTab.tsx: 1602 → 1031 строк.
