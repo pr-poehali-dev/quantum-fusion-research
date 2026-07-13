@@ -148,6 +148,8 @@ export interface WipBuild {
   assembled_by?: number | null
   assembler_name?: string | null
   for_sale?: boolean
+  source_id?: number | null
+  source_name?: string | null
   created_at?: string
   updated_at?: string
 }

@@ -58,6 +58,15 @@ export function AdminWipTab({
       .catch(() => {})
   }, [sessionId])
 
+  // Источники лидов из аналитики (marketing). Управление — «Аналитика → Источники».
+  const [leadSources, setLeadSources] = useState<{ id: number; name: string; group_name: string | null }[]>([])
+  useEffect(() => {
+    api.marketing.getSources(true).then(d => setLeadSources(d.sources || [])).catch(() => {})
+  }, [])
+  // Модалка выбора источника перед выдачей ПК «в свободную продажу»
+  const [sourceModal, setSourceModal] = useState<WipBuild | null>(null)
+  const [sourceModalValue, setSourceModalValue] = useState<string>("")
+
   const setAssembler = (w: WipBuild, empId: number | null) => {
     const emp = employees.find(e => e.id === empId)
     setWipBuilds(bs => bs.map(b => b.id === w.id
@@ -115,6 +124,19 @@ export function AdminWipTab({
   // переход в «Забрали» требует выбранного сборщика и переводит заказ в done
   // (тогда сборщику начислится % от суммы ПК).
   const changeStage = async (w: WipBuild, newStage: string) => {
+    // ── Источник лида — обязателен, пока не заполнен, дальше не двигаем ──
+    // Исключение: сборки «в свободную продажу» — там источник спрашивается
+    // отдельным окном ПЕРЕД выдачей (см. блок «Забрали» ниже).
+    const advancingStages = ["Заказ", "Ожидание железа", "Ожидание сборки", "Сборка",
+      "Настройка", "Тесты", "Досборать", "Проверка перед выдачей", "Ожидание упаковки",
+      "Готов, можно забрать", "Отнести в сдэк", "Забрали"]
+    if (!w.for_sale && !w.source_id && advancingStages.includes(newStage) && newStage !== w.stage) {
+      alert("Укажите источник лида («Откуда лид») в карточке сборки — без него нельзя двигать заказ дальше.")
+      setWipForm(w)
+      setWipFormOpen(true)
+      return
+    }
+
     if (newStage === "Заказ" && w.stage === "Согласование" && !w.for_sale) {
       // Для сборок «в свободную продажу» предоплата не требуется — пропускаем модалку.
       // Для вручную созданной сборки заказа ещё нет — создаём его,
@@ -134,6 +156,14 @@ export function AdminWipTab({
     if (newStage === "Забрали" && w.stage !== "Забрали") {
       if (!w.assembled_by) {
         alert("Нельзя выдать ПК без сборщика. Откройте «Ред.» и выберите сборщика.")
+        return
+      }
+      // Свободная продажа: источник лида указывается ПЕРЕД выдачей. Если ещё не
+      // задан — сначала окно выбора источника, только потом (после подтверждения)
+      // продолжится обычный поток выдачи (окно постоплаты и т.д.).
+      if (w.for_sale && !w.source_id) {
+        setSourceModalValue("")
+        setSourceModal(w)
         return
       }
       // Для свободной продажи заказ мог не создаваться (предоплату пропускали) —
@@ -164,6 +194,31 @@ export function AdminWipTab({
       : b))
     api.wipBuilds.update({ ...w, stage: "Заказ" })
     setPrepayModal(null)
+  }
+
+  // Свободная продажа: источник выбран перед выдачей → сохраняем в заказ и
+  // продолжаем выдачу (дальше отработает обычный поток — окно постоплаты).
+  const confirmSourceThenIssue = async () => {
+    const w = sourceModal
+    if (!w || !sourceModalValue) return
+    const sid = Number(sourceModalValue)
+    // Заказ для свободной продажи может ещё не существовать — создаём.
+    let target = w
+    if (!target.order_id) {
+      const ens = await api.wipBuilds.ensureOrder(w.id!)
+      if (ens?.error) { alert(ens.error); return }
+      if (ens?.order_id) target = { ...w, order_id: ens.order_id, total: ens.total ?? w.total }
+    }
+    if (target.order_id) await api.orders.setSource(target.order_id, sid)
+    const src = leadSources.find(s => s.id === sid)
+    const updated = { ...target, source_id: sid, source_name: src?.name || null }
+    setWipBuilds(bs => bs.map(b => b.id === w.id
+      ? { ...b, order_id: updated.order_id, total: updated.total, source_id: sid, source_name: updated.source_name }
+      : b))
+    setSourceModal(null)
+    setSourceModalValue("")
+    // Повторяем выдачу — теперь source_id уже проставлен, окно источника не откроется.
+    changeStage(updated, "Забрали")
   }
 
   // После оплаты остатка — повторяем выдачу («Забрали»)
@@ -334,10 +389,22 @@ export function AdminWipTab({
     if (!wipForm) return
     if (wipForm.id) {
       await api.wipBuilds.update(wipForm)
-      setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, ...wipForm } : b))
+      // Источник лида хранится в заказе — сохраняем через orders.setSource,
+      // если у сборки есть заказ и источник указан/изменён.
+      if (wipForm.order_id) {
+        await api.orders.setSource(wipForm.order_id, wipForm.source_id ? Number(wipForm.source_id) : null)
+      }
+      const src = leadSources.find(s => s.id === Number(wipForm.source_id))
+      setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, ...wipForm, source_name: src?.name ?? wipForm.source_name ?? null } : b))
     } else {
       const res = await api.wipBuilds.create(wipForm)
-      if (res.id) setWipBuilds(bs => [...bs, { ...wipForm, id: res.id, order_number: res.order_number || wipForm.order_number }])
+      if (res.id) {
+        // Новая сборка: если сразу выбран источник и создался заказ — сохраняем.
+        if (wipForm.source_id && res.order_id) {
+          await api.orders.setSource(res.order_id, Number(wipForm.source_id))
+        }
+        setWipBuilds(bs => [...bs, { ...wipForm, id: res.id, order_id: res.order_id ?? wipForm.order_id, order_number: res.order_number || wipForm.order_number }])
+      }
     }
     setWipFormOpen(false)
   }
@@ -745,6 +812,23 @@ export function AdminWipTab({
                     В свободную продажу
                     <span className="ml-auto text-xs text-foreground/40">публикует в «Наши ПК» с тегом «в наличии»</span>
                   </label>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs text-foreground/50">
+                    Откуда лид {wipForm.for_sale
+                      ? <span className="text-foreground/40">(для свободной продажи спросим перед выдачей)</span>
+                      : <span className="text-red-400">*</span>}
+                  </label>
+                  <select value={wipForm.source_id ? String(wipForm.source_id) : ""}
+                    onChange={e => setWipForm(f => f && ({ ...f, source_id: e.target.value ? Number(e.target.value) : null }))}
+                    className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none ${!wipForm.for_sale && !wipForm.source_id ? "border-red-400/60" : "border-border"}`}
+                    style={{ cursor: "pointer" }}>
+                    <option value="">— не указан —</option>
+                    {leadSources.map(s => (
+                      <option key={s.id} value={s.id}>{s.group_name ? `${s.group_name} · ${s.name}` : s.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-foreground/40">Список источников — в «Аналитика → Источники»</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-foreground/50">Контакт клиента</label>
@@ -1214,6 +1298,38 @@ export function AdminWipTab({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Свободная продажа: источник лида ПЕРЕД выдачей (до окна постоплаты) */}
+      {sourceModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" style={{ cursor: "auto" }}>
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-2">
+              <Icon name="Megaphone" size={18} className="text-primary" />
+              <h3 className="text-lg font-medium text-foreground">Откуда лид?</h3>
+            </div>
+            <p className="mb-4 text-sm text-foreground/60">
+              Перед выдачей укажите источник клиента — без него выдать нельзя.
+            </p>
+            <select value={sourceModalValue} onChange={e => setSourceModalValue(e.target.value)} autoFocus
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+              <option value="">— выберите источник —</option>
+              {leadSources.map(s => (
+                <option key={s.id} value={s.id}>{s.group_name ? `${s.group_name} · ${s.name}` : s.name}</option>
+              ))}
+            </select>
+            <div className="mt-5 flex gap-2">
+              <button onClick={confirmSourceThenIssue} disabled={!sourceModalValue}
+                className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors" style={{ cursor: "pointer" }}>
+                Продолжить выдачу
+              </button>
+              <button onClick={() => { setSourceModal(null); setSourceModalValue("") }}
+                className="rounded-lg border border-border px-4 py-2.5 text-sm text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                Отмена
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

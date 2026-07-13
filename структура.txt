@@ -563,6 +563,12 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   + mode "prepayment"/"remaining". OrderProcessPage: кнопка «Внести предоплату»
   (пока prepayment_confirmed=false), окно оплаты остатка перед выдачей.
   AdminWipTab: при «Забрали» без оплаты остатка открывает окно оплаты.
+- [v7.30] Источник лида в WIP-сборках: поле «Откуда лид» в форме сборки
+  (marketing.getSources). Обычные заказы — ОБЯЗАТЕЛЬНО: changeStage блокирует
+  продвижение дальше «Согласования» без source_id. «В свободную продажу» —
+  источник спрашивается модалкой ПЕРЕД выдачей («Забрали»), затем обычный поток
+  постоплаты. Источник пишется в заказ через orders.setSource. wip-builds list
+  отдаёт source_id/source_name (JOIN marketing_sources).
   FinanceTab: карточка кассы раскрывается в «Счета зачисления» + счета сотрудников;
   в логе движений ссылка на заказ.
 
