@@ -320,15 +320,16 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       <Icon name="Settings2" size={12} />
                       <span className="hidden sm:inline">Обработать</span>
                     </button>
-                    {/* Смена статуса — только на десктопе (на мобильных убрана) */}
-                    {order.order_type !== "pc_build" && (
-                      <select
-                        value={order.status}
-                        onChange={e => updateStatus(order.id, e.target.value)}
-                        className="hidden rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none sm:block"
-                        style={{ cursor: "pointer" }}>
-                        {Object.entries(STATUS_LABELS).filter(([k]) => k !== "done").map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                      </select>
+                    {/* Вернуть в работу — для завершённых/отменённых заказов (не ПК-сборок) */}
+                    {order.order_type !== "pc_build" && !ACTIVE_STATUSES.includes(order.status) && (
+                      <button
+                        onClick={() => updateStatus(order.id, "processing")}
+                        className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors sm:px-3"
+                        style={{ cursor: "pointer" }}
+                        title="Вернуть заказ в работу">
+                        <Icon name="Undo2" size={12} />
+                        <span className="hidden sm:inline">Вернуть в работу</span>
+                      </button>
                     )}
                   </div>
                 </div>
