@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { AdminUser, getAdminKey } from "@/pages/admin/types"
+import { AdminUser } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 
 interface Props {
   adminUsers: AdminUser[]

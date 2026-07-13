@@ -1,7 +1,8 @@
 import React, { useState } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { Tag, TAG_COLORS, TAG_COLOR_CLASSES, TagBadge } from "@/pages/admin/types"
+import { Tag } from "@/pages/admin/types"
+import { TAG_COLORS, TAG_COLOR_CLASSES, TagBadge } from "@/pages/admin/constants"
 
 export function TagsSection({ tags, setTags, loading }: {
   tags: Tag[]

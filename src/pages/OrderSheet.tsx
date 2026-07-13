@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 import { api } from "@/lib/api"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 import Icon from "@/components/ui/icon"
 
 interface Component {

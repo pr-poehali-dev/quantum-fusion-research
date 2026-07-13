@@ -2,10 +2,10 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import { Order, AdminTab } from "@/pages/admin/types"
 import {
-  Order, AdminTab,
   STATUS_LABELS, PC_STATUS_LABELS, ACTIVE_STATUSES,
-} from "@/pages/admin/types"
+} from "@/pages/admin/constants"
 
 interface Props {
   tab: AdminTab

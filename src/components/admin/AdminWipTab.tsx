@@ -11,9 +11,11 @@ import { WipMarginModal } from "@/components/admin/WipEditModal"
 import { SCHEDULE_URL, authH, withAk, Employee } from "@/components/admin/schedule.types"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
+} from "@/pages/admin/types"
+import {
   EMPTY_WIP, WIP_STAGES, WIP_STAGE_COLORS, WIP_COMPONENTS,
   DELIVERY_OPTIONS, COMP_STATUS_LABELS, COMP_STATUS_BG,
-} from "@/pages/admin/types"
+} from "@/pages/admin/constants"
 
 interface WipStore { id: number; name: string; code: string }
 

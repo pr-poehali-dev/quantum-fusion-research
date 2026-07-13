@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react"
 import Icon from "@/components/ui/icon"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 
 // ── Типы ────────────────────────────────────────────────────────────────────
 export type TabMeta = { key: string; label: string; icon: string }

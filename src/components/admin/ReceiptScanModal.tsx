@@ -3,7 +3,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 
 interface Store { id: number; name: string }
 interface Candidate { group_id: number; name: string; score: number }

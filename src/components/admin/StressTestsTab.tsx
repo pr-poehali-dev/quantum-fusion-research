@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
 import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"
 
 // Метрика, как она приходит в прогоне (для подтягивания списка известных метрик).

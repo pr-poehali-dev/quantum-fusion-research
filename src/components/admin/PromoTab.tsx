@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 
 const RichTextEditor = lazy(() => import("@/components/ui/rich-text-editor"))
 

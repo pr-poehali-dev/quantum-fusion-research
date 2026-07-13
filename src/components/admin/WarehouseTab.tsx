@@ -12,7 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 import BrandsManager from "./BrandsManager"
 import GroupWizardModal from "./GroupWizardModal"
 import ReceiptScanModal from "./ReceiptScanModal"

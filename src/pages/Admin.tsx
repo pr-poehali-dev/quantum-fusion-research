@@ -27,9 +27,12 @@ import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import AdminTabsNav from "@/components/admin/AdminTabsNav"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import {
-  ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS, AdminTab,
+  AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
 } from "./admin/types"
+import {
+  ADMIN_KEY_STORAGE, getAdminKey, VALID_TABS,
+} from "./admin/constants"
 
 export default function Admin() {
   const navigate = useNavigate()

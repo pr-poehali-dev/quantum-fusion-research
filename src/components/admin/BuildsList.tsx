@@ -1,5 +1,6 @@
 import Icon from "@/components/ui/icon"
-import { PCBuild, BUILD_STATUS } from "@/pages/admin/types"
+import { PCBuild } from "@/pages/admin/types"
+import { BUILD_STATUS } from "@/pages/admin/constants"
 
 // Продажа с НДС: +22% и округление вверх до 250 ₽ (единая формула проекта)
 const withVat = (base: number, vat?: boolean) => vat ? Math.ceil(base * 1.22 / 250) * 250 : base

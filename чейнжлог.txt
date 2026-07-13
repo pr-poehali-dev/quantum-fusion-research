@@ -3,6 +3,23 @@
 
 ---
 
+## v7.18 | 2026-07-13 | Разделение admin/types.ts на типы и константы
+
+- src/pages/admin/types.ts (155 стр.) — ТОЛЬКО интерфейсы и типы:
+  AdminUser, Order, Product, Category, ConfigComponent, Tag, PCBuild, Article,
+  WipBuild, AdminTab. Перегруженный смешанный файл больше не тормозит загрузку.
+- src/pages/admin/constants.ts (158 стр., новый) — константы, функции и значения:
+  ADMIN_KEY_STORAGE, getAdminKey, STATUS_LABELS, PC_STATUS_LABELS,
+  ACTIVE_STATUSES, ARCHIVE_STATUSES, BUILD_STATUS, SLOT_LABELS, WIP_STAGES,
+  WIP_STAGE_COLORS, COMP_STATUS_BG, COMP_STATUS_LABELS, WIP_COMPONENTS,
+  DELIVERY_OPTIONS, TAG_COLOR_CLASSES, TAG_COLORS, EMPTY_WIP, VALID_TABS, TagBadge.
+- Обновлены импорты в 21 файле: типы тянутся из types.ts, константы — из
+  constants.ts. Содержимое сверено построчным diff → байт-в-байт идентично.
+- package.json: удалён дублирующий "react" из devDependencies (остался только
+  в dependencies) — ускоряет установку и загрузку.
+- Попутно (поймано tsc): восстановлен импорт getTagClass в Shop.tsx (был удалён
+  как «неиспользуемый» на прошлом рефакторе, но реально нужен в фильтре тегов).
+
 ## v7.17 | 2026-07-13 | Фикс «чёрного экрана» админки (Error Boundary)
 
 - Причина: после нового деплоя браузер держал ссылку на старый чанк, ленивый

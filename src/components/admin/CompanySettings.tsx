@@ -3,7 +3,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 
 interface Entity {
   id: number

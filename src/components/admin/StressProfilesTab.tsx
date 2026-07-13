@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { getAdminKey } from "@/pages/admin/types"
+import { getAdminKey } from "@/pages/admin/constants"
 
 // Параллельная программа-компаньон (напр. GPU-Z рядом с FurMark)
 interface CompanionProgram {

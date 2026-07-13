@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
-import { ADMIN_KEY_STORAGE } from "@/pages/admin/types"
+import { ADMIN_KEY_STORAGE } from "@/pages/admin/constants"
 
 const SESSION_KEY = "begraphics_admin"
 

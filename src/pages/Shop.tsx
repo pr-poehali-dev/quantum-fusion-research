@@ -13,7 +13,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, ShopSortKey, emptyFilterState, applyShopFilters, sortShopProducts, ShopSortControl } from "@/components/shop/ShopFilters"
 import {
   Product, Category, BuildTag, Build, CommunityBuild,
-  matchCategory,
+  matchCategory, getTagClass,
 } from "@/components/shop/shared"
 import {
   ProductCard, BuildCard, ProductModal, BuildModal, CommunityBuildCard,

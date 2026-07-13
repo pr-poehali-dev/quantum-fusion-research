@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ImageUploader } from "@/components/image-uploader"
-import { Category, ConfigComponent, Tag, PCBuild, AdminTab, BUILD_STATUS } from "@/pages/admin/types"
+import { Category, ConfigComponent, Tag, PCBuild, AdminTab } from "@/pages/admin/types"
+import { BUILD_STATUS } from "@/pages/admin/constants"
 import { BuildsList } from "../BuildsList"
 
 export function BuildsSection({
