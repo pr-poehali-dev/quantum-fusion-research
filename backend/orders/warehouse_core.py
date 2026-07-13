@@ -320,4 +320,48 @@ def release_line(cur, order_id, product_id, only_new_negative=True):
             released["negative"] += r_qty
 
     log(cur, "release_line", group_id=group_id, order_id=order_id, payload=released)
+
+
+def fulfill_order_reserves(cur, order_id):
+    """
+    Закрыть резервы заказа при ВЫДАЧЕ клиенту (переход в 'done').
+    POSITIVE -> товар ушёл клиенту: снимаем из qty_reserved (в наличие НЕ
+                возвращаем), резерв → FULFILLED.
+    NEGATIVE -> закрываем долг: qty_negative -= r, резерв → FULFILLED.
+    Идемпотентно: обрабатывает только ACTIVE-резервы, повторный вызов — no-op.
+    НЕ пишет денежное движение 'sale' — списание/продажу (с маржой) делает
+    отдельный путь выдачи позиций; здесь только приводим резервы и счётчики
+    партий в согласованное состояние, чтобы не оставались «висящие» ACTIVE.
+    Возвращает {"positive": n, "negative": n}.
+    """
+    cur.execute(
+        f"SELECT id, group_id, supply_id, qty, type FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE' FOR UPDATE",
+        (order_id,),
+    )
+    rows = cur.fetchall()
+    fulfilled = {"positive": 0, "negative": 0}
+    for rid, group_id, supply_id, r_qty, r_type in rows:
+        if r_type == POSITIVE:
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, supply_id),
+            )
+            fulfilled["positive"] += r_qty
+        else:  # NEGATIVE
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, supply_id),
+            )
+            fulfilled["negative"] += r_qty
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'FULFILLED', updated_at = NOW() WHERE id = %s",
+            (rid,),
+        )
+    log(cur, "fulfill_order", order_id=order_id, payload=fulfilled)
+    return fulfilled
     return released

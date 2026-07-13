@@ -3,6 +3,25 @@
 
 ---
 
+## v7.35 | 2026-07-13 | Фикс: при выдаче резервы висли ACTIVE (рассинхрон)
+
+- Баг: после выдачи заказа (done) записи warehouse_reserves оставались ACTIVE,
+  хотя товар физически списан (movements 'sale', qty уменьшен). «Часть
+  списывается, часть нет» — фантомные ACTIVE-резервы на уже проданном товаре.
+- Корень: backend/orders PATCH done вызывал warehouse_core.fulfill_order_reserves,
+  но этой функции НЕ было в backend/orders/warehouse_core.py (она есть только в
+  backend/reserves/warehouse_core.py — копии файлов разошлись). Вызов падал
+  AttributeError → резервы не переводились в FULFILLED.
+- Фикс: добавил fulfill_order_reserves в backend/orders/warehouse_core.py.
+  POSITIVE → qty_reserved -= r, FULFILLED; NEGATIVE → qty_negative -= r,
+  FULFILLED. Идемпотентно (только ACTIVE), GREATEST(0,..) — без двойного
+  списания если 'sale' уже прошёл отдельным путём. Денежное движение не
+  дублирует (sale с маржой пишет путь выдачи позиций).
+- Разбор: заказ HW00467 — sale-движения прошли, но 4 POSITIVE-резерва висели
+  ACTIVE → повторный PATCH done их закрыл (FULFILLED), партии не пострадали.
+  После фикса done/archived заказов с ACTIVE-резервами: 0.
+- Селф-тест склада 15/15, автоочистка ок.
+
 ## v7.34 | 2026-07-13 | Товары: редактирование в модалке, создание убрано (фикс бага)
 
 - Корень бага «карандаш → пустое создание»: редактирование открывалось сменой
