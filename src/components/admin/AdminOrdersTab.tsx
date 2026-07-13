@@ -22,8 +22,10 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
 
   const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "pc_build" | "parts">("all")
   const [newOrderModal, setNewOrderModal] = useState(false)
-  const [newOrderForm, setNewOrderForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" as "parts" | "pc_build" })
+  const [newOrderForm, setNewOrderForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" as "parts" | "pc_build", source_id: "" as string })
   const [newOrderSaving, setNewOrderSaving] = useState(false)
+  // Источники лидов из аналитики (marketing). Управление — во вкладке «Аналитика → Источники».
+  const [leadSources, setLeadSources] = useState<{ id: number; name: string; group_name: string | null }[]>([])
 
   const [copiedOrderId, setCopiedOrderId] = useState<number | null>(null)
   const [warrantyLoadingId, setWarrantyLoadingId] = useState<number | null>(null)
@@ -90,6 +92,13 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     setOrders(o => o.map(ord => ord.id === id ? { ...ord, status } : ord))
   }
 
+  // Подгружаем активные источники при первом открытии модалки нового заказа
+  useEffect(() => {
+    if (newOrderModal && leadSources.length === 0) {
+      api.marketing.getSources(true).then(d => setLeadSources(d.sources || d || [])).catch(() => {})
+    }
+  }, [newOrderModal, leadSources.length])
+
   const createOrder = async () => {
     if (!newOrderForm.customer_name.trim() || !newOrderForm.customer_phone.trim()) return
     setNewOrderSaving(true)
@@ -99,6 +108,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
       customer_email: newOrderForm.customer_email.trim(),
       comment: newOrderForm.comment.trim(),
       order_type: newOrderForm.order_type,
+      source_id: newOrderForm.source_id ? Number(newOrderForm.source_id) : null,
       items: [],
       total: 0,
     })
@@ -108,7 +118,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     }
     setNewOrderSaving(false)
     setNewOrderModal(false)
-    setNewOrderForm({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" })
+    setNewOrderForm({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts", source_id: "" })
   }
 
   const copyOrderSheet = async (orderId: number) => {
@@ -361,6 +371,17 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                   <option value="parts">Комплектующие</option>
                   <option value="pc_build">ПК-сборка</option>
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-foreground/60">Откуда лид</label>
+                <select value={newOrderForm.source_id} onChange={e => setNewOrderForm(f => ({ ...f, source_id: e.target.value }))}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                  <option value="">— не указан —</option>
+                  {leadSources.map(s => (
+                    <option key={s.id} value={s.id}>{s.group_name ? `${s.group_name} · ${s.name}` : s.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-foreground/40">Список источников настраивается в «Аналитика → Источники»</p>
               </div>
               <div>
                 <label className="mb-1 block text-xs text-foreground/60">Комментарий</label>
