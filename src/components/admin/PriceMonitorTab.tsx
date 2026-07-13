@@ -62,10 +62,17 @@ export default function PriceMonitorTab() {
 
   const accept = async (id: number) => {
     setBusy(id)
-    const res = await api.priceMonitor.accept(id, getAdminKey())
+    let res: { ok?: boolean; error?: string } | null = null
+    try {
+      res = await api.priceMonitor.accept(id, getAdminKey())
+    } catch {
+      res = null
+    }
     setBusy(null)
-    if (res?.error || res?.ok === false) {
-      alert("Не удалось применить: " + (res?.error || "неизвестная ошибка"))
+    // Карточку убираем ТОЛЬКО при явном успехе (ok === true).
+    // Любой иной ответ (ошибка, отсутствие ok, сбой сети) — оставляем на месте.
+    if (!res || res.ok !== true) {
+      alert("Не удалось применить цену: " + (res?.error || "сервер не подтвердил применение"))
       return
     }
     removeItem(id)
@@ -79,8 +86,15 @@ export default function PriceMonitorTab() {
   const acceptAll = async () => {
     if (!confirm("Принять все изменения цен? Цены товаров обновятся автоматически.")) return
     setLoading(true)
-    const res = await api.priceMonitor.acceptAll(getAdminKey())
-    if (res?.error) alert("Ошибка при применении: " + res.error)
+    let res: { ok?: boolean; error?: string; accepted?: number } | null = null
+    try {
+      res = await api.priceMonitor.acceptAll(getAdminKey())
+    } catch {
+      res = null
+    }
+    if (!res || res.ok !== true) {
+      alert("Не удалось применить: " + (res?.error || "сервер не подтвердил применение"))
+    }
     load()
   }
   const rejectAll = async () => {

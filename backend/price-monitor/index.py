@@ -161,13 +161,20 @@ def handler(event: dict, context) -> dict:
         # Расширенный accept: ручная цена (final_price), НДС (with_vat),
         # привязка к товару (product_id) для new_product. Всё опционально —
         # без параметров работает как раньше (берёт suggested_price).
-        out = _apply_price(
-            cur, int(body.get("id")),
-            final_price=body.get("final_price"),
-            with_vat=body.get("with_vat"),
-            product_id=body.get("product_id"),
-        )
-        conn.commit(); cur.close(); conn.close()
+        try:
+            out = _apply_price(
+                cur, int(body.get("id")),
+                final_price=body.get("final_price"),
+                with_vat=body.get("with_vat"),
+                product_id=body.get("product_id"),
+            )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[ACCEPT_ERR] id={body.get('id')} err={e}")
+            cur.close(); conn.close()
+            return resp({"ok": False, "error": str(e)}, 500)
+        cur.close(); conn.close()
         return resp(out if isinstance(out, dict) else {"ok": out})
 
     if action == "reject":
@@ -198,10 +205,17 @@ def handler(event: dict, context) -> dict:
             f"WHERE status='new' AND kind='price_change'"
         )
         ids = [r[0] for r in cur.fetchall()]
+        accepted = 0
         for sid in ids:
-            _apply_price(cur, sid)
-        conn.commit(); cur.close(); conn.close()
-        return resp({"ok": True, "accepted": len(ids)})
+            try:
+                _apply_price(cur, sid)
+                conn.commit()  # фиксируем каждое принятие отдельно
+                accepted += 1
+            except Exception as e:
+                conn.rollback()
+                print(f"[ACCEPT_ALL_ERR] id={sid} err={e}")
+        cur.close(); conn.close()
+        return resp({"ok": True, "accepted": accepted, "total": len(ids)})
 
     cur.close(); conn.close()
     return resp({"error": "unknown_action"}, 400)
@@ -531,27 +545,15 @@ def _apply_price(cur, sugg_id: int, final_price=None, with_vat=None,
 
     builds_updated = 0
     if target_pid:
+        # Цену в каталоге обновляем сами (права на products есть).
         cur.execute(
             f"UPDATE {SCHEMA}.products SET price = {price} WHERE id = {int(target_pid)}"
         )
-        # связанная складская группа → цена + история
-        cur.execute(
-            f"SELECT id, avg_cost FROM {SCHEMA}.warehouse_groups "
-            f"WHERE product_id = {int(target_pid)}"
-        )
-        grp = cur.fetchone()
-        if grp:
-            gid, avg_cost = grp[0], grp[1]
-            cur.execute(
-                f"UPDATE {SCHEMA}.warehouse_groups SET price_retail = {price}, "
-                f"updated_at = NOW() WHERE id = {int(gid)}"
-            )
-            cur.execute(
-                f"INSERT INTO {SCHEMA}.warehouse_price_history "
-                f"(group_id, price_retail, avg_cost) "
-                f"VALUES ({int(gid)}, {price}, {float(avg_cost) if avg_cost is not None else 'NULL'})"
-            )
-        builds_updated = _recalc_builds(cur, int(target_pid), price)
+        # Складскую сторону (warehouse_groups, история цен, пересчёт сборок)
+        # делает функция warehouse — у price-monitor нет прав на складские
+        # таблицы. Вызываем её action=price_sync по HTTP.
+        sync = _warehouse_price_sync(int(target_pid), price)
+        builds_updated = sync.get("builds_updated", 0) if isinstance(sync, dict) else 0
 
     cur.execute(
         f"UPDATE {SCHEMA}.price_suggestions SET status='accepted', decided_at=now() "
@@ -560,37 +562,26 @@ def _apply_price(cur, sugg_id: int, final_price=None, with_vat=None,
     return {"ok": True, "price": price, "builds_updated": builds_updated}
 
 
-def _recalc_builds(cur, product_id: int, new_price: float) -> int:
-    """Пересчёт цен незафиксированных продажных сборок с этим товаром (catalog/source_id).
-    Не трогает сборки из наличия (in_stock) и архивные. Учитывает НДС продажи."""
-    import math
-    cur.execute(
-        f"SELECT id, components, assembly_fee, sell_with_vat FROM {SCHEMA}.pc_builds "
-        f"WHERE COALESCE(in_stock, FALSE) = FALSE AND COALESCE(status, '') <> 'archive' "
-        f"AND components::text LIKE %s",
-        ('%"source_id": ' + str(int(product_id)) + '%',)
-    )
-    rows = cur.fetchall()
-    updated = 0
-    for build_id, components, assembly_fee, sell_with_vat in rows:
-        comps = components if isinstance(components, list) else json.loads(components or "[]")
-        changed = False
-        for c in comps:
-            if c.get("source") == "catalog" and int(c.get("source_id") or 0) == int(product_id):
-                if float(c.get("price") or 0) != float(new_price):
-                    c["price"] = float(new_price)
-                    changed = True
-        if not changed:
-            continue
-        parts_total = sum(float(c.get("price") or 0) * int(c.get("qty") or 1) for c in comps)
-        base = parts_total + float(assembly_fee or 0)
-        total_price = float(math.ceil(base * 1.22 / 250.0) * 250) if sell_with_vat else base
-        cur.execute(
-            f"UPDATE {SCHEMA}.pc_builds SET components=%s, parts_total=%s, total_price=%s WHERE id=%s",
-            (json.dumps(comps), parts_total, total_price, build_id)
+def _warehouse_price_sync(product_id: int, price: float) -> dict:
+    """Просит функцию warehouse обновить розничную цену на складе по product_id.
+    Возвращает {} при недоступности — приём цены в каталоге при этом не срывается."""
+    import urllib.request
+    url = "https://functions.poehali.dev/828a962b-2051-4152-bc1e-e8521b07c291"
+    payload = json.dumps({
+        "action": "price_sync",
+        "product_id": int(product_id),
+        "price_retail": float(price),
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Content-Type": "application/json"}, method="POST"
         )
-        updated += 1
-    return updated
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode() or "{}")
+    except Exception as e:
+        print(f"[PRICE_SYNC_WARN] product_id={product_id} err={e}")
+        return {}
 
 
 def _match_candidates(cur, q, sugg_id=None) -> dict:

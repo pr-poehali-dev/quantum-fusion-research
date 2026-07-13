@@ -353,9 +353,13 @@ Desktop-приложение (НЕ часть веб-сборки): desktop/Stre
    GET ?action=match&id=NN (или &q=название) — кандидаты каталога с % похожести.
    POST action=link_product {id, product_id} — привязать new_product к товару.
    POST action=accept {id, final_price?, with_vat?, product_id?} — принять:
-        ручная цена / suggested_price, НДС (+22%, округл. вверх до 250);
-        обновляет products.price, warehouse_groups.price_retail, пишет
-        warehouse_price_history, пересчитывает незафиксированные сборки.
+        ручная цена / suggested_price, НДС (+22%, округл. вверх до 250).
+        ВАЖНО (v7.24): у price-monitor НЕТ прав на складские таблицы, поэтому
+        сама функция обновляет только products.price и статус предложения
+        (accepted), а warehouse-сторону (price_retail, история цен, пересчёт
+        сборок) делегирует функции warehouse через HTTP action=price_sync
+        {product_id, price_retail}. accept обёрнут в try/except (при сбое 500),
+        accept_all — поштучный commit.
    POST action=reject {id} — отклонить. POST action=accept_all — принять все price_change.
 Таблицы: price_sources, price_observations, price_suggestions (миграция V0154).
 Frontend: вкладка /admin/price_monitor (PriceMonitorTab) в группе «Операции».
@@ -442,6 +446,11 @@ DATA-DRIVEN модель (V0141–V0143), 4 таблицы:
   форм-фактор платы∈корпус, форм-фактор БП=корпус.
 
 warehouse actions (DATA-DRIVEN):
+- price_sync (POST {product_id, price_retail}) — синхронизация розничной цены
+  по product_id: обновляет warehouse_groups.price_retail, пишет историю цен,
+  пересчитывает сборки. Используется функцией price-monitor при принятии
+  изменения цены (у неё нет прав на складские таблицы). avg_cost берётся из
+  партий через calc_avg_cost (на группе такой колонки нет).
 - spec_schema (GET) — категории+атрибуты+связи разом.
 - spec_cat_create/update/delete, spec_attr_create/update/delete,
   spec_link_create/update/delete (CRUD конструктора).

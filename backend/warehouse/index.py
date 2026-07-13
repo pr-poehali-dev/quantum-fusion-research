@@ -614,6 +614,37 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"id": new_id, "sku": sku, "product_id": product_id})}
 
+        if action == "price_sync" and method == "POST":
+            # Синхронизация розничной цены по product_id (используется функцией
+            # price-monitor при принятии изменения цены — у неё нет прав на
+            # складские таблицы, поэтому warehouse-сторону делает эта функция).
+            sync_pid = body.get("product_id")
+            new_price = body.get("price_retail")
+            if not sync_pid or new_price is None:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "product_id и price_retail обязательны"})}
+            new_price = float(new_price)
+            cur.execute(
+                f"SELECT id FROM {SCHEMA}.warehouse_groups WHERE product_id = {int(sync_pid)}"
+            )
+            grp = cur.fetchone()
+            builds_updated = 0
+            if grp:
+                gid = grp[0]
+                # средняя себестоимость берётся из партий (avg_cost на группе нет)
+                avg_cost = calc_avg_cost(cur, int(gid))
+                cur.execute(
+                    f"UPDATE {SCHEMA}.warehouse_groups SET price_retail = {new_price}, "
+                    f"updated_at = NOW() WHERE id = {int(gid)}"
+                )
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.warehouse_price_history (group_id, price_retail, avg_cost) "
+                    f"VALUES ({int(gid)}, {new_price}, {float(avg_cost) if avg_cost is not None else 'NULL'})"
+                )
+                import warehouse_core as wc
+                builds_updated = wc.recalc_builds_for_product(cur, int(sync_pid), new_price)
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "builds_updated": builds_updated})}
+
         if action == "group_update" and method == "PUT":
             gid = body.get("id")
             fields = []
