@@ -1,19 +1,23 @@
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 
 const CONSENT_KEY = "begraphics_privacy_consent_v1"
+// Окно согласия показываем только на этих страницах: корзина и вход.
+const CONSENT_PATHS = ["/cart", "/auth"]
 
 export default function ConsentModal() {
   const [show, setShow] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     try {
-      if (!localStorage.getItem(CONSENT_KEY)) setShow(true)
+      const onConsentPage = CONSENT_PATHS.includes(location.pathname)
+      setShow(onConsentPage && !localStorage.getItem(CONSENT_KEY))
     } catch { /* ignore */ }
-  }, [])
+  }, [location.pathname])
 
   const accept = () => {
     try {
