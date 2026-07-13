@@ -103,6 +103,7 @@ export const api = {
   },
   promos: {
     getPublic: () => fetch(URLS.promos).then(r => r.json()),
+    getOne: (id: number | string) => fetch(`${URLS.promos}?action=promo&id=${id}`).then(r => r.json()),
     validate: (code: string, items: unknown[], total: number, customerPhone?: string, session?: string | null) =>
       fetch(`${URLS.promos}?action=validate`, {
         method: "POST",

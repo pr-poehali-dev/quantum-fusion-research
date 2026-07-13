@@ -163,6 +163,13 @@ export default function Promo() {
                     {copied === p.code ? "Скопировано" : "Копировать"}
                   </span>
                 </button>
+                <button
+                  onClick={() => navigate(`/promo/${p.id}`)}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-foreground/50 hover:text-primary transition-colors"
+                  style={{ cursor: "pointer" }}
+                >
+                  Подробнее об акции<Icon name="ChevronRight" size={13} />
+                </button>
               </div>
             ))}
           </div>

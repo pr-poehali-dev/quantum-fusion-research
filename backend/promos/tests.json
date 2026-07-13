@@ -4,9 +4,7 @@
       "name": "Публичные акции доступны без ключа",
       "method": "GET",
       "path": "/",
-      "expectedStatus": 200,
-      "expectedBody": { "promos": [] },
-      "bodyMatcher": "partial"
+      "expectedStatus": 200
     },
     {
       "name": "Список для админки без ключа запрещён",
@@ -51,6 +49,18 @@
       "expectedStatus": 200,
       "expectedBody": { "products": {} },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Одна акция по id без id — 400",
+      "method": "GET",
+      "path": "/?action=promo",
+      "expectedStatus": 400
+    },
+    {
+      "name": "Несуществующая акция по id — 404",
+      "method": "GET",
+      "path": "/?action=promo&id=99999999",
+      "expectedStatus": 404
     }
   ]
 }

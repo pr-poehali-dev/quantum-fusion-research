@@ -67,6 +67,7 @@ const Contacts = lazyWithReload(() => import("./pages/Contacts"));
 const TierLists = lazyWithReload(() => import("./pages/TierLists"));
 const Faq = lazyWithReload(() => import("./pages/Faq"));
 const Promo = lazyWithReload(() => import("./pages/Promo"));
+const PromoDetail = lazyWithReload(() => import("./pages/PromoDetail"));
 const ProjectReport = lazyWithReload(() => import("./pages/ProjectReport"));
 
 const queryClient = new QueryClient({
@@ -126,6 +127,7 @@ const App = () => (
               <Route path="/tier-lists" element={<TierLists />} />
               <Route path="/faq" element={<Faq />} />
               <Route path="/promo" element={<Promo />} />
+              <Route path="/promo/:id" element={<PromoDetail />} />
               <Route path="/community-builds" element={<CommunityBuilds />} />
               <Route path="/profile/:tag" element={<UserProfile />} />
               <Route path="/user-build/:token" element={<UserBuild />} />

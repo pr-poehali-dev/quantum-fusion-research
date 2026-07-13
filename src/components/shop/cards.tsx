@@ -156,7 +156,7 @@ export function BuildTagChip({ tag }: { tag: BuildTag }) {
   )
 }
 
-export function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; onOpen: () => void; onOrder: () => void; fmt: (n: number) => string }) {
+export function BuildCard({ build: b, onOpen, onOrder, fmt, promo }: { build: Build; onOpen: () => void; onOrder: () => void; fmt: (n: number) => string; promo?: { code: string; title: string | null; discount_type: string; discount_value: number } | null }) {
   const images = b.image_urls || []
   const hasImage = images.length > 0
   const [imgIdx, setImgIdx] = useState(0)
@@ -235,6 +235,13 @@ export function BuildCard({ build: b, onOpen, onOrder, fmt }: { build: Build; on
           <div className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-lg">
             <Icon name="Star" size={10} />
             Рекомендуем
+          </div>
+        )}
+        {promo && (
+          <div className="flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg"
+            title={`Акция ${promo.code}: ${promo.discount_type === "percent" ? `−${promo.discount_value}%` : `−${fmt(promo.discount_value)}`}. Введите код в корзине.`}>
+            <Icon name="Flame" size={10} />
+            Акция
           </div>
         )}
       </div>

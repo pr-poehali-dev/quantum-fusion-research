@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { useCart } from "@/store/cart"
 import Seo, { SITE_URL } from "@/components/Seo"
+import PromoBanner from "@/components/PromoBanner"
 
 interface Product {
   id: number
@@ -367,6 +368,9 @@ export default function ProductPage() {
               <div className={`h-2 w-2 rounded-full ${product.in_stock ? "bg-green-400" : "bg-foreground/30"}`} />
               <span className="text-sm text-foreground/60">{product.in_stock ? "В наличии" : "Нет в наличии"}</span>
             </div>
+
+            {/* Акция на этот товар (если есть публичная) */}
+            <div className="mb-6"><PromoBanner productId={product.id} /></div>
 
             {/* Кнопки */}
             <div className="flex flex-wrap gap-3 mb-8">

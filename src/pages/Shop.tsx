@@ -32,8 +32,10 @@ export default function Shop() {
   const [search, setSearch] = useState("")
   const [searchFocused, setSearchFocused] = useState(false)
   const [usedOnly, setUsedOnly] = useState(false)
-  // Товары под публичными акциями (product_id → инфо об акции) — для бейджа
-  const [promoMap, setPromoMap] = useState<Record<number, { code: string; title: string | null; discount_type: string; discount_value: number }>>({})
+  // Товары и сборки под публичными акциями (id → инфо об акции) — для бейджа
+  type PromoInfo = { code: string; title: string | null; discount_type: string; discount_value: number }
+  const [promoMap, setPromoMap] = useState<Record<number, PromoInfo>>({})
+  const [buildPromoMap, setBuildPromoMap] = useState<Record<number, PromoInfo>>({})
   // Фильтры по характеристикам/бренду для выбранной категории
   const [specAttrs, setSpecAttrs] = useState<ShopAttr[]>([])
   const [specProducts, setSpecProducts] = useState<ShopSpecProduct[]>([])
@@ -84,9 +86,12 @@ export default function Shop() {
     })
   }, [])
 
-  // Товары под публичными акциями — для бейджа «Акция» на карточках
+  // Товары и сборки под публичными акциями — для бейджа «Акция» на карточках
   useEffect(() => {
-    api.promos.promoProducts().then(d => setPromoMap(d.products || {})).catch(() => {})
+    api.promos.promoProducts().then(d => {
+      setPromoMap(d.products || {})
+      setBuildPromoMap(d.builds || {})
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -668,7 +673,7 @@ export default function Shop() {
               ) : (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {filtered.map(b => (
-                    <BuildCard key={b.id} build={b} onOpen={() => navigate(`/build-preview/${b.id}`)} onOrder={() => {
+                    <BuildCard key={b.id} build={b} promo={buildPromoMap[b.id]} onOpen={() => navigate(`/build-preview/${b.id}`)} onOrder={() => {
                       const p = b.components.reduce((s, c) => s + (c.price || 0), 0) + (b.assembly_fee || 0)
                       addItem({ id: b.id, name: b.name, price: p, type: "config" })
                       navigate("/cart")

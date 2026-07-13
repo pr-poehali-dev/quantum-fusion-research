@@ -5,6 +5,7 @@ import { useAuth } from "@/store/auth"
 import { useCart } from "@/store/cart"
 import Icon from "@/components/ui/icon"
 import Seo, { SITE_URL } from "@/components/Seo"
+import PromoBanner from "@/components/PromoBanner"
 import {
   Component, Build, WipInfo,
   SLOT_NAMES, SLOT_TO_WIP, COMPONENT_STATUS_LABELS, DELIVERY_DESCRIPTIONS,
@@ -575,6 +576,10 @@ export default function BuildPreview() {
                       </div>
                     )}
                   </div>
+                  {/* Акция на эту сборку (если есть публичная) */}
+                  {id && /^\d+$/.test(id) && (
+                    <div className="mb-6"><PromoBanner buildId={Number(id)} /></div>
+                  )}
                   {/* Выбор варианта конфигурации — под итоговой стоимостью.
                       На телефоне скрыт: выбор есть на слайде «Состав». */}
                   {hasMultipleVariants && (

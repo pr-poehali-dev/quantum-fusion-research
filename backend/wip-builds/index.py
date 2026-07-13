@@ -584,14 +584,15 @@ def handler(event: dict, context) -> dict:
                         (bid,)
                     )
                     cur.execute(f"UPDATE {SCHEMA}.wip_builds SET for_sale=FALSE WHERE id=%s", (body["id"],))
-                elif fs and st == "Готов, можно забрать":
-                    # Свободная продажа И ПК готов → публикуем на сайте + тег «в наличии»
+                elif fs:
+                    # «В свободную продажу» отмечена → сразу публикуем на сайте с
+                    # грифом «в наличии», НЕ дожидаясь этапа «Готов, можно забрать».
                     cur.execute(
                         f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
                         (bid,)
                     )
                 else:
-                    # Галочка не стоит ИЛИ ПК ещё не готов → снимаем тег «в наличии»
+                    # Галочка «в свободную продажу» не стоит → снимаем гриф «в наличии»
                     cur.execute(
                         f"UPDATE {SCHEMA}.pc_builds SET in_stock=FALSE WHERE id=%s AND status='catalog'",
                         (bid,)

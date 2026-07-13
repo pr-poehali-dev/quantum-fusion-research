@@ -65,6 +65,50 @@ PROMO_COLS = ("id, code, title, description, scope, build_part, category_ids, pr
               "max_uses, used_count, starts_at, expires_at, is_active, is_public, sort_order")
 
 
+def _resolve_promo_items(cur, product_ids, category_ids=None):
+    """Разворачивает product_ids/category_ids акции в список позиций для витрины:
+    [{kind, id, name, url, price}]. Товары → /product/<id>, сборки (build:<id>)
+    → /build-preview/<id>, категории → /shop?category=<slug>."""
+    items = []
+    prod_ids, build_ids = [], []
+    for x in (product_ids or []):
+        xs = str(x)
+        if xs.startswith("build:"):
+            try:
+                build_ids.append(int(xs.split(":", 1)[1]))
+            except (ValueError, IndexError):
+                pass
+        else:
+            try:
+                prod_ids.append(int(x))
+            except (ValueError, TypeError):
+                pass
+    if prod_ids:
+        ids_sql = ",".join(str(i) for i in prod_ids)
+        cur.execute(
+            f"SELECT id, name, price FROM {SCHEMA}.products "
+            f"WHERE id IN ({ids_sql}) AND is_archived = FALSE"
+        )
+        for r in cur.fetchall():
+            items.append({"kind": "product", "id": r[0], "name": r[1],
+                          "price": float(r[2]) if r[2] else 0, "url": f"/product/{r[0]}"})
+    if build_ids:
+        ids_sql = ",".join(str(i) for i in build_ids)
+        cur.execute(
+            f"SELECT id, name, total_price FROM {SCHEMA}.pc_builds WHERE id IN ({ids_sql})"
+        )
+        for r in cur.fetchall():
+            items.append({"kind": "build", "id": r[0], "name": r[1],
+                          "price": float(r[2]) if r[2] else 0, "url": f"/build-preview/{r[0]}"})
+    if category_ids:
+        ids_sql = ",".join(str(int(c)) for c in category_ids)
+        cur.execute(f"SELECT id, name, slug FROM {SCHEMA}.categories WHERE id IN ({ids_sql})")
+        for r in cur.fetchall():
+            items.append({"kind": "category", "id": r[0], "name": r[1],
+                          "price": None, "url": f"/shop?category={r[2]}"})
+    return items
+
+
 def handler(event: dict, context) -> dict:
     """Роутер промокодов: публичные акции, валидация в корзине, CRUD для админки."""
     method = event.get("httpMethod", "GET")
@@ -110,6 +154,32 @@ def handler(event: dict, context) -> dict:
                 p["activations_total"] = mu
                 p.pop("used_count", None)
             return _resp(200, {"promos": rows})
+
+        # ─────────── ОДНА ПУБЛИЧНАЯ АКЦИЯ ПО ID (для страницы /promo/:id) ───────────
+        if action == "promo" and method == "GET":
+            pid = params.get("id")
+            if not pid:
+                return _resp(400, {"error": "id_required"})
+            cur.execute(
+                f"SELECT {PROMO_COLS} FROM {SCHEMA}.promos "
+                f"WHERE id = %s AND is_public = TRUE AND is_active = TRUE "
+                f"AND (starts_at IS NULL OR starts_at <= NOW()) "
+                f"AND (expires_at IS NULL OR expires_at >= NOW()) "
+                f"AND (max_uses IS NULL OR used_count < max_uses)",
+                (int(pid),),
+            )
+            r = cur.fetchone()
+            if not r:
+                return _resp(404, {"error": "not_found"})
+            p = _promo_row(r)
+            mu = p.get("max_uses")
+            uc = p.get("used_count") or 0
+            p["activations_left"] = (max(0, mu - uc) if mu is not None else None)
+            p["activations_total"] = mu
+            p.pop("used_count", None)
+            # Перечень товаров/сборок/категорий акции со ссылками
+            p["items"] = _resolve_promo_items(cur, p.get("product_ids"), p.get("category_ids"))
+            return _resp(200, {"promo": p})
 
         # ─────────── ВАЛИДАЦИЯ В КОРЗИНЕ ───────────
         if action == "validate" and method == "POST":
@@ -167,15 +237,26 @@ def handler(event: dict, context) -> dict:
                 f"AND (expires_at IS NULL OR expires_at >= NOW()) "
                 f"AND (max_uses IS NULL OR used_count < max_uses)"
             )
-            # product_id → {code, title, discount_type, discount_value}
-            promo_map = {}
+            # product_id → info (товары) и build_id → info (сборки).
+            promo_map = {}   # для карточек товаров (ключ — id товара)
+            build_map = {}   # для карточек сборок (ключ — id сборки)
             for r in cur.fetchall():
                 pids = r[3] or []
                 info = {"promo_id": r[0], "code": r[1], "title": r[2],
                         "discount_type": r[4], "discount_value": float(r[5])}
                 for pid in pids:
-                    promo_map[int(pid)] = info
-            return _resp(200, {"products": promo_map})
+                    xs = str(pid)
+                    if xs.startswith("build:"):
+                        try:
+                            build_map[int(xs.split(":", 1)[1])] = info
+                        except (ValueError, IndexError):
+                            pass
+                    else:
+                        try:
+                            promo_map[int(pid)] = info
+                        except (ValueError, TypeError):
+                            pass
+            return _resp(200, {"products": promo_map, "builds": build_map})
 
         # ─────────── АДМИНКА (требует ключ) ───────────
         if action in ("list", "save", "delete"):

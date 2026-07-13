@@ -12,8 +12,11 @@
     • GET products_search&q= — поиск для типа «Конкретный товар»: товары
       (kind=product) + готовые сборки ПК (kind=build, id="build:<id>") (v7.31,
       сборки добавлены v7.37).
-    • GET promo_products — map product_id→{code,скидка} по активным публичным
-      product-акциям (для бейджа «Акция» на карточках витрины) (v7.31).
+    • GET promo_products — {products, builds}: map id→{code,скидка} по активным
+      публичным product-акциям (для бейджа «Акция» на карточках товаров И сборок
+      витрины) (v7.31; builds добавлены v7.38).
+    • GET promo&id= — одна публичная акция + items (товары/сборки/категории со
+      ссылками url) для страницы /promo/:id (v7.38).
     • Админка (X-Admin-Key = секрет ADMIN_KEY): list / save / delete.
   publicный список отдаёт activations_left/activations_total (остаток и лимит
   активаций) вместо сырого used_count (v7.31).
@@ -45,6 +48,12 @@
   ProductCard принимает prop promo; Shop.tsx грузит promoMap через
   api.promos.promoProducts. Тип «Конкретный товар» в PromoTab — поиск+выбор
   товаров (api.promos.productsSearch), product_ids.
+  v7.38: отдельная страница акции src/pages/PromoDetail.tsx (маршрут /promo/:id):
+  полные условия + перечень товаров/сборок со ссылками, промокод, активации,
+  таймер (api.promos.getOne). На /promo — кнопка «Подробнее об акции».
+  Бейдж «Акция» добавлен и сборкам (BuildCard prop promo, Shop.buildPromoMap).
+  Компонент src/components/PromoBanner.tsx — промокод+скидка+«Подробнее» на
+  ProductPage (productId) и BuildPreview (buildId), тянет из promo_products.
 
 ## FAQ — вопросы и ответы (v6.82)
 - backend/faq (URL .../b058cfaf-eb48-4710-90b0-f38899b0b16a) — категории и
@@ -591,6 +600,11 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   источник спрашивается модалкой ПЕРЕД выдачей («Забрали»), затем обычный поток
   постоплаты. Источник пишется в заказ через orders.setSource. wip-builds list
   отдаёт source_id/source_name (JOIN marketing_sources).
+- [v7.38] Гриф «В наличии» у сборки: for_sale=TRUE (любой этап кроме «Забрали»)
+  → pc_builds status='catalog', in_stock=TRUE СРАЗУ (не дожидаясь «Готов, можно
+  забрать»). При «Забрали» → archive/in_stock=FALSE; при снятии for_sale →
+  in_stock=FALSE. Синхронизация в backend/wip-builds при PUT. Миграция V0198
+  привела существующие for_sale сборки к новому правилу.
   FinanceTab: карточка кассы раскрывается в «Счета зачисления» + счета сотрудников;
   в логе движений ссылка на заказ.
 
