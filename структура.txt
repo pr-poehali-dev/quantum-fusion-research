@@ -153,16 +153,17 @@
   WarehouseTab.tsx = только главный компонент (таблица, фильтры, пагинация,
   массовые операции, ресайз колонок) + импорт вынесенных частей.
 
-РЕФАКТОРИНГ AdminCatalogTab (в процессе): монолит был 1602 стр. → стал 642.
-Секции дробятся в папку src/components/admin/catalog/:
-  - TagsSection.tsx — управление тегами сборок (полностью самостоятельный).
+РЕФАКТОРИНГ AdminCatalogTab (готово): монолит был 1602 стр. → стал 89.
+Все секции вынесены в папку src/components/admin/catalog/:
+  - TagsSection.tsx — управление тегами сборок.
   - ArticlesSection.tsx — статьи/тесты: список + редактор (оглавление, тир-лист,
-    HTML-вложение). Принимает props tab/setTab/loading/articles/setArticles.
+    HTML-вложение).
   - ProductsSection.tsx — товары: список (поиск/фильтры/архив/массовые операции/
-    Excel-импорт-экспорт) + форма товара. props tab/setTab/loading/products/
-    setProducts/categories/setCategories.
-  AdminCatalogTab.tsx содержит секцию Builds + делегирует Tags/Articles/Products
-  вынесенным компонентам. Осталось вынести Builds (самая связанная секция).
+    Excel-импорт-экспорт) + форма товара.
+  - BuildsSection.tsx — сборки: список/архив (через BuildsList) + редактор
+    (поиск компонентов, точки железок на фото, расчёт цены с НДС/сборкой, теги).
+  AdminCatalogTab.tsx = тонкий роутер: по tab делегирует нужной секции; сам
+  содержит только маленький блок Cables (кастомные кабели).
 
 ## Оптимизация изображений (v6.20-6.21)
 - backend/img-optimize (URL .../f8ab2fb6-...) — сжимает картинку по URL в WebP
