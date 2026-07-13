@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import Icon from "@/components/ui/icon"
 import { api } from "@/lib/api"
+import SalesReport from "./analytics/SalesReport"
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, LineChart, Line,
@@ -48,7 +49,7 @@ function periodFromMonth(m: string): { from: string; to: string } {
 }
 
 export default function AnalyticsTab() {
-  const [sub, setSub] = useState<"dashboard" | "sources" | "budgets">("dashboard")
+  const [sub, setSub] = useState<"dashboard" | "sales" | "sources" | "budgets">("dashboard")
   const [month, setMonth] = useState(monthStr(new Date()))
 
   return (
@@ -58,7 +59,7 @@ export default function AnalyticsTab() {
           <Icon name="ChartColumnBig" size={24} /> Аналитика привлечения
         </h1>
         <div className="flex items-center gap-1 rounded-lg border border-border p-1">
-          {([["dashboard", "Дашборд"], ["sources", "Источники"], ["budgets", "Бюджеты"]] as const).map(([k, l]) => (
+          {([["dashboard", "Дашборд"], ["sales", "Отчёт продаж"], ["sources", "Источники"], ["budgets", "Бюджеты"]] as const).map(([k, l]) => (
             <button key={k} onClick={() => setSub(k)}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${sub === k ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
               style={{ cursor: "pointer" }}>{l}</button>
@@ -67,6 +68,7 @@ export default function AnalyticsTab() {
       </div>
 
       {sub === "dashboard" && <Dashboard month={month} setMonth={setMonth} />}
+      {sub === "sales" && <SalesReport />}
       {sub === "sources" && <SourcesManager />}
       {sub === "budgets" && <BudgetsManager month={month} setMonth={setMonth} />}
     </div>

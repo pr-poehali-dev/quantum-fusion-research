@@ -90,6 +90,7 @@ export const api = {
     getBudgets: (groupId?: number) => fetch(`${URLS.marketing}?action=budgets${groupId ? `&group_id=${groupId}` : ""}`).then(r => r.json()),
     saveBudget: (data: { group_id: number; period_month: string; amount: number; leads_manual?: number | null; note?: string }) => fetch(URLS.marketing, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "budget_save", ...data }) }).then(r => r.json()),
     analytics: (from?: string, to?: string) => fetch(`${URLS.marketing}?action=analytics${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`).then(r => r.json()),
+    salesReport: (from?: string, to?: string) => fetch(`${URLS.marketing}?action=sales_report${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`).then(r => r.json()),
   },
   faq: {
     getPublic: () => fetch(URLS.faq).then(r => r.json()),

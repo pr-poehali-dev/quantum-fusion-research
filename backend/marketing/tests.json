@@ -31,6 +31,18 @@
       "expectedStatus": 200
     },
     {
+      "name": "Sales report current month",
+      "method": "GET",
+      "path": "/?action=sales_report",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Sales report with period",
+      "method": "GET",
+      "path": "/?action=sales_report&from=2026-01-01&to=2026-08-01",
+      "expectedStatus": 200
+    },
+    {
       "name": "Unknown action returns 400",
       "method": "GET",
       "path": "/?action=nope",

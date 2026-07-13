@@ -304,6 +304,135 @@ def handler(event: dict, context) -> dict:
                 "totals": totals,
             })
 
+        if action == "sales_report" and method == "GET":
+            # Отчёт по продажам для анализа закупок (скрипт-аналитика + выгрузка).
+            # Продажа = позиции ВЫДАННЫХ заказов (status='done'). По каждой позиции:
+            # продано шт, выручка, средняя цена, себестоимость (avg по всем партиям),
+            # маржа ₽/%, текущий остаток, дневной спрос, на сколько дней хватит,
+            # дефицит под спрос, и текстовые метки (хит/мёртвый/дефицит/низкая маржа).
+            d_from = params.get("from")
+            d_to = params.get("to")
+            if not d_from or not d_to:
+                today = date.today()
+                d_from = str(date(today.year, today.month, 1))
+                if today.month == 12:
+                    d_to = str(date(today.year + 1, 1, 1))
+                else:
+                    d_to = str(date(today.year, today.month + 1, 1))
+
+            # число дней периода (для дневного спроса), минимум 1
+            try:
+                _df = datetime.strptime(str(d_from)[:10], "%Y-%m-%d").date()
+                _dt = datetime.strptime(str(d_to)[:10], "%Y-%m-%d").date()
+                period_days = max((_dt - _df).days, 1)
+            except Exception:
+                period_days = 30
+
+            cur.execute(
+                f"SELECT "
+                f"  s.product_id, "
+                f"  MAX(COALESCE(p.name, s.raw_name)) AS name, "
+                f"  MAX(c.name) AS category, "
+                f"  SUM(s.qty) AS units_sold, "
+                f"  COUNT(*) AS lines, "
+                f"  SUM(s.qty * s.sale_price) AS revenue, "
+                f"  ROUND(AVG(s.sale_price), 2) AS avg_price, "
+                f"  COALESCE(("
+                f"    SELECT ROUND(SUM(w.cost_price * w.qty) / NULLIF(SUM(w.qty), 0), 2) "
+                f"    FROM {SCHEMA}.warehouse_supplies w "
+                f"    JOIN {SCHEMA}.warehouse_groups g ON g.id = w.group_id "
+                f"    WHERE g.product_id = s.product_id AND w.qty > 0), "
+                f"    COALESCE(("
+                f"      SELECT ROUND(AVG(w.cost_price), 2) "
+                f"      FROM {SCHEMA}.warehouse_supplies w "
+                f"      JOIN {SCHEMA}.warehouse_groups g ON g.id = w.group_id "
+                f"      WHERE g.product_id = s.product_id AND w.cost_price > 0), 0)) AS avg_cost, "
+                f"  COALESCE(("
+                f"    SELECT SUM(w.qty) FROM {SCHEMA}.warehouse_supplies w "
+                f"    JOIN {SCHEMA}.warehouse_groups g ON g.id = w.group_id "
+                f"    WHERE g.product_id = s.product_id), 0) AS stock_now "
+                f"FROM ("
+                f"  SELECT "
+                f"    (it->>'id')::int AS product_id, "
+                f"    it->>'name' AS raw_name, "
+                f"    COALESCE((it->>'final_price')::numeric, (it->>'price')::numeric, 0) AS sale_price, "
+                f"    COALESCE((it->>'quantity')::int, 1) AS qty "
+                f"  FROM {SCHEMA}.orders o, LATERAL jsonb_array_elements(o.items) AS it "
+                f"  WHERE o.status = 'done' "
+                f"    AND o.created_at >= '{d_from}' AND o.created_at < '{d_to}' "
+                f"    AND COALESCE(it->>'item_type', 'product') = 'product' "
+                f"    AND (it->>'id') ~ '^[0-9]+$'"
+                f") s "
+                f"LEFT JOIN {SCHEMA}.products p ON p.id = s.product_id "
+                f"LEFT JOIN {SCHEMA}.categories c ON c.id = p.category_id "
+                f"GROUP BY s.product_id "
+                f"ORDER BY revenue DESC"
+            )
+
+            items = []
+            for r in cur.fetchall():
+                units = int(r[3] or 0)
+                revenue = float(r[5] or 0)
+                avg_price = float(r[6] or 0)
+                avg_cost = float(r[7] or 0)
+                stock_now = int(r[8] or 0)
+
+                margin_rub = round(revenue - avg_cost * units, 2) if avg_cost > 0 else None
+                margin_pct = round(margin_rub / revenue * 100, 1) if (margin_rub is not None and revenue > 0) else None
+
+                # спрос: шт/день за период → на сколько дней хватит остатка
+                daily_demand = round(units / period_days, 4) if period_days > 0 else 0
+                days_cover = round(stock_now / daily_demand, 1) if daily_demand > 0 else None
+                # прогноз спроса на 30 дней и дефицит под него
+                demand_30d = daily_demand * 30
+                deficit = max(0, round(demand_30d - stock_now)) if daily_demand > 0 else 0
+
+                # метки-подсказки (скрипт-аналитика)
+                labels = []
+                if units >= 3:
+                    labels.append("хит")
+                if stock_now == 0 and units > 0:
+                    labels.append("нет в наличии")
+                elif days_cover is not None and days_cover <= 14:
+                    labels.append("скоро закончится")
+                if margin_pct is not None and margin_pct < 10:
+                    labels.append("низкая маржа")
+                if margin_pct is not None and margin_pct >= 25 and units >= 2:
+                    labels.append("хорошая маржа")
+                if deficit > 0:
+                    labels.append("дозаказать")
+
+                items.append({
+                    "product_id": r[0],
+                    "name": r[1] or "—",
+                    "category": r[2] or "—",
+                    "units_sold": units,
+                    "lines": int(r[4] or 0),
+                    "revenue": round(revenue, 2),
+                    "avg_price": avg_price,
+                    "avg_cost": avg_cost,
+                    "margin_rub": margin_rub,
+                    "margin_pct": margin_pct,
+                    "stock_now": stock_now,
+                    "daily_demand": daily_demand,
+                    "days_cover": days_cover,
+                    "deficit": deficit,
+                    "labels": labels,
+                })
+
+            totals = {
+                "positions": len(items),
+                "units": sum(i["units_sold"] for i in items),
+                "revenue": round(sum(i["revenue"] for i in items), 2),
+                "margin": round(sum(i["margin_rub"] for i in items if i["margin_rub"] is not None), 2),
+                "period_days": period_days,
+            }
+            return _resp(200, {
+                "period": {"from": str(d_from), "to": str(d_to)},
+                "items": items,
+                "totals": totals,
+            })
+
         return _resp(400, {"error": "unknown_action", "action": action})
 
     except Exception as e:

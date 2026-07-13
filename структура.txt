@@ -55,6 +55,13 @@
   source_save; budgets (group_id) / budget_save (upsert по group_id+месяц);
   analytics (from/to) → KPI, by_source, by_group (CPL/CAC/ROMI), timeline.
   Лиды = max(ручные лиды бюджета, заявки квиза, заказы) по группе.
+  sales_report (from/to) [v7.25] → отчёт продаж для закупок. Продажа = позиции
+  ВЫДАННЫХ заказов (status='done', разбор orders.items JSONB через
+  jsonb_array_elements). По каждой позиции: продано шт, выручка, ср.цена,
+  себестоимость (avg по партиям склада; fallback — avg по всем партиям для
+  распроданных), маржа ₽/%, остаток, дневной спрос, дней-до-нуля (остаток÷
+  спрос), дефицит под спрос на 30 дней, авто-метки (хит/хорошая маржа/низкая
+  маржа/скоро закончится/нет в наличии/дозаказать).
 - Таблицы (V0185): marketing_source_groups, marketing_sources
   (utm_source для авто-привязки, is_paid, is_active), marketing_budgets
   (period_month, amount, leads_manual, UNIQUE group_id+month).
@@ -65,8 +72,12 @@
 - Фронт: src/lib/utm.ts (captureUtm при загрузке App → localStorage, getUtm),
   проброс getUtm() в Cart.tsx и Quiz.tsx. api.marketing.* в src/lib/api.ts.
   Вкладка админки «Аналитика» — src/components/admin/AnalyticsTab.tsx
-  (Дашборд recharts / Источники+группы / Бюджеты). Выбор источника в карточке
-  заказа — OrderProcessPage.tsx.
+  (Дашборд recharts / Отчёт продаж / Источники+группы / Бюджеты). Выбор
+  источника в карточке заказа — OrderProcessPage.tsx.
+  Под-вкладка «Отчёт продаж» — analytics/SalesReport.tsx (v7.25): период,
+  KPI, блок «Отчёт для ИИ» (кнопка копирования готового промпта+CSV в буфер,
+  скачивание CSV), блок предупреждений о низком остатке, таблица продаж с
+  метками. Данные — api.marketing.salesReport(from,to).
 
 ## Цены сборок ПК — единый механизм (v6.37)
 - pc_builds.lock_prices (V0176): FALSE (по умолч.) = цены комплектующих
