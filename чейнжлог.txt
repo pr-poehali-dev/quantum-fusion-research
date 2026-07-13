@@ -3,6 +3,16 @@
 
 ---
 
+## v7.15 | 2026-07-13 | Рефакторинг BuildPreview (этап 1)
+
+- BuildPreview.tsx (витрина сборки): 1483 → 797 строк.
+- Создана папка src/pages/build-preview/:
+  · shared.ts — типы, константы и чистые хелперы (вкл. enrichComponents/Variants).
+  · components.tsx — 6 самостоятельных под-компонентов (карусели, слайд-витрина
+    с лучами-указателями BuildShowcaseSlide, ComponentSection, ComponentIcon).
+- Всё сверено построчным diff → байт-в-байт идентично, логика не менялась.
+- В BuildPreview.tsx остался главный компонент страницы.
+
 ## v7.14 | 2026-07-13 | Рефакторинг AdminCatalogTab (завершён)
 
 - Монолит полностью разобран: AdminCatalogTab.tsx 642 → 89 строк
