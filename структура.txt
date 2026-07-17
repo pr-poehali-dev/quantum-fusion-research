@@ -268,6 +268,16 @@ src/pages/build-preview/:
 - DB: PostgreSQL, схема t_p72635010_quantum_fusion_resea
 - Хранилище: S3 (bucket.poehali.dev), CDN (cdn.poehali.dev)
 
+## Мастер карточки товара (GroupWizardModal)
+- Шаги мастера: 0 категория (из categories, ORDER BY sort_order), 1 бренд,
+  2..N блоки шаблона названия, финал. Шаблоны — src/components/admin/
+  groupNameTemplates.ts (NAME_TEMPLATES по slug категории). Блок с attrCode
+  сохраняется в характеристику (spec_values). Категория без шаблона → ручной
+  ввод имени (buildName с __manual__).
+- [v7.44] Блок «Цвет / подсветка» (attrCode=color) есть у ram/gpu/motherboard/
+  psu/case/cooling. Категория «Прочее» (slug other, БЕЗ шаблона) — для ноутбуков
+  и нетипичных товаров, вводится вручную.
+
 ## Раскладочный поиск (v5.70)
 - Все поисковики понимают обе раскладки в обе стороны (тпвз⇄ngdp).
 - Фронт: src/lib/keyboardLayout.ts (matchesSearch/searchVariants/switchLayout) —

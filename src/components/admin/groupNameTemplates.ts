@@ -46,6 +46,8 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
       { key: "model", label: "Модель GPU (чип)", hint: "RX 9070 XT", input: "text", attrCode: "series", required: true, suggest: true },
       { key: "vram", label: "Видеопамять", hint: "16", input: "text", attrCode: "vram_gb", nameSuffix: "Gb", required: true },
       { key: "edition", label: "Исполнение", hint: "Predator BiFrost OC", input: "text", attrCode: "model" },
+      { key: "color", label: "Цвет / подсветка", input: "select", attrCode: "color",
+        options: ["Чёрный","Белый","Серебристый","RGB"] },
     ],
   },
   // ⚡ Блок питания → 1stPlayer ACK Silver 750W ATX3.1 Black
@@ -84,6 +86,8 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
       { key: "model", label: "Модель", hint: "PLUS WIFI", input: "text", attrCode: "model", suggest: true },
       { key: "form", label: "Форм-фактор", input: "select", attrCode: "form_factor", required: true,
         options: ["ATX","mATX","Mini-ITX","E-ATX"], excludeFromName: true },
+      { key: "color", label: "Цвет / подсветка", input: "select", attrCode: "color",
+        options: ["Чёрный","Белый","Серебристый","Чёрно-белый","RGB"] },
     ],
   },
   // 🧩 ОЗУ → Kingston Fury DDR5 2x16Gb 6000mhz CL30
@@ -100,6 +104,8 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
       { key: "freq", label: "Частота", hint: "6000", input: "text", attrCode: "freq", nameSuffix: "mhz", required: true },
       { key: "cl", label: "Тайминг CL", input: "select", attrCode: "cl-timing", required: true,
         options: ["CL26","CL28","CL30","CL32","CL34","CL36","CL38","CL40","CL42","CL44","CL46","CL48","CL50","CL52"] },
+      { key: "color", label: "Цвет / подсветка", input: "select", attrCode: "color",
+        options: ["Чёрный","Белый","Серебристый","Серый","RGB"] },
     ],
   },
   // 💾 Накопитель → Samsung 990 Pro 1Tb
