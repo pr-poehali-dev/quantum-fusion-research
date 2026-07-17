@@ -278,6 +278,12 @@ src/pages/build-preview/:
   psu/case/cooling. Категория «Прочее» (slug other, БЕЗ шаблона) — для ноутбуков
   и нетипичных товаров, вводится вручную.
 
+## Масштаб интерфейса админки (v7.46)
+- src/store/uiScale.ts (zustand+persist, localStorage admin-ui-scale, 0.9…1.3).
+- Контрол src/components/admin/UiScaleSwitcher.tsx (−/%/+) в шапке Admin.tsx.
+- Применяется через CSS zoom на контентном контейнере Admin.tsx и
+  OrderProcessPage — масштабирует шрифт, px-иконки и отступы разом, вкл. мобилку.
+
 ## Раскладочный поиск (v5.70)
 - Все поисковики понимают обе раскладки в обе стороны (тпвз⇄ngdp).
 - Фронт: src/lib/keyboardLayout.ts (matchesSearch/searchVariants/switchLayout) —

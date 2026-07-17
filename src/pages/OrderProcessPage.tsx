@@ -4,6 +4,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
+import { useUiScale } from "@/store/uiScale"
 
 const ORDERS_URL = "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745"
 const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
@@ -107,6 +108,7 @@ function fmt(n: number) {
 export default function OrderProcessPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const uiScale = useUiScale(s => s.scale)
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
@@ -449,7 +451,7 @@ export default function OrderProcessPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+      <div className="mx-auto max-w-5xl px-6 py-8 space-y-6" style={{ zoom: uiScale }}>
         {/* Результат синхронизации */}
         {syncResult && (
           <div className="rounded-xl border border-yellow-400/20 bg-yellow-400/5 p-4">

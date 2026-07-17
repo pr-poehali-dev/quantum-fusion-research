@@ -26,6 +26,8 @@ import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
 import { AdminWipTab } from "@/components/admin/AdminWipTab"
 import AdminTabsNav from "@/components/admin/AdminTabsNav"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import UiScaleSwitcher from "@/components/admin/UiScaleSwitcher"
+import { useUiScale } from "@/store/uiScale"
 import {
   AdminTab,
   Order, Product, Category, ConfigComponent, Tag, PCBuild, Article, WipBuild, AdminUser,
@@ -36,6 +38,7 @@ import {
 
 export default function Admin() {
   const navigate = useNavigate()
+  const uiScale = useUiScale(s => s.scale)
   const { tab: tabParam } = useParams<{ tab: string }>()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem("begraphics_admin") === "1")
   const [password, setPassword] = useState("")
@@ -252,6 +255,7 @@ export default function Admin() {
             <span className="font-semibold text-foreground">BeGraphics Admin</span>
           </div>
           <div className="flex items-center gap-3">
+            <UiScaleSwitcher />
             <ThemeSwitcher />
             <button onClick={() => navigate("/shop")} className="text-xs text-foreground/40 hover:text-foreground/70 transition-colors" style={{ cursor: "pointer" }}>На сайт</button>
             <button onClick={logout} className="flex items-center gap-1.5 text-xs text-foreground/40 hover:text-foreground/70 transition-colors" style={{ cursor: "pointer" }}>
@@ -261,7 +265,7 @@ export default function Admin() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-6 py-8" style={{ zoom: uiScale }}>
         {/* Десктоп: настраиваемые строки табов (drag&drop, архив, персонально per admin) */}
         <AdminTabsNav
           allTabs={allTabsMemo}
