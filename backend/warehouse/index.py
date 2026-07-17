@@ -1813,36 +1813,83 @@ def handler(event: dict, context) -> dict:
                 qty_neg = int(qty_neg or 0)
                 want_pos = int(want_pos or 0)
                 want_neg = int(want_neg or 0)
-                diff_res = qty_res - want_pos   # >0 — застрявший резерв (вернуть в наличие)
-                diff_neg = qty_neg - want_neg   # >0 — застрявший минус (убрать)
-                if diff_res == 0 and diff_neg == 0:
+                # Физические единицы партии = свободные + удержанные резервом.
+                # Инвариант: qty (свободно) = physical - qty_reserved, всегда >= 0.
+                physical = qty + qty_res
+                # POSITIVE-резерв НЕ может превышать физическое наличие партии
+                # (иначе доступное ушло бы в минус). Излишек POSITIVE-резервов над
+                # физикой — это дефицит: он должен жить в NEGATIVE, а не в qty_reserved.
+                new_res = min(want_pos, physical)
+                new_qty = physical - new_res
+                # Дефицит POSITIVE, не покрытый физикой, переводим в NEGATIVE-резервы:
+                # берём «висящие» POSITIVE-резервы этой партии и превращаем в NEGATIVE,
+                # чтобы потребность попала в корзину закупки, а не терялась.
+                overflow = want_pos - new_res  # >0 — POSITIVE-резервов больше, чем товара
+                converted = 0
+                if overflow > 0:
+                    cur.execute(
+                        f"SELECT id, qty FROM {SCHEMA}.warehouse_reserves "
+                        f"WHERE supply_id = %s AND type = 'POSITIVE' AND status = 'ACTIVE' "
+                        f"ORDER BY id DESC",
+                        (sid,)
+                    )
+                    for rid, rq in cur.fetchall():
+                        if converted >= overflow:
+                            break
+                        rq = int(rq or 0)
+                        take = min(rq, overflow - converted)
+                        if take <= 0:
+                            continue
+                        if take == rq:
+                            # Вся строка резерва становится дефицитом
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.warehouse_reserves "
+                                f"SET type = 'NEGATIVE', updated_at = NOW() WHERE id = %s",
+                                (rid,)
+                            )
+                        else:
+                            # Часть строки — уменьшаем POSITIVE и добавляем отдельный NEGATIVE
+                            cur.execute(
+                                f"UPDATE {SCHEMA}.warehouse_reserves "
+                                f"SET qty = qty - %s, updated_at = NOW() WHERE id = %s",
+                                (take, rid)
+                            )
+                            cur.execute(
+                                f"INSERT INTO {SCHEMA}.warehouse_reserves "
+                                f"(order_id, group_id, supply_id, slot, qty, type, status) "
+                                f"SELECT order_id, group_id, supply_id, slot, %s, 'NEGATIVE', 'ACTIVE' "
+                                f"FROM {SCHEMA}.warehouse_reserves WHERE id = %s",
+                                (take, rid)
+                            )
+                        converted += take
+                    want_neg += converted  # эти единицы теперь дефицит
+                diff_neg = qty_neg - want_neg
+                if qty_res == new_res and qty == new_qty and qty_neg == want_neg and overflow == 0:
                     continue
-                # Корректируем qty_reserved → want_pos, наличие меняем на разницу
-                new_qty = qty + diff_res  # излишек резерва возвращаем в qty
-                if new_qty < 0:
-                    new_qty = 0
                 cur.execute(
                     f"UPDATE {SCHEMA}.warehouse_supplies "
                     f"SET qty = %s, qty_reserved = %s, qty_negative = %s, updated_at = NOW() "
                     f"WHERE id = %s",
-                    (new_qty, want_pos, want_neg, sid)
+                    (new_qty, new_res, want_neg, sid)
                 )
                 # Лог расхождения
                 cur.execute(
                     f"INSERT INTO {SCHEMA}.warehouse_stock_log (group_id, order_id, event, delta, payload) "
                     f"VALUES (%s, NULL, 'recalc_reserves', %s, %s)",
-                    (gid, diff_res, json.dumps({
+                    (gid, qty_res - new_res, json.dumps({
                         "supply_id": sid,
-                        "qty_reserved": {"was": qty_res, "now": want_pos},
+                        "qty_reserved": {"was": qty_res, "now": new_res},
                         "qty_negative": {"was": qty_neg, "now": want_neg},
                         "qty": {"was": qty, "now": new_qty},
+                        "pos_to_neg_converted": converted,
                     }, ensure_ascii=False))
                 )
                 fixed.append({
                     "supply_id": sid, "group_id": gid,
-                    "reserved_was": qty_res, "reserved_now": want_pos,
+                    "reserved_was": qty_res, "reserved_now": new_res,
                     "negative_was": qty_neg, "negative_now": want_neg,
                     "qty_was": qty, "qty_now": new_qty,
+                    "pos_to_neg_converted": converted,
                 })
             # Синхронизируем корзину закупки: required_qty = сумма активных NEGATIVE
             cur.execute(

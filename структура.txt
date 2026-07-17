@@ -914,3 +914,12 @@ wip-builds/index.py изменения НЕ применяются автома�
 warehouse.delete_wip, wip-builds DELETE/cancel_order):
 release_order_reserves(only_new_negative=True) — заказанное у поставщика (ORDERED)
 не снимается, остаётся в закупке.
+
+[v7.42] СИНХРОНИЗАЦИЯ склада (warehouse action=recalc_reserves, кнопка
+«Синхронизация» на вкладке Склад): приводит партии к эталону по warehouse_reserves.
+Шаг 0 — закрывает ACTIVE-резервы на done/cancelled (FULFILLED/RELEASED). Далее по
+каждой партии: physical = qty + qty_reserved; qty_reserved := min(want_pos,
+physical); qty := physical - qty_reserved (>=0). Излишек POSITIVE над физикой
+конвертируется в NEGATIVE-резервы (POSITIVE→NEGATIVE в warehouse_reserves) →
+дефицит уходит в корзину закупки. Корзина: required_qty = сумма ACTIVE NEGATIVE
+по группе. Идемпотентно, самолечащее — не создаёт отрицательного доступного.
