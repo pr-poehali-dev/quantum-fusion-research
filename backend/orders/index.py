@@ -150,7 +150,7 @@ def handler(event: dict, context) -> dict:
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
     }
     if event.get("httpMethod") == "OPTIONS":
@@ -1851,6 +1851,65 @@ def handler(event: dict, context) -> dict:
                 )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        elif method == "DELETE":
+            # ── ПОЛНОЕ УДАЛЕНИЕ ЗАКАЗА ──────────────────────────────────────────
+            # Безопасно: сначала снимаем резервы через ядро (склад не поедет),
+            # потом чистим связанные записи и удаляем сам заказ.
+            # order_id из query (?id=) или из тела.
+            schema = "t_p72635010_quantum_fusion_resea"
+            body = {}
+            try:
+                body = json.loads(event.get("body") or "{}")
+            except Exception:
+                body = {}
+            order_id = params.get("id") or body.get("id")
+            if not order_id:
+                return {"statusCode": 400, "headers": cors,
+                        "body": json.dumps({"error": "Не указан id заказа"})}
+            order_id = int(order_id)
+
+            cur.execute(f"SELECT id FROM {schema}.orders WHERE id=%s", (order_id,))
+            if not cur.fetchone():
+                return {"statusCode": 404, "headers": cors,
+                        "body": json.dumps({"error": "Заказ не найден"})}
+
+            # Нельзя удалять заказ с гарантийными обращениями (RMA) — это история.
+            cur.execute(f"SELECT COUNT(*) FROM {schema}.warehouse_rma "
+                        f"WHERE order_id=%s OR replacement_order_id=%s", (order_id, order_id))
+            if int(cur.fetchone()[0] or 0) > 0:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({
+                    "error": "У заказа есть гарантийные обращения (RMA). Удаление запрещено — сначала закройте RMA."})}
+
+            # 1) Снимаем ВСЕ активные резервы через ядро (POSITIVE→наличие,
+            #    NEGATIVE→qty_negative+корзина). Заказанное у поставщика тоже
+            #    снимаем — при полном удалении заказа держать нечего.
+            import warehouse_core as wc
+            wc.release_order_reserves(cur, order_id, only_new_negative=False)
+
+            # 2) Чистим FK-потомков (NO ACTION → удаляем/отвязываем вручную).
+            #    Историю (движения, лог, финансы, серийники) СОХРАНЯЕМ, отвязывая
+            #    order_id → NULL, чтобы не терять аудит склада и денег.
+            cur.execute(f"DELETE FROM {schema}.warehouse_reserves WHERE order_id=%s", (order_id,))
+            cur.execute(f"DELETE FROM {schema}.warehouse_backorders WHERE order_id=%s", (order_id,))
+            cur.execute(f"UPDATE {schema}.warehouse_movements SET order_id=NULL WHERE order_id=%s", (order_id,))
+            cur.execute(f"UPDATE {schema}.warehouse_stock_log SET order_id=NULL WHERE order_id=%s", (order_id,))
+            cur.execute(f"UPDATE {schema}.finance_transactions SET order_id=NULL WHERE order_id=%s", (order_id,))
+            cur.execute(f"UPDATE {schema}.sn_archive SET order_id=NULL WHERE order_id=%s", (order_id,))
+            cur.execute(f"UPDATE {schema}.employee_account_tx SET order_id=NULL WHERE order_id=%s", (order_id,))
+
+            # 3) WIP-сборка заказа и связанное (ETA компонентов) — удаляем.
+            cur.execute(f"SELECT id FROM {schema}.wip_builds WHERE order_id=%s", (order_id,))
+            wip_ids = [r[0] for r in cur.fetchall()]
+            for _wid in wip_ids:
+                cur.execute(f"DELETE FROM {schema}.wip_component_eta WHERE wip_id=%s", (_wid,))
+            cur.execute(f"DELETE FROM {schema}.wip_builds WHERE order_id=%s", (order_id,))
+
+            # 4) Сам заказ.
+            cur.execute(f"DELETE FROM {schema}.orders WHERE id=%s", (order_id,))
+            conn.commit()
+            return {"statusCode": 200, "headers": cors,
+                    "body": json.dumps({"ok": True, "deleted": order_id})}
 
     finally:
         cur.close()

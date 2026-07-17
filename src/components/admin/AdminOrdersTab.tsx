@@ -92,6 +92,16 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     setOrders(o => o.map(ord => ord.id === id ? { ...ord, status } : ord))
   }
 
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const deleteOrder = async (id: number, num: string) => {
+    if (!confirm(`Удалить заказ ${num} НАВСЕГДА?\n\nРезервы снимутся (товар вернётся на склад), заказ и сборка удалятся безвозвратно. История склада и финансов сохранится.`)) return
+    setDeletingId(id)
+    const res = await api.orders.remove(id)
+    setDeletingId(null)
+    if (res.error) { alert(res.error); return }
+    setOrders(o => o.filter(ord => ord.id !== id))
+  }
+
   // Подгружаем активные источники при первом открытии модалки нового заказа
   useEffect(() => {
     if (newOrderModal && leadSources.length === 0) {
@@ -329,6 +339,18 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                         title="Вернуть заказ в работу">
                         <Icon name="Undo2" size={12} />
                         <span className="hidden sm:inline">Вернуть в работу</span>
+                      </button>
+                    )}
+                    {/* Удалить заказ навсегда — только в архиве (завершённые/отменённые) */}
+                    {isArchive && (
+                      <button
+                        onClick={() => deleteOrder(order.id, order.display_number || `#${order.id}`)}
+                        disabled={deletingId === order.id}
+                        className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-500/40 bg-red-500/5 px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50 sm:px-3"
+                        style={{ cursor: "pointer" }}
+                        title="Удалить заказ навсегда (снять резервы, вернуть товар на склад)">
+                        <Icon name={deletingId === order.id ? "Loader" : "Trash2"} size={12} className={deletingId === order.id ? "animate-spin" : ""} />
+                        <span className="hidden sm:inline">Удалить</span>
                       </button>
                     )}
                   </div>

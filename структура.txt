@@ -660,6 +660,12 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   writeoff_order (выдача) после списания qty_reserved закрывает ACTIVE-резервы
   заказа → FULFILLED (иначе синхронизация возвращала qty_reserved в наличие).
   warehouse/unreserve (action) теперь возвращает qty в наличие (qty += n).
+- [v7.45] УДАЛЕНИЕ ЗАКАЗА: backend/orders method=DELETE (?id=N). Блок при RMA;
+  снятие резервов через ядро (release_order_reserves, only_new_negative=False);
+  DELETE warehouse_reserves/warehouse_backorders; order_id=NULL в movements/
+  stock_log/finance_transactions/sn_archive/employee_account_tx (история жива);
+  DELETE wip_component_eta+wip_builds; DELETE orders. Фронт: api.orders.remove,
+  кнопка «Удалить» в AdminOrdersTab только в архиве.
 - wip-builds margin: цены продажи из orders.items, себестоимость из
   warehouse_reserves по product_id. Фолбэк на pc_builds — для старого формата.
 - generate-warranty: чек из orders.items (новый формат) либо разворот из

@@ -73,6 +73,7 @@ export const api = {
     getById: (id: number) => fetch(`${URLS.orders}?id=${id}`).then(r => r.json()),
     updateItem: (data: unknown) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
     updateStatus: (data: unknown) => fetch(URLS.orders, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+    remove: (id: number) => fetch(`${URLS.orders}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
     setPrepayment: (data: { id: number; prepayment_percent?: number; prepayment_amount?: number }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_prepayment", ...data }) }).then(r => r.json()),
     setSource: (id: number, source_id: number | null) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_source", id, source_id }) }).then(r => r.json()),
     linkQuiz: (id: number, quiz_request_id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "link_quiz", id, quiz_request_id }) }).then(r => r.json()),
