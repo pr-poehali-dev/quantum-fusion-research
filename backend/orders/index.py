@@ -1704,6 +1704,15 @@ def handler(event: dict, context) -> dict:
                     it["item_status"] = "issued"
                     wrote_off.append({"name": it.get("name"), "qty": qty - left, "price": sale_price})
 
+                # Закрываем ACTIVE-резервы заказа (товар выдан) → FULFILLED, чтобы
+                # синхронизация (recalc_reserves) не считала qty_reserved «лишним»
+                # и не пыталась вернуть его в наличие. qty_reserved уже уменьшен выше.
+                cur.execute(
+                    f"UPDATE {schema}.warehouse_reserves "
+                    f"SET status = 'FULFILLED', updated_at = NOW() "
+                    f"WHERE order_id = %s AND status = 'ACTIVE'",
+                    (order_id,)
+                )
                 cur.execute("UPDATE orders SET items=%s, status='done', updated_at=NOW() WHERE id=%s",
                             (json.dumps(items), order_id))
                 # Синхронизируем WIP-сборку: при выдаче переводим стадию в «Забрали»
@@ -1762,91 +1771,14 @@ def handler(event: dict, context) -> dict:
             order_id = body["id"]
             schema = "t_p72635010_quantum_fusion_resea"
 
-            # При отмене — снимаем все резервы этого заказа со склада
+            # При отмене — снимаем ВСЕ резервы заказа через единое ядро.
+            # Источник истины — warehouse_reserves (release_order_reserves сам
+            # вернёт POSITIVE в наличие и снимет NEGATIVE + корзину). Старый путь
+            # считал резерв по warehouse_movements и делал qty=qty+..., из-за чего
+            # при наличии core-резервов остаток возвращался ДВАЖДЫ (баг-репорт п.5).
             if new_status == "cancelled":
-                # Считаем чистый резерв по каждой поставке (reserved - unreserved)
-                # Включаем все движения заказа, кроме уже снятых
-                cur.execute(
-                    f"SELECT m.supply_id, s.group_id, SUM(m.qty_delta) as net_qty "
-                    f"FROM {schema}.warehouse_movements m "
-                    f"JOIN {schema}.warehouse_supplies s ON s.id = m.supply_id "
-                    f"WHERE m.order_id = %s AND m.type IN ('reserved', 'unreserved') "
-                    f"GROUP BY m.supply_id, s.group_id "
-                    f"HAVING SUM(m.qty_delta) > 0",
-                    (order_id,)
-                )
-                reserves = cur.fetchall()
-                for sid, gid, qty in reserves:
-                    cur.execute(
-                        f"UPDATE {schema}.warehouse_supplies "
-                        f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
-                        f"WHERE id = %s",
-                        (int(qty), int(qty), sid)
-                    )
-                    cur.execute(
-                        f"INSERT INTO {schema}.warehouse_movements "
-                        f"(group_id, supply_id, order_id, type, qty_delta, note, created_at) "
-                        f"VALUES (%s, %s, %s, 'unreserved', %s, %s, NOW())",
-                        (gid, sid, order_id, -int(qty), f"Снят резерв при отмене заказа #{order_id}")
-                    )
-                # Снимаем отрицательные резервы (qty_negative) через wip_builds
-                # Для config/pc_build заказов — смотрим слоты need_order в wip_builds
-                cur.execute(
-                    f"SELECT wb.id, wb.build_id FROM {schema}.wip_builds wb WHERE wb.order_id = %s LIMIT 1",
-                    (order_id,)
-                )
-                wip_neg = cur.fetchone()
-                if wip_neg:
-                    wip_neg_id, build_neg_id = wip_neg
-                    if build_neg_id:
-                        cur.execute(
-                            f"SELECT components FROM {schema}.pc_builds WHERE id = %s LIMIT 1",
-                            (build_neg_id,)
-                        )
-                        pc_neg_row = cur.fetchone()
-                        if pc_neg_row and pc_neg_row[0]:
-                            pc_neg_comps = pc_neg_row[0] if isinstance(pc_neg_row[0], list) else json.loads(pc_neg_row[0])
-                            for comp in pc_neg_comps:
-                                src_id = comp.get("source_id")
-                                comp_qty = int(comp.get("qty", 1))
-                                if not src_id:
-                                    continue
-                                cur.execute(
-                                    f"SELECT s.id FROM {schema}.warehouse_supplies s "
-                                    f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                                    f"WHERE g.product_id = %s AND s.qty_negative > 0 ORDER BY s.id DESC LIMIT 1",
-                                    (int(src_id),)
-                                )
-                                neg_row = cur.fetchone()
-                                if neg_row:
-                                    cur.execute(
-                                        f"UPDATE {schema}.warehouse_supplies "
-                                        f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
-                                        (comp_qty, neg_row[0])
-                                    )
-                # Также снимаем qty_negative для обычных product-позиций с item_status=need_order
-                cur.execute(f"SELECT items FROM {schema}.orders WHERE id = %s", (order_id,))
-                row = cur.fetchone()
-                order_items = row[0] if row else []
-                for it in (order_items or []):
-                    pid = it.get("id")
-                    if not pid or it.get("item_type") != "product":
-                        continue
-                    if it.get("item_status") == "need_order":
-                        qty_neg = int(it.get("quantity", 1))
-                        cur.execute(
-                            f"SELECT s.id FROM {schema}.warehouse_supplies s "
-                            f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                            f"WHERE g.product_id = %s AND s.qty_negative > 0 ORDER BY s.id DESC LIMIT 1",
-                            (int(pid),)
-                        )
-                        neg_row = cur.fetchone()
-                        if neg_row:
-                            cur.execute(
-                                f"UPDATE {schema}.warehouse_supplies "
-                                f"SET qty_negative = GREATEST(0, qty_negative - %s) WHERE id = %s",
-                                (qty_neg, neg_row[0])
-                            )
+                import warehouse_core as wc
+                wc.release_order_reserves(cur, order_id, only_new_negative=True)
 
             # При завершении (done) — товар выдан клиенту.
             if new_status == "done":

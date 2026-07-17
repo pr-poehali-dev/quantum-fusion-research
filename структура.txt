@@ -644,6 +644,12 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   recalc_parts_order / recalc_build_order — обёртки (резервируют только если
   предоплата подтверждена ИЛИ есть ACTIVE-резервы). Фронт OrderProcessPage:
   add_item шлёт quantity (поле «Кол-во»), не хардкод 1.
+- [v7.41] ОТМЕНА/ВЫДАЧА — тоже через ядро. PATCH status=cancelled снимает резерв
+  через wc.release_order_reserves (был баг двойного возврата: старый путь считал
+  по warehouse_movements и делал qty+=..., а резерв уже был в warehouse_reserves).
+  writeoff_order (выдача) после списания qty_reserved закрывает ACTIVE-резервы
+  заказа → FULFILLED (иначе синхронизация возвращала qty_reserved в наличие).
+  warehouse/unreserve (action) теперь возвращает qty в наличие (qty += n).
 - wip-builds margin: цены продажи из orders.items, себестоимость из
   warehouse_reserves по product_id. Фолбэк на pc_builds — для старого формата.
 - generate-warranty: чек из orders.items (новый формат) либо разворот из

@@ -1244,8 +1244,12 @@ def handler(event: dict, context) -> dict:
             supply_id = body.get("supply_id")
             qty = int(body.get("qty", 0))
             order_id = body.get("order_id")
+            # Снятие резерва = возврат в наличие: qty += qty, qty_reserved -= qty
+            # (в модели ядра при резерве делается qty -= n, qty_reserved += n, поэтому
+            # обратная операция ДОЛЖНА вернуть qty, иначе товар пропадает со склада).
             cur.execute(
-                f"UPDATE {SCHEMA}.warehouse_supplies SET qty_reserved = GREATEST(0, qty_reserved - {qty}) "
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty = qty + {qty}, qty_reserved = GREATEST(0, qty_reserved - {qty}), updated_at = NOW() "
                 f"WHERE id = {supply_id} RETURNING group_id"
             )
             row = cur.fetchone()
