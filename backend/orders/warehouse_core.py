@@ -172,6 +172,99 @@ def handle_reserve_and_purchase(cur, order_id, lines):
     return results
 
 
+def parts_order_lines(cur, order_id):
+    """Построить список строк резерва по актуальному составу parts-заказа.
+    Источник истины — orders.items. Возвращённые (returned) позиции НЕ
+    резервируются. Количество берётся из quantity (учёт qty>1)."""
+    import json as _json
+    cur.execute(
+        f"SELECT order_type, items FROM {SCHEMA}.orders WHERE id = %s",
+        (order_id,),
+    )
+    row = cur.fetchone()
+    if not row or row[0] != "parts":
+        return []
+    items = row[1] if isinstance(row[1], list) else _json.loads(row[1] or "[]")
+    return [
+        {"product_id": int(it["id"]), "qty": int(it.get("quantity", 1) or 1), "slot": "product"}
+        for it in items
+        if it.get("item_type") == "product" and it.get("id")
+        and it.get("item_status") != "returned"
+    ]
+
+
+_PC_TO_WIP_SLOT = {
+    "cpu": "cpu", "motherboard": "motherboard", "ram": "ram",
+    "gpu": "gpu", "storage": "storage", "psu": "psu",
+    "case": "case", "cooling": "cooling",
+    "extra": "extra", "fan": "extra", "accessory": "extra",
+}
+
+
+def build_order_lines(cur, order_id):
+    """Построить строки резерва для pc_build-заказа по pc_builds.components.
+    Учитывает build_qty (кол-во сборок) и qty компонента; каждый компонент —
+    отдельная строка (source_id → product_id, slot → wip_slot). Слоты, уже
+    заказанные у поставщика (ordered_transit/ordered_delay), пропускаются."""
+    import json as _json
+    cur.execute(
+        f"SELECT wb.build_id, "
+        f"wb.cpu_status, wb.motherboard_status, wb.ram_status, wb.gpu_status, "
+        f"wb.storage_status, wb.psu_status, wb.case_status, wb.cooling_status, wb.extra_status "
+        f"FROM {SCHEMA}.wip_builds wb WHERE wb.order_id = %s LIMIT 1",
+        (order_id,),
+    )
+    row = cur.fetchone()
+    if not row or not row[0]:
+        return []
+    build_id = row[0]
+    status_by_slot = {
+        "cpu": row[1], "motherboard": row[2], "ram": row[3], "gpu": row[4],
+        "storage": row[5], "psu": row[6], "case": row[7], "cooling": row[8],
+        "extra": row[9],
+    }
+    # build_qty (кол-во сборок) хранится в orders.items у строки-конфига.
+    cur.execute(f"SELECT items FROM {SCHEMA}.orders WHERE id = %s", (order_id,))
+    orow = cur.fetchone()
+    oitems = (orow[0] if orow and isinstance(orow[0], list)
+              else _json.loads((orow[0] if orow else None) or "[]"))
+    build_qty = 1
+    for oi in oitems:
+        if oi.get("item_type") in ("config", "pc_build"):
+            build_qty = int(oi.get("quantity", 1) or 1)
+            break
+    ordered = {s for s, st in status_by_slot.items() if st in ("ordered_transit", "ordered_delay")}
+    cur.execute(f"SELECT components FROM {SCHEMA}.pc_builds WHERE id = %s", (build_id,))
+    pr = cur.fetchone()
+    comps = (pr[0] if pr and isinstance(pr[0], list) else _json.loads((pr[0] if pr else None) or "[]"))
+    lines = []
+    for comp in comps:
+        if comp.get("source") != "catalog" or not comp.get("source_id"):
+            continue  # пользовательское железо — не резервируем
+        wip_slot = _PC_TO_WIP_SLOT.get(comp.get("slot") or "", "extra")
+        if wip_slot in ordered:
+            continue
+        qty = int(comp.get("qty", 1) or 1) * build_qty
+        if qty <= 0:
+            continue
+        lines.append({"product_id": int(comp["source_id"]), "qty": qty, "slot": wip_slot})
+    return lines
+
+
+def recalc_build_order(cur, order_id):
+    """Пересчитать резервы pc_build-заказа по актуальному составу сборки.
+    Резервирует только если есть активные резервы (заказ уже был зарезервирован)."""
+    cur.execute(
+        f"SELECT COUNT(*) FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE'",
+        (order_id,),
+    )
+    if int(cur.fetchone()[0] or 0) == 0:
+        return []
+    lines = build_order_lines(cur, order_id)
+    return recalc_order_reserves(cur, order_id, lines)
+
+
 def reserve_parts_order(cur, order_id):
     """Идемпотентно зарезервировать товары parts-заказа по его items.
     Вызывается после подтверждения предоплаты. Если активные резервы уже есть —
@@ -185,23 +278,59 @@ def reserve_parts_order(cur, order_id):
     )
     if cur.fetchone():
         return []
-    cur.execute(
-        f"SELECT order_type, items FROM {SCHEMA}.orders WHERE id = %s",
-        (order_id,),
-    )
-    row = cur.fetchone()
-    if not row or row[0] != "parts":
-        return []
-    import json as _json
-    items = row[1] if isinstance(row[1], list) else _json.loads(row[1] or "[]")
-    lines = [
-        {"product_id": int(it["id"]), "qty": int(it.get("quantity", 1)), "slot": "product"}
-        for it in items
-        if it.get("item_type") == "product" and it.get("id")
-    ]
+    lines = parts_order_lines(cur, order_id)
     if not lines:
         return []
     return handle_reserve_and_purchase(cur, order_id, lines)
+
+
+def recalc_order_reserves(cur, order_id, lines):
+    """Снять ВСЕ активные резервы заказа и наложить заново по составу `lines`.
+    Идемпотентно: сколько раз ни вызови — итог одинаковый (нет дублей/минусов).
+    ЕДИНСТВЕННЫЙ правильный путь пересчёта резерва при изменении состава заказа —
+    любые ручные правки qty_reserved запрещены (иначе рассинхрон склада)."""
+    log(cur, "recalc_start", order_id=order_id, payload={"lines": len(lines)})
+    release_order_reserves(cur, order_id, only_new_negative=True)
+    # Страховка от задвоения: не должно остаться ни одного ACTIVE-резерва заказа.
+    cur.execute(
+        f"SELECT COUNT(*) FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE'",
+        (order_id,),
+    )
+    leftover = cur.fetchone()[0]
+    if leftover:
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() "
+            f"WHERE order_id = %s AND status = 'ACTIVE'",
+            (order_id,),
+        )
+        log(cur, "recalc_leftover_forced_release", order_id=order_id, delta=leftover)
+    results = handle_reserve_and_purchase(cur, order_id, lines)
+    log(cur, "recalc_done", order_id=order_id)
+    return results
+
+
+def recalc_parts_order(cur, order_id):
+    """Пересчитать резервы parts-заказа по актуальному orders.items.
+    Вызывать после ЛЮБОГО изменения состава (add/change_qty/restore/replace).
+    Резервирует только если у заказа уже была подтверждена предоплата ИЛИ уже
+    есть активные резервы — иначе резерв ставится позже (confirm_prepayment)."""
+    cur.execute(
+        f"SELECT prepayment_confirmed, "
+        f"(SELECT COUNT(*) FROM {SCHEMA}.warehouse_reserves "
+        f" WHERE order_id = o.id AND status = 'ACTIVE') "
+        f"FROM {SCHEMA}.orders o WHERE o.id = %s",
+        (order_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return []
+    prepaid, active_cnt = bool(row[0]), int(row[1] or 0)
+    if not prepaid and active_cnt == 0:
+        # Резерв ещё не должен стоять (предоплата не подтверждена) — не трогаем.
+        return []
+    lines = parts_order_lines(cur, order_id)
+    return recalc_order_reserves(cur, order_id, lines)
 
 
 def release_order_reserves(cur, order_id, only_new_negative=True):

@@ -247,6 +247,7 @@ export default function OrderProcessPage() {
   const [addSearchResults, setAddSearchResults] = useState<{ id: number; name: string; price: number; category: string }[]>([])
   const [addSearchLoading, setAddSearchLoading] = useState(false)
   const [addingItem, setAddingItem] = useState(false)
+  const [addQty, setAddQty] = useState(1)
 
   const load = useCallback(async () => {
     if (!id) return
@@ -638,6 +639,17 @@ export default function OrderProcessPage() {
         {showAddItem && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
             <p className="text-sm font-medium mb-3">Добавить товар со склада</p>
+            <div className="mb-2 flex items-center gap-2">
+              <label className="text-xs text-foreground/60">Кол-во:</label>
+              <input
+                type="number"
+                min={1}
+                value={addQty}
+                onChange={e => setAddQty(Math.max(1, parseInt(e.target.value || "1", 10) || 1))}
+                className="w-20 rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-center focus:border-primary focus:outline-none"
+                style={{ cursor: "text" }}
+              />
+            </div>
             <input
               autoFocus
               value={addSearchQ}
@@ -659,13 +671,14 @@ export default function OrderProcessPage() {
                     disabled={addingItem}
                     onClick={async () => {
                       setAddingItem(true)
-                      const res = await api.orders.updateItem({ id: Number(id), action: "add_item", item_idx: 0, new_product_id: p.id })
+                      const res = await api.orders.updateItem({ id: Number(id), action: "add_item", item_idx: 0, new_product_id: p.id, quantity: addQty })
                       setAddingItem(false)
                       if (res.error) { alert(res.error); return }
                       await load()
                       setShowAddItem(false)
                       setAddSearchQ("")
                       setAddSearchResults([])
+                      setAddQty(1)
                     }}
                     style={{ cursor: "pointer" }}
                     className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm bg-background hover:bg-muted border border-border hover:border-primary/30 transition-colors text-left disabled:opacity-50">

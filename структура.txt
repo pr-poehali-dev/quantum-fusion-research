@@ -633,6 +633,17 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
 - orders PUT: set_price/change_qty/set_warranty/set_serial пишут в orders.items
   (по slot), пересчитывают total и зеркалят в pc_builds.components
   (assembly→assembly_fee). Проверка НДС (нельзя понижать) сохранена.
+- [v7.40] РЕЗЕРВ ПРИ ИЗМЕНЕНИИ СОСТАВА — только через единое ядро. Действия
+  add_item / change_qty / restore_item / replace_item НЕ правят qty_reserved
+  вручную (это давало рассинхрон склада при qty>1). Схема: обновить
+  orders.items (и pc_builds.components для сборок) → recalc через ядро.
+  backend/orders/warehouse_core.py: recalc_order_reserves(order_id, lines) —
+  снять все ACTIVE-резервы заказа и наложить заново; parts_order_lines /
+  build_order_lines — построить строки резерва по актуальному составу (учёт
+  quantity/qty*build_qty, returned пропускаются, ordered-слоты сборки не трогаем);
+  recalc_parts_order / recalc_build_order — обёртки (резервируют только если
+  предоплата подтверждена ИЛИ есть ACTIVE-резервы). Фронт OrderProcessPage:
+  add_item шлёт quantity (поле «Кол-во»), не хардкод 1.
 - wip-builds margin: цены продажи из orders.items, себестоимость из
   warehouse_reserves по product_id. Фолбэк на pc_builds — для старого формата.
 - generate-warranty: чек из orders.items (новый формат) либо разворот из
