@@ -25,6 +25,8 @@ export interface SpecAttribute {
   is_required: boolean
   sort_order: number
   applies_to?: "all" | "air" | "liquid"
+  show_in_name?: boolean
+  name_suffix?: string | null
 }
 
 export interface SpecLink {

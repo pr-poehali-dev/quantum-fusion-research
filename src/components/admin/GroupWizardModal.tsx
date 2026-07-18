@@ -4,7 +4,7 @@ import Icon from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  NameBlock, templateForSlug, buildName, blockVisible, COLOR_NAME,
+  NameBlock, templateForSlug, buildName, blockVisible, COLOR_NAME, extraNameBlocks,
 } from "./groupNameTemplates"
 import { matchesSearch } from "@/lib/keyboardLayout"
 
@@ -23,7 +23,7 @@ interface Group {
   cell?: string | null
 }
 
-interface SpecAttr { id: number; category_id: number; code: string; options?: string[]; field_type?: string }
+interface SpecAttr { id: number; category_id: number; code: string; name?: string; options?: string[]; field_type?: string; show_in_name?: boolean; name_suffix?: string | null; sort_order?: number }
 interface SpecCat { id: number; product_category_slug?: string | null }
 interface CatalogCat { id: number; name: string; slug: string }
 
@@ -64,7 +64,7 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   const [categoryName, setCategoryName] = useState(group?.category || "")
   const [brand, setBrand] = useState("")
   const [blockVals, setBlockVals] = useState<Record<string, string>>({})
-  const [manualName, setManualName] = useState("")          // для категорий без шаблона
+
   const [nameOverride, setNameOverride] = useState("")      // ручная правка итогового названия
   const [fin, setFin] = useState({
     part_number: group?.part_number || "",
@@ -83,9 +83,35 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   // ── Категория каталога / шаблон ─────────────────────────────────────────────
   const catSlug = catalogCats.find(c => c.name === categoryName)?.slug || null
   const tpl = templateForSlug(catSlug)
+
+  // Доп. блоки, синхронизированные из характеристик категории (галочка
+  // «показывать в названии» в разделе «Совместимость»), которых нет в шаблоне.
+  const extraBlocks = useMemo<NameBlock[]>(() => {
+    const sc = specCats.find(c => c.product_category_slug === catSlug)
+    if (!sc) return []
+    const attrs = specAttrs.filter(a => a.category_id === sc.id)
+    return extraNameBlocks(tpl, attrs)
+  }, [specCats, specAttrs, catSlug, tpl])
+
+  // Коды характеристик, для которых галочка «показывать в названии» СНЯТА.
+  // Такой блок шаблона остаётся шагом (для ввода в хар-ку), но в имя не идёт.
+  const hiddenNameCodes = useMemo<Set<string>>(() => {
+    const sc = specCats.find(c => c.product_category_slug === catSlug)
+    const s = new Set<string>()
+    if (sc) specAttrs.filter(a => a.category_id === sc.id && a.show_in_name === false)
+      .forEach(a => s.add(a.code))
+    return s
+  }, [specCats, specAttrs, catSlug])
+
   const visibleBlocks = useMemo<NameBlock[]>(
-    () => tpl ? tpl.blocks.filter(b => blockVisible(tpl, b, blockVals)) : [],
-    [tpl, blockVals])
+    () => [
+      // Категория без шаблона → первый блок «Название» (ручной ввод в имя).
+      ...(tpl ? tpl.blocks.filter(b => blockVisible(tpl, b, blockVals)) : [
+        { key: "__manual__", label: "Название", input: "text" as const, required: true },
+      ]),
+      ...extraBlocks,
+    ],
+    [tpl, blockVals, extraBlocks])
 
   // attrCode → attribute_id для выбранной категории
   const attrIdByCode = useMemo(() => {
@@ -163,11 +189,20 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
   // Если характеристик нет (старый товар) — пытаемся восстановить select-блоки
   // из старого названия, чтобы прошлый выбор не терялся.
   useEffect(() => {
-    if (!group?.product_id || !tpl || specAttrs.length === 0) return
+    if (!group?.product_id) return
+    // Категория без шаблона: подставляем старое название в ручной блок.
+    if (!tpl) {
+      const nm = (group.name || "").trim()
+      if (nm) setBlockVals(p => ({ __manual__: nm, ...p }))
+      return
+    }
+    if (specAttrs.length === 0) return
     api.warehouse.specValuesGet(group.product_id).then(d => {
       const vals = d.values || {}
       const byCode: Record<string, string> = {}
-      tpl.blocks.forEach(b => {
+      // Блоки шаблона + доп. блоки (extraBlocks) — оба по attrCode.
+      const allBlocks = [...tpl.blocks, ...extraBlocks]
+      allBlocks.forEach(b => {
         if (b.attrCode && attrIdByCode[b.attrCode] !== undefined) {
           const v = vals[String(attrIdByCode[b.attrCode])]
           if (v === undefined || v === null) return
@@ -199,7 +234,7 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
     }).catch(() => {})
   }, [group?.product_id, tpl?.slug, attrIdByCode])
 
-  const liveName = buildName(brand, tpl, tpl ? blockVals : { __manual__: manualName })
+  const liveName = buildName(brand, tpl, blockVals, extraBlocks, hiddenNameCodes)
   // Итоговое название: ручная правка приоритетнее автосборки
   const finalName = nameOverride.trim() ? nameOverride : liveName
   // Старое название (как сейчас в товаре) — для сравнения при редактировании
@@ -251,21 +286,22 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
       : await api.warehouse.updateGroup({ id: group!.id, ...payload })
     if (data.error) { setLoading(false); setError(data.error); return }
 
-    // Сохраняем характеристики (значения блоков по attrCode → attribute_id)
+    // Сохраняем характеристики (значения блоков по attrCode → attribute_id).
+    // Блоки шаблона + доп. блоки, синхронизированные из характеристик (extraBlocks).
     const pid = data.product_id || group?.product_id
-    if (pid && tpl) {
+    if (pid) {
       const specVals: Record<string, string | string[]> = {}
-      tpl.blocks.forEach(b => {
+      const persist = (b: NameBlock) => {
         const v = (blockVals[b.key] || "").trim()
         if (b.attrCode && attrIdByCode[b.attrCode] !== undefined && v) {
-          // multiselect-характеристики сохраняем массивом, чтобы значение
-          // корректно легло в совместимость (value_json), иначе — строкой.
           const isMulti = attrByCode[b.attrCode]?.field_type === "multiselect"
           specVals[String(attrIdByCode[b.attrCode])] = isMulti ? [v] : v
         }
-      })
+      }
+      if (tpl) tpl.blocks.forEach(persist)
+      extraBlocks.forEach(persist)
       // ОЗУ: авто «Объём комплекта» = планки × объём 1 планки
-      if (tpl.slug === "ram") {
+      if (tpl && tpl.slug === "ram") {
         const n = parseInt(blockVals["modules"] || "0", 10)
         const cap = parseInt(blockVals["module_cap"] || "0", 10)
         if (n && cap && attrIdByCode["capacity_gb"] !== undefined) {
@@ -437,14 +473,6 @@ export default function GroupWizardModal({ group, onClose, onSaved, receiptHint 
             {curBlock.nameSuffix && (
               <p className="mt-1.5 text-[11px] text-foreground/40">В названии: {(blockVals[curBlock.key] || "…")}{curBlock.nameSuffix}</p>
             )}
-          </div>
-        )}
-
-        {/* ── Шаг: ручное название (категории без шаблона) ── */}
-        {!tpl && step >= blockStart && step < finStep && (
-          <div>
-            <label className="mb-2 block text-sm font-medium">Название *</label>
-            <Input autoFocus value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Название товара" />
           </div>
         )}
 

@@ -156,6 +156,37 @@ export const NAME_TEMPLATES: CategoryTemplate[] = [
 export const templateForSlug = (slug: string | null): CategoryTemplate | null =>
   slug ? NAME_TEMPLATES.find(t => t.slug === slug) || null : null
 
+// Мин. форма характеристики совместимости (spec_attributes) для конвертации.
+export interface SpecAttrLike {
+  code: string
+  name: string
+  field_type: string
+  options?: string[]
+  show_in_name?: boolean
+  name_suffix?: string | null
+  sort_order?: number
+}
+
+// Синхронизация: строим доп. блоки мастера из характеристик категории с
+// галочкой «показывать в названии», которых НЕТ в статическом шаблоне.
+// tpl — статический шаблон (или null для категорий без шаблона).
+export function extraNameBlocks(tpl: CategoryTemplate | null, attrs: SpecAttrLike[]): NameBlock[] {
+  const covered = new Set<string>(
+    (tpl?.blocks || []).map(b => b.attrCode).filter(Boolean) as string[]
+  )
+  return attrs
+    .filter(a => a.show_in_name && !covered.has(a.code))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map<NameBlock>(a => ({
+      key: `attr_${a.code}`,
+      label: a.name,
+      input: (a.field_type === "select" || a.field_type === "multiselect") ? "select" : "text",
+      options: a.options && a.options.length ? a.options : undefined,
+      attrCode: a.code,
+      nameSuffix: a.name_suffix || undefined,
+    }))
+}
+
 // Цвет в названии — короткий латинский вариант для красоты
 export const COLOR_NAME: Record<string, string> = {
   "Чёрный": "Black", "Белый": "White", "Серый": "Gray",
@@ -200,10 +231,22 @@ export function ramModulesPart(values: Record<string, string>): string {
 }
 
 // Собрать итоговое название: "{Бренд} {части блоков}".
-export function buildName(brand: string, tpl: CategoryTemplate | null, values: Record<string, string>): string {
+// extraBlocks — доп. блоки, синхронизированные из характеристик (show_in_name),
+// которых нет в статическом шаблоне. Идут после блоков шаблона.
+export function buildName(
+  brand: string,
+  tpl: CategoryTemplate | null,
+  values: Record<string, string>,
+  extraBlocks: NameBlock[] = [],
+  hiddenCodes: Set<string> = new Set(),
+): string {
   const parts: string[] = []
   if (brand.trim()) parts.push(brand.trim())
-  if (!tpl) { if (values["__manual__"]?.trim()) parts.push(values["__manual__"].trim()); return parts.join(" ") }
+  if (!tpl) {
+    if (values["__manual__"]?.trim()) parts.push(values["__manual__"].trim())
+    for (const b of extraBlocks) { const p = blockNamePart(b, values); if (p) parts.push(p) }
+    return parts.join(" ").replace(/\s+/g, " ").trim()
+  }
 
   for (const b of tpl.blocks) {
     // ОЗУ: после блока module_cap вставляем собранное "2x16Gb" (вместо отдельных)
@@ -213,9 +256,12 @@ export function buildName(brand: string, tpl: CategoryTemplate | null, values: R
       continue
     }
     if (tpl.slug === "ram" && b.key === "modules") continue
+    // Галочка «показывать в названии» снята для этой хар-ки → в имя не включаем.
+    if (b.attrCode && hiddenCodes.has(b.attrCode)) continue
     const p = blockNamePart(b, values)
     if (p) parts.push(p)
   }
+  for (const b of extraBlocks) { const p = blockNamePart(b, values); if (p) parts.push(p) }
   return parts.join(" ").replace(/\s+/g, " ").trim()
 }
 

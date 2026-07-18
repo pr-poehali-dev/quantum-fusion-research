@@ -277,6 +277,13 @@ src/pages/build-preview/:
 - [v7.44] Блок «Цвет / подсветка» (attrCode=color) есть у ram/gpu/motherboard/
   psu/case/cooling. Категория «Прочее» (slug other, БЕЗ шаблона) — для ноутбуков
   и нетипичных товаров, вводится вручную.
+- [v7.47] СИНХРОНИЗАЦИЯ имени с характеристиками. spec_attributes.show_in_name
+  (галочка «Показывать в названии» в AttributesBuilder) + name_suffix.
+  extraNameBlocks(tpl, attrs) добавляет в мастер шаги/имя хар-ки с галочкой,
+  которых нет в статич. шаблоне; hiddenNameCodes убирает из имени хар-ки шаблона
+  со снятой галочкой (шаг ввода остаётся). buildName(...,extraBlocks,hiddenCodes).
+  Категория без шаблона: «Название» — обычный первый блок (key __manual__).
+  Бэк warehouse: spec_schema/spec_attr_create/update читают-пишут оба поля.
 
 ## Масштаб интерфейса админки (v7.46)
 - src/store/uiScale.ts (zustand+persist, localStorage admin-ui-scale, 0.9…1.3).

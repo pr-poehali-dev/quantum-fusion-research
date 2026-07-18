@@ -2059,7 +2059,8 @@ def handler(event: dict, context) -> dict:
                      "product_category_slug": r[5], "sort_order": r[6]} for r in cur.fetchall()]
             cur.execute(
                 f"SELECT id, category_id, code, name, field_type, options, unit, "
-                f"affects_compat, is_required, sort_order, applies_to "
+                f"affects_compat, is_required, sort_order, applies_to, "
+                f"COALESCE(show_in_name, FALSE), name_suffix "
                 f"FROM {SCHEMA}.spec_attributes ORDER BY category_id, sort_order, id"
             )
             attrs = []
@@ -2067,7 +2068,8 @@ def handler(event: dict, context) -> dict:
                 attrs.append({"id": r[0], "category_id": r[1], "code": r[2], "name": r[3],
                               "field_type": r[4], "options": r[5] or [], "unit": r[6],
                               "affects_compat": r[7], "is_required": r[8], "sort_order": r[9],
-                              "applies_to": r[10] or "all"})
+                              "applies_to": r[10] or "all",
+                              "show_in_name": r[11], "name_suffix": r[12]})
             cur.execute(
                 f"SELECT id, name, from_attribute_id, to_attribute_id, rule, note, is_active "
                 f"FROM {SCHEMA}.spec_links ORDER BY id"
@@ -2131,13 +2133,15 @@ def handler(event: dict, context) -> dict:
                 applies_to = "all"
             cur.execute(
                 f"INSERT INTO {SCHEMA}.spec_attributes "
-                f"(category_id, code, name, field_type, options, unit, affects_compat, is_required, sort_order, applies_to) "
+                f"(category_id, code, name, field_type, options, unit, affects_compat, is_required, sort_order, applies_to, show_in_name, name_suffix) "
                 f"VALUES ({cid}, {esc(code)}, {esc(name)}, {esc(body.get('field_type') or 'text')}, "
                 f"{esc(json.dumps(body.get('options') or []))}::jsonb, "
                 f"{esc(body.get('unit')) if body.get('unit') else 'NULL'}, "
                 f"{'TRUE' if body.get('affects_compat') else 'FALSE'}, "
                 f"{'TRUE' if body.get('is_required') else 'FALSE'}, "
-                f"{int(body.get('sort_order') or 0)}, {esc(applies_to)}) "
+                f"{int(body.get('sort_order') or 0)}, {esc(applies_to)}, "
+                f"{'TRUE' if body.get('show_in_name') else 'FALSE'}, "
+                f"{esc(body.get('name_suffix')) if body.get('name_suffix') else 'NULL'}) "
                 f"ON CONFLICT (category_id, code) DO NOTHING RETURNING id"
             )
             row = cur.fetchone()
@@ -2155,9 +2159,11 @@ def handler(event: dict, context) -> dict:
                 sets.append(f"applies_to = {esc(at)}")
             if "options" in body:
                 sets.append(f"options = {esc(json.dumps(body['options'] or []))}::jsonb")
-            for f in ["affects_compat", "is_required"]:
+            for f in ["affects_compat", "is_required", "show_in_name"]:
                 if f in body:
                     sets.append(f"{f} = {'TRUE' if body[f] else 'FALSE'}")
+            if "name_suffix" in body:
+                sets.append(f"name_suffix = {esc(body['name_suffix']) if body.get('name_suffix') else 'NULL'}")
             if "sort_order" in body:
                 sets.append(f"sort_order = {int(body['sort_order'])}")
             if sets:
@@ -2273,13 +2279,15 @@ def handler(event: dict, context) -> dict:
             spec_cat_id = sc_row[0]
             # атрибуты этой spec-категории
             cur.execute(
-                f"SELECT id, code, name, field_type, options, unit, affects_compat, is_required, sort_order, applies_to "
+                f"SELECT id, code, name, field_type, options, unit, affects_compat, is_required, sort_order, applies_to, "
+                f"COALESCE(show_in_name, FALSE), name_suffix "
                 f"FROM {SCHEMA}.spec_attributes WHERE category_id = {spec_cat_id} ORDER BY sort_order, id"
             )
             attributes = [{"id": r[0], "code": r[1], "name": r[2], "field_type": r[3],
                            "options": r[4] or [], "unit": r[5], "affects_compat": r[6],
                            "is_required": r[7], "sort_order": r[8],
-                           "applies_to": r[9] or "all"} for r in cur.fetchall()]
+                           "applies_to": r[9] or "all",
+                           "show_in_name": r[10], "name_suffix": r[11]} for r in cur.fetchall()]
             # товары, чья товарная категория привязана к этой spec-категории
             cur.execute(
                 f"SELECT p.id, p.name, p.price, p.image_url, p.image_urls, p.in_stock, "

@@ -102,15 +102,22 @@ export default function AttributesBuilder({ schema, productCategorySlugs, reload
                           {a.options.length > 0 && <span className="ml-1 text-foreground/30">({a.options.length})</span>}
                         </td>
                         <td className="px-4 py-3">
-                          {a.affects_compat ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                              <Icon name="Link2" size={11} /> Совместимость
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">
-                              <Icon name="Eye" size={11} /> Ознакомление
-                            </span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {a.affects_compat ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                                <Icon name="Link2" size={11} /> Совместимость
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">
+                                <Icon name="Eye" size={11} /> Ознакомление
+                              </span>
+                            )}
+                            {a.show_in_name && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500" title="Попадает в название товара">
+                                <Icon name="Tag" size={11} /> В названии
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => setEditAttr(a)} className="text-foreground/40 hover:text-primary" style={{ cursor: "pointer" }}>
@@ -208,6 +215,8 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
   const [editText, setEditText] = useState("")
   const [affects, setAffects] = useState(attr?.affects_compat ?? false)
   const [required, setRequired] = useState(attr?.is_required ?? false)
+  const [showInName, setShowInName] = useState(attr?.show_in_name ?? false)
+  const [nameSuffix, setNameSuffix] = useState(attr?.name_suffix || "")
   const [appliesTo, setAppliesTo] = useState<"all" | "air" | "liquid">(attr?.applies_to || "all")
   const [saving, setSaving] = useState(false)
 
@@ -231,7 +240,7 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
   const save = async () => {
     if (!name.trim() || (!attr && !code.trim())) return
     setSaving(true)
-    const payload = { name, field_type: fieldType, unit: unit || null, options: hasOptions ? options : [], affects_compat: affects, is_required: required, applies_to: appliesTo }
+    const payload = { name, field_type: fieldType, unit: unit || null, options: hasOptions ? options : [], affects_compat: affects, is_required: required, applies_to: appliesTo, show_in_name: showInName, name_suffix: showInName ? (nameSuffix.trim() || null) : null }
     if (attr) await api.warehouse.specAttrUpdate({ id: attr.id, ...payload })
     else await api.warehouse.specAttrCreate({ category_id: categoryId, code: code.trim(), ...payload })
     setSaving(false)
@@ -303,6 +312,15 @@ function AttributeModal({ attr, categoryId, onClose, onSaved }:
           label="Влияет на совместимость" hint="Можно использовать в правилах связей. Иначе — просто для ознакомления." />
         <Toggle on={required} onClick={() => setRequired(v => !v)}
           label="Обязательная для заполнения" hint="Пока не заполнена — товар в статусе «Новый»." />
+        <Toggle on={showInName} onClick={() => setShowInName(v => !v)}
+          label="Показывать в названии" hint="Значение попадёт в название товара при создании карточки (в мастере)." />
+        {showInName && (
+          <div className="pl-12">
+            <label className="mb-1 block text-xs font-medium text-foreground/60">Суффикс в названии (необязательно)</label>
+            <input value={nameSuffix} onChange={e => setNameSuffix(e.target.value)} className={inp} placeholder="напр. Gb, W, mhz" />
+            <p className="mt-1 text-xs text-foreground/40">Добавится сразу после значения в имени: «16» + «Gb» → «16Gb».</p>
+          </div>
+        )}
       </div>
       <ModalFooter onClose={onClose} onSave={save} saving={saving} onDelete={attr ? del : undefined} />
     </Modal>
