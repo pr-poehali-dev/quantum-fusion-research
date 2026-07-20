@@ -38,6 +38,20 @@ def resolve_group_id(cur, product_id):
     return row[0] if row else None
 
 
+def free_stock(cur, group_id):
+    """Свободный остаток SKU = Σqty - Σqty_reserved (не меньше 0).
+    Используется, чтобы понять, есть ли товар на складе для резерва."""
+    if not group_id:
+        return 0
+    cur.execute(
+        f"SELECT COALESCE(SUM(qty),0) - COALESCE(SUM(qty_reserved),0) "
+        f"FROM {SCHEMA}.warehouse_supplies WHERE group_id = %s",
+        (group_id,),
+    )
+    row = cur.fetchone()
+    return max(int(row[0] or 0), 0)
+
+
 def lock_group_supplies(cur, group_id):
     cur.execute(
         f"SELECT id, qty, qty_reserved, qty_negative, cost_price "
@@ -242,12 +256,22 @@ def build_order_lines(cur, order_id):
         if comp.get("source") != "catalog" or not comp.get("source_id"):
             continue  # пользовательское железо — не резервируем
         wip_slot = _PC_TO_WIP_SLOT.get(comp.get("slot") or "", "extra")
-        if wip_slot in ordered:
-            continue
         qty = int(comp.get("qty", 1) or 1) * build_qty
         if qty <= 0:
             continue
-        lines.append({"product_id": int(comp["source_id"]), "qty": qty, "slot": wip_slot})
+        pid = int(comp["source_id"])
+        if wip_slot in ordered:
+            # Слот помечен «заказан у поставщика». Раньше он ПОЛНОСТЬЮ выпадал из
+            # резерва — но если товар лежит на складе, его нужно зарезервировать
+            # (POSITIVE), иначе наличие не бронируется. Резервируем ТОЛЬКО в
+            # пределах свободного остатка: то, что реально едет от поставщика,
+            # в минус-резерв/закупку повторно не заносим.
+            gid = resolve_group_id(cur, pid)
+            free = free_stock(cur, gid)
+            if free <= 0:
+                continue  # товара нет — он в пути, дубликат закупки не создаём
+            qty = min(qty, free)
+        lines.append({"product_id": pid, "qty": qty, "slot": wip_slot})
     return lines
 
 

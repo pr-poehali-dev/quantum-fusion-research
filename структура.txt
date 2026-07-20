@@ -667,6 +667,13 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   recalc_parts_order / recalc_build_order — обёртки (резервируют только если
   предоплата подтверждена ИЛИ есть ACTIVE-резервы). Фронт OrderProcessPage:
   add_item шлёт quantity (поле «Кол-во»), не хардкод 1.
+- [v7.48] ORDERED-СЛОТ + НАЛИЧИЕ. Раньше слот со статусом «заказан у поставщика»
+  (ordered_transit/ordered_delay) полностью выпадал из резерва → товар на складе
+  не бронировался (баг GUNO0091 в PC00426). Теперь build_order_lines и sync_order
+  резервируют ordered-слот в пределах свободного остатка (wc.free_stock =
+  Σqty−Σqty_reserved; min(qty,free)); при free=0 — пропускают (дубль закупки не
+  создаём). Статус ordered-слота, из которого взяли наличие, сохраняется
+  (sync_order: kept_ordered_slots).
 - [v7.41] ОТМЕНА/ВЫДАЧА — тоже через ядро. PATCH status=cancelled снимает резерв
   через wc.release_order_reserves (был баг двойного возврата: старый путь считал
   по warehouse_movements и делал qty+=..., а резерв уже был в warehouse_reserves).

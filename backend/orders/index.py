@@ -1372,17 +1372,29 @@ def handler(event: dict, context) -> dict:
                 # несколько накопителей), которые раньше склеивались в одну строку
                 # и терялись при маппинге slot→product.
                 reserved_any_component = False
+                # Слоты «заказан у поставщика», которые мы частично зарезервировали
+                # из наличия — их статус НЕ меняем (товар всё ещё едет).
+                kept_ordered_slots = set()
                 for comp in pc_components:
                     if comp.get("source") != "catalog" or not comp.get("source_id"):
                         continue  # пользовательское железо — не резервируем
                     pc_slot = comp.get("slot") or ""
                     wip_slot = PC_TO_WIP_SLOT.get(pc_slot, "extra")
-                    if wip_slot in ordered_wip_slots:
-                        continue
                     comp_qty = int(comp.get("qty", 1) or 1) * build_qty
                     if comp_qty <= 0:
                         continue
                     product_id = int(comp["source_id"])
+                    slot_ordered = wip_slot in ordered_wip_slots
+                    if slot_ordered:
+                        # Слот «заказан у поставщика»: резервируем ТОЛЬКО из
+                        # свободного остатка (если товар лежит на складе). Дефицит
+                        # (закупку) повторно не создаём — то, что едет, уже заказано.
+                        gid = wc.resolve_group_id(cur, product_id)
+                        free = wc.free_stock(cur, gid)
+                        if free <= 0:
+                            continue
+                        comp_qty = min(comp_qty, free)
+                        kept_ordered_slots.add(wip_slot)
                     reserved_any_component = True
                     res = wc.reserve_line(cur, order_id, product_id=product_id,
                                           qty=comp_qty, slot=wip_slot)
@@ -1400,6 +1412,8 @@ def handler(event: dict, context) -> dict:
 
                 new_statuses = {}
                 for wip_slot in set(list(slot_had_negative) + list(slot_had_positive)):
+                    if wip_slot in kept_ordered_slots:
+                        continue  # слот заказан у поставщика — статус сохраняем
                     if slot_had_negative.get(wip_slot):
                         new_statuses[wip_slot] = "need_order"
                     elif slot_had_positive.get(wip_slot):
