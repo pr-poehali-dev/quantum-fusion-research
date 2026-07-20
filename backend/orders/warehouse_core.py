@@ -50,12 +50,13 @@ def resolve_group_id(cur, product_id):
 
 
 def free_stock(cur, group_id):
-    """Свободный остаток SKU = Σqty - Σqty_reserved (не меньше 0).
-    Используется, чтобы понять, есть ли товар на складе для резерва."""
+    """Свободный остаток SKU = Σqty (не меньше 0). qty партии — это УЖЕ свободное
+    к резерву (при резерве qty-=n/qty_reserved+=n). qty_reserved вычитать НЕ надо
+    — иначе двойное вычитание занизит остаток."""
     if not group_id:
         return 0
     cur.execute(
-        f"SELECT COALESCE(SUM(qty),0) - COALESCE(SUM(qty_reserved),0) "
+        f"SELECT COALESCE(SUM(qty),0) "
         f"FROM {SCHEMA}.warehouse_supplies WHERE group_id = %s",
         (group_id,),
     )
@@ -127,7 +128,11 @@ def reserve_line(cur, order_id, product_id, qty, slot=None):
                 "positive": 0, "negative": 0}
 
     supplies = lock_group_supplies(cur, group_id)
-    free = sum(max(s[1], 0) for s in supplies) - sum(max(s[2], 0) for s in supplies)
+    # Свободный остаток = Σqty. ВАЖНО: qty партии — это УЖЕ свободное к резерву
+    # (при резерве делается qty-=n, qty_reserved+=n; при снятии qty+=n). Раньше
+    # тут ошибочно вычиталось ещё и qty_reserved (Σqty−Σqty_reserved) — двойное
+    # вычитание занижало free и создавало ложный минус-резерв при наличии товара.
+    free = sum(max(s[1], 0) for s in supplies)
     free = max(free, 0)
 
     take = min(free, qty)

@@ -667,6 +667,11 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   recalc_parts_order / recalc_build_order — обёртки (резервируют только если
   предоплата подтверждена ИЛИ есть ACTIVE-резервы). Фронт OrderProcessPage:
   add_item шлёт quantity (поле «Кол-во»), не хардкод 1.
+- [v7.50] КОРНЕВОЙ ФИКС СВОБОДНОГО ОСТАТКА. В reserve_line свободный остаток =
+  Σqty (НЕ Σqty−Σqty_reserved). qty партии — УЖЕ свободное к резерву; физическое
+  наличие = qty+qty_reserved. Двойное вычитание qty_reserved занижало free и
+  создавало ложный минус-резерв при наличии товара (жалоба KWZO0088). Исправлено
+  во всех 6 копиях warehouse_core + free_stock. См. WAREHOUSE_LOGIC.md.
 - [v7.49] ЗАЩИТА ОТ ГОНКИ. warehouse_core.lock_order(order_id) — row-lock на
   строку заказа (SELECT id FROM orders WHERE id=%s FOR UPDATE), чтобы два
   одновременных пересчёта (двойной sync/авто-sync) не теряли резервы. Вызов

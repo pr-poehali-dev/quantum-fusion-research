@@ -110,7 +110,9 @@ def reserve_line(cur, order_id, product_id, qty, slot=None):
                 "positive": 0, "negative": 0}
 
     supplies = lock_group_supplies(cur, group_id)
-    free = sum(max(s[1], 0) for s in supplies) - sum(max(s[2], 0) for s in supplies)
+    # free = Σqty (qty уже свободное к резерву; qty_reserved НЕ вычитаем —
+    # иначе двойное вычитание → ложный минус-резерв при наличии). Исправлено.
+    free = sum(max(s[1], 0) for s in supplies)
     free = max(free, 0)
 
     take = min(free, qty)

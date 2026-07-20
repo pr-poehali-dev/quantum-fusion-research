@@ -13,12 +13,20 @@
 
 ## Инвариант остатков (на уровне SKU = group_id)
 
+ВАЖНО: `qty` партии — это УЖЕ СВОБОДНЫЙ остаток (свободно к резерву), а НЕ полное
+физическое наличие. При резерве: `qty -= n`, `qty_reserved += n`; при снятии:
+`qty += n`, `qty_reserved -= n`. Поэтому:
+
 ```
-physical_on_hand(group) = Σ supplies.qty                 -- лежит на складе
+free(group)             = Σ supplies.qty                 -- свободно к резерву (уже за вычетом резерва!)
 total_reserved(group)   = Σ supplies.qty_reserved        -- POSITIVE резервы
 total_negative(group)   = Σ supplies.qty_negative        -- NEGATIVE (долг → закупка)
-free(group)             = physical_on_hand - total_reserved
+physical_on_hand(group) = Σ(supplies.qty + qty_reserved) -- физически на полке = свободно + в резерве
 ```
+
+⚠️ НЕ вычитать qty_reserved из Σqty при расчёте free — это ДВОЙНОЕ вычитание
+(qty уже свободный). Такой баг создавал ложный минус-резерв при наличии товара
+(см. чейнжлог v7.50).
 
 POSITIVE-резерв уменьшает `qty` партии и увеличивает `qty_reserved`.
 NEGATIVE-резерв НЕ трогает `qty` — только `qty_negative` (сигнал закупки).
