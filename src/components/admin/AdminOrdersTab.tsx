@@ -94,7 +94,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
 
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const deleteOrder = async (id: number, num: string) => {
-    if (!confirm(`Удалить заказ ${num} НАВСЕГДА?\n\nРезервы снимутся (товар вернётся на склад), заказ и сборка удалятся безвозвратно. История склада и финансов сохранится.`)) return
+    if (!confirm(`Удалить заказ ${num} НАВСЕГДА?\n\nРезервы снимутся (товар вернётся на склад), заказ и сборка удалятся безвозвратно.\n\nЕсли по заказу была внесена предоплата — она будет обнулена (считается, что деньги возвращены клиенту), в кассе создастся возвратная проводка. История склада сохранится.`)) return
     setDeletingId(id)
     const res = await api.orders.remove(id)
     setDeletingId(null)
@@ -341,18 +341,18 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                         <span className="hidden sm:inline">Вернуть в работу</span>
                       </button>
                     )}
-                    {/* Удалить заказ навсегда — только в архиве (завершённые/отменённые) */}
-                    {isArchive && (
-                      <button
-                        onClick={() => deleteOrder(order.id, order.display_number || `#${order.id}`)}
-                        disabled={deletingId === order.id}
-                        className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-500/40 bg-red-500/5 px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50 sm:px-3"
-                        style={{ cursor: "pointer" }}
-                        title="Удалить заказ навсегда (снять резервы, вернуть товар на склад)">
-                        <Icon name={deletingId === order.id ? "Loader" : "Trash2"} size={12} className={deletingId === order.id ? "animate-spin" : ""} />
-                        <span className="hidden sm:inline">Удалить</span>
-                      </button>
-                    )}
+                    {/* Удалить заказ навсегда: снимает резервы, обнуляет предоплату
+                        (возврат клиенту), удаляет заказ и сборку. Доступно в любом
+                        списке заказов. */}
+                    <button
+                      onClick={() => deleteOrder(order.id, order.display_number || `#${order.id}`)}
+                      disabled={deletingId === order.id}
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-500/40 bg-red-500/5 px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50 sm:px-3"
+                      style={{ cursor: "pointer" }}
+                      title="Удалить заказ навсегда (снять резервы, обнулить предоплату)">
+                      <Icon name={deletingId === order.id ? "Loader" : "Trash2"} size={12} className={deletingId === order.id ? "animate-spin" : ""} />
+                      <span className="hidden sm:inline">Удалить</span>
+                    </button>
                   </div>
                 </div>
               </div>

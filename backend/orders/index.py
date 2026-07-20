@@ -1909,6 +1909,31 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 400, "headers": cors, "body": json.dumps({
                     "error": "У заказа есть гарантийные обращения (RMA). Удаление запрещено — сначала закройте RMA."})}
 
+            # 0) ПРЕДОПЛАТА/ОПЛАТА: если по заказу были приходы денег
+            #    (предоплата или оплата заказа), значит их вернули клиенту при
+            #    удалении заказа. Создаём возвратную проводку (расход) на всю
+            #    сумму приходов заказа, чтобы касса сошлась (приход − возврат = 0),
+            #    и обнуляем флаги предоплаты. affects_pnl=FALSE — это не убыток
+            #    бизнеса, а сторнирование прихода (деньги отданы обратно).
+            cur.execute(
+                f"SELECT COALESCE(SUM(amount), 0) FROM {schema}.finance_transactions "
+                f"WHERE order_id=%s AND kind='income'", (order_id,))
+            paid_in = float(cur.fetchone()[0] or 0)
+            if paid_in > 0:
+                # Номер заказа для пометки в проводке
+                cur.execute(f"SELECT display_number FROM {schema}.orders WHERE id=%s", (order_id,))
+                _dn = cur.fetchone()
+                disp = (_dn[0] if _dn and _dn[0] else f"#{order_id}")
+                cur.execute(
+                    f"INSERT INTO {schema}.finance_transactions "
+                    f"(kind, type_id, amount, note, affects_pnl, order_id, occurred_at) "
+                    f"VALUES ('expense', 1, %s, %s, FALSE, %s, NOW())",
+                    (paid_in, f"Возврат клиенту по удалённому заказу {disp} (предоплата возвращена)", order_id))
+                cur.execute(
+                    f"UPDATE {schema}.orders SET prepayment_confirmed=FALSE, prepayment_amount=0, "
+                    f"remaining_paid=FALSE, remaining_paid_amount=0, updated_at=NOW() WHERE id=%s",
+                    (order_id,))
+
             # 1) Снимаем ВСЕ активные резервы через ядро (POSITIVE→наличие,
             #    NEGATIVE→qty_negative+корзина). Заказанное у поставщика тоже
             #    снимаем — при полном удалении заказа держать нечего.
