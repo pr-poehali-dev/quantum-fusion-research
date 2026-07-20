@@ -27,6 +27,14 @@ def _movement(cur, group_id, supply_id, order_id, mtype, qty_delta, note=None):
     )
 
 
+def lock_order(cur, order_id):
+    """Транзакционная блокировка на заказ (row-lock FOR UPDATE, защита от гонки
+    пересчёта резервов). Снимается автоматически при commit/rollback."""
+    if not order_id:
+        return
+    cur.execute(f"SELECT id FROM {SCHEMA}.orders WHERE id = %s FOR UPDATE", (int(order_id),))
+
+
 def resolve_group_id(cur, product_id):
     if not product_id:
         return None
@@ -178,6 +186,7 @@ def reserve_parts_order(cur, order_id):
     ничего не делает. Возвращает список результатов (или [])."""
     if not order_id:
         return []
+    lock_order(cur, order_id)  # защита от гонки check-then-reserve
     cur.execute(
         f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
         f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",

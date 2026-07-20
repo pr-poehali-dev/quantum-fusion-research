@@ -1294,6 +1294,13 @@ def handler(event: dict, context) -> dict:
                 if order_status_row and order_status_row[0] == "cancelled":
                     return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Заказ отменён"})}
 
+                # ЗАЩИТА ОТ ГОНКИ: сериализуем весь пересчёт заказа (read+release+
+                # reserve) под транзакционной блокировкой. Два одновременных
+                # sync_order (двойной клик / авто-sync) раньше пересекались и
+                # теряли часть резервов. Снимается на commit/rollback.
+                import warehouse_core as wc
+                wc.lock_order(cur, order_id)
+
                 # Получаем wip_build и pc_build для этого заказа
                 cur.execute(
                     f"SELECT wb.id, wb.cpu, wb.motherboard, wb.ram, wb.gpu, wb.storage, wb.psu, wb.case_name, wb.cooling, wb.extra, "

@@ -3,6 +3,25 @@
 
 ---
 
+## v7.49 | 2026-07-20 | Защита от гонки пересчёта резервов (потеря резерва при двойном sync)
+
+Баг: два одновременных пересчёта одного заказа (двойной клик
+«Синхронизировать» / авто-sync) пересекались — один снимал резервы, второй в
+это же время накладывал, и часть позиций терялась (в логах два release_order за
+доли секунды; у PC00426 пропадал CPU-резерв).
+
+Фикс: warehouse_core.lock_order(cur, order_id) — транзакционная блокировка на
+строку заказа (SELECT id FROM orders WHERE id=%s FOR UPDATE). Второй пересчёт
+ждёт коммита первого, снимается на commit/rollback.
+- Вызывается первой операцией в: recalc_order_reserves, reserve_parts_order,
+  ensure_order_reserves (все копии warehouse_core), и в начале sync_order
+  (backend/orders/index.py) — до чтения wip/release/reserve.
+- Помечено в 5 функциях: orders, reserves, wip-builds, finance, tg-bot.
+- ВАЖНО: pg_advisory_xact_lock в этой среде ЗАБАНЕН (validator: banned
+  function) — поэтому используем row-lock FOR UPDATE, а не advisory-локи.
+- Все тесты зелёные, selftest резервов 6/6. PC00426: CPU резервируется, склад
+  сошёлся.
+
 ## v7.48 | 2026-07-20 | Фикс: слот «заказан у поставщика» не резервировал наличие
 
 Баг: если у слота ПК-сборки стоял статус «заказан у поставщика»

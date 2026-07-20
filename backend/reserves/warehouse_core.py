@@ -34,6 +34,16 @@ def _movement(cur, group_id, supply_id, order_id, mtype, qty_delta, note=None):
     )
 
 
+def lock_order(cur, order_id):
+    """Транзакционная блокировка на заказ (защита от гонки пересчёта резервов).
+    Два одновременных пересчёта одного заказа сериализуются: второй ждёт коммита
+    первого (row-lock на строку заказа). Снимается автоматически при
+    commit/rollback. Используем FOR UPDATE вместо advisory-локов (те забанены)."""
+    if not order_id:
+        return
+    cur.execute(f"SELECT id FROM {SCHEMA}.orders WHERE id = %s FOR UPDATE", (int(order_id),))
+
+
 # ── Резолв group_id по product_id ───────────────────────────────────────────
 def resolve_group_id(cur, product_id):
     """Вернуть group_id (SKU) для товара. None если товара/группы нет."""
@@ -234,6 +244,7 @@ def ensure_order_reserves(cur, order_id, build_id=None):
     """
     if not order_id:
         return []
+    lock_order(cur, order_id)  # защита от гонки check-then-reserve
     # Уже есть активные резервы заказа → не дублируем
     cur.execute(
         f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
@@ -279,6 +290,7 @@ def reserve_parts_order(cur, order_id):
     """
     if not order_id:
         return []
+    lock_order(cur, order_id)  # защита от гонки check-then-reserve
     cur.execute(
         f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
         f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",
@@ -536,6 +548,7 @@ def recalc_order_reserves(cur, order_id, lines):
          (регресс/гонка) — принудительно закрываем его, чтобы не задвоить.
       3) handle_reserve_and_purchase — накладывает резервы под актуальный состав.
     """
+    lock_order(cur, order_id)  # защита от параллельного пересчёта того же заказа
     log(cur, "recalc_start", order_id=order_id, payload={"lines": len(lines)})
     release_order_reserves(cur, order_id, only_new_negative=True)
 

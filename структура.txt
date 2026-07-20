@@ -667,6 +667,12 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   recalc_parts_order / recalc_build_order — обёртки (резервируют только если
   предоплата подтверждена ИЛИ есть ACTIVE-резервы). Фронт OrderProcessPage:
   add_item шлёт quantity (поле «Кол-во»), не хардкод 1.
+- [v7.49] ЗАЩИТА ОТ ГОНКИ. warehouse_core.lock_order(order_id) — row-lock на
+  строку заказа (SELECT id FROM orders WHERE id=%s FOR UPDATE), чтобы два
+  одновременных пересчёта (двойной sync/авто-sync) не теряли резервы. Вызов
+  первой операцией в recalc_order_reserves/reserve_parts_order/
+  ensure_order_reserves и в начале sync_order (orders/index.py). advisory-локи
+  (pg_advisory_xact_lock) в среде ЗАБАНЕНЫ — только FOR UPDATE.
 - [v7.48] ORDERED-СЛОТ + НАЛИЧИЕ. Раньше слот со статусом «заказан у поставщика»
   (ordered_transit/ordered_delay) полностью выпадал из резерва → товар на складе
   не бронировался (баг GUNO0091 в PC00426). Теперь build_order_lines и sync_order

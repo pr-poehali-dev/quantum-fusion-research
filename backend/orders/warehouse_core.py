@@ -27,6 +27,17 @@ def _movement(cur, group_id, supply_id, order_id, mtype, qty_delta, note=None):
     )
 
 
+def lock_order(cur, order_id):
+    """Транзакционная блокировка на заказ (защита от гонки пересчёта резервов).
+    Два одновременных пересчёта одного заказа (двойной клик «Синхронизировать»,
+    авто-sync) сериализуются: второй ждёт коммита первого, а не рвёт данные
+    посередине. Row-lock на строку заказа (FOR UPDATE), снимается на
+    commit/rollback. Вызывать ПЕРВОЙ операцией в транзакции пересчёта."""
+    if not order_id:
+        return
+    cur.execute(f"SELECT id FROM {SCHEMA}.orders WHERE id = %s FOR UPDATE", (int(order_id),))
+
+
 def resolve_group_id(cur, product_id):
     if not product_id:
         return None
@@ -295,6 +306,7 @@ def reserve_parts_order(cur, order_id):
     ничего не делает. Возвращает список результатов (или [])."""
     if not order_id:
         return []
+    lock_order(cur, order_id)  # защита от гонки: два вызова не должны оба пройти проверку
     cur.execute(
         f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
         f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",
@@ -313,6 +325,7 @@ def recalc_order_reserves(cur, order_id, lines):
     Идемпотентно: сколько раз ни вызови — итог одинаковый (нет дублей/минусов).
     ЕДИНСТВЕННЫЙ правильный путь пересчёта резерва при изменении состава заказа —
     любые ручные правки qty_reserved запрещены (иначе рассинхрон склада)."""
+    lock_order(cur, order_id)  # защита от параллельного пересчёта того же заказа
     log(cur, "recalc_start", order_id=order_id, payload={"lines": len(lines)})
     release_order_reserves(cur, order_id, only_new_negative=True)
     # Страховка от задвоения: не должно остаться ни одного ACTIVE-резерва заказа.

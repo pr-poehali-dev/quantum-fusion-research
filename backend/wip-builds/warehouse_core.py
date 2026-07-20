@@ -27,6 +27,14 @@ def _movement(cur, group_id, supply_id, order_id, mtype, qty_delta, note=None):
     )
 
 
+def lock_order(cur, order_id):
+    """Транзакционная блокировка на заказ (row-lock FOR UPDATE, защита от гонки
+    пересчёта резервов). Снимается автоматически при commit/rollback."""
+    if not order_id:
+        return
+    cur.execute(f"SELECT id FROM {SCHEMA}.orders WHERE id = %s FOR UPDATE", (int(order_id),))
+
+
 def resolve_group_id(cur, product_id):
     if not product_id:
         return None
@@ -180,6 +188,7 @@ def ensure_order_reserves(cur, order_id, build_id=None):
     """
     if not order_id:
         return []
+    lock_order(cur, order_id)  # защита от гонки check-then-reserve
     cur.execute(
         f"SELECT 1 FROM {SCHEMA}.warehouse_reserves "
         f"WHERE order_id = %s AND status = 'ACTIVE' LIMIT 1",
@@ -275,6 +284,7 @@ def recalc_order_reserves(cur, order_id, lines):
     Идемпотентно: сколько раз ни вызови — итог одинаковый (нет дублей/минусов).
     Со страховкой от задвоения (форс-закрытие оставшихся ACTIVE перед наложением).
     """
+    lock_order(cur, order_id)  # защита от параллельного пересчёта того же заказа
     log(cur, "recalc_start", order_id=order_id, payload={"lines": len(lines)})
     release_order_reserves(cur, order_id, only_new_negative=True)
 
