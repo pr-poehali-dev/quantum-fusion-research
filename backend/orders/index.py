@@ -1379,6 +1379,10 @@ def handler(event: dict, context) -> dict:
                 # несколько накопителей), которые раньше склеивались в одну строку
                 # и терялись при маппинге slot→product.
                 reserved_any_component = False
+                # Слоты «заказан у поставщика / в пути», по которым СЕЙЧАС создан
+                # минус-резерв (товара на складе нет). Их статус НЕ переводим в
+                # need_order — оставляем ordered_*, т.к. железо реально едет.
+                kept_ordered_slots = set()
                 for comp in pc_components:
                     if comp.get("source") != "catalog" or not comp.get("source_id"):
                         continue  # пользовательское железо — не резервируем
@@ -1391,18 +1395,18 @@ def handler(event: dict, context) -> dict:
                     slot_ordered = wip_slot in ordered_wip_slots
                     if slot_ordered:
                         # Слот «заказан у поставщика / в пути». Правило (по решению
-                        # пользователя): если товар УЖЕ появился на складе (free>0),
-                        # резервируем его из наличия и переводим слот в ready —
-                        # «то, что ехало, приехало». Дефицит (закупку) повторно НЕ
-                        # создаём. Если товара на складе нет (free<=0) — слот
-                        # оставляем ordered_* без изменений (железо реально едет).
+                        # пользователя):
+                        #  • товар УЖЕ на складе (free>0) — резервируем из наличия,
+                        #    слот станет ready («то, что ехало, приехало»);
+                        #  • товара нет (free<=0) — ВСЁ РАВНО создаём минус-резерв
+                        #    (долг склада → потребность видна, попадает в закупку),
+                        #    но статус слота оставляем ordered_* (железо едет).
+                        #    При приёмке этот минус-резерв авто-конвертируется в
+                        #    POSITIVE под заказ (см. warehouse supply_create).
                         gid = wc.resolve_group_id(cur, product_id)
                         free = wc.free_stock(cur, gid)
                         if free <= 0:
-                            continue
-                        comp_qty = min(comp_qty, free)
-                        # НЕ добавляем в kept_ordered_slots — раз зарезервировали из
-                        # наличия, слот должен стать ready (плашка «в пути» уйдёт).
+                            kept_ordered_slots.add(wip_slot)
                     reserved_any_component = True
                     res = wc.reserve_line(cur, order_id, product_id=product_id,
                                           qty=comp_qty, slot=wip_slot)
@@ -1420,6 +1424,10 @@ def handler(event: dict, context) -> dict:
 
                 new_statuses = {}
                 for wip_slot in set(list(slot_had_negative) + list(slot_had_positive)):
+                    if wip_slot in kept_ordered_slots:
+                        # Слот заказан у поставщика, минус-резерв создан, но статус
+                        # оставляем ordered_* (железо едет) — не трогаем.
+                        continue
                     if slot_had_negative.get(wip_slot):
                         new_statuses[wip_slot] = "need_order"
                     elif slot_had_positive.get(wip_slot):
