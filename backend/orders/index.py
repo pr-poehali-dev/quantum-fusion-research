@@ -892,7 +892,10 @@ def handler(event: dict, context) -> dict:
                                    status=body.get("status"),
                                    warranty_until=body.get("warranty_until"),
                                    issued_at=body.get("issued_at"),
-                                   comment=body.get("comment"))
+                                   comment=body.get("comment"),
+                                   comp_serials=body.get("comp_serials"),
+                                   comp_slot=body.get("comp_slot"),
+                                   comp_serial=body.get("comp_serial"))
                     conn.commit()
                     return {"statusCode": 200, "headers": cors,
                             "body": json.dumps({"ok": True,

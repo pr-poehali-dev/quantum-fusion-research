@@ -153,13 +153,22 @@ def list_groups(cur, order_id):
                 }
         # units
         cur.execute(
-            f"SELECT id, unit_no, serial_number, status, warranty_until, issued_at, comment "
+            f"SELECT id, unit_no, serial_number, status, warranty_until, issued_at, comment, comp_serials "
             f"FROM {SCHEMA}.order_build_units WHERE group_id=%s ORDER BY unit_no", (gid,))
-        units = [{
-            "id": u[0], "unit_no": u[1], "serial_number": u[2], "status": u[3],
-            "warranty_until": u[4].isoformat() if u[4] else None,
-            "issued_at": u[5].isoformat() if u[5] else None, "comment": u[6],
-        } for u in cur.fetchall()]
+        units = []
+        for u in cur.fetchall():
+            cs = u[7]
+            if isinstance(cs, str):
+                try:
+                    cs = json.loads(cs)
+                except Exception:
+                    cs = {}
+            units.append({
+                "id": u[0], "unit_no": u[1], "serial_number": u[2], "status": u[3],
+                "warranty_until": u[4].isoformat() if u[4] else None,
+                "issued_at": u[5].isoformat() if u[5] else None, "comment": u[6],
+                "comp_serials": cs or {},
+            })
         groups.append({
             "id": gid, "label": r[1], "qty": r[2], "components": comps,
             "parts_total": float(r[4]), "total_price": float(r[5]),
@@ -242,13 +251,40 @@ def _recalc_order_total(cur, order_id):
 
 
 def update_unit(cur, order_id, unit_id, serial_number=None, status=None,
-                warranty_until=None, issued_at=None, comment=None):
-    """Серийник / статус / выдача отдельного ПК."""
+                warranty_until=None, issued_at=None, comment=None,
+                comp_serials=None, comp_slot=None, comp_serial=None):
+    """Серийник / статус / выдача отдельного ПК.
+
+    comp_serials — полный map {slot: серийник} (перезаписывает).
+    comp_slot + comp_serial — точечно один слот (не трогая остальные)."""
     cur.execute(
-        f"SELECT id FROM {SCHEMA}.order_build_units WHERE id=%s AND order_id=%s",
+        f"SELECT id, comp_serials FROM {SCHEMA}.order_build_units WHERE id=%s AND order_id=%s",
         (unit_id, order_id))
-    if not cur.fetchone():
+    _row = cur.fetchone()
+    if not _row:
         return False
+
+    # Серийники комплектующих (map slot -> серийник)
+    if comp_serials is not None or comp_slot is not None:
+        cur_map = _row[1]
+        if isinstance(cur_map, str):
+            try:
+                cur_map = json.loads(cur_map)
+            except Exception:
+                cur_map = {}
+        cur_map = cur_map or {}
+        if comp_serials is not None:
+            cur_map = {str(k): (str(v).strip() or None) for k, v in dict(comp_serials).items() if str(v).strip()}
+        if comp_slot is not None:
+            sn = (comp_serial or "").strip()
+            if sn:
+                cur_map[str(comp_slot)] = sn
+            else:
+                cur_map.pop(str(comp_slot), None)
+        cur.execute(
+            f"UPDATE {SCHEMA}.order_build_units SET comp_serials=%s, updated_at=NOW() WHERE id=%s",
+            (json.dumps(cur_map), unit_id))
+
     sets, vals = [], []
     if serial_number is not None:
         sets.append("serial_number=%s"); vals.append((serial_number or "").strip() or None)

@@ -19,7 +19,7 @@ const SLOTS: { key: string; label: string }[] = [
 ]
 
 interface Comp { slot: string; name: string; qty: number; price: number; source?: string; source_id?: number | null }
-interface Unit { id: number; unit_no: number; serial_number: string | null; status: string; warranty_until: string | null; issued_at: string | null; comment: string | null }
+interface Unit { id: number; unit_no: number; serial_number: string | null; status: string; warranty_until: string | null; issued_at: string | null; comment: string | null; comp_serials?: Record<string, string> }
 interface Group {
   id: number; label: string; qty: number; components: Comp[]
   parts_total: number; total_price: number; wip_id: number | null; stage: string | null
@@ -88,7 +88,7 @@ export default function AdminBatchOrderPage() {
     if (res.groups) refresh(res.groups)
     setSyncMsg({ reserved: (res.reserved || []).length, need: (res.need_order || []).length })
   }
-  const patchUnit = async (uid: number, data: { serial_number?: string; status?: string }) => {
+  const patchUnit = async (uid: number, data: { serial_number?: string; status?: string; comp_slot?: string; comp_serial?: string }) => {
     const res = await api.orders.batchUpdateUnit(orderId, uid, data)
     if (res.groups) refresh(res.groups)
   }
@@ -172,6 +172,9 @@ function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPat
   const setCompQty = (slot: string, q: number) => {
     onPatch(group.id, { components: comps.map(c => c.slot === slot ? { ...c, qty: Math.max(1, q) } : c) })
   }
+  const setCompPrice = (slot: string, price: number) => {
+    onPatch(group.id, { components: comps.map(c => c.slot === slot ? { ...c, price: Math.max(0, price) } : c) })
+  }
 
   return (
     <div className="rounded-xl border border-border bg-card">
@@ -199,15 +202,16 @@ function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPat
             {SLOTS.map(s => {
               const c = comps.find(x => x.slot === s.key)
               return <SlotRow key={s.key} slotLabel={s.label} comp={c || null}
-                onPick={p => setComp(s.key, p)} onQty={q => setCompQty(s.key, q)} />
+                onPick={p => setComp(s.key, p)} onQty={q => setCompQty(s.key, q)}
+                onPrice={p => setCompPrice(s.key, p)} />
             })}
           </div>
 
           <p className="mt-5 mb-2 text-xs font-medium uppercase tracking-wide text-foreground/40">
-            Компьютеры в партии ({group.units.length}) · серийники и выдача
+            Компьютеры в партии ({group.units.length}) · цена, серийники по комплектующим, выдача
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {group.units.map(u => <UnitRow key={u.id} unit={u} onPatch={onPatchUnit} />)}
+          <div className="space-y-2">
+            {group.units.map(u => <UnitRow key={u.id} unit={u} comps={comps} onPatch={onPatchUnit} />)}
           </div>
         </div>
       )}
@@ -215,12 +219,14 @@ function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPat
   )
 }
 
-function SlotRow({ slotLabel, comp, onPick, onQty }: {
-  slotLabel: string; comp: Comp | null; onPick: (p: Prod | null) => void; onQty: (q: number) => void
+function SlotRow({ slotLabel, comp, onPick, onQty, onPrice }: {
+  slotLabel: string; comp: Comp | null; onPick: (p: Prod | null) => void; onQty: (q: number) => void; onPrice: (p: number) => void
 }) {
   const [q, setQ] = useState("")
   const [results, setResults] = useState<Prod[]>([])
   const [open, setOpen] = useState(false)
+  const [price, setPrice] = useState(comp?.price ?? 0)
+  useEffect(() => { setPrice(comp?.price ?? 0) }, [comp?.price])
   useEffect(() => {
     if (!q || q.length < 2) { setResults([]); return }
     let cancelled = false
@@ -238,7 +244,12 @@ function SlotRow({ slotLabel, comp, onPick, onQty }: {
           {!comp.source_id && <span className="text-[10px] text-orange-400" title="Нет в каталоге — не резервируется">вне склада</span>}
           <input type="number" min={1} value={comp.qty} onChange={e => onQty(Number(e.target.value))}
             className="w-12 rounded border border-border bg-card px-1.5 py-0.5 text-center text-xs" title="Кол-во на 1 ПК" />
-          <span className="text-xs text-foreground/40">{money(comp.price)}</span>
+          <div className="flex items-center gap-1" title="Цена за штуку (можно задать вручную)">
+            <input type="number" min={0} value={price} onChange={e => setPrice(Number(e.target.value))}
+              onBlur={() => price !== comp.price && onPrice(price)}
+              className="w-24 rounded border border-border bg-card px-1.5 py-0.5 text-right text-xs" />
+            <span className="text-xs text-foreground/40">₽</span>
+          </div>
           <button onClick={() => onPick(null)} className="text-foreground/30 hover:text-red-500" style={{ cursor: "pointer" }}><Icon name="X" size={14} /></button>
         </div>
       ) : (
@@ -262,22 +273,53 @@ function SlotRow({ slotLabel, comp, onPick, onQty }: {
   )
 }
 
-function UnitRow({ unit, onPatch }: { unit: Unit; onPatch: (uid: number, data: { serial_number?: string; status?: string }) => void }) {
+function UnitRow({ unit, comps, onPatch }: {
+  unit: Unit; comps: Comp[]
+  onPatch: (uid: number, data: { serial_number?: string; status?: string; comp_slot?: string; comp_serial?: string }) => void
+}) {
   const [sn, setSn] = useState(unit.serial_number || "")
   useEffect(() => { setSn(unit.serial_number || "") }, [unit.serial_number])
   const st = UNIT_STATUS[unit.status] || UNIT_STATUS.pending
+  const filled = comps.filter(c => c.name).map(c => c.slot)
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-      <span className="w-8 shrink-0 text-xs font-mono text-foreground/40">#{unit.unit_no}</span>
-      <input value={sn} onChange={e => setSn(e.target.value)} onBlur={() => sn !== (unit.serial_number || "") && onPatch(unit.id, { serial_number: sn })}
-        placeholder="Серийный номер" className="min-w-0 flex-1 rounded border border-border bg-card px-2 py-1 text-xs text-foreground" />
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${st.color}`}>{st.label}</span>
-      <select value={unit.status} onChange={e => onPatch(unit.id, { status: e.target.value })}
-        className="shrink-0 rounded border border-border bg-card px-1 py-1 text-[11px] text-foreground" style={{ cursor: "pointer" }}>
-        <option value="pending">Ожидает</option>
-        <option value="assembled">Собран</option>
-        <option value="issued">Выдан</option>
-      </select>
+    <div className="rounded-lg border border-border bg-background px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="w-8 shrink-0 text-xs font-mono text-foreground/40">#{unit.unit_no}</span>
+        <input value={sn} onChange={e => setSn(e.target.value)} onBlur={() => sn !== (unit.serial_number || "") && onPatch(unit.id, { serial_number: sn })}
+          placeholder="Серийный номер ПК (общий)" className="min-w-0 flex-1 rounded border border-border bg-card px-2 py-1 text-xs text-foreground" />
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${st.color}`}>{st.label}</span>
+        <select value={unit.status} onChange={e => onPatch(unit.id, { status: e.target.value })}
+          className="shrink-0 rounded border border-border bg-card px-1 py-1 text-[11px] text-foreground" style={{ cursor: "pointer" }}>
+          <option value="pending">Ожидает</option>
+          <option value="assembled">Собран</option>
+          <option value="issued">Выдан</option>
+        </select>
+      </div>
+      {filled.length > 0 && (
+        <div className="mt-2 grid gap-1.5 border-t border-border/50 pt-2 sm:grid-cols-2">
+          {comps.filter(c => c.name).map(c => (
+            <CompSerialInput key={c.slot} slot={c.slot}
+              label={SLOTS.find(s => s.key === c.slot)?.label || c.slot}
+              name={c.name}
+              value={unit.comp_serials?.[c.slot] || ""}
+              onSave={val => onPatch(unit.id, { comp_slot: c.slot, comp_serial: val })} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CompSerialInput({ slot, label, name, value, onSave }: {
+  slot: string; label: string; name: string; value: string; onSave: (v: string) => void
+}) {
+  const [v, setV] = useState(value)
+  useEffect(() => { setV(value) }, [value])
+  return (
+    <div className="flex items-center gap-1.5" title={name}>
+      <span className="w-24 shrink-0 truncate text-[10px] text-foreground/40" data-slot={slot}>{label}</span>
+      <input value={v} onChange={e => setV(e.target.value)} onBlur={() => v !== value && onSave(v)}
+        placeholder="серийник" className="min-w-0 flex-1 rounded border border-border bg-card px-2 py-1 text-[11px] text-foreground" />
     </div>
   )
 }
