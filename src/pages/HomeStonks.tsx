@@ -3,11 +3,8 @@ import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import OptimizedImage from "@/components/ui/optimized-image"
 import { api } from "@/lib/api"
-import { useCart } from "@/store/cart"
-import { useAuth } from "@/store/auth"
-import { ThemeSwitcher } from "@/components/theme-switcher"
-import NotificationBell from "@/components/NotificationBell"
 import CatalogTabs from "@/components/CatalogTabs"
+import SiteHeader from "@/components/SiteHeader"
 import Footer from "@/components/Footer"
 import Seo from "@/components/Seo"
 
@@ -73,8 +70,6 @@ const fmtDate = (s: string) => {
 
 export default function HomeStonks() {
   const navigate = useNavigate()
-  const { isAuthed } = useAuth()
-  const { count } = useCart()
   const [builds, setBuilds] = useState<CommunityBuild[]>([])
   const [catalogBuilds, setCatalogBuilds] = useState<CatalogBuild[]>([])
   const [catalogLoading, setCatalogLoading] = useState(true)
@@ -171,32 +166,8 @@ export default function HomeStonks() {
         description="Профессиональная сборка ПК, ремонт и диагностика, продажа комплектующих. Готовые сборки под любой бюджет и каталог железа."
         path="/"
       />
-      {/* Шапка (как в Shop) */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
-            <span className="font-semibold text-lg text-foreground">BeGraphics</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <ThemeSwitcher />
-            <NotificationBell />
-            {isAuthed() ? (
-              <button onClick={() => navigate("/profile")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="User" size={16} />
-              </button>
-            ) : (
-              <button onClick={() => navigate("/auth")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="LogIn" size={16} />
-              </button>
-            )}
-            <button onClick={() => navigate("/cart")} className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="ShoppingCart" size={16} />
-              {count() > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{count()}</span>}
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Базовая шапка сайта (единый вид, как в /shop) */}
+      <SiteHeader />
 
       {/* Навигационные табы */}
       <CatalogTabs />

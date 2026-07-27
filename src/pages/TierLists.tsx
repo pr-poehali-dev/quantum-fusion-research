@@ -3,9 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
-import { ThemeSwitcher } from "@/components/theme-switcher"
-import NotificationBell from "@/components/NotificationBell"
 import CatalogTabs from "@/components/CatalogTabs"
+import SiteHeader from "@/components/SiteHeader"
 import Footer from "@/components/Footer"
 import { isAdminAuthed } from "@/components/admin/AdminGuard"
 import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, emptyFilterState, applyShopFilters } from "@/components/shop/ShopFilters"
@@ -301,23 +300,8 @@ export default function TierLists() {
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
-      {/* Шапка */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
-            <span className="font-semibold text-lg text-foreground">BeGraphics</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <ThemeSwitcher />
-            <NotificationBell />
-            <button onClick={() => navigate("/shop")} className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm hover:border-primary transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="Package" size={16} />
-              <span>Каталог</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Базовая шапка сайта (единый вид, как в /shop) */}
+      <SiteHeader />
 
       <CatalogTabs />
 
