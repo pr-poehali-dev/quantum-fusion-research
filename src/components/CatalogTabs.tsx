@@ -48,14 +48,14 @@ export default function CatalogTabs() {
       {/* Десктоп: горизонтальная лента вкладок (один клик = переход) */}
       <div className="mx-auto hidden max-w-7xl items-stretch justify-center px-6 sm:flex">
         {TABS.map((t, i) => {
-          if (t === "sep") return <div key={`sep-${i}`} className="mx-3 my-3 w-px bg-border shrink-0" />
+          if (t === "sep") return <div key={`sep-${i}`} className="mx-1.5 my-3 w-px bg-border shrink-0" />
           const active = isActive(t.path)
           return (
             <button
               key={t.path}
               onClick={() => navigate(t.path)}
               title={t.label}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
                 active ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"
               }`}
               style={{ cursor: "pointer" }}
