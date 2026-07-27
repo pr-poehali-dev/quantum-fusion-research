@@ -46,6 +46,16 @@ export function AdminWipTab({
   const [viewArchive, setViewArchive] = useState(false)
   const isArchive = viewArchive
 
+  // Массовая сборка: создаём пустой заказ-партию и переходим в его редактор
+  const [batchCreating, setBatchCreating] = useState(false)
+  const createBatch = async () => {
+    setBatchCreating(true)
+    const res = await api.orders.createBatch({ customer_name: "Партия", customer_phone: "-" })
+    setBatchCreating(false)
+    if (res.id) navigate(`/admin/batch/${res.id}`)
+    else alert(res.error || "Не удалось создать партию")
+  }
+
   // Модалка маржи (кнопка-смайлик)
   const [marginWip, setMarginWip] = useState<WipBuild | null>(null)
 
@@ -602,6 +612,13 @@ export function AdminWipTab({
                 style={{ cursor: "pointer" }}>
                 <Icon name={wipEditMode ? "Eye" : "Pencil"} size={15} />
                 {wipEditMode ? "Просмотр" : "Ред. железо"}
+              </button>
+              <button onClick={createBatch} disabled={batchCreating}
+                className="flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
+                style={{ cursor: "pointer" }}
+                title="Один заказ на партию ПК с разными конфигурациями">
+                <Icon name={batchCreating ? "Loader" : "Boxes"} size={15} className={batchCreating ? "animate-spin" : ""} />
+                Массовая сборка
               </button>
               <button onClick={() => { setWipForm({ ...EMPTY_WIP }); setWipFormOpen(true) }}
                 className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
