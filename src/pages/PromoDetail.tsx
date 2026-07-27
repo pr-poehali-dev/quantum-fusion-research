@@ -94,7 +94,7 @@ export default function PromoDetail() {
         description={promo?.title ? `${promo.title}. Промокод ${promo.code}, скидка ${discount}.` : "Акция BeGraphics"}
         path={`/promo/${id}`}
       />
-      <SiteHeader back backTo="/promo" />
+      <SiteHeader />
 
       <CatalogTabs />
 

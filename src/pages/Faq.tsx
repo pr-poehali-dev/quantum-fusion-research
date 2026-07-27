@@ -45,7 +45,7 @@ export default function Faq() {
         path="/faq"
       />
       {/* Базовая шапка сайта */}
-      <SiteHeader back />
+      <SiteHeader />
 
       <CatalogTabs />
 

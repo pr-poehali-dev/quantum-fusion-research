@@ -98,7 +98,7 @@ export default function Articles() {
         path="/articles"
       />
       {/* Базовая шапка сайта */}
-      <SiteHeader back />
+      <SiteHeader />
 
       <CatalogTabs />
 

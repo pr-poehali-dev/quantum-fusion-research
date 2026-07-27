@@ -5,16 +5,9 @@ import { useAuth } from "@/store/auth"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 
-interface Props {
-  /** Показать кнопку «назад» слева (по умолчанию — нет). */
-  back?: boolean
-  /** Куда ведёт кнопка «назад» (по умолчанию на главную). */
-  backTo?: string
-}
-
 /** Базовая шапка сайта: логотип, тема, уведомления, профиль, корзина.
  *  Единый компонент для всех публичных страниц. */
-export default function SiteHeader({ back, backTo = "/" }: Props) {
+export default function SiteHeader() {
   const navigate = useNavigate()
   const { count } = useCart()
   const { isAuthed } = useAuth()
@@ -22,17 +15,10 @@ export default function SiteHeader({ back, backTo = "/" }: Props) {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-2">
-          {back && (
-            <button onClick={() => navigate(backTo)} className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground/40 hover:text-foreground hover:bg-muted transition-colors" style={{ cursor: "pointer" }} aria-label="Назад">
-              <Icon name="ArrowLeft" size={16} />
-            </button>
-          )}
-          <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
-            <span className="font-semibold text-lg text-foreground">BeGraphics</span>
-          </button>
-        </div>
+        <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
+          <span className="font-semibold text-lg text-foreground">BeGraphics</span>
+        </button>
         <div className="flex items-center gap-2">
           <ThemeSwitcher />
           <NotificationBell />

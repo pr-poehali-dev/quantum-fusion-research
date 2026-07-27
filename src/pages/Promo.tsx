@@ -83,7 +83,7 @@ export default function Promo() {
         path="/promo"
       />
       {/* Базовая шапка сайта */}
-      <SiteHeader back />
+      <SiteHeader />
 
       <CatalogTabs />
 
