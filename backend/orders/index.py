@@ -907,6 +907,23 @@ def handler(event: dict, context) -> dict:
                     return {"statusCode": 200, "headers": cors,
                             "body": json.dumps({"ok": True, **result,
                                                 "groups": bb.list_groups(cur, order_id)})}
+                if action == "batch_writeoff":
+                    # Выдача всей партии. Перед выдачей остаток должен быть оплачен.
+                    cur.execute("SELECT remaining_paid, status FROM orders WHERE id=%s", (order_id,))
+                    wp = cur.fetchone()
+                    if wp and wp[1] != "done" and not bool(wp[0]):
+                        return {"statusCode": 400, "headers": cors, "body": json.dumps(
+                            {"error": "remaining_unpaid",
+                             "message": "Перед выдачей нужно принять оплату остатка по заказу."})}
+                    result = bb.writeoff_batch(cur, order_id)
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, **result,
+                                                "groups": bb.list_groups(cur, order_id)})}
+                if action == "batch_warranty":
+                    data = bb.warranty_data(cur, order_id)
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, "warranty": data})}
                 return {"statusCode": 400, "headers": cors,
                         "body": json.dumps({"error": f"Unknown batch action: {action}"})}
 

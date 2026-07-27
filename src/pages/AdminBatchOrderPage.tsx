@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
+import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
+import { buildBatchWarrantyHtml, BatchWarranty } from "@/pages/batch/warrantyPrint"
 
 const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
 
@@ -39,11 +42,16 @@ export default function AdminBatchOrderPage() {
   const navigate = useNavigate()
   const orderId = Number(id)
   const [groups, setGroups] = useState<Group[]>([])
-  const [order, setOrder] = useState<{ display_number?: string; customer_name?: string; total?: number } | null>(null)
+  const [order, setOrder] = useState<{
+    display_number?: string; customer_name?: string; total?: number; status?: string
+    prepayment_percent?: number; prepayment_amount?: number; prepayment_confirmed?: boolean
+    remaining_amount?: number; remaining_paid?: boolean
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [syncMsg, setSyncMsg] = useState<{ reserved: number; need: number } | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [payModal, setPayModal] = useState<null | "prepayment" | "remaining">(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,6 +101,36 @@ export default function AdminBatchOrderPage() {
     if (res.groups) refresh(res.groups)
   }
 
+  // Предоплата: установка сумм (без приёма денег)
+  const savePrepayment = async (payload: { prepayment_percent?: number; prepayment_amount?: number }) => {
+    const res = await api.orders.setPrepayment({ id: orderId, ...payload })
+    await load()
+    return res
+  }
+
+  // Выдача всей партии (с проверкой оплаты остатка)
+  const doWriteoff = async () => {
+    if (!confirm("Выдать всю партию? Товар спишется со склада, все ПК будут отмечены как выданные, заказ закроется.")) return
+    setBusy(true)
+    const res = await api.orders.batchWriteoff(orderId)
+    setBusy(false)
+    if (res.error === "remaining_unpaid") { setPayModal("remaining"); return }
+    if (res.error) { alert(res.message || res.error); return }
+    await load()
+  }
+
+  // Гарантийный талон на всю партию (печать)
+  const printWarranty = async () => {
+    const res = await api.orders.batchWarranty(orderId)
+    const w: BatchWarranty | null = res.warranty || null
+    if (!w) { alert("Нет данных для талона"); return }
+    const html = buildBatchWarrantyHtml(w)
+    const win = window.open("", "_blank")
+    if (!win) { alert("Разрешите всплывающие окна для печати"); return }
+    win.document.write(html)
+    win.document.close()
+  }
+
   const totalPcs = groups.reduce((s, g) => s + g.qty, 0)
   const totalIssued = groups.reduce((s, g) => s + g.issued_count, 0)
 
@@ -130,6 +168,62 @@ export default function AdminBatchOrderPage() {
           <span className="text-green-400">Зарезервировано позиций: {syncMsg.reserved}</span>
           {syncMsg.need > 0 && <span className="ml-3 text-orange-400">В закупку (дефицит): {syncMsg.need}</span>}
         </div>
+      )}
+
+      {/* Оплата и выдача партии */}
+      {groups.length > 0 && (
+        <div className="mb-4 rounded-xl border border-border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-[240px] flex-1">
+              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-foreground/40">Предоплата</p>
+              <PrepaymentEditor total={order?.total || 0}
+                percent={order?.prepayment_percent} amount={order?.prepayment_amount}
+                onSave={savePrepayment} />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {order?.prepayment_confirmed ? (
+                  <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата принята</span>
+                ) : (
+                  <button onClick={() => setPayModal("prepayment")}
+                    className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20" style={{ cursor: "pointer" }}>
+                    Принять предоплату
+                  </button>
+                )}
+                {order?.remaining_paid && (
+                  <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Остаток оплачен</span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col items-stretch gap-2">
+              <button onClick={printWarranty}
+                className="flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground" style={{ cursor: "pointer" }}>
+                <Icon name="FileText" size={15} /> Гарантийный талон
+              </button>
+              {order?.status === "done" ? (
+                <span className="flex items-center justify-center gap-2 rounded-lg bg-green-400/10 px-4 py-2 text-sm font-medium text-green-400">
+                  <Icon name="CheckCircle2" size={15} /> Партия выдана
+                </span>
+              ) : (
+                <button onClick={doWriteoff} disabled={busy}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50" style={{ cursor: "pointer" }}>
+                  <Icon name={busy ? "Loader" : "PackageCheck"} size={15} className={busy ? "animate-spin" : ""} /> Выдать партию
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payModal && (
+        <PrepaymentConfirmModal orderId={orderId} total={order?.total || 0}
+          mode={payModal}
+          defaultAmount={payModal === "remaining" ? (order?.remaining_amount ?? undefined) : (order?.prepayment_amount ?? undefined)}
+          onClose={() => setPayModal(null)}
+          onConfirmed={async () => {
+            const wasRemaining = payModal === "remaining"
+            setPayModal(null)
+            await load()
+            if (wasRemaining) await doWriteoff()
+          }} />
       )}
 
       {groups.length === 0 ? (

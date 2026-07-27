@@ -89,6 +89,8 @@ export const api = {
     batchRemoveGroup: (id: number, group_id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_remove_group", group_id }) }).then(r => r.json()),
     batchUpdateUnit: (id: number, unit_id: number, data: { serial_number?: string; status?: string; warranty_until?: string; comment?: string; comp_slot?: string; comp_serial?: string; comp_serials?: Record<string, string> }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_update_unit", unit_id, ...data }) }).then(r => r.json()),
     batchSync: (id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_sync" }) }).then(r => r.json()),
+    batchWriteoff: (id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_writeoff" }) }).then(r => r.json()),
+    batchWarranty: (id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_warranty" }) }).then(r => r.json()),
   },
   marketing: {
     getGroups: () => fetch(`${URLS.marketing}?action=groups`).then(r => r.json()),

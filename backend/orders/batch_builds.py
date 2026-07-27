@@ -347,3 +347,110 @@ def sync_batch(cur, wc, order_id):
                 need_order.append({"group_id": gid, "label": glabel, "slot": slot,
                                    "name": cname, "shortage": neg})
     return {"reserved": reserved, "need_order": need_order}
+
+
+def writeoff_batch(cur, order_id):
+    """Выдача всей партии целиком: списывает всё зарезервированное со склада
+    (по ACTIVE POSITIVE-резервам заказа), закрывает резервы FULFILLED, все
+    ПК-юниты → issued, все wip-группы → «Забрали», заказ → done.
+
+    Списание идёт напрямую по warehouse_reserves (там уже есть supply_id/qty),
+    в отличие от одиночного writeoff_order (по items).
+    Возвращает {wrote_off: N, units: N}."""
+    # Списываем зарезервированные партии по POSITIVE-резервам заказа
+    cur.execute(
+        f"SELECT r.id, r.supply_id, r.group_id, r.qty, s.cost_price "
+        f"FROM {SCHEMA}.warehouse_reserves r "
+        f"JOIN {SCHEMA}.warehouse_supplies s ON s.id = r.supply_id "
+        f"WHERE r.order_id = %s AND r.type = 'POSITIVE' AND r.status = 'ACTIVE' "
+        f"FOR UPDATE OF r", (order_id,))
+    rows = cur.fetchall()
+    wrote_off = 0
+    touched_groups = set()
+    for (rid, supply_id, group_id, qty, cost) in rows:
+        if not supply_id or qty <= 0:
+            continue
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_supplies "
+            f"SET qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+            f"WHERE id = %s", (qty, supply_id))
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.warehouse_movements "
+            f"(group_id, supply_id, order_id, type, qty_delta, cost_price, note, created_at) "
+            f"VALUES (%s, %s, %s, 'sale', %s, %s, %s, NOW())",
+            (group_id, supply_id, order_id, -qty, float(cost or 0),
+             f"Выдача партии #{order_id}"))
+        wrote_off += qty
+        touched_groups.add(group_id)
+
+    # Пересчёт stock_qty/in_stock по затронутым товарам
+    for gid in touched_groups:
+        cur.execute(
+            f"UPDATE {SCHEMA}.products SET "
+            f"stock_qty = (SELECT COALESCE(SUM(s2.qty),0) FROM {SCHEMA}.warehouse_supplies s2 "
+            f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id), "
+            f"in_stock = (SELECT COALESCE(SUM(s2.qty),0) > 0 FROM {SCHEMA}.warehouse_supplies s2 "
+            f"  JOIN {SCHEMA}.warehouse_groups g2 ON g2.id = s2.group_id WHERE g2.product_id = products.id) "
+            f"WHERE id = (SELECT product_id FROM {SCHEMA}.warehouse_groups WHERE id = %s)",
+            (gid,))
+
+    # Закрываем ACTIVE-резервы заказа → FULFILLED
+    cur.execute(
+        f"UPDATE {SCHEMA}.warehouse_reserves SET status='FULFILLED', updated_at=NOW() "
+        f"WHERE order_id=%s AND status='ACTIVE'", (order_id,))
+
+    # Все ПК-юниты партии → issued (с датой выдачи)
+    cur.execute(
+        f"UPDATE {SCHEMA}.order_build_units "
+        f"SET status='issued', issued_at=COALESCE(issued_at, CURRENT_DATE), updated_at=NOW() "
+        f"WHERE order_id=%s", (order_id,))
+    cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.order_build_units WHERE order_id=%s", (order_id,))
+    units_cnt = int(cur.fetchone()[0] or 0)
+
+    # Все wip-сборки групп → «Забрали»
+    cur.execute(
+        f"UPDATE {SCHEMA}.wip_builds SET stage='Забрали', issued_at=CURRENT_DATE, updated_at=NOW() "
+        f"WHERE order_id=%s", (order_id,))
+
+    # Заказ → done
+    cur.execute(f"UPDATE {SCHEMA}.orders SET status='done', updated_at=NOW() WHERE id=%s", (order_id,))
+    return {"wrote_off": wrote_off, "units": units_cnt}
+
+
+def warranty_data(cur, order_id):
+    """Данные для единого гарантийного талона на всю партию: клиент + список ПК
+    (по каждой группе × каждому юниту) с серийниками комплектующих."""
+    cur.execute(
+        f"SELECT customer_name, customer_phone, customer_email, display_number, created_at "
+        f"FROM {SCHEMA}.orders WHERE id=%s", (order_id,))
+    o = cur.fetchone()
+    if not o:
+        return None
+    groups = list_groups(cur, order_id)
+    pcs = []
+    for g in groups:
+        for u in g["units"]:
+            comp_sn = u.get("comp_serials") or {}
+            comps = []
+            for c in g["components"]:
+                if not c.get("name"):
+                    continue
+                comps.append({
+                    "slot": c.get("slot"),
+                    "slot_label": SLOT_LABELS.get(c.get("slot"), c.get("slot")),
+                    "name": c.get("name"),
+                    "serial": comp_sn.get(c.get("slot")) or "",
+                })
+            pcs.append({
+                "group_label": g["label"],
+                "unit_no": u["unit_no"],
+                "pc_serial": u.get("serial_number") or "",
+                "warranty_until": u.get("warranty_until"),
+                "components": comps,
+            })
+    return {
+        "customer_name": o[0], "customer_phone": o[1], "customer_email": o[2],
+        "display_number": o[3] or f"PB{str(order_id).zfill(5)}",
+        "created_at": o[4].isoformat() if o[4] else None,
+        "pcs": pcs,
+    }
