@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import CatalogTabs from "@/components/CatalogTabs"
+import SiteHeader from "@/components/SiteHeader"
 import Footer from "@/components/Footer"
 import Seo from "@/components/Seo"
 
@@ -81,17 +82,8 @@ export default function Promo() {
         description="Актуальные акции и промокоды BeGraphics: скидки на сборки ПК, комплектующие и первый заказ. Вводите промокод в корзине."
         path="/promo"
       />
-      {/* Шапка */}
-      <div className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-10">
-        <div className="mx-auto max-w-7xl px-4 md:px-8">
-          <div className="flex h-14 items-center gap-3">
-            <button onClick={() => navigate("/")} className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground/40 hover:text-foreground hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
-              <Icon name="ArrowLeft" size={16} />
-            </button>
-            <span className="font-mono text-xs uppercase tracking-widest text-foreground/40">Выгода</span>
-          </div>
-        </div>
-      </div>
+      {/* Базовая шапка сайта */}
+      <SiteHeader back />
 
       <CatalogTabs />
 
