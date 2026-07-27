@@ -7,6 +7,19 @@ interface Props {
 interface State {
   hasError: boolean
   message: string
+  code: string
+}
+
+// Короткий код ошибки для дебага: время (base36) + хеш сообщения.
+// Пример: E-LX9F2K-7A3. Виден на экране и в логах — легко сопоставить.
+function makeErrorCode(message: string): string {
+  let hash = 0
+  for (let i = 0; i < message.length; i++) {
+    hash = (hash * 31 + message.charCodeAt(i)) | 0
+  }
+  const ts = Date.now().toString(36).toUpperCase().slice(-6)
+  const h = Math.abs(hash).toString(36).toUpperCase().slice(0, 3).padStart(3, "0")
+  return `E-${ts}-${h}`
 }
 
 // Признак ошибки загрузки динамического чанка (после нового деплоя браузер
@@ -27,10 +40,11 @@ function isChunkLoadError(err: unknown): boolean {
 // - Ошибку загрузки чанка (после релиза) — тихо чиним перезагрузкой (1 раз).
 // - Любую другую ошибку — показываем понятный экран с кнопкой «Обновить».
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, message: "" }
+  state: State = { hasError: false, message: "", code: "" }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, message: error?.message || "" }
+    const message = error?.message || ""
+    return { hasError: true, message, code: makeErrorCode(message) }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -44,7 +58,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       }
     }
     // eslint-disable-next-line no-console
-    console.error("ErrorBoundary caught:", error, info?.componentStack)
+    console.error(`ErrorBoundary caught [${this.state.code}]:`, error, info?.componentStack)
   }
 
   render() {
@@ -72,6 +86,25 @@ export default class ErrorBoundary extends Component<Props, State> {
         >
           Обновить страницу
         </button>
+
+        {/* Код ошибки для дебага — можно скопировать и передать в поддержку */}
+        {this.state.code && (
+          <button
+            onClick={() => {
+              const info = `${this.state.code}${this.state.message ? `: ${this.state.message}` : ""}`
+              navigator.clipboard?.writeText(info).catch(() => {})
+            }}
+            title="Нажмите, чтобы скопировать код ошибки"
+            className="mt-1 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+            style={{ cursor: "pointer" }}
+          >
+            <span>Код ошибки: {this.state.code}</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
+        )}
       </div>
     )
   }
