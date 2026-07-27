@@ -81,6 +81,14 @@ export const api = {
     quizAnalytics: () => fetch(`${URLS.orders}?action=quiz_analytics`).then(r => r.json()),
     getMyOrders: (session: string) => fetch(`${URLS.orders}?my=true`, { headers: { "X-Session-Id": session } }).then(r => r.json()),
     createWithSession: (data: unknown, session?: string | null) => fetch(URLS.orders, { method: "POST", headers: { "Content-Type": "application/json", ...(session ? { "X-Session-Id": session } : {}) }, body: JSON.stringify(data) }).then(r => r.json()),
+    // ── Массовая сборка (партия ПК) ──
+    createBatch: (data: { customer_name?: string; customer_phone?: string; comment?: string }) => fetch(URLS.orders, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_type: "pc_batch", ...data }) }).then(r => r.json()),
+    batchList: (id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_list" }) }).then(r => r.json()),
+    batchAddGroup: (id: number, data: { label?: string; qty?: number; components?: unknown[] }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_add_group", ...data }) }).then(r => r.json()),
+    batchUpdateGroup: (id: number, group_id: number, data: { label?: string; qty?: number; components?: unknown[] }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_update_group", group_id, ...data }) }).then(r => r.json()),
+    batchRemoveGroup: (id: number, group_id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_remove_group", group_id }) }).then(r => r.json()),
+    batchUpdateUnit: (id: number, unit_id: number, data: { serial_number?: string; status?: string; warranty_until?: string; comment?: string }) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_update_unit", unit_id, ...data }) }).then(r => r.json()),
+    batchSync: (id: number) => fetch(URLS.orders, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "batch_sync" }) }).then(r => r.json()),
   },
   marketing: {
     getGroups: () => fetch(`${URLS.marketing}?action=groups`).then(r => r.json()),

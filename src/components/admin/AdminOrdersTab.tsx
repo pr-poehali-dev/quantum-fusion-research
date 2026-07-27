@@ -131,6 +131,16 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     setNewOrderForm({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts", source_id: "" })
   }
 
+  // Массовая сборка: создаём пустой заказ-партию и переходим в его редактор
+  const [batchCreating, setBatchCreating] = useState(false)
+  const createBatch = async () => {
+    setBatchCreating(true)
+    const res = await api.orders.createBatch({ customer_name: "Партия", customer_phone: "-" })
+    setBatchCreating(false)
+    if (res.id) navigate(`/admin/batch/${res.id}`)
+    else alert(res.error || "Не удалось создать партию")
+  }
+
   const copyOrderSheet = async (orderId: number) => {
     const data = await api.builds.getAll()
     const allBuilds = data.builds || []
@@ -176,12 +186,21 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
             {isArchive ? "Скрыть архив" : "Архив"}
           </button>
           {!isArchive && (
-            <button onClick={() => setNewOrderModal(true)}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-              style={{ cursor: "pointer" }}>
-              <Icon name="Plus" size={15} />
-              Новый заказ
-            </button>
+            <>
+              <button onClick={createBatch} disabled={batchCreating}
+                className="flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
+                style={{ cursor: "pointer" }}
+                title="Один заказ на партию ПК с разными конфигурациями">
+                <Icon name={batchCreating ? "Loader" : "Boxes"} size={15} className={batchCreating ? "animate-spin" : ""} />
+                Массовая сборка
+              </button>
+              <button onClick={() => setNewOrderModal(true)}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={15} />
+                Новый заказ
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -228,6 +247,9 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo?.color || ""}`}>{statusInfo?.label || order.status}</span>
                       {order.order_type === "pc_build" && (
                         <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">ПК-сборка</span>
+                      )}
+                      {order.order_type === "pc_batch" && (
+                        <span className="rounded-full bg-purple-400/15 px-2.5 py-0.5 text-xs font-medium text-purple-400">Массовая сборка</span>
                       )}
                       {isReserved && (
                         <span className="rounded-full bg-orange-400/15 px-2.5 py-0.5 text-xs font-medium text-orange-400" title="Готовый ПК из наличия зарезервирован под этого клиента">В резерве</span>
@@ -323,7 +345,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       </button>
                     )}
                     <button
-                      onClick={() => navigate(`/admin/order/${order.id}`)}
+                      onClick={() => navigate(order.order_type === "pc_batch" ? `/admin/batch/${order.id}` : `/admin/order/${order.id}`)}
                       className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-accent/40 bg-accent/5 px-2.5 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors sm:px-3"
                       style={{ cursor: "pointer" }}
                       title="Обработать заказ">

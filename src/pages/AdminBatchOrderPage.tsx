@@ -1,0 +1,283 @@
+import { useState, useEffect, useCallback } from "react"
+import { useParams, useNavigate } from "react-router-dom"
+import { api } from "@/lib/api"
+import Icon from "@/components/ui/icon"
+
+const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
+
+// Слоты конфигурации ПК (совпадают с одиночной сборкой)
+const SLOTS: { key: string; label: string }[] = [
+  { key: "cpu", label: "Процессор" },
+  { key: "motherboard", label: "Материнская плата" },
+  { key: "ram", label: "Оперативная память" },
+  { key: "gpu", label: "Видеокарта" },
+  { key: "storage", label: "Накопитель" },
+  { key: "psu", label: "Блок питания" },
+  { key: "case", label: "Корпус" },
+  { key: "cooling", label: "Охлаждение" },
+  { key: "extra", label: "Доп." },
+]
+
+interface Comp { slot: string; name: string; qty: number; price: number; source?: string; source_id?: number | null }
+interface Unit { id: number; unit_no: number; serial_number: string | null; status: string; warranty_until: string | null; issued_at: string | null; comment: string | null }
+interface Group {
+  id: number; label: string; qty: number; components: Comp[]
+  parts_total: number; total_price: number; wip_id: number | null; stage: string | null
+  slot_statuses: Record<string, string>; units: Unit[]; issued_count: number; assembled_count: number
+}
+interface Prod { id: number; name: string; price: number; category?: { slug?: string } | string }
+
+const money = (n: number) => n.toLocaleString("ru-RU") + " ₽"
+const UNIT_STATUS: Record<string, { label: string; color: string }> = {
+  pending: { label: "Ожидает", color: "text-foreground/40 bg-foreground/5" },
+  assembled: { label: "Собран", color: "text-blue-400 bg-blue-400/10" },
+  issued: { label: "Выдан", color: "text-green-400 bg-green-400/10" },
+}
+
+export default function AdminBatchOrderPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const orderId = Number(id)
+  const [groups, setGroups] = useState<Group[]>([])
+  const [order, setOrder] = useState<{ display_number?: string; customer_name?: string; total?: number } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<{ reserved: number; need: number } | null>(null)
+  const [expanded, setExpanded] = useState<number | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [o, g] = await Promise.all([api.orders.getById(orderId), api.orders.batchList(orderId)])
+    setOrder(o.order || null)
+    setGroups(g.groups || [])
+    setLoading(false)
+  }, [orderId])
+  useEffect(() => { load() }, [load])
+
+  const refresh = (g: Group[]) => setGroups(g || [])
+
+  const addGroup = async () => {
+    setBusy(true)
+    const res = await api.orders.batchAddGroup(orderId, { label: `Вариант ${groups.length + 1}`, qty: 1, components: [] })
+    setBusy(false)
+    if (res.groups) { refresh(res.groups); setExpanded(res.group_id) }
+  }
+  const copyGroup = async (g: Group) => {
+    setBusy(true)
+    const res = await api.orders.batchAddGroup(orderId, { label: g.label + " (копия)", qty: g.qty, components: g.components })
+    setBusy(false)
+    if (res.groups) refresh(res.groups)
+  }
+  const removeGroup = async (gid: number) => {
+    if (!confirm("Удалить этот вариант из партии?")) return
+    setBusy(true)
+    const res = await api.orders.batchRemoveGroup(orderId, gid)
+    setBusy(false)
+    if (res.groups) refresh(res.groups)
+    await load()
+  }
+  const patchGroup = async (gid: number, data: { label?: string; qty?: number; components?: Comp[] }) => {
+    const res = await api.orders.batchUpdateGroup(orderId, gid, data)
+    if (res.groups) refresh(res.groups)
+    if (data.qty !== undefined || data.components) { const o = await api.orders.getById(orderId); setOrder(o.order || null) }
+  }
+  const syncAll = async () => {
+    setBusy(true); setSyncMsg(null)
+    const res = await api.orders.batchSync(orderId)
+    setBusy(false)
+    if (res.groups) refresh(res.groups)
+    setSyncMsg({ reserved: (res.reserved || []).length, need: (res.need_order || []).length })
+  }
+  const patchUnit = async (uid: number, data: { serial_number?: string; status?: string }) => {
+    const res = await api.orders.batchUpdateUnit(orderId, uid, data)
+    if (res.groups) refresh(res.groups)
+  }
+
+  const totalPcs = groups.reduce((s, g) => s + g.qty, 0)
+  const totalIssued = groups.reduce((s, g) => s + g.issued_count, 0)
+
+  if (loading) return <div className="p-8"><div className="h-40 rounded-xl bg-card animate-pulse" /></div>
+
+  return (
+    <div className="mx-auto max-w-5xl p-4 sm:p-6">
+      <button onClick={() => navigate("/admin")} className="mb-4 flex items-center gap-1.5 text-sm text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>
+        <Icon name="ArrowLeft" size={16} /> К заказам
+      </button>
+
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-purple-400/15 px-2.5 py-0.5 text-xs font-medium text-purple-400">Массовая сборка</span>
+            <span className="font-mono text-sm text-foreground/50">{order?.display_number || `#${orderId}`}</span>
+          </div>
+          <h1 className="mt-1 text-2xl font-light text-foreground">Партия ПК</h1>
+          <p className="text-sm text-foreground/50">{totalPcs} ПК · выдано {totalIssued} из {totalPcs} · {money(order?.total || 0)}</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={syncAll} disabled={busy || groups.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50" style={{ cursor: "pointer" }}>
+            <Icon name={busy ? "Loader" : "RefreshCw"} size={15} className={busy ? "animate-spin" : ""} /> Пересчитать резервы
+          </button>
+          <button onClick={addGroup} disabled={busy}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50" style={{ cursor: "pointer" }}>
+            <Icon name="Plus" size={15} /> Вариант
+          </button>
+        </div>
+      </div>
+
+      {syncMsg && (
+        <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+          <span className="text-green-400">Зарезервировано позиций: {syncMsg.reserved}</span>
+          {syncMsg.need > 0 && <span className="ml-3 text-orange-400">В закупку (дефицит): {syncMsg.need}</span>}
+        </div>
+      )}
+
+      {groups.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border py-16 text-center">
+          <Icon name="Boxes" size={36} className="mx-auto mb-3 text-foreground/20" />
+          <p className="text-sm text-foreground/40">Добавьте первый вариант конфигурации</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {groups.map(g => (
+            <GroupCard key={g.id} group={g} expanded={expanded === g.id}
+              onToggle={() => setExpanded(expanded === g.id ? null : g.id)}
+              onPatch={patchGroup} onCopy={() => copyGroup(g)} onRemove={() => removeGroup(g.id)}
+              onPatchUnit={patchUnit} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPatchUnit }: {
+  group: Group; expanded: boolean; onToggle: () => void
+  onPatch: (gid: number, data: { label?: string; qty?: number; components?: Comp[] }) => void
+  onCopy: () => void; onRemove: () => void
+  onPatchUnit: (uid: number, data: { serial_number?: string; status?: string }) => void
+}) {
+  const [label, setLabel] = useState(group.label)
+  const [qty, setQty] = useState(group.qty)
+  useEffect(() => { setLabel(group.label); setQty(group.qty) }, [group.label, group.qty])
+
+  const comps = group.components || []
+  const setComp = (slot: string, prod: Prod | null) => {
+    const rest = comps.filter(c => c.slot !== slot)
+    const next = prod
+      ? [...rest, { slot, name: prod.name, qty: 1, price: prod.price, source: "catalog", source_id: prod.id }]
+      : rest
+    onPatch(group.id, { components: next })
+  }
+  const setCompQty = (slot: string, q: number) => {
+    onPatch(group.id, { components: comps.map(c => c.slot === slot ? { ...c, qty: Math.max(1, q) } : c) })
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-center gap-3 p-4">
+        <button onClick={onToggle} className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+          <Icon name={expanded ? "ChevronDown" : "ChevronRight"} size={18} />
+        </button>
+        <input value={label} onChange={e => setLabel(e.target.value)} onBlur={() => label !== group.label && onPatch(group.id, { label })}
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground" placeholder="Название варианта" />
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-foreground/50">Кол-во ПК:</span>
+          <input type="number" min={1} value={qty} onChange={e => setQty(Number(e.target.value))} onBlur={() => qty !== group.qty && onPatch(group.id, { qty })}
+            className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground" />
+        </div>
+        <span className="text-sm font-medium text-foreground">{money(group.total_price)} <span className="text-xs text-foreground/40">/ шт</span></span>
+        <span className="text-sm font-semibold text-accent">= {money(group.total_price * group.qty)}</span>
+        <button onClick={onCopy} title="Дублировать вариант" className="text-foreground/40 hover:text-accent" style={{ cursor: "pointer" }}><Icon name="Copy" size={16} /></button>
+        <button onClick={onRemove} title="Удалить вариант" className="text-foreground/40 hover:text-red-500" style={{ cursor: "pointer" }}><Icon name="Trash2" size={16} /></button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-border p-4">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-foreground/40">Конфигурация</p>
+          <div className="space-y-2">
+            {SLOTS.map(s => {
+              const c = comps.find(x => x.slot === s.key)
+              return <SlotRow key={s.key} slotLabel={s.label} comp={c || null}
+                onPick={p => setComp(s.key, p)} onQty={q => setCompQty(s.key, q)} />
+            })}
+          </div>
+
+          <p className="mt-5 mb-2 text-xs font-medium uppercase tracking-wide text-foreground/40">
+            Компьютеры в партии ({group.units.length}) · серийники и выдача
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {group.units.map(u => <UnitRow key={u.id} unit={u} onPatch={onPatchUnit} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SlotRow({ slotLabel, comp, onPick, onQty }: {
+  slotLabel: string; comp: Comp | null; onPick: (p: Prod | null) => void; onQty: (q: number) => void
+}) {
+  const [q, setQ] = useState("")
+  const [results, setResults] = useState<Prod[]>([])
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!q || q.length < 2) { setResults([]); return }
+    let cancelled = false
+    fetch(`${PRODUCTS_URL}?search=${encodeURIComponent(q)}`).then(r => r.json())
+      .then(d => { if (!cancelled) setResults(Array.isArray(d.products) ? d.products.slice(0, 12) : []) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [q])
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-32 shrink-0 text-xs text-foreground/50">{slotLabel}</span>
+      {comp ? (
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
+          <span className="flex-1 truncate text-sm text-foreground">{comp.name}</span>
+          {!comp.source_id && <span className="text-[10px] text-orange-400" title="Нет в каталоге — не резервируется">вне склада</span>}
+          <input type="number" min={1} value={comp.qty} onChange={e => onQty(Number(e.target.value))}
+            className="w-12 rounded border border-border bg-card px-1.5 py-0.5 text-center text-xs" title="Кол-во на 1 ПК" />
+          <span className="text-xs text-foreground/40">{money(comp.price)}</span>
+          <button onClick={() => onPick(null)} className="text-foreground/30 hover:text-red-500" style={{ cursor: "pointer" }}><Icon name="X" size={14} /></button>
+        </div>
+      ) : (
+        <div className="relative flex-1">
+          <input value={q} onChange={e => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)}
+            placeholder="Поиск товара…" className="w-full rounded-lg border border-dashed border-border bg-background px-3 py-1.5 text-sm text-foreground" />
+          {open && results.length > 0 && (
+            <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card shadow-lg">
+              {results.map(p => (
+                <button key={p.id} onClick={() => { onPick(p); setQ(""); setResults([]); setOpen(false) }}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent/10" style={{ cursor: "pointer" }}>
+                  <span className="truncate text-foreground">{p.name}</span>
+                  <span className="shrink-0 text-xs text-foreground/40">{money(p.price)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function UnitRow({ unit, onPatch }: { unit: Unit; onPatch: (uid: number, data: { serial_number?: string; status?: string }) => void }) {
+  const [sn, setSn] = useState(unit.serial_number || "")
+  useEffect(() => { setSn(unit.serial_number || "") }, [unit.serial_number])
+  const st = UNIT_STATUS[unit.status] || UNIT_STATUS.pending
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+      <span className="w-8 shrink-0 text-xs font-mono text-foreground/40">#{unit.unit_no}</span>
+      <input value={sn} onChange={e => setSn(e.target.value)} onBlur={() => sn !== (unit.serial_number || "") && onPatch(unit.id, { serial_number: sn })}
+        placeholder="Серийный номер" className="min-w-0 flex-1 rounded border border-border bg-card px-2 py-1 text-xs text-foreground" />
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${st.color}`}>{st.label}</span>
+      <select value={unit.status} onChange={e => onPatch(unit.id, { status: e.target.value })}
+        className="shrink-0 rounded border border-border bg-card px-1 py-1 text-[11px] text-foreground" style={{ cursor: "pointer" }}>
+        <option value="pending">Ожидает</option>
+        <option value="assembled">Собран</option>
+        <option value="issued">Выдан</option>
+      </select>
+    </div>
+  )
+}

@@ -172,9 +172,9 @@ def handler(event: dict, context) -> dict:
             prepay = float(row[14])
         else:
             prepay = round(total * pct / 100, 2)
-        # Фолбэк номера: учитываем тип заказа (сборка → PC, иначе HW),
+        # Фолбэк номера: учитываем тип заказа (сборка → PC, партия → PB, иначе HW),
         # чтобы заказы без сохранённого display_number не превращались в HW.
-        _prefix = "PC" if row[4] == "pc_build" else "HW"
+        _prefix = "PC" if row[4] == "pc_build" else ("PB" if row[4] == "pc_batch" else "HW")
         return {
             "id": row[0], "display_number": disp or (_prefix + str(row[0]).zfill(5)),
             "customer_name": row[1], "customer_phone": row[2],
@@ -200,6 +200,28 @@ def handler(event: dict, context) -> dict:
             body = json.loads(event.get("body") or "{}")
             user_id = get_user_by_session(cur, session_id)
             quiz_request_id = body.get("quiz_request_id")  # привязка к заявке (опц.)
+
+            # ─── МАССОВАЯ СБОРКА: создание пустого заказа-партии ───
+            # Группы-варианты добавляются потом через batch_add_group.
+            if body.get("order_type") == "pc_batch":
+                SCHEMA = "t_p72635010_quantum_fusion_resea"
+                name = (body.get("customer_name") or "").strip() or "Партия"
+                phone = (body.get("customer_phone") or "").strip()
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.orders "
+                    f"(customer_name, customer_phone, customer_email, order_type, items, total, "
+                    f"comment, status, created_at, updated_at, user_id) "
+                    f"VALUES (%s, %s, %s, 'pc_batch', '[]'::jsonb, 0, %s, 'new', NOW(), NOW(), %s) "
+                    f"RETURNING id",
+                    (name[:255], phone[:50], (body.get("customer_email") or "")[:255] or None,
+                     body.get("comment"), user_id))
+                new_id = cur.fetchone()[0]
+                disp = "PB" + str(new_id).zfill(5)
+                cur.execute(f"UPDATE {SCHEMA}.orders SET display_number=%s WHERE id=%s",
+                            (disp, new_id))
+                conn.commit()
+                return {"statusCode": 200, "headers": cors,
+                        "body": json.dumps({"ok": True, "id": new_id, "display_number": disp})}
 
             # ─── Промокод: серверная валидация и расчёт скидки ───
             # Итоговая сумма total уменьшается на скидку. Значения из тела
@@ -809,7 +831,10 @@ def handler(event: dict, context) -> dict:
                            o.display_number, wb.for_sale,
                            (pb.status = 'catalog') AS is_stock_sale, o.quiz_request_id
                     FROM orders o
-                    LEFT JOIN wip_builds wb ON wb.order_id = o.id
+                    LEFT JOIN LATERAL (
+                        SELECT stage, for_sale, build_id FROM wip_builds
+                        WHERE order_id = o.id ORDER BY id LIMIT 1
+                    ) wb ON TRUE
                     LEFT JOIN pc_builds pb ON pb.id = wb.build_id
                     {where} ORDER BY o.created_at DESC LIMIT 200""",
                 args
@@ -823,6 +848,64 @@ def handler(event: dict, context) -> dict:
             order_id = int(body["id"])
             action = body.get("action")
             schema = "t_p72635010_quantum_fusion_resea"
+
+            # ─── МАССОВАЯ СБОРКА (партия): все действия с префиксом batch_ ───
+            # Группы-варианты, отдельные ПК (серийники/выдача), пересчёт резервов.
+            # Не трогает одиночные заказы.
+            if action and str(action).startswith("batch_"):
+                import batch_builds as bb
+                cur.execute("SELECT display_number FROM orders WHERE id=%s", (order_id,))
+                _r = cur.fetchone()
+                if not _r:
+                    return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
+                order_number = _r[0] or f"PC{str(order_id).zfill(5)}"
+
+                if action == "batch_list":
+                    groups = bb.list_groups(cur, order_id)
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, "groups": groups})}
+                if action == "batch_add_group":
+                    gid = bb.add_group(cur, order_id, order_number,
+                                       body.get("label"), body.get("qty", 1),
+                                       body.get("components") or [])
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, "group_id": gid,
+                                                "groups": bb.list_groups(cur, order_id)})}
+                if action == "batch_update_group":
+                    bb.update_group(cur, order_id, order_number, int(body["group_id"]),
+                                    label=body.get("label"), qty=body.get("qty"),
+                                    components=body.get("components"))
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True,
+                                                "groups": bb.list_groups(cur, order_id)})}
+                if action == "batch_remove_group":
+                    bb.remove_group(cur, order_id, int(body["group_id"]))
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True,
+                                                "groups": bb.list_groups(cur, order_id)})}
+                if action == "batch_update_unit":
+                    bb.update_unit(cur, order_id, int(body["unit_id"]),
+                                   serial_number=body.get("serial_number"),
+                                   status=body.get("status"),
+                                   warranty_until=body.get("warranty_until"),
+                                   issued_at=body.get("issued_at"),
+                                   comment=body.get("comment"))
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True,
+                                                "groups": bb.list_groups(cur, order_id)})}
+                if action == "batch_sync":
+                    import warehouse_core as wc
+                    result = bb.sync_batch(cur, wc, order_id)
+                    conn.commit()
+                    return {"statusCode": 200, "headers": cors,
+                            "body": json.dumps({"ok": True, **result,
+                                                "groups": bb.list_groups(cur, order_id)})}
+                return {"statusCode": 400, "headers": cors,
+                        "body": json.dumps({"error": f"Unknown batch action: {action}"})}
 
             cur.execute("SELECT items, total FROM orders WHERE id = %s", (order_id,))
             row = cur.fetchone()
@@ -1950,6 +2033,10 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"UPDATE {schema}.finance_transactions SET order_id=NULL WHERE order_id=%s", (order_id,))
             cur.execute(f"UPDATE {schema}.sn_archive SET order_id=NULL WHERE order_id=%s", (order_id,))
             cur.execute(f"UPDATE {schema}.employee_account_tx SET order_id=NULL WHERE order_id=%s", (order_id,))
+
+            # 2b) Массовая сборка: группы-варианты и отдельные ПК (units).
+            cur.execute(f"DELETE FROM {schema}.order_build_units WHERE order_id=%s", (order_id,))
+            cur.execute(f"DELETE FROM {schema}.order_build_groups WHERE order_id=%s", (order_id,))
 
             # 3) WIP-сборка заказа и связанное (ETA компонентов) — удаляем.
             cur.execute(f"SELECT id FROM {schema}.wip_builds WHERE order_id=%s", (order_id,))

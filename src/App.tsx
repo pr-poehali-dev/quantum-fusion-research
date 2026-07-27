@@ -49,6 +49,7 @@ const Profile = lazyWithReload(() => import("./pages/Profile"));
 const BuildPreview = lazyWithReload(() => import("./pages/BuildPreview"));
 const OrderSheet = lazyWithReload(() => import("./pages/OrderSheet"));
 const OrderProcessPage = lazyWithReload(() => import("./pages/OrderProcessPage"));
+const AdminBatchOrderPage = lazyWithReload(() => import("./pages/AdminBatchOrderPage"));
 const ArticlePage = lazyWithReload(() => import("./pages/ArticlePage"));
 const ProductPage = lazyWithReload(() => import("./pages/ProductPage"));
 const NotFound = lazyWithReload(() => import("./pages/NotFound"));
@@ -115,6 +116,7 @@ const App = () => (
               <Route path="/build-preview/:id" element={<BuildPreview />} />
               <Route path="/order-sheet/:id" element={<AdminGuard><OrderSheet /></AdminGuard>} />
               <Route path="/admin/order/:id" element={<AdminGuard><OrderProcessPage /></AdminGuard>} />
+              <Route path="/admin/batch/:id" element={<AdminGuard><AdminBatchOrderPage /></AdminGuard>} />
               <Route path="/quiz" element={<Quiz />} />
               <Route path="/service" element={<Service />} />
               <Route path="/privacy" element={<Privacy />} />
