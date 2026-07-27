@@ -156,40 +156,10 @@ export default function Admin() {
     setAuthed(false)
   }
 
-  // ── Auth screen ───────────────────────────────────────────────────────────
-  if (!authed) return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-xl">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg">B</div>
-          <div>
-            <p className="font-semibold text-foreground">BeGraphics Admin</p>
-            <p className="text-xs text-foreground/40">Панель управления</p>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs text-foreground/60">Пароль</label>
-            <input
-              type="password" value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && login()}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-              placeholder="Введите пароль" style={{ cursor: "text" }}
-            />
-          </div>
-          <button onClick={login} disabled={loginLoading} className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
-            {loginLoading ? "Проверка..." : "Войти"}
-          </button>
-          <button onClick={() => navigate("/")} className="w-full text-center text-xs text-foreground/40 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
-            ← На сайт
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
   // ── Tab config ────────────────────────────────────────────────────────────
+  // ВАЖНО: объявлено ДО раннего return `if (!authed)`, иначе хуки useMemo ниже
+  // вызывались бы только после входа → «Rendered more hooks than during the
+  // previous render» (нарушение правил хуков) и краш админки после логина.
   // Группа 1 — Продукция и сборки
   const topTabs = [
     { key: "builds", label: "Наши ПК", icon: "Monitor" },
@@ -245,6 +215,39 @@ export default function Admin() {
 
   const CATALOG_TABS: AdminTab[] = ["products", "add_product", "builds", "archive", "add_build", "tags", "articles", "add_article", "cables"]
   const isCatalogTab = CATALOG_TABS.includes(tab)
+
+  // ── Auth screen ───────────────────────────────────────────────────────────
+  if (!authed) return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-xl">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg">B</div>
+          <div>
+            <p className="font-semibold text-foreground">BeGraphics Admin</p>
+            <p className="text-xs text-foreground/40">Панель управления</p>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs text-foreground/60">Пароль</label>
+            <input
+              type="password" value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && login()}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+              placeholder="Введите пароль" style={{ cursor: "text" }}
+            />
+          </div>
+          <button onClick={login} disabled={loginLoading} className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50" style={{ cursor: "pointer" }}>
+            {loginLoading ? "Проверка..." : "Войти"}
+          </button>
+          <button onClick={() => navigate("/")} className="w-full text-center text-xs text-foreground/40 hover:text-foreground/60 transition-colors" style={{ cursor: "pointer" }}>
+            ← На сайт
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ cursor: "auto" }}>
