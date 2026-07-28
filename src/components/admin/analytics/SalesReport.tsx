@@ -143,11 +143,30 @@ function specToCSV(groups: SpecGroup[]): string {
   return [head.join(";"), ...rows].join("\n")
 }
 
+// Ключи сортировки таблицы продаж: соответствуют столбцам.
+type SortKey = "name" | "units_sold" | "demand_type" | "revenue" | "margin_rub" | "stock_now" | "days_cover" | "labels"
+
 export default function SalesReport() {
   const [range, setRange] = useState(defaultRange())
   const [data, setData] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+
+  // Сортировка таблицы: по какому столбцу и в какую сторону
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  // Фильтр по меткам: если непусто — показываем только товары, у которых
+  // есть хотя бы одна из выбранных меток
+  const [labelFilter, setLabelFilter] = useState<string[]>([])
+
+  // Клик по заголовку: тот же столбец — меняем направление, новый — desc по умолчанию
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => (d === "asc" ? "desc" : "asc"))
+    else { setSortKey(key); setSortDir("desc") }
+  }
+
+  const toggleLabel = (label: string) =>
+    setLabelFilter(f => (f.includes(label) ? f.filter(l => l !== label) : [...f, label]))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -197,6 +216,58 @@ export default function SalesReport() {
   // Группы характеристик: с предупреждением и топ по продажам
   const specWarn = (data?.spec_groups || []).filter(g => g.warning)
   const specTop = (data?.spec_groups || []).filter(g => g.sold_total > 0).slice(0, 12)
+
+  // Все уникальные метки из отчёта — для панели фильтра
+  const allLabels = Array.from(new Set((data?.items || []).flatMap(i => i.labels)))
+
+  // Товары после фильтра по меткам и сортировки по выбранному столбцу
+  const sortedItems = (() => {
+    let list = data?.items ? [...data.items] : []
+    if (labelFilter.length) {
+      list = list.filter(i => i.labels.some(l => labelFilter.includes(l)))
+    }
+    if (sortKey) {
+      // Значение для сравнения по столбцу; null уходит в конец
+      const val = (i: Item): string | number => {
+        switch (sortKey) {
+          case "name": return i.name.toLowerCase()
+          case "units_sold": return i.units_sold
+          case "demand_type": return i.demand_type
+          case "revenue": return i.revenue
+          case "margin_rub": return i.margin_rub ?? -Infinity
+          case "stock_now": return i.stock_now
+          case "days_cover": return i.days_cover ?? Infinity
+          case "labels": return i.labels.join(" ")
+          default: return 0
+        }
+      }
+      list.sort((a, b) => {
+        const va = val(a), vb = val(b)
+        let cmp: number
+        if (typeof va === "number" && typeof vb === "number") cmp = va - vb
+        else cmp = String(va).localeCompare(String(vb), "ru")
+        return sortDir === "asc" ? cmp : -cmp
+      })
+    }
+    return list
+  })()
+
+  // Заголовок с кликом-сортировкой и стрелкой направления
+  const SortTh = ({ label, k, align = "left" }: { label: string; k: SortKey; align?: "left" | "center" | "right" }) => {
+    const active = sortKey === k
+    const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start"
+    return (
+      <th className={`px-3 py-2.5 text-${align}`}>
+        <button onClick={() => toggleSort(k)}
+          className={`flex w-full items-center gap-1 ${justify} transition-colors hover:text-foreground ${active ? "text-foreground" : ""}`}
+          style={{ cursor: "pointer" }}>
+          {label}
+          <Icon name={active ? (sortDir === "asc" ? "ChevronUp" : "ChevronDown") : "ChevronsUpDown"}
+            size={13} className={active ? "text-primary" : "text-foreground/30"} />
+        </button>
+      </th>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -368,23 +439,45 @@ export default function SalesReport() {
             </div>
           )}
 
+          {/* Фильтр по меткам */}
+          {allLabels.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-xs text-foreground/50">Фильтр по меткам:</span>
+              {allLabels.map(l => {
+                const active = labelFilter.includes(l)
+                return (
+                  <button key={l} onClick={() => toggleLabel(l)} style={{ cursor: "pointer" }}
+                    className={`rounded px-2 py-0.5 text-[11px] font-medium transition-all ${active ? (LABEL_STYLE[l] || "bg-primary/20 text-primary") + " ring-1 ring-primary/40" : "bg-muted text-foreground/50 hover:text-foreground"}`}>
+                    {l}
+                  </button>
+                )
+              })}
+              {labelFilter.length > 0 && (
+                <button onClick={() => setLabelFilter([])} style={{ cursor: "pointer" }}
+                  className="ml-1 flex items-center gap-0.5 text-[11px] text-foreground/40 hover:text-foreground">
+                  <Icon name="X" size={12} />сбросить
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Таблица продаж */}
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-xs text-foreground/50">
-                  <th className="px-3 py-2.5 text-left">Товар</th>
-                  <th className="px-3 py-2.5 text-center">Продано</th>
-                  <th className="px-3 py-2.5 text-center">Спрос</th>
-                  <th className="px-3 py-2.5 text-right">Выручка</th>
-                  <th className="px-3 py-2.5 text-right">Маржа</th>
-                  <th className="px-3 py-2.5 text-center">Остаток</th>
-                  <th className="px-3 py-2.5 text-center">Хватит</th>
-                  <th className="px-3 py-2.5 text-left">Метки</th>
+                  <SortTh label="Товар" k="name" align="left" />
+                  <SortTh label="Продано" k="units_sold" align="center" />
+                  <SortTh label="Спрос" k="demand_type" align="center" />
+                  <SortTh label="Выручка" k="revenue" align="right" />
+                  <SortTh label="Маржа" k="margin_rub" align="right" />
+                  <SortTh label="Остаток" k="stock_now" align="center" />
+                  <SortTh label="Хватит" k="days_cover" align="center" />
+                  <SortTh label="Метки" k="labels" align="left" />
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((i, idx) => (
+                {sortedItems.map((i, idx) => (
                   <tr key={i.product_id} className={`border-b border-border/50 ${idx % 2 ? "bg-muted/10" : ""}`}>
                     <td className="px-3 py-2.5">
                       <p className="font-medium">{i.name}</p>
@@ -419,9 +512,19 @@ export default function SalesReport() {
                     </td>
                   </tr>
                 ))}
+                {sortedItems.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-8 text-center text-xs text-foreground/40">
+                      Нет товаров с выбранными метками
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+          {labelFilter.length > 0 && (
+            <p className="text-xs text-foreground/50">Показано {sortedItems.length} из {data.items.length} товаров (фильтр по меткам)</p>
+          )}
           <p className="text-xs text-foreground/40">
             <b>Тип спроса</b>: «регулярный» — покупали в разных заказах/дни (реальный спрос);
             «разовый» — 1 заказ (возможно случайность, не считается спросом).
