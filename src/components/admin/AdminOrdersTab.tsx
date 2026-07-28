@@ -21,11 +21,6 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
   const isArchive = viewArchive
 
   const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "pc_build" | "parts">("all")
-  const [newOrderModal, setNewOrderModal] = useState(false)
-  const [newOrderForm, setNewOrderForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts" as "parts" | "pc_build", source_id: "" as string })
-  const [newOrderSaving, setNewOrderSaving] = useState(false)
-  // Источники лидов из аналитики (marketing). Управление — во вкладке «Аналитика → Источники».
-  const [leadSources, setLeadSources] = useState<{ id: number; name: string; group_name: string | null }[]>([])
 
   const [copiedOrderId, setCopiedOrderId] = useState<number | null>(null)
   const [warrantyLoadingId, setWarrantyLoadingId] = useState<number | null>(null)
@@ -102,35 +97,6 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     setOrders(o => o.filter(ord => ord.id !== id))
   }
 
-  // Подгружаем активные источники при первом открытии модалки нового заказа
-  useEffect(() => {
-    if (newOrderModal && leadSources.length === 0) {
-      api.marketing.getSources(true).then(d => setLeadSources(d.sources || d || [])).catch(() => {})
-    }
-  }, [newOrderModal, leadSources.length])
-
-  const createOrder = async () => {
-    if (!newOrderForm.customer_name.trim() || !newOrderForm.customer_phone.trim()) return
-    setNewOrderSaving(true)
-    const res = await api.orders.create({
-      customer_name: newOrderForm.customer_name.trim(),
-      customer_phone: newOrderForm.customer_phone.trim(),
-      customer_email: newOrderForm.customer_email.trim(),
-      comment: newOrderForm.comment.trim(),
-      order_type: newOrderForm.order_type,
-      source_id: newOrderForm.source_id ? Number(newOrderForm.source_id) : null,
-      items: [],
-      total: 0,
-    })
-    if (res.id) {
-      const d = await api.orders.getAll()
-      setOrders(d.orders || [])
-    }
-    setNewOrderSaving(false)
-    setNewOrderModal(false)
-    setNewOrderForm({ customer_name: "", customer_phone: "", customer_email: "", comment: "", order_type: "parts", source_id: "" })
-  }
-
   // Массовая сборка: создаём пустой заказ-партию и переходим в его редактор
   const [batchCreating, setBatchCreating] = useState(false)
   const createBatch = async () => {
@@ -194,7 +160,7 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                 <Icon name={batchCreating ? "Loader" : "Boxes"} size={15} className={batchCreating ? "animate-spin" : ""} />
                 Массовая сборка
               </button>
-              <button onClick={() => setNewOrderModal(true)}
+              <button onClick={() => navigate("/admin/order/new")}
                 className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                 style={{ cursor: "pointer" }}>
                 <Icon name="Plus" size={15} />
@@ -382,72 +348,6 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
           })}
         </div>
       )}
-
-      {/* New Order Modal */}
-      {newOrderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" style={{ cursor: "auto" }}>
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-lg font-medium text-foreground">Новый заказ</h3>
-              <button onClick={() => setNewOrderModal(false)} className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
-                <Icon name="X" size={18} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs text-foreground/60">Имя клиента *</label>
-                <input value={newOrderForm.customer_name} onChange={e => setNewOrderForm(f => ({ ...f, customer_name: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-foreground/60">Телефон *</label>
-                <input value={newOrderForm.customer_phone} onChange={e => setNewOrderForm(f => ({ ...f, customer_phone: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-foreground/60">Email</label>
-                <input value={newOrderForm.customer_email} onChange={e => setNewOrderForm(f => ({ ...f, customer_email: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-foreground/60">Тип заказа</label>
-                <select value={newOrderForm.order_type} onChange={e => setNewOrderForm(f => ({ ...f, order_type: e.target.value as "parts" | "pc_build" }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-                  <option value="parts">Комплектующие</option>
-                  <option value="pc_build">ПК-сборка</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-foreground/60">Откуда лид</label>
-                <select value={newOrderForm.source_id} onChange={e => setNewOrderForm(f => ({ ...f, source_id: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-                  <option value="">— не указан —</option>
-                  {leadSources.map(s => (
-                    <option key={s.id} value={s.id}>{s.group_name ? `${s.group_name} · ${s.name}` : s.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[11px] text-foreground/40">Список источников настраивается в «Аналитика → Источники»</p>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-foreground/60">Комментарий</label>
-                <textarea value={newOrderForm.comment} onChange={e => setNewOrderForm(f => ({ ...f, comment: e.target.value }))}
-                  rows={2} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none resize-none" style={{ cursor: "text" }} />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={createOrder} disabled={newOrderSaving || !newOrderForm.customer_name.trim() || !newOrderForm.customer_phone.trim()}
-                  className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors" style={{ cursor: "pointer" }}>
-                  {newOrderSaving ? "Создание..." : "Создать"}
-                </button>
-                <button onClick={() => setNewOrderModal(false)}
-                  className="rounded-lg border border-border px-4 py-2.5 text-sm text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                  Отмена
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
 
     </div>
   )

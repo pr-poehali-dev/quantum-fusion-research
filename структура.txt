@@ -993,3 +993,17 @@ physical); qty := physical - qty_reserved (>=0). Излишек POSITIVE над 
 конвертируется в NEGATIVE-резервы (POSITIVE→NEGATIVE в warehouse_reserves) →
 дефицит уходит в корзину закупки. Корзина: required_qty = сумма ACTIVE NEGATIVE
 по группе. Идемпотентно, самолечащее — не создаёт отрицательного доступного.
+
+[v7.57] СОЗДАНИЕ ЗАКАЗА/СБОРКИ — отдельные пошаговые страницы (стиль /quiz),
+вместо прежних модалок:
+- src/pages/AdminNewOrderPage.tsx — маршрут /admin/order/new (под AdminGuard).
+  2 шага: (1) имя*/телефон*/email, (2) тип заказа/источник лида/комментарий.
+  Создаёт через api.orders.create (items:[], total:0). Кнопка «Новый заказ»
+  в AdminOrdersTab теперь navigate("/admin/order/new"); модалка удалена.
+- src/pages/AdminNewWipPage.tsx — маршрут /admin/wip/new (под AdminGuard).
+  3 шага: (1) номер(авто)/этап/for_sale/источник*/контакт/доставка,
+  (2) комплектующие WIP_COMPONENTS (9 полей), (3) даты + комментарий.
+  Создаёт через api.wipBuilds.create + api.orders.setSource (источник лида).
+  Кнопка «Новая сборка» в AdminWipTab → navigate("/admin/wip/new");
+  модалка редактирования существующих сборок и copyWip сохранены.
+- Роуты в App.tsx стоят ПЕРЕД /admin/order/:id, чтобы "new" не матчился как id.
