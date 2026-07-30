@@ -377,6 +377,10 @@ API: api.stress.list/get/deleteRun/profilesList/profileSave/profileDelete (src/l
   заказу из списка orders, список прогонов). Отчёт папки —
   src/components/admin/stress/folderReport.ts: PDF (окно печати) + CSV.
   Привязка к заказу номинальная (order_id + денормализ. order_ref=display_number).
+  [v7.61] Два формата PDF-отчёта: «Компактный» (openFolderReportCompact —
+  каждый прогон на отдельной странице как окно детали: сводка + датчики +
+  бенчмарки с файлами) и «Подробный» (openFolderReportPrint — все прогоны
+  подряд таблицей датчиков). Backend folder_report отдаёт и results с файлами.
 Секрет STRESS_INGEST_TOKEN — токен приложения для приёма данных.
 УВЕДОМЛЕНИЯ: action=notify (по токену) → tg_notify.notify_stress в Telegram
   (секрет STRESS_TG_CHAT_ID). События: test_failed (при ошибке теста сразу,

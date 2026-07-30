@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { openFolderReportPrint, downloadFolderCSV, ReportFolder, ReportRun } from "@/components/admin/stress/folderReport"
+import { openFolderReportPrint, openFolderReportCompact, downloadFolderCSV, ReportFolder, ReportRun } from "@/components/admin/stress/folderReport"
 
 export interface StressFolder {
   id: number
@@ -83,14 +83,16 @@ export default function StressFoldersPanel({ adminKey, folders, runs, onChanged,
     onChanged()
   }
 
-  const buildReport = async (f: StressFolder, mode: "print" | "csv") => {
+  const buildReport = async (f: StressFolder, mode: "compact" | "detailed" | "csv") => {
     setReportBusy(f.id)
     const res = await api.stress.folderReport(f.id, adminKey).catch(() => null)
     setReportBusy(null)
     if (!res?.folder) { alert("Не удалось получить данные папки"); return }
     const folder = res.folder as ReportFolder
     const rrs = (res.runs || []) as ReportRun[]
-    if (mode === "print") {
+    if (mode === "compact") {
+      if (!openFolderReportCompact(folder, rrs)) alert("Разрешите всплывающие окна для печати")
+    } else if (mode === "detailed") {
       if (!openFolderReportPrint(folder, rrs)) alert("Разрешите всплывающие окна для печати")
     } else {
       downloadFolderCSV(folder, rrs)
@@ -171,15 +173,24 @@ export default function StressFoldersPanel({ adminKey, folders, runs, onChanged,
                     </div>
 
                     {/* Отчёт по папке */}
-                    <div className="mt-3 flex flex-wrap gap-2 border-t border-border/50 pt-3">
-                      <button onClick={() => buildReport(f, "print")} disabled={reportBusy === f.id || f.runs_count === 0}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-40" style={{ cursor: "pointer" }}>
-                        <Icon name={reportBusy === f.id ? "Loader" : "Printer"} size={13} className={reportBusy === f.id ? "animate-spin" : ""} /> Отчёт (PDF)
-                      </button>
-                      <button onClick={() => buildReport(f, "csv")} disabled={reportBusy === f.id || f.runs_count === 0}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-40" style={{ cursor: "pointer" }}>
-                        <Icon name="FileDown" size={13} /> Экспорт CSV
-                      </button>
+                    <div className="mt-3 border-t border-border/50 pt-3">
+                      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-foreground/40">Отчёт по папке</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => buildReport(f, "compact")} disabled={reportBusy === f.id || f.runs_count === 0}
+                          title="Каждый прогон на отдельной странице: сводка, датчики и бенчмарки"
+                          className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-40" style={{ cursor: "pointer" }}>
+                          <Icon name={reportBusy === f.id ? "Loader" : "LayoutList"} size={13} className={reportBusy === f.id ? "animate-spin" : ""} /> Компактный (PDF)
+                        </button>
+                        <button onClick={() => buildReport(f, "detailed")} disabled={reportBusy === f.id || f.runs_count === 0}
+                          title="Все прогоны подряд одной таблицей датчиков"
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-40" style={{ cursor: "pointer" }}>
+                          <Icon name="Printer" size={13} /> Подробный (PDF)
+                        </button>
+                        <button onClick={() => buildReport(f, "csv")} disabled={reportBusy === f.id || f.runs_count === 0}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-40" style={{ cursor: "pointer" }}>
+                          <Icon name="FileDown" size={13} /> Экспорт CSV
+                        </button>
+                      </div>
                     </div>
 
                     {/* Список прогонов в папке */}

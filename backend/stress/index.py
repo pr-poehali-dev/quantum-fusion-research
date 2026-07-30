@@ -402,10 +402,11 @@ def folder_report(cur, fid):
             "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
             "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
             "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
-            "status": r[11], "created_at": r[12], "metrics": [],
+            "status": r[11], "created_at": r[12], "metrics": [], "results": [],
         })
     if runs:
         ids = ",".join(str(x["id"]) for x in runs)
+        # Метрики (датчики) по всем прогонам папки
         cur.execute(
             f"SELECT run_id, key, label, unit, min_val, max_val, avg_val, samples "
             f"FROM {SCHEMA}.stress_metrics WHERE run_id IN ({ids}) ORDER BY id"
@@ -421,6 +422,34 @@ def folder_report(cur, fid):
             })
         for x in runs:
             x["metrics"] = by_run.get(x["id"], [])
+
+        # Результаты тестов (бенчмарки) + файлы — для компактного отчёта
+        cur.execute(
+            f"SELECT id, run_id, test_name, command, exit_code, duration_sec, "
+            f"timed_out, success FROM {SCHEMA}.stress_results "
+            f"WHERE run_id IN ({ids}) ORDER BY sort_order, id"
+        )
+        res_by_run = {}
+        res_index = {}
+        for x in cur.fetchall():
+            item = {
+                "id": x[0], "test_name": x[2], "command": x[3], "exit_code": x[4],
+                "duration_sec": float(x[5]) if x[5] is not None else 0,
+                "timed_out": x[6], "success": x[7], "files": [],
+            }
+            res_by_run.setdefault(x[1], []).append(item)
+            res_index[x[0]] = item
+        if res_index:
+            res_ids = ",".join(str(i) for i in res_index)
+            cur.execute(
+                f"SELECT result_id, file_name, file_url, file_size FROM {SCHEMA}.stress_files "
+                f"WHERE result_id IN ({res_ids}) ORDER BY id"
+            )
+            for fr in cur.fetchall():
+                if fr[0] in res_index:
+                    res_index[fr[0]]["files"].append({"file_name": fr[1], "file_url": fr[2], "file_size": fr[3]})
+        for x in runs:
+            x["results"] = res_by_run.get(x["id"], [])
     return ok({"folder": folder, "runs": runs})
 
 
