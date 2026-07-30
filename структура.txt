@@ -362,8 +362,21 @@ src/pages/build-preview/:
 - Приложение тянет профили с сайта (при старте + пункт меню), кэширует в profiles.json.
 Таблицы: stress_runs, stress_results, stress_files (V0155), stress_profiles (V0156).
 Frontend: вкладка /admin/stress (StressTestsTab) в группе «Прочее»:
-  переключатель «Результаты / Профили тестов» (StressProfilesTab — редактор кнопками).
+  переключатель «Результаты / Папки / Профили тестов / Метрики».
 API: api.stress.list/get/deleteRun/profilesList/profileSave/profileDelete (src/lib/api.ts).
+
+[v7.60] ПАПКИ ПРОГОНОВ (группировка + отчёты). Таблица stress_folders
+  (name, order_id, order_ref, note; V0215) + stress_runs.folder_id.
+  Backend admin-actions: folders_list, folder_save, folder_delete (прогоны
+  отвязываются, не удаляются), runs_assign_folder (массово), folder_report
+  (папка + прогоны с метриками). API: api.stress.foldersList/folderSave/
+  folderDelete/runsAssignFolder/folderReport.
+  Фронт: в «Результаты» режим «Выбрать» (чекбоксы) + панель «В папку…»,
+  фильтр по папкам, метка папки в карточке. Вкладка «Папки» —
+  src/components/admin/stress/StressFoldersPanel.tsx (переим., привязка к
+  заказу из списка orders, список прогонов). Отчёт папки —
+  src/components/admin/stress/folderReport.ts: PDF (окно печати) + CSV.
+  Привязка к заказу номинальная (order_id + денормализ. order_ref=display_number).
 Секрет STRESS_INGEST_TOKEN — токен приложения для приёма данных.
 УВЕДОМЛЕНИЯ: action=notify (по токену) → tg_notify.notify_stress в Telegram
   (секрет STRESS_TG_CHAT_ID). События: test_failed (при ошибке теста сразу,

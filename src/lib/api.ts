@@ -369,6 +369,17 @@ export const api = {
       fetch(`${URLS.stress}?action=preset_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "preset_save", ...(data as object) }) }).then(r => r.json()),
     presetDelete: (id: number, adminKey: string) =>
       fetch(`${URLS.stress}?action=preset_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    // Папки прогонов
+    foldersList: (adminKey: string) =>
+      fetch(`${URLS.stress}?action=folders_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    folderSave: (data: { id?: number; name?: string; order_id?: number | null; order_ref?: string; note?: string }, adminKey: string) =>
+      fetch(`${URLS.stress}?action=folder_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "folder_save", ...data }) }).then(r => r.json()),
+    folderDelete: (id: number, adminKey: string) =>
+      fetch(`${URLS.stress}?action=folder_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    runsAssignFolder: (run_ids: number[], folder_id: number | null, adminKey: string) =>
+      fetch(`${URLS.stress}?action=runs_assign_folder`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "runs_assign_folder", run_ids, folder_id }) }).then(r => r.json()),
+    folderReport: (id: number, adminKey: string) =>
+      fetch(`${URLS.stress}?action=folder_report&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
   },
   companySettings: {
     list: () => fetch(URLS.companySettings).then(r => r.json()),

@@ -147,6 +147,18 @@ def handler(event, context):
         if action == "delete_run" and method == "DELETE":
             return delete_run(cur, conn, int(params.get("id") or 0))
 
+        # Папки прогонов
+        if action == "folders_list" and method == "GET":
+            return folders_list(cur)
+        if action == "folder_save" and method in ("POST", "PUT"):
+            return folder_save(cur, conn, body)
+        if action == "folder_delete" and method == "DELETE":
+            return folder_delete(cur, conn, int(params.get("id") or 0))
+        if action == "runs_assign_folder" and method in ("POST", "PUT"):
+            return runs_assign_folder(cur, conn, body)
+        if action == "folder_report" and method == "GET":
+            return folder_report(cur, int(params.get("id") or 0))
+
         # Профили (редактор в админке)
         if action == "profiles_list" and method == "GET":
             return profiles_list(cur)
@@ -285,16 +297,131 @@ def ingest(cur, conn, body):
 def list_runs(cur):
     cur.execute(
         f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
-        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at "
+        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at, folder_id "
         f"FROM {SCHEMA}.stress_runs ORDER BY created_at DESC LIMIT 500"
     )
     runs = [{
         "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
         "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
-        "status": r[11], "created_at": r[12],
+        "status": r[11], "created_at": r[12], "folder_id": r[13],
     } for r in cur.fetchall()]
     return ok({"runs": runs})
+
+
+# ─── Папки прогонов (группировка + номинальная привязка к заказу) ───────────
+
+def folders_list(cur):
+    # Папки + количество прогонов в каждой
+    cur.execute(
+        f"SELECT f.id, f.name, f.order_id, f.order_ref, f.note, f.created_at, "
+        f"COUNT(r.id) AS runs_count "
+        f"FROM {SCHEMA}.stress_folders f "
+        f"LEFT JOIN {SCHEMA}.stress_runs r ON r.folder_id = f.id "
+        f"GROUP BY f.id ORDER BY f.created_at DESC"
+    )
+    folders = [{
+        "id": r[0], "name": r[1], "order_id": r[2], "order_ref": r[3],
+        "note": r[4], "created_at": r[5], "runs_count": r[6],
+    } for r in cur.fetchall()]
+    return ok({"folders": folders})
+
+
+def folder_save(cur, conn, body):
+    fid = body.get("id")
+    name = (body.get("name") or "Новая папка").strip() or "Новая папка"
+    order_id = body.get("order_id")
+    order_id_sql = str(int(order_id)) if order_id not in (None, "", 0, "0") else "NULL"
+    order_ref = body.get("order_ref") or ""
+    note = body.get("note") or ""
+    if fid:
+        cur.execute(
+            f"UPDATE {SCHEMA}.stress_folders SET name = {esc(name)}, order_id = {order_id_sql}, "
+            f"order_ref = {esc(order_ref)}, note = {esc(note)}, updated_at = NOW() "
+            f"WHERE id = {int(fid)} RETURNING id"
+        )
+    else:
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_folders (name, order_id, order_ref, note) VALUES "
+            f"({esc(name)}, {order_id_sql}, {esc(order_ref)}, {esc(note)}) RETURNING id"
+        )
+    new_id = cur.fetchone()[0]
+    conn.commit()
+    return ok({"ok": True, "id": new_id})
+
+
+def folder_delete(cur, conn, fid):
+    if not fid:
+        return err("id required")
+    # Прогоны из папки не удаляем — просто отвязываем (folder_id = NULL)
+    cur.execute(f"UPDATE {SCHEMA}.stress_runs SET folder_id = NULL WHERE folder_id = {int(fid)}")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_folders WHERE id = {int(fid)}")
+    conn.commit()
+    return ok({"ok": True})
+
+
+def runs_assign_folder(cur, conn, body):
+    # body: {run_ids: [..], folder_id: int|null}
+    run_ids = body.get("run_ids") or []
+    run_ids = [int(x) for x in run_ids if str(x).isdigit()]
+    if not run_ids:
+        return err("run_ids required")
+    folder_id = body.get("folder_id")
+    fid_sql = str(int(folder_id)) if folder_id not in (None, "", 0, "0") else "NULL"
+    ids_sql = ",".join(str(x) for x in run_ids)
+    cur.execute(
+        f"UPDATE {SCHEMA}.stress_runs SET folder_id = {fid_sql} WHERE id IN ({ids_sql})"
+    )
+    conn.commit()
+    return ok({"ok": True, "updated": len(run_ids)})
+
+
+def folder_report(cur, fid):
+    """Полные данные папки для отчёта: папка + все её прогоны с метриками."""
+    if not fid:
+        return err("id required")
+    cur.execute(
+        f"SELECT id, name, order_id, order_ref, note, created_at "
+        f"FROM {SCHEMA}.stress_folders WHERE id = {int(fid)}"
+    )
+    f = cur.fetchone()
+    if not f:
+        return err("not found", 404)
+    folder = {
+        "id": f[0], "name": f[1], "order_id": f[2], "order_ref": f[3],
+        "note": f[4], "created_at": f[5],
+    }
+    cur.execute(
+        f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
+        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at "
+        f"FROM {SCHEMA}.stress_runs WHERE folder_id = {int(fid)} ORDER BY created_at DESC"
+    )
+    runs = []
+    for r in cur.fetchall():
+        runs.append({
+            "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
+            "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
+            "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
+            "status": r[11], "created_at": r[12], "metrics": [],
+        })
+    if runs:
+        ids = ",".join(str(x["id"]) for x in runs)
+        cur.execute(
+            f"SELECT run_id, key, label, unit, min_val, max_val, avg_val, samples "
+            f"FROM {SCHEMA}.stress_metrics WHERE run_id IN ({ids}) ORDER BY id"
+        )
+        by_run = {}
+        for m in cur.fetchall():
+            by_run.setdefault(m[0], []).append({
+                "key": m[1], "label": m[2], "unit": m[3],
+                "min": float(m[4]) if m[4] is not None else None,
+                "max": float(m[5]) if m[5] is not None else None,
+                "avg": float(m[6]) if m[6] is not None else None,
+                "samples": m[7],
+            })
+        for x in runs:
+            x["metrics"] = by_run.get(x["id"], [])
+    return ok({"folder": folder, "runs": runs})
 
 
 def get_run(cur, run_id):

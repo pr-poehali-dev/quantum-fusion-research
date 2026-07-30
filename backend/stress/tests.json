@@ -55,6 +55,32 @@
       "path": "/?action=notify",
       "body": {"event": "run_finished"},
       "expectedStatus": 403
+    },
+    {
+      "name": "Folders list without admin forbidden",
+      "method": "GET",
+      "path": "/?action=folders_list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Folder save without admin forbidden",
+      "method": "POST",
+      "path": "/?action=folder_save",
+      "body": {"name": "__sttest__"},
+      "expectedStatus": 403
+    },
+    {
+      "name": "Runs assign folder without admin forbidden",
+      "method": "POST",
+      "path": "/?action=runs_assign_folder",
+      "body": {"run_ids": [1], "folder_id": 1},
+      "expectedStatus": 403
+    },
+    {
+      "name": "Folder report without admin forbidden",
+      "method": "GET",
+      "path": "/?action=folder_report&id=1",
+      "expectedStatus": 403
     }
   ]
 }

@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
+import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
 import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
@@ -35,6 +36,7 @@ interface Run {
   failed_tests: number
   status: string
   created_at: string
+  folder_id?: number | null
   results?: ResultRow[]
   metrics?: Metric[]
 }
@@ -61,7 +63,7 @@ function fmtSize(b: number) {
 
 export default function StressTestsTab() {
   const adminKey = getAdminKey()
-  const [view, setView] = useState<"runs" | "profiles" | "metrics">("runs")
+  const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
@@ -70,6 +72,13 @@ export default function StressTestsTab() {
   const [catFilter, setCatFilter] = useState<string>("all")
   const [highlightMetric, setHighlightMetric] = useState<string | null>(null)
 
+  // Папки прогонов + выбор нескольких прогонов чекбоксами
+  const [folders, setFolders] = useState<StressFolder[]>([])
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  // Фильтр списка по папке: null = все, 0 = «Без папки», иначе id папки
+  const [folderFilter, setFolderFilter] = useState<number | null>(null)
+
   const load = useCallback(() => {
     setLoading(true)
     api.stress.list(adminKey)
@@ -77,10 +86,33 @@ export default function StressTestsTab() {
       .finally(() => setLoading(false))
   }, [adminKey])
 
+  const loadFolders = useCallback(() => {
+    api.stress.foldersList(adminKey).then(d => setFolders(d.folders || [])).catch(() => {})
+  }, [adminKey])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadFolders() }, [loadFolders])
   useEffect(() => {
     api.stress.metricPrefsList(adminKey).then(d => setPrefs(d.prefs || []))
   }, [adminKey, view])
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+  }
+  const clearSelection = () => { setSelectedIds(new Set()); setSelectMode(false) }
+
+  // Назначить выбранные прогоны в папку (или отвязать при folderId=null)
+  const assignToFolder = async (folderId: number | null) => {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    await api.stress.runsAssignFolder(ids, folderId, adminKey)
+    clearSelection()
+    load(); loadFolders()
+  }
 
   const openRun = (id: number) => {
     setDetailLoading(true)
@@ -106,6 +138,11 @@ export default function StressTestsTab() {
           style={{ cursor: "pointer" }}>
           <Icon name="Activity" size={15} /> Результаты
         </button>
+        <button onClick={() => setView("folders")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "folders" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="Folder" size={15} /> Папки
+        </button>
         <button onClick={() => setView("profiles")}
           className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "profiles" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
           style={{ cursor: "pointer" }}>
@@ -118,16 +155,64 @@ export default function StressTestsTab() {
         </button>
       </div>
 
-      {view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} /> : view === "profiles" ? <StressProfilesTab /> : (
+      {view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} />
+       : view === "profiles" ? <StressProfilesTab />
+       : view === "folders" ? (
+         <StressFoldersPanel
+           adminKey={adminKey} folders={folders} runs={runs}
+           onChanged={() => { loadFolders(); load() }}
+           onOpenRun={openRun}
+         />
+       ) : (
     <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
       {/* Список прогонов */}
       <div>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Прогоны стресс-тестов</h2>
-          <button onClick={load} className="flex items-center gap-1.5 text-xs text-foreground/50 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="RefreshCw" size={14} /> Обновить
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()) }}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${selectMode ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="CheckSquare" size={13} /> {selectMode ? "Готово" : "Выбрать"}
+            </button>
+            <button onClick={load} className="flex items-center gap-1.5 text-xs text-foreground/50 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="RefreshCw" size={14} /> Обновить
+            </button>
+          </div>
         </div>
+
+        {/* Фильтр по папкам */}
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button onClick={() => setFolderFilter(null)}
+            className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${folderFilter === null ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}>Все</button>
+          <button onClick={() => setFolderFilter(0)}
+            className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${folderFilter === 0 ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
+            style={{ cursor: "pointer" }}>Без папки</button>
+          {folders.map(f => (
+            <button key={f.id} onClick={() => setFolderFilter(f.id)}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${folderFilter === f.id ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="Folder" size={11} /> {f.name} <span className="opacity-60">{f.runs_count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Панель действий над выбранными */}
+        {selectMode && selectedIds.size > 0 && (
+          <div className="mb-3 rounded-xl border border-primary/40 bg-primary/5 p-3">
+            <p className="mb-2 text-xs font-medium text-foreground">Выбрано: {selectedIds.size}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select defaultValue="" onChange={e => { const v = e.target.value; if (v !== "") { assignToFolder(v === "none" ? null : Number(v)); e.target.value = "" } }}
+                className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground" style={{ cursor: "pointer" }}>
+                <option value="" disabled>В папку…</option>
+                {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                <option value="none">— Убрать из папки</option>
+              </select>
+              <button onClick={clearSelection} className="text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>Сбросить</button>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
@@ -138,22 +223,36 @@ export default function StressTestsTab() {
           </div>
         ) : (
           <div className="space-y-2">
-            {runs.map(r => (
-              <button key={r.id} onClick={() => openRun(r.id)}
-                className={`w-full rounded-xl border p-3 text-left transition-colors ${selected?.id === r.id ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}
+            {runs
+              .filter(r => folderFilter === null ? true : folderFilter === 0 ? !r.folder_id : r.folder_id === folderFilter)
+              .map(r => {
+              const checked = selectedIds.has(r.id)
+              return (
+              <div key={r.id}
+                onClick={() => selectMode ? toggleSelect(r.id) : openRun(r.id)}
+                className={`flex w-full items-start gap-2 rounded-xl border p-3 text-left transition-colors ${(selectMode ? checked : selected?.id === r.id) ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}
                 style={{ cursor: "pointer" }}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-foreground">{r.machine_name || r.profile_name || `Прогон #${r.id}`}</span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>
-                    {r.passed_tests}/{r.total_tests}
+                {selectMode && (
+                  <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                    {checked && <Icon name="Check" size={11} />}
                   </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-foreground">{r.machine_name || r.profile_name || `Прогон #${r.id}`}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>
+                      {r.passed_tests}/{r.total_tests}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/40">
+                    <Icon name="Clock" size={11} /> {fmtDate(r.created_at)}
+                    {r.profile_name && <><span>·</span><span className="truncate">{r.profile_name}</span></>}
+                    {r.folder_id && <><span>·</span><Icon name="Folder" size={10} /><span className="truncate">{folders.find(f => f.id === r.folder_id)?.name || "папка"}</span></>}
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/40">
-                  <Icon name="Clock" size={11} /> {fmtDate(r.created_at)}
-                  {r.profile_name && <><span>·</span><span className="truncate">{r.profile_name}</span></>}
-                </div>
-              </button>
-            ))}
+              </div>
+              )
+            })}
           </div>
         )}
       </div>
