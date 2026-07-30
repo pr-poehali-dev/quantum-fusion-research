@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
 import { buildBatchWarrantyHtml, BatchWarranty } from "@/pages/batch/warrantyPrint"
+import { exportBatchToExcel, parseBatchExcel } from "@/pages/batch/batchExcel"
 
 const PRODUCTS_URL = "https://functions.poehali.dev/ab453741-d994-4115-9a77-276036d19dbd"
 
@@ -131,6 +132,42 @@ export default function AdminBatchOrderPage() {
     win.document.close()
   }
 
+  const slotLabelOf = (slot: string) => SLOTS.find(s => s.key === slot)?.label || slot
+
+  // Экспорт содержимого партии в Excel (для вбивания серийников)
+  const exportExcel = () => {
+    if (!groups.length) return
+    const num = order?.display_number || `batch_${orderId}`
+    exportBatchToExcel(groups, slotLabelOf, `serials_${num}.xlsx`)
+  }
+
+  // Импорт серийников из Excel: разбираем файл и применяем по каждому ПК
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // позволяем повторно выбрать тот же файл
+    if (!file) return
+    setBusy(true); setImportMsg(null)
+    try {
+      const parsed = await parseBatchExcel(file, groups, slotLabelOf)
+      if (!parsed.length) { setImportMsg("В файле не найдено строк этой партии (проверьте колонку ID)."); setBusy(false); return }
+      let updated = 0
+      for (const p of parsed) {
+        await api.orders.batchUpdateUnit(orderId, p.unit_id, {
+          serial_number: p.serial_number,
+          comp_serials: p.comp_serials,
+        })
+        updated++
+      }
+      await load()
+      setImportMsg(`Импортировано: ${updated} ПК.`)
+    } catch (err) {
+      setImportMsg("Не удалось прочитать файл: " + (err instanceof Error ? err.message : "неизвестная ошибка"))
+    }
+    setBusy(false)
+  }
+
   const totalPcs = groups.reduce((s, g) => s + g.qty, 0)
   const totalIssued = groups.reduce((s, g) => s + g.issued_count, 0)
 
@@ -151,7 +188,18 @@ export default function AdminBatchOrderPage() {
           <h1 className="mt-1 text-2xl font-light text-foreground">Партия ПК</h1>
           <p className="text-sm text-foreground/50">{totalPcs} ПК · выдано {totalIssued} из {totalPcs} · {money(order?.total || 0)}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button onClick={exportExcel} disabled={busy || groups.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-500 hover:bg-green-500/20 disabled:opacity-50" style={{ cursor: "pointer" }}
+            title="Скачать Excel со списком всех ПК партии для вбивания серийников">
+            <Icon name="FileDown" size={15} /> Экспорт в Excel
+          </button>
+          <button onClick={() => fileRef.current?.click()} disabled={busy || groups.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-500 hover:bg-blue-500/20 disabled:opacity-50" style={{ cursor: "pointer" }}
+            title="Загрузить заполненный Excel — серийники применятся к партии">
+            <Icon name="FileUp" size={15} /> Импорт из Excel
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onImportFile} className="hidden" />
           <button onClick={syncAll} disabled={busy || groups.length === 0}
             className="flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50" style={{ cursor: "pointer" }}>
             <Icon name={busy ? "Loader" : "RefreshCw"} size={15} className={busy ? "animate-spin" : ""} /> Пересчитать резервы
@@ -162,6 +210,16 @@ export default function AdminBatchOrderPage() {
           </button>
         </div>
       </div>
+
+      {importMsg && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+          <Icon name="Info" size={15} className="text-primary" />
+          <span className="text-foreground/80">{importMsg}</span>
+          <button onClick={() => setImportMsg(null)} className="ml-auto text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={14} />
+          </button>
+        </div>
+      )}
 
       {syncMsg && (
         <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3 text-sm">

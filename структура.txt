@@ -720,6 +720,11 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   кол-во ПК, поиск компонентов по слотам, дублирование), пересчёт резервов,
   панель серийников/выдачи по каждому ПК. Кнопка «Массовая сборка» в
   AdminOrdersTab + бейдж «Массовая сборка».
+  [v7.59] Экспорт/импорт серийников в Excel: src/pages/batch/batchExcel.ts
+  (lib xlsx / SheetJS). Экспорт .xlsx — строка на ПК (колонки ID, Вариант,
+  № ПК, Серийник ПК + по колонке на комплектующую). Импорт разбирает файл,
+  сопоставляет строки по скрытому ID=unit.id, применяет пачкой через
+  batchUpdateUnit (serial_number + comp_serials). Кнопки в шапке страницы.
 - wip-builds margin: цены продажи из orders.items, себестоимость из
   warehouse_reserves по product_id. Фолбэк на pc_builds — для старого формата.
 - generate-warranty: чек из orders.items (новый формат) либо разворот из
