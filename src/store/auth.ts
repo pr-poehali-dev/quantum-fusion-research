@@ -17,6 +17,17 @@ interface User {
   status?: string
   user_tag?: string
   avatar_url?: string
+  partner_company_id?: number | null
+  partner_company?: {
+    id: number
+    name: string
+    tier: string
+    status: string
+    trial_ends_at: string | null
+    trial_active: boolean
+    stress_ingest_token: string
+  }
+  partner_access?: { b2b: boolean; lk: boolean; reason: string }
 }
 
 interface AuthStore {

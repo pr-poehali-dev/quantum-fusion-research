@@ -43,15 +43,60 @@ def get_user(cur, session_id):
     if not session_id:
         return None
     cur.execute(
-        f"SELECT u.id, u.email, u.username, u.bio, u.phone, u.vk_url, u.telegram_id, u.telegram_username, u.telegram_photo, u.email_verified, u.user_tag, u.is_public, u.avatar_url, u.telegram_tag, u.role, u.is_premium, u.status "
+        f"SELECT u.id, u.email, u.username, u.bio, u.phone, u.vk_url, u.telegram_id, u.telegram_username, u.telegram_photo, u.email_verified, u.user_tag, u.is_public, u.avatar_url, u.telegram_tag, u.role, u.is_premium, u.status, u.partner_company_id "
         f"FROM {SCHEMA}.user_sessions s JOIN {SCHEMA}.users u ON s.user_id = u.id "
         f"WHERE s.id = {esc(session_id)} AND s.expires_at > NOW()"
     )
     return cur.fetchone()
 
 
-def fmt_user(u):
+def company_access(cur, company_id):
+    """Возвращает доступ компании: {company:{...}, access:{b2b, lk, reason}} либо None.
+    Правила: basic → только b2b. close/paid → b2b+lk. Активный триал → b2b+lk
+    независимо от tier. Если status=suspended — доступа нет."""
+    if not company_id:
+        return None
+    cur.execute(
+        f"SELECT id, name, tier, status, trial_ends_at, stress_ingest_token "
+        f"FROM {SCHEMA}.partner_companies WHERE id = {int(company_id)}"
+    )
+    r = cur.fetchone()
+    if not r:
+        return None
+    tier, status, trial_ends = r[2], r[3], r[4]
+    # Активен ли триал прямо сейчас
+    trial_active = False
+    if trial_ends is not None:
+        cur.execute(f"SELECT {esc(str(trial_ends))}::timestamptz > NOW()")
+        trial_active = bool(cur.fetchone()[0])
+    suspended = status == "suspended"
+    if suspended:
+        b2b = lk = False
+        reason = "suspended"
+    elif trial_active:
+        b2b = lk = True
+        reason = "trial"
+    elif tier in ("close", "paid"):
+        b2b = lk = True
+        reason = tier
+    else:  # basic
+        b2b = True
+        lk = False
+        reason = "basic"
     return {
+        "company": {
+            "id": r[0], "name": r[1] or "", "tier": tier, "status": status,
+            "trial_ends_at": str(trial_ends) if trial_ends else None,
+            "trial_active": trial_active,
+            "stress_ingest_token": r[5] or "",
+        },
+        "access": {"b2b": b2b, "lk": lk, "reason": reason},
+    }
+
+
+def fmt_user(u, cur=None):
+    company_id = u[17] if len(u) > 17 else None
+    data = {
         "id": u[0],
         "email": u[1] or "",
         "username": u[2],
@@ -69,7 +114,14 @@ def fmt_user(u):
         "role": u[14] or "user",
         "is_premium": u[15] or False,
         "status": u[16] or "active",
+        "partner_company_id": company_id,
     }
+    if cur is not None and company_id:
+        info = company_access(cur, company_id)
+        if info:
+            data["partner_company"] = info["company"]
+            data["partner_access"] = info["access"]
+    return data
 
 
 
@@ -85,7 +137,7 @@ def handler(event: dict, context) -> dict:
     cors = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
+        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id, X-Admin-Key",
     }
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": cors, "body": ""}
@@ -143,7 +195,7 @@ def handler(event: dict, context) -> dict:
             password = body.get("password", "")
             pw_hash = hash_pw(password)
             cur.execute(
-                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified, user_tag, is_public, avatar_url, telegram_tag, role, is_premium, status "
+                f"SELECT id, email, username, bio, phone, vk_url, telegram_id, telegram_username, telegram_photo, email_verified, user_tag, is_public, avatar_url, telegram_tag, role, is_premium, status, partner_company_id "
                 f"FROM {SCHEMA}.users WHERE email = {esc(email)} AND password_hash = {esc(pw_hash)}"
             )
             u = cur.fetchone()
@@ -155,13 +207,13 @@ def handler(event: dict, context) -> dict:
                 f"INSERT INTO {SCHEMA}.user_sessions (id, user_id, created_at, expires_at) VALUES ({esc(sid)}, {u[0]}, NOW(), {esc(expires)})"
             )
             conn.commit()
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"session_id": sid, "user": fmt_user(u)})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"session_id": sid, "user": fmt_user(u, cur)})}
 
         elif action == "me" and method == "GET":
             u = get_user(cur, session_id)
             if not u:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
-            return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(u)})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(u, cur)})}
 
         elif action == "public":
             tag = params.get("utag", params.get("tag", "")).strip().lstrip("@").lower()
@@ -403,11 +455,15 @@ def handler(event: dict, context) -> dict:
             if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
                 return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
             search = params.get("search", "")
-            where = f"WHERE username ILIKE {esc('%'+search+'%')} OR email ILIKE {esc('%'+search+'%')}" if search else ""
-            cur.execute(f"SELECT id, email, username, user_tag, avatar_url, role, is_premium, status, warning_count, is_muted, created_at FROM {SCHEMA}.users {where} ORDER BY created_at DESC LIMIT 100")
+            where = f"WHERE u.username ILIKE {esc('%'+search+'%')} OR u.email ILIKE {esc('%'+search+'%')}" if search else ""
+            cur.execute(
+                f"SELECT u.id, u.email, u.username, u.user_tag, u.avatar_url, u.role, u.is_premium, u.status, u.warning_count, u.is_muted, u.created_at, u.partner_company_id, c.name "
+                f"FROM {SCHEMA}.users u LEFT JOIN {SCHEMA}.partner_companies c ON u.partner_company_id = c.id "
+                f"{where} ORDER BY u.created_at DESC LIMIT 100"
+            )
             users = []
             for r in cur.fetchall():
-                users.append({"id": r[0], "email": r[1] or "", "username": r[2], "user_tag": r[3] or "", "avatar_url": r[4] or "", "role": r[5] or "user", "is_premium": r[6] or False, "status": r[7] or "active", "warning_count": r[8] or 0, "is_muted": r[9] or False, "created_at": r[10].isoformat() if r[10] else None})
+                users.append({"id": r[0], "email": r[1] or "", "username": r[2], "user_tag": r[3] or "", "avatar_url": r[4] or "", "role": r[5] or "user", "is_premium": r[6] or False, "status": r[7] or "active", "warning_count": r[8] or 0, "is_muted": r[9] or False, "created_at": r[10].isoformat() if r[10] else None, "partner_company_id": r[11], "partner_company_name": r[12] or ""})
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"users": users})}
 
         elif action == "admin_user_update" and method == "POST":
@@ -432,9 +488,105 @@ def handler(event: dict, context) -> dict:
             elif op == "mute":
                 val = "TRUE" if body.get("value") else "FALSE"
                 cur.execute(f"UPDATE {SCHEMA}.users SET is_muted={val} WHERE id={target_id}")
+            elif op == "set_company":
+                cid = body.get("company_id")
+                cid_sql = str(int(cid)) if cid not in (None, "", 0, "0") else "NULL"
+                cur.execute(f"UPDATE {SCHEMA}.users SET partner_company_id={cid_sql} WHERE id={target_id}")
             elif op == "delete":
                 cur.execute(f"DELETE FROM {SCHEMA}.user_sessions WHERE user_id={target_id}")
                 cur.execute(f"DELETE FROM {SCHEMA}.users WHERE id={target_id}")
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
+        # ── ADMIN: партнёрские компании ──
+
+        elif action == "admin_companies" and method == "GET":
+            admin_key = params.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            cur.execute(
+                f"SELECT c.id, c.name, c.tier, c.status, c.trial_ends_at, c.stress_ingest_token, "
+                f"c.contact_name, c.contact_phone, c.note, c.created_at, "
+                f"(c.trial_ends_at IS NOT NULL AND c.trial_ends_at > NOW()) AS trial_active, "
+                f"(SELECT COUNT(*) FROM {SCHEMA}.users u WHERE u.partner_company_id = c.id) AS users_count "
+                f"FROM {SCHEMA}.partner_companies c ORDER BY c.created_at DESC"
+            )
+            companies = []
+            for r in cur.fetchall():
+                companies.append({
+                    "id": r[0], "name": r[1] or "", "tier": r[2], "status": r[3],
+                    "trial_ends_at": r[4].isoformat() if r[4] else None,
+                    "stress_ingest_token": r[5] or "", "contact_name": r[6] or "",
+                    "contact_phone": r[7] or "", "note": r[8] or "",
+                    "created_at": r[9].isoformat() if r[9] else None,
+                    "trial_active": bool(r[10]), "users_count": r[11],
+                })
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"companies": companies})}
+
+        elif action == "admin_company_save" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            admin_key = body.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            cid = body.get("id")
+            name = (body.get("name") or "").strip()
+            tier = body.get("tier") or "basic"
+            if tier not in ("basic", "close", "paid"):
+                tier = "basic"
+            status = body.get("status") or "active"
+            if status not in ("active", "suspended"):
+                status = "active"
+            token = (body.get("stress_ingest_token") or "").strip()
+            contact_name = body.get("contact_name") or ""
+            contact_phone = body.get("contact_phone") or ""
+            note = body.get("note") or ""
+            # Триал: trial_days (запустить/продлить на N дней) или trial_ends_at=null (сброс)
+            trial_sql = None  # None → не трогаем
+            if "trial_days" in body and body.get("trial_days") not in (None, ""):
+                days = int(body.get("trial_days") or 0)
+                trial_sql = f"NOW() + INTERVAL '{days} days'" if days > 0 else "NULL"
+            elif body.get("clear_trial"):
+                trial_sql = "NULL"
+            # Уникальность токена
+            if token:
+                cur.execute(
+                    f"SELECT id FROM {SCHEMA}.partner_companies WHERE stress_ingest_token = {esc(token)}"
+                    + (f" AND id <> {int(cid)}" if cid else "")
+                )
+                if cur.fetchone():
+                    return {"statusCode": 409, "headers": cors, "body": json.dumps({"error": "Токен уже используется другой компанией"})}
+            if cid:
+                sets = (
+                    f"name={esc(name)}, tier={esc(tier)}, status={esc(status)}, "
+                    f"stress_ingest_token={esc(token)}, contact_name={esc(contact_name)}, "
+                    f"contact_phone={esc(contact_phone)}, note={esc(note)}, updated_at=NOW()"
+                )
+                if trial_sql is not None:
+                    sets += f", trial_ends_at={trial_sql}"
+                cur.execute(f"UPDATE {SCHEMA}.partner_companies SET {sets} WHERE id={int(cid)} RETURNING id")
+            else:
+                trial_val = trial_sql if trial_sql is not None else "NULL"
+                cur.execute(
+                    f"INSERT INTO {SCHEMA}.partner_companies (name, tier, status, stress_ingest_token, "
+                    f"contact_name, contact_phone, note, trial_ends_at) VALUES "
+                    f"({esc(name)}, {esc(tier)}, {esc(status)}, {esc(token)}, "
+                    f"{esc(contact_name)}, {esc(contact_phone)}, {esc(note)}, {trial_val}) RETURNING id"
+                )
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "id": new_id})}
+
+        elif action == "admin_company_delete" and method == "DELETE":
+            admin_key = params.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            cid = int(params.get("id") or 0)
+            if not cid:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "id required"})}
+            # Отвязываем юзеров и прогоны, компанию удаляем
+            cur.execute(f"UPDATE {SCHEMA}.users SET partner_company_id=NULL WHERE partner_company_id={cid}")
+            cur.execute(f"UPDATE {SCHEMA}.stress_runs SET partner_company_id=NULL WHERE partner_company_id={cid}")
+            cur.execute(f"DELETE FROM {SCHEMA}.partner_companies WHERE id={cid}")
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

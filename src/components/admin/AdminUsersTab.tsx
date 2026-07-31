@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
-import { AdminUser } from "@/pages/admin/types"
+import { AdminUser, PartnerCompany } from "@/pages/admin/types"
 import { getAdminKey } from "@/pages/admin/constants"
+import PartnerCompaniesTab from "@/components/admin/PartnerCompaniesTab"
 
 interface Props {
   adminUsers: AdminUser[]
@@ -11,9 +12,16 @@ interface Props {
 }
 
 export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
+  const [sub, setSub] = useState<"users" | "partners">("users")
   const [userSearch, setUserSearch] = useState("")
   const [userSearchInput, setUserSearchInput] = useState("")
   const [userActionLoading, setUserActionLoading] = useState<number | null>(null)
+  const [companies, setCompanies] = useState<PartnerCompany[]>([])
+
+  // Список компаний для дропдауна привязки у юзера
+  useEffect(() => {
+    api.auth.adminGetCompanies(getAdminKey()).then(d => setCompanies(d.companies || [])).catch(() => {})
+  }, [])
 
   const adminUserOp = async (userId: number, op: string, extra?: Record<string, unknown>) => {
     setUserActionLoading(userId)
@@ -36,6 +44,22 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
   }
 
   return (
+    <div>
+      {/* Переключатель Пользователи / Партнёры */}
+      <div className="mb-5 inline-flex rounded-xl border border-border bg-card p-1">
+        <button onClick={() => setSub("users")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${sub === "users" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="Users" size={15} /> Пользователи
+        </button>
+        <button onClick={() => setSub("partners")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${sub === "partners" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="Building2" size={15} /> Партнёры
+        </button>
+      </div>
+
+      {sub === "partners" ? <PartnerCompaniesTab /> : (
     <div>
       <div className="mb-5 flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-light text-foreground">Пользователи ({adminUsers.length})</h2>
@@ -89,6 +113,7 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
                       {u.status === "blocked" && <span className="rounded-full bg-red-400/15 border border-red-400/30 px-2 py-0.5 text-xs text-red-400">Заблокирован</span>}
                       {u.is_muted && <span className="rounded-full bg-orange-400/15 border border-orange-400/30 px-2 py-0.5 text-xs text-orange-400">Мут</span>}
                       {u.warning_count > 0 && <span className="rounded-full bg-yellow-400/15 border border-yellow-400/30 px-2 py-0.5 text-xs text-yellow-400">⚠ {u.warning_count}</span>}
+                      {u.partner_company_name && <span className="rounded-full bg-primary/15 border border-primary/30 px-2 py-0.5 text-xs text-primary"><Icon name="Building2" size={10} className="mr-1 inline" />{u.partner_company_name}</span>}
                     </div>
                     <p className="text-xs text-foreground/40 mt-0.5 truncate">{u.email} · {new Date(u.created_at).toLocaleDateString("ru-RU")}</p>
                   </div>
@@ -103,6 +128,13 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
                         <option value="user">user</option>
                         <option value="admin">admin</option>
                         <option value="superadmin">superadmin</option>
+                      </select>
+                      <select value={u.partner_company_id ?? ""} onChange={e => adminUserOp(u.id, "set_company", { company_id: e.target.value || null })}
+                        title="Привязать к партнёрской компании"
+                        className={`rounded-lg border bg-card px-2 py-1.5 text-xs focus:border-primary focus:outline-none ${u.partner_company_id ? "border-primary/40 text-primary" : "border-border text-foreground/50"}`}
+                        style={{ cursor: "pointer" }}>
+                        <option value="">— без компании —</option>
+                        {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                       <button onClick={() => adminUserOp(u.id, "mute", { value: !u.is_muted })}
                         className={`rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${u.is_muted ? "border-orange-400/40 text-orange-400 hover:bg-orange-400/10" : "border-border text-foreground/50 hover:border-orange-400/40 hover:text-orange-400"}`}
@@ -133,6 +165,8 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
             )
           })}
         </div>
+      )}
+    </div>
       )}
     </div>
   )

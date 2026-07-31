@@ -13,6 +13,23 @@ export interface AdminUser {
   warning_count: number
   is_muted: boolean
   created_at: string
+  partner_company_id?: number | null
+  partner_company_name?: string
+}
+
+export interface PartnerCompany {
+  id: number
+  name: string
+  tier: string           // basic | close | paid
+  status: string         // active | suspended
+  trial_ends_at: string | null
+  trial_active: boolean
+  stress_ingest_token: string
+  contact_name: string
+  contact_phone: string
+  note: string
+  users_count: number
+  created_at: string | null
 }
 
 export interface Order {

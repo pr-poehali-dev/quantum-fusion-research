@@ -475,6 +475,24 @@ generate-warranty подставляет магазин по SN из sn_archive 
 Аутентификация: регистрация, вход, управление сессиями.
 Хеширует пароли, генерирует токены сессий.
 
+[v7.63] ПАРТНЁРСКИЕ КОМПАНИИ. Таблица partner_companies (name, tier
+basic/close/paid, status active/suspended, trial_ends_at, stress_ingest_token,
+реквизиты; V0216) + users.partner_company_id + stress_runs.partner_company_id.
+Хелпер company_access(cur, company_id) → {company, access{b2b, lk, reason}}:
+basic → только b2b; close/paid или активный триал → b2b+ЛК; suspended → нет.
+login и action=me отдают partner_company + partner_access.
+Admin-actions (ключ ADMIN_KEY): admin_users (отдаёт company юзера),
+admin_user_update op=set_company, admin_companies (список + users_count),
+admin_company_save (создать/редакт; триал через trial_days=N или
+clear_trial=true; токен вручную, уникальный), admin_company_delete
+(отвязывает юзеров и прогоны). API: api.auth.adminGetCompanies/
+adminSaveCompany/adminDeleteCompany.
+Фронт: в разделе админки «Пользователи» переключатель Пользователи/Партнёры.
+src/components/admin/PartnerCompaniesTab.tsx — CRUD компаний.
+src/components/admin/AdminUsersTab.tsx — дропдаун привязки юзера к компании.
+store/auth User: partner_company_id/partner_company/partner_access.
+НЕ сделано: этап 4 (b2b без пароля залогиненным), этап 5 (ЛК /partners).
+
 ### products
 Управление товарами/компонентами конфигуратора.
 CRUD товаров, слоты конфигуратора, отслеживание остатков.

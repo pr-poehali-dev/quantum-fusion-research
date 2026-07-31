@@ -225,6 +225,9 @@ export const api = {
     adminLogin: (adminKey: string) => fetch(`${URLS.auth}?action=admin_login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ak: adminKey }) }).then(r => r.json()),
     adminGetUsers: (adminKey: string, search?: string) => fetch(`${URLS.auth}?action=admin_users&ak=${encodeURIComponent(adminKey)}${search ? `&search=${encodeURIComponent(search)}` : ""}`).then(r => r.json()),
     adminUpdateUser: (data: unknown, adminKey: string) => fetch(`${URLS.auth}?action=admin_user_update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(data as object), ak: adminKey }) }).then(r => r.json()),
+    adminGetCompanies: (adminKey: string) => fetch(`${URLS.auth}?action=admin_companies&ak=${encodeURIComponent(adminKey)}`).then(r => r.json()),
+    adminSaveCompany: (data: unknown, adminKey: string) => fetch(`${URLS.auth}?action=admin_company_save`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(data as object), ak: adminKey }) }).then(r => r.json()),
+    adminDeleteCompany: (id: number, adminKey: string) => fetch(`${URLS.auth}?action=admin_company_delete&id=${id}&ak=${encodeURIComponent(adminKey)}`, { method: "DELETE" }).then(r => r.json()),
   },
   telegramAuth: {
     generateCode: (session: string) => fetch(`${URLS.telegramAuth}?action=generate`, { headers: authHeaders(session) }).then(r => r.json()),

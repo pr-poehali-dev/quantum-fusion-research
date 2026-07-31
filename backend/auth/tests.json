@@ -18,6 +18,25 @@
       "method": "GET",
       "path": "/?action=build&code=zzzzzz",
       "expectedStatus": 404
+    },
+    {
+      "name": "Admin companies without key forbidden",
+      "method": "GET",
+      "path": "/?action=admin_companies&ak=wrong",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Company save without key forbidden",
+      "method": "POST",
+      "path": "/?action=admin_company_save",
+      "body": {"ak": "wrong", "name": "__test__"},
+      "expectedStatus": 403
+    },
+    {
+      "name": "Company delete without key forbidden",
+      "method": "DELETE",
+      "path": "/?action=admin_company_delete&id=1&ak=wrong",
+      "expectedStatus": 403
     }
   ]
 }

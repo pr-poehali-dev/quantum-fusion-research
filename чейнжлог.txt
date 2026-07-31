@@ -3,6 +3,31 @@
 
 ---
 
+## v7.63 | 2026-07-31 | Партнёрские компании: фундамент + админка (этапы 1-3)
+
+### Изменения
+- [БД] Миграция V0216: таблица partner_companies (name, tier basic/close/paid,
+  status active/suspended, trial_ends_at, stress_ingest_token, реквизиты).
+  Колонки users.partner_company_id, stress_runs.partner_company_id.
+- [backend/auth] company_access() — единая логика прав: basic → B2B; close/paid
+  или активный триал → B2B+ЛК; suspended → нет доступа. /me и login отдают
+  partner_company + partner_access. admin_users отдаёт компанию юзера.
+  Новый op=set_company. Новые admin-actions: admin_companies, admin_company_save
+  (создание/редакт., триал через trial_days, ручной ingest-токен, проверка
+  уникальности), admin_company_delete (отвязывает юзеров/прогоны). +3 селф-теста.
+- [api.ts] auth.adminGetCompanies/adminSaveCompany/adminDeleteCompany.
+- [AdminUsersTab] Переключатель «Пользователи / Партнёры» ВНУТРИ раздела
+  «Пользователи». Дропдаун привязки юзера к компании + бейдж компании.
+- [PartnerCompaniesTab] (новый) Создание/редакт. компаний, статус, триал на
+  N дней, остановка триала, ручной токен, удаление.
+- [store/auth] User дополнен partner_company_id/partner_company/partner_access.
+
+### Дальше (не сделано)
+- Этап 4: B2B без пароля для залогиненных сотрудников компании с доступом.
+- Этап 5: ЛК /partners (стресс-тесты компании, ingest по токену компании).
+
+---
+
 ## v7.62 | 2026-07-31 | Стресс-бот: ссылка на begraphics.ru
 
 ### Изменения
