@@ -196,8 +196,12 @@ def notify(body):
     event = body.get("event", "")
     machine = body.get("machine") or "—"
     profile = body.get("profile") or "—"
+    # Ссылка на админку стресс-тестов. Боевой домен по умолчанию — begraphics.ru
+    # (preview-адрес в уведомлениях не нужен). Можно переопределить секретом SITE_BASE_URL.
     site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
-    link = f"\n🔗 {site}/admin/stress" if site else ""
+    if not site or "poehali.dev" in site:
+        site = "https://begraphics.ru"
+    link = f"\n🔗 {site}/admin/stress"
 
     if event == "test_failed":
         test_name = body.get("test_name") or "—"
