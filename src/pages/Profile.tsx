@@ -180,7 +180,7 @@ export default function Profile() {
         clearInterval(interval)
         setTgPolling(false)
         setTgCode(null)
-        updateUser({ ...user, telegram_id: res.telegram_id, telegram_username: res.telegram_username, telegram_photo: res.telegram_photo })
+        if (user) updateUser({ ...user, telegram_id: res.telegram_id, telegram_username: res.telegram_username, telegram_photo: res.telegram_photo })
         setProfileMsg({ type: "ok", text: "Telegram успешно привязан!" })
         setTimeout(() => setProfileMsg(null), 3000)
       }
@@ -211,7 +211,7 @@ export default function Profile() {
     const res = await api.upload.avatar(croppedBase64)
     if (res.url) {
       await api.auth.updateProfile({ avatar_url: res.url }, sessionId)
-      updateUser({ ...user, avatar_url: res.url })
+      if (user) updateUser({ ...user, avatar_url: res.url })
       setProfileMsg({ type: "ok", text: "Аватарка обновлена!" })
       setTimeout(() => setProfileMsg(null), 2000)
     }

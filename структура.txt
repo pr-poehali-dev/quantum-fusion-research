@@ -491,7 +491,10 @@ adminSaveCompany/adminDeleteCompany.
 src/components/admin/PartnerCompaniesTab.tsx — CRUD компаний.
 src/components/admin/AdminUsersTab.tsx — дропдаун привязки юзера к компании.
 store/auth User: partner_company_id/partner_company/partner_access.
-НЕ сделано: этап 4 (b2b без пароля залогиненным), этап 5 (ЛК /partners).
+[v7.64] Этап 4: b2b-prices session_has_b2b(cur, session_id) — цены без пароля
+для залогиненного сотрудника компании (active). B2B.tsx шлёт X-Session-Id,
+обновляет me, показывает плашку доступа по аккаунту.
+НЕ сделано: этап 5 (ЛК /partners).
 
 ### products
 Управление товарами/компонентами конфигуратора.

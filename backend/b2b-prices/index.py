@@ -16,6 +16,29 @@ def check_b2b_password(pwd: str) -> bool:
     real = os.environ.get("B2B_PASSWORD", "").strip()
     return bool(real) and pwd.strip() == real
 
+
+def session_has_b2b(cur, session_id: str) -> bool:
+    """Есть ли B2B-доступ у залогиненного пользователя через его партнёрскую
+    компанию. Доступ даёт любая компания в статусе active (basic/close/paid),
+    а также активный триал. Приостановленная (suspended) — нет."""
+    if not session_id:
+        return False
+    cur.execute(
+        f"SELECT c.tier, c.status, c.trial_ends_at "
+        f"FROM {SCHEMA}.user_sessions s "
+        f"JOIN {SCHEMA}.users u ON u.id = s.user_id "
+        f"JOIN {SCHEMA}.partner_companies c ON c.id = u.partner_company_id "
+        f"WHERE s.id = {esc(session_id)} AND s.expires_at > NOW()"
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+    _tier, status, trial_ends = row
+    if status == "suspended":
+        return False
+    # basic/close/paid активной компании → B2B-цены доступны
+    return True
+
 def handler(event: dict, context) -> dict:
     """
     B2B прайс-лист (публичный доступ, без авторизации аккаунта).
@@ -35,19 +58,23 @@ def handler(event: dict, context) -> dict:
 
     headers = event.get("headers") or {}
     params = event.get("queryStringParameters") or {}
-    # Регистронезависимое чтение заголовка пароля (прокси может менять регистр)
+    # Регистронезависимое чтение заголовков (прокси может менять регистр)
     lower_headers = {str(k).lower(): v for k, v in headers.items()}
     b2b_password = (lower_headers.get("x-b2b-password") or params.get("pwd") or "").strip()
-    has_prices = check_b2b_password(b2b_password)
-
-    # Эндпоинт проверки пароля (для логина на фронте)
-    if params.get("action") == "check_password":
-        return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": has_prices})}
+    session_id = (lower_headers.get("x-session-id") or "").strip()
 
     conn = get_conn()
     cur = conn.cursor()
 
     try:
+        # Доступ к ценам: верный пароль ИЛИ залогиненный сотрудник партнёрской
+        # компании с активным B2B-доступом.
+        has_prices = check_b2b_password(b2b_password) or session_has_b2b(cur, session_id)
+
+        # Эндпоинт проверки доступа (для логина на фронте)
+        if params.get("action") == "check_password":
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": has_prices})}
+
         category = params.get("category", "").strip()
         search = params.get("search", "").strip()
 

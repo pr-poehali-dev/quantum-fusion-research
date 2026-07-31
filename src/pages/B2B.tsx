@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { useAuth } from "@/store/auth"
 
 const B2B_URL = "https://functions.poehali.dev/f9a06f74-cd3c-4433-ae1b-52c4f76d1dec"
 const PWD_KEY = "b2b_password"
@@ -24,6 +25,19 @@ const fmt = (n?: number) =>
 
 export default function B2B() {
   const navigate = useNavigate()
+  const { sessionId, user, updateUser } = useAuth()
+
+  // Доступ к ценам по аккаунту: залогинен + компания даёт B2B-доступ
+  const companyB2B = !!(sessionId && user?.partner_access?.b2b)
+  const companyName = user?.partner_company?.name || ""
+
+  // Обновляем профиль (подтянуть partner_access) при заходе залогиненным
+  useEffect(() => {
+    if (!sessionId) return
+    import("@/lib/api").then(({ api }) => {
+      api.auth.me(sessionId).then(d => { if (d.user) updateUser(d.user) }).catch(() => {})
+    })
+  }, [sessionId, updateUser])
 
   const [password, setPassword] = useState<string>(() => localStorage.getItem(PWD_KEY) || "")
   const [hasPrices, setHasPrices] = useState(false)
@@ -48,12 +62,13 @@ export default function B2B() {
     const url = `${B2B_URL}${qs.toString() ? "?" + qs.toString() : ""}`
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (password) headers["X-B2B-Password"] = password
+    if (sessionId) headers["X-Session-Id"] = sessionId
     const res = await fetch(url, { headers }).then(r => r.json())
     setItems(res.items || [])
     setCategories(res.categories || [])
     setHasPrices(!!res.has_prices)
     setLoading(false)
-  }, [activeCategory, search, password])
+  }, [activeCategory, search, password, sessionId])
 
   useEffect(() => {
     const t = setTimeout(load, search ? 400 : 0)
@@ -136,7 +151,7 @@ export default function B2B() {
           </button>
           <div className="flex items-center gap-2">
             <ThemeSwitcher />
-            {hasPrices && (
+            {hasPrices && !companyB2B && (
               <button onClick={logoutPrices} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="LogOut" size={14} />
                 <span className="hidden sm:inline">Скрыть цены</span>
@@ -185,8 +200,18 @@ export default function B2B() {
           </div>
         </div>
 
-        {/* Парольный баннер для показа цен */}
-        {!hasPrices && (
+        {/* Плашка: цены открыты по партнёрскому аккаунту */}
+        {companyB2B && hasPrices && (
+          <div className="mb-5 flex items-center gap-2 rounded-xl border border-green-400/30 bg-green-400/5 p-3">
+            <Icon name="BadgeCheck" size={16} className="text-green-400 shrink-0" />
+            <p className="text-sm text-foreground/80">
+              Оптовые цены открыты по вашему аккаунту{companyName ? <> · <span className="font-medium text-foreground">{companyName}</span></> : ""}
+            </p>
+          </div>
+        )}
+
+        {/* Парольный баннер для показа цен (только если нет доступа по аккаунту) */}
+        {!hasPrices && !companyB2B && (
           <div className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-4">
             <div className="flex items-center gap-2 mb-2">
               <Icon name="Lock" size={16} className="text-primary" />
