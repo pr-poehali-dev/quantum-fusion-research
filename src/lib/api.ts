@@ -37,10 +37,11 @@ function authHeaders(session?: string | null) {
 // Авторизация запросов к stress: админ (adminKey) или партнёр (session по ЛК).
 export interface StressAuth { session?: string | null; companyId?: number | null }
 
-// Заголовки: если есть session — идём как партнёр (X-Session-Id),
+// Заголовки: если есть session — идём как партнёр (X-Session-Id + флаг
+// партнёрского режима, чтобы даже админ видел только свою компанию),
 // иначе как админ (X-Admin-Token).
 function stressHeaders(adminKey: string, auth?: StressAuth): Record<string, string> {
-  if (auth?.session) return { "X-Session-Id": auth.session }
+  if (auth?.session) return { "X-Session-Id": auth.session, "X-Partner-Scope": "1" }
   return { "X-Admin-Token": adminKey }
 }
 

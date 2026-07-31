@@ -12,7 +12,7 @@ SCHEMA = "t_p72635010_quantum_fusion_resea"
 cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-User-Id, X-Auth-Token, X-Session-Id, X-Admin-Token, X-Stress-Token",
+    "Access-Control-Allow-Headers": "Content-Type, X-User-Id, X-Auth-Token, X-Session-Id, X-Admin-Token, X-Stress-Token, X-Partner-Scope",
 }
 
 
@@ -181,7 +181,10 @@ def handler(event, context):
             return err("bad request", 400)
 
         # ── Контур ПАРТНЁРА (ЛК): данные строго своей компании ──────────────
-        admin = is_admin(cur, headers, params, body)
+        # Флаг «партнёрского режима» (заголовок X-Partner-Scope) от страницы
+        # /partners: даже админ в ЛК видит ТОЛЬКО свою компанию.
+        partner_scope = (headers.get("X-Partner-Scope") or headers.get("x-partner-scope") or "") == "1"
+        admin = False if partner_scope else is_admin(cur, headers, params, body)
         partner_cid = None if admin else partner_company_from_session(cur, headers)
         if not admin and partner_cid is None:
             return err("forbidden", 403)
