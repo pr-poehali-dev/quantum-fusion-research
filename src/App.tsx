@@ -61,6 +61,7 @@ const CommunityBuilds = lazyWithReload(() => import("./pages/CommunityBuilds"));
 const UserProfile = lazyWithReload(() => import("./pages/UserProfile"));
 const UserBuild = lazyWithReload(() => import("./pages/UserBuild"));
 const B2B = lazyWithReload(() => import("./pages/B2B"));
+const Partners = lazyWithReload(() => import("./pages/Partners"));
 const Articles = lazyWithReload(() => import("./pages/Articles"));
 const HomeStonks = lazyWithReload(() => import("./pages/HomeStonks"));
 const Quiz = lazyWithReload(() => import("./pages/Quiz"));
@@ -138,6 +139,7 @@ const App = () => (
               <Route path="/profile/:tag" element={<UserProfile />} />
               <Route path="/user-build/:token" element={<UserBuild />} />
               <Route path="/b2b" element={<B2B />} />
+              <Route path="/partners" element={<Partners />} />
               <Route path="/report" element={<ProjectReport />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

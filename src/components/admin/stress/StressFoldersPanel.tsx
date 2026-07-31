@@ -28,13 +28,16 @@ interface OrderLite { id: number; display_number: string; customer_name?: string
 
 interface Props {
   adminKey: string
+  session?: string | null
+  isPartner?: boolean
   folders: StressFolder[]
   runs: RunLite[]
   onChanged: () => void
   onOpenRun: (id: number) => void
 }
 
-export default function StressFoldersPanel({ adminKey, folders, runs, onChanged, onOpenRun }: Props) {
+export default function StressFoldersPanel({ adminKey, session, isPartner = false, folders, runs, onChanged, onOpenRun }: Props) {
+  const auth = isPartner ? { session } : undefined
   const [orders, setOrders] = useState<OrderLite[]>([])
   const [editId, setEditId] = useState<number | null>(null)
   const [draftName, setDraftName] = useState("")
@@ -42,14 +45,15 @@ export default function StressFoldersPanel({ adminKey, folders, runs, onChanged,
   const [busy, setBusy] = useState(false)
   const [reportBusy, setReportBusy] = useState<number | null>(null)
 
-  // Список реальных заказов для привязки папки
+  // Список реальных заказов для привязки папки (только в админке)
   useEffect(() => {
+    if (isPartner) return
     api.orders.getAll().then(d => setOrders(d.orders || [])).catch(() => {})
-  }, [])
+  }, [isPartner])
 
   const createFolder = async () => {
     setBusy(true)
-    const res = await api.stress.folderSave({ name: "Новая папка" }, adminKey)
+    const res = await api.stress.folderSave({ name: "Новая папка" }, adminKey, auth)
     setBusy(false)
     if (res.id) { onChanged(); startEdit({ id: res.id, name: "Новая папка", order_id: null, order_ref: "", note: "", created_at: "", runs_count: 0 }) }
   }
@@ -69,7 +73,7 @@ export default function StressFoldersPanel({ adminKey, folders, runs, onChanged,
       name: draftName.trim() || "Без названия",
       order_id: draftOrderId ? Number(draftOrderId) : null,
       order_ref: order ? order.display_number : "",
-    }, adminKey)
+    }, adminKey, auth)
     setBusy(false)
     setEditId(null)
     onChanged()
@@ -78,14 +82,14 @@ export default function StressFoldersPanel({ adminKey, folders, runs, onChanged,
   const removeFolder = async (f: StressFolder) => {
     if (!confirm(`Удалить папку «${f.name}»?\nПрогоны не удалятся — просто выйдут из папки.`)) return
     setBusy(true)
-    await api.stress.folderDelete(f.id, adminKey)
+    await api.stress.folderDelete(f.id, adminKey, auth)
     setBusy(false)
     onChanged()
   }
 
   const buildReport = async (f: StressFolder, mode: "compact" | "detailed" | "csv") => {
     setReportBusy(f.id)
-    const res = await api.stress.folderReport(f.id, adminKey).catch(() => null)
+    const res = await api.stress.folderReport(f.id, adminKey, auth).catch(() => null)
     setReportBusy(null)
     if (!res?.folder) { alert("Не удалось получить данные папки"); return }
     const folder = res.folder as ReportFolder
@@ -128,16 +132,18 @@ export default function StressFoldersPanel({ adminKey, folders, runs, onChanged,
                       <input value={draftName} onChange={e => setDraftName(e.target.value)} autoFocus
                         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
                     </div>
-                    <div>
-                      <label className="mb-1 block text-xs text-foreground/50">Привязка к заказу (номинально)</label>
-                      <select value={draftOrderId} onChange={e => setDraftOrderId(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
-                        <option value="">— не привязано —</option>
-                        {orders.map(o => (
-                          <option key={o.id} value={o.id}>{o.display_number}{o.customer_name ? ` · ${o.customer_name}` : ""}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {!isPartner && (
+                      <div>
+                        <label className="mb-1 block text-xs text-foreground/50">Привязка к заказу (номинально)</label>
+                        <select value={draftOrderId} onChange={e => setDraftOrderId(e.target.value)}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+                          <option value="">— не привязано —</option>
+                          {orders.map(o => (
+                            <option key={o.id} value={o.id}>{o.display_number}{o.customer_name ? ` · ${o.customer_name}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button onClick={saveEdit} disabled={busy}
                         className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50" style={{ cursor: "pointer" }}>Сохранить</button>

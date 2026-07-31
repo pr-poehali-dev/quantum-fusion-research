@@ -494,7 +494,16 @@ store/auth User: partner_company_id/partner_company/partner_access.
 [v7.64] Этап 4: b2b-prices session_has_b2b(cur, session_id) — цены без пароля
 для залогиненного сотрудника компании (active). B2B.tsx шлёт X-Session-Id,
 обновляет me, показывает плашку доступа по аккаунту.
-НЕ сделано: этап 5 (ЛК /partners).
+[v7.65] Этап 5: ЛК партнёра /partners (src/pages/Partners.tsx) + единый
+модуль стресс-тестов. StressTestsTab получил prop scope=admin|partner + session
+— один компонент в админке и в ЛК (правки видны в обоих). stress_folders
+получил partner_company_id (V0217). backend/stress: ingest по токену компании
+(company_by_ingest_token), партнёрский доступ по сессии
+(partner_company_from_session, доступ lk = close/paid/триал, не suspended),
+фильтр данных по компании; админ видит всё + ?company_id. api StressAuth
+{session, companyId}. Партнёру доступны только результаты/папки/отчёты своей
+компании; профили/метрики/пресеты — админ. Роут /partners в App.tsx.
+TODO: фильтр по компании в админском UI; редизайн интерфейса данных.
 
 ### products
 Управление товарами/компонентами конфигуратора.

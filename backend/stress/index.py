@@ -67,6 +67,47 @@ def is_admin(cur, headers, params, body):
     return False
 
 
+def partner_company_from_session(cur, headers):
+    """Компания залогиненного партнёра с доступом в ЛК (lk).
+    Возвращает id компании или None. Доступ к ЛК: close/paid либо активный
+    триал, и статус != suspended."""
+    session_id = headers.get("X-Session-Id") or headers.get("x-session-id")
+    if not session_id:
+        return None
+    cur.execute(
+        f"SELECT c.id, c.tier, c.status, "
+        f"(c.trial_ends_at IS NOT NULL AND c.trial_ends_at > NOW()) AS trial_active "
+        f"FROM {SCHEMA}.user_sessions s "
+        f"JOIN {SCHEMA}.users u ON u.id = s.user_id "
+        f"JOIN {SCHEMA}.partner_companies c ON c.id = u.partner_company_id "
+        f"WHERE s.id = {esc(session_id)} AND s.expires_at > NOW()"
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cid, tier, status, trial_active = row
+    if status == "suspended":
+        return None
+    if trial_active or tier in ("close", "paid"):
+        return cid
+    return None
+
+
+def company_by_ingest_token(cur, token):
+    """Компания по её stress_ingest_token (для приёма прогонов от EXE партнёра).
+    Возвращает id активной компании или None."""
+    if not token:
+        return None
+    cur.execute(
+        f"SELECT id, status FROM {SCHEMA}.partner_companies "
+        f"WHERE stress_ingest_token = {esc(token)} AND stress_ingest_token <> ''"
+    )
+    row = cur.fetchone()
+    if not row or row[1] == "suspended":
+        return None
+    return row[0]
+
+
 # Кэшируем S3-клиент между файлами/вызовами (создание клиента дорогое — экономим время ingest)
 _S3 = None
 
@@ -124,40 +165,59 @@ def handler(event, context):
         # ── Контур EXE: приём результатов / выдача профилей по токену ────────
         if action in ("ingest", "profiles_pull", "verify_token", "notify"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
-            if not token or token != os.environ.get("STRESS_INGEST_TOKEN"):
+            is_global = bool(token) and token == os.environ.get("STRESS_INGEST_TOKEN")
+            # Партнёрский токен компании (если не совпал с общим)
+            partner_cid = None if is_global else company_by_ingest_token(cur, token)
+            if not is_global and partner_cid is None:
                 return err("forbidden", 403)
             if action == "verify_token" and method == "GET":
                 return ok({"ok": True, "valid": True})
             if action == "ingest" and method == "POST":
-                return ingest(cur, conn, body)
+                return ingest(cur, conn, body, partner_cid)
             if action == "profiles_pull" and method == "GET":
                 return profiles_pull(cur)
             if action == "notify" and method == "POST":
                 return notify(body)
             return err("bad request", 400)
 
-        # ── Контур АДМИНА ───────────────────────────────────────────────────
-        if not is_admin(cur, headers, params, body):
+        # ── Контур ПАРТНЁРА (ЛК): данные строго своей компании ──────────────
+        admin = is_admin(cur, headers, params, body)
+        partner_cid = None if admin else partner_company_from_session(cur, headers)
+        if not admin and partner_cid is None:
+            return err("forbidden", 403)
+
+        # Фильтр по компании: партнёр — жёстко своя; админ — опц. ?company_id
+        if admin:
+            cid_param = params.get("company_id")
+            company_filter = int(cid_param) if cid_param and str(cid_param).isdigit() else None
+        else:
+            company_filter = partner_cid
+        # Партнёру доступны только read-операции и папки; профили/метрики/пресеты — админ
+        partner_allowed = {
+            "list", "get", "folders_list", "folder_save", "folder_delete",
+            "runs_assign_folder", "folder_report", "delete_run",
+        }
+        if not admin and action not in partner_allowed:
             return err("forbidden", 403)
 
         if action == "list" and method == "GET":
-            return list_runs(cur)
+            return list_runs(cur, company_filter)
         if action == "get" and method == "GET":
-            return get_run(cur, int(params.get("id") or 0))
+            return get_run(cur, int(params.get("id") or 0), partner_cid if not admin else None)
         if action == "delete_run" and method == "DELETE":
-            return delete_run(cur, conn, int(params.get("id") or 0))
+            return delete_run(cur, conn, int(params.get("id") or 0), partner_cid if not admin else None)
 
         # Папки прогонов
         if action == "folders_list" and method == "GET":
-            return folders_list(cur)
+            return folders_list(cur, company_filter)
         if action == "folder_save" and method in ("POST", "PUT"):
-            return folder_save(cur, conn, body)
+            return folder_save(cur, conn, body, partner_cid if not admin else None)
         if action == "folder_delete" and method == "DELETE":
-            return folder_delete(cur, conn, int(params.get("id") or 0))
+            return folder_delete(cur, conn, int(params.get("id") or 0), partner_cid if not admin else None)
         if action == "runs_assign_folder" and method in ("POST", "PUT"):
-            return runs_assign_folder(cur, conn, body)
+            return runs_assign_folder(cur, conn, body, partner_cid if not admin else None)
         if action == "folder_report" and method == "GET":
-            return folder_report(cur, int(params.get("id") or 0))
+            return folder_report(cur, int(params.get("id") or 0), partner_cid if not admin else None)
 
         # Профили (редактор в админке)
         if action == "profiles_list" and method == "GET":
@@ -235,7 +295,7 @@ def notify(body):
     return ok({"ok": True})
 
 
-def ingest(cur, conn, body):
+def ingest(cur, conn, body, company_id=None):
     run_uid = (body.get("run_uid") or uuid.uuid4().hex).strip()
     # идемпотентность: один и тот же run_uid не плодит дубли
     cur.execute(f"SELECT id FROM {SCHEMA}.stress_runs WHERE run_uid = {esc(run_uid)}")
@@ -248,14 +308,15 @@ def ingest(cur, conn, body):
     failed = len(results) - passed
     status = body.get("status") or ("completed" if failed == 0 else "partial")
 
+    company_sql = str(int(company_id)) if company_id else "NULL"
     cur.execute(
         f"INSERT INTO {SCHEMA}.stress_runs "
         f"(run_uid, profile_name, machine_name, os_info, note, started_at, finished_at, "
-        f"total_tests, passed_tests, failed_tests, status) VALUES "
+        f"total_tests, passed_tests, failed_tests, status, partner_company_id) VALUES "
         f"({esc(run_uid)}, {esc(body.get('profile_name', ''))}, {esc(body.get('machine_name', ''))}, "
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
-        f"{len(results)}, {passed}, {failed}, {esc(status)}) RETURNING id"
+        f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}) RETURNING id"
     )
     run_id = cur.fetchone()[0]
 
@@ -298,40 +359,64 @@ def ingest(cur, conn, body):
     return ok({"ok": True, "run_id": run_id, "results": len(results), "metrics": len(body.get("metrics") or [])})
 
 
-def list_runs(cur):
+def _company_where(company_filter, prefix=""):
+    """WHERE-условие фильтра по компании. None → все; 0 → без компании; N → компания N."""
+    p = f"{prefix}." if prefix else ""
+    if company_filter is None:
+        return ""
+    if company_filter == 0:
+        return f"{p}partner_company_id IS NULL"
+    return f"{p}partner_company_id = {int(company_filter)}"
+
+
+def list_runs(cur, company_filter=None):
+    where = _company_where(company_filter)
+    where_sql = f"WHERE {where}" if where else ""
     cur.execute(
         f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
-        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at, folder_id "
-        f"FROM {SCHEMA}.stress_runs ORDER BY created_at DESC LIMIT 500"
+        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at, folder_id, partner_company_id "
+        f"FROM {SCHEMA}.stress_runs {where_sql} ORDER BY created_at DESC LIMIT 500"
     )
     runs = [{
         "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
         "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
-        "status": r[11], "created_at": r[12], "folder_id": r[13],
+        "status": r[11], "created_at": r[12], "folder_id": r[13], "partner_company_id": r[14],
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
 
 # ─── Папки прогонов (группировка + номинальная привязка к заказу) ───────────
 
-def folders_list(cur):
+def folders_list(cur, company_filter=None):
     # Папки + количество прогонов в каждой
+    where = _company_where(company_filter, "f")
+    where_sql = f"WHERE {where}" if where else ""
     cur.execute(
         f"SELECT f.id, f.name, f.order_id, f.order_ref, f.note, f.created_at, "
-        f"COUNT(r.id) AS runs_count "
+        f"COUNT(r.id) AS runs_count, f.partner_company_id "
         f"FROM {SCHEMA}.stress_folders f "
         f"LEFT JOIN {SCHEMA}.stress_runs r ON r.folder_id = f.id "
+        f"{where_sql} "
         f"GROUP BY f.id ORDER BY f.created_at DESC"
     )
     folders = [{
         "id": r[0], "name": r[1], "order_id": r[2], "order_ref": r[3],
-        "note": r[4], "created_at": r[5], "runs_count": r[6],
+        "note": r[4], "created_at": r[5], "runs_count": r[6], "partner_company_id": r[7],
     } for r in cur.fetchall()]
     return ok({"folders": folders})
 
 
-def folder_save(cur, conn, body):
+def _own_folder(cur, fid, owner_cid):
+    """Проверка, что папка fid принадлежит компании owner_cid (для партнёра)."""
+    if owner_cid is None:
+        return True
+    cur.execute(f"SELECT partner_company_id FROM {SCHEMA}.stress_folders WHERE id = {int(fid)}")
+    row = cur.fetchone()
+    return bool(row) and row[0] == owner_cid
+
+
+def folder_save(cur, conn, body, owner_cid=None):
     fid = body.get("id")
     name = (body.get("name") or "Новая папка").strip() or "Новая папка"
     order_id = body.get("order_id")
@@ -339,24 +424,29 @@ def folder_save(cur, conn, body):
     order_ref = body.get("order_ref") or ""
     note = body.get("note") or ""
     if fid:
+        if not _own_folder(cur, fid, owner_cid):
+            return err("forbidden", 403)
         cur.execute(
             f"UPDATE {SCHEMA}.stress_folders SET name = {esc(name)}, order_id = {order_id_sql}, "
             f"order_ref = {esc(order_ref)}, note = {esc(note)}, updated_at = NOW() "
             f"WHERE id = {int(fid)} RETURNING id"
         )
     else:
+        cid_sql = str(int(owner_cid)) if owner_cid else "NULL"
         cur.execute(
-            f"INSERT INTO {SCHEMA}.stress_folders (name, order_id, order_ref, note) VALUES "
-            f"({esc(name)}, {order_id_sql}, {esc(order_ref)}, {esc(note)}) RETURNING id"
+            f"INSERT INTO {SCHEMA}.stress_folders (name, order_id, order_ref, note, partner_company_id) VALUES "
+            f"({esc(name)}, {order_id_sql}, {esc(order_ref)}, {esc(note)}, {cid_sql}) RETURNING id"
         )
     new_id = cur.fetchone()[0]
     conn.commit()
     return ok({"ok": True, "id": new_id})
 
 
-def folder_delete(cur, conn, fid):
+def folder_delete(cur, conn, fid, owner_cid=None):
     if not fid:
         return err("id required")
+    if not _own_folder(cur, fid, owner_cid):
+        return err("forbidden", 403)
     # Прогоны из папки не удаляем — просто отвязываем (folder_id = NULL)
     cur.execute(f"UPDATE {SCHEMA}.stress_runs SET folder_id = NULL WHERE folder_id = {int(fid)}")
     cur.execute(f"DELETE FROM {SCHEMA}.stress_folders WHERE id = {int(fid)}")
@@ -364,7 +454,7 @@ def folder_delete(cur, conn, fid):
     return ok({"ok": True})
 
 
-def runs_assign_folder(cur, conn, body):
+def runs_assign_folder(cur, conn, body, owner_cid=None):
     # body: {run_ids: [..], folder_id: int|null}
     run_ids = body.get("run_ids") or []
     run_ids = [int(x) for x in run_ids if str(x).isdigit()]
@@ -373,17 +463,25 @@ def runs_assign_folder(cur, conn, body):
     folder_id = body.get("folder_id")
     fid_sql = str(int(folder_id)) if folder_id not in (None, "", 0, "0") else "NULL"
     ids_sql = ",".join(str(x) for x in run_ids)
+    # Партнёр может двигать только свои прогоны и в свою папку
+    own = ""
+    if owner_cid is not None:
+        if folder_id and not _own_folder(cur, folder_id, owner_cid):
+            return err("forbidden", 403)
+        own = f" AND partner_company_id = {int(owner_cid)}"
     cur.execute(
-        f"UPDATE {SCHEMA}.stress_runs SET folder_id = {fid_sql} WHERE id IN ({ids_sql})"
+        f"UPDATE {SCHEMA}.stress_runs SET folder_id = {fid_sql} WHERE id IN ({ids_sql}){own}"
     )
     conn.commit()
-    return ok({"ok": True, "updated": len(run_ids)})
+    return ok({"ok": True, "updated": cur.rowcount})
 
 
-def folder_report(cur, fid):
+def folder_report(cur, fid, owner_cid=None):
     """Полные данные папки для отчёта: папка + все её прогоны с метриками."""
     if not fid:
         return err("id required")
+    if not _own_folder(cur, fid, owner_cid):
+        return err("forbidden", 403)
     cur.execute(
         f"SELECT id, name, order_id, order_ref, note, created_at "
         f"FROM {SCHEMA}.stress_folders WHERE id = {int(fid)}"
@@ -457,13 +555,14 @@ def folder_report(cur, fid):
     return ok({"folder": folder, "runs": runs})
 
 
-def get_run(cur, run_id):
+def get_run(cur, run_id, owner_cid=None):
     if not run_id:
         return err("id required")
+    own = f" AND partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
     cur.execute(
         f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
         f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at "
-        f"FROM {SCHEMA}.stress_runs WHERE id = {run_id}"
+        f"FROM {SCHEMA}.stress_runs WHERE id = {run_id}{own}"
     )
     r = cur.fetchone()
     if not r:
@@ -515,9 +614,15 @@ def get_run(cur, run_id):
     return ok({"run": run})
 
 
-def delete_run(cur, conn, run_id):
+def delete_run(cur, conn, run_id, owner_cid=None):
     if not run_id:
         return err("id required")
+    # Партнёр может удалять только прогоны своей компании
+    if owner_cid is not None:
+        cur.execute(f"SELECT partner_company_id FROM {SCHEMA}.stress_runs WHERE id = {run_id}")
+        row = cur.fetchone()
+        if not row or row[0] != owner_cid:
+            return err("forbidden", 403)
     cur.execute(
         f"DELETE FROM {SCHEMA}.stress_files WHERE result_id IN "
         f"(SELECT id FROM {SCHEMA}.stress_results WHERE run_id = {run_id})"

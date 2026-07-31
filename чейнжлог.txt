@@ -3,6 +3,35 @@
 
 ---
 
+## v7.65 | 2026-07-31 | Партнёры этап 5: ЛК /partners + единый модуль стресс-тестов
+
+### Изменения
+- [БД] Миграция V0217: stress_folders.partner_company_id (папки тоже делятся
+  по компании).
+- [backend/stress] ingest по токену компании (company_by_ingest_token) — EXE
+  партнёра со своим токеном пишет прогон в partner_company_id. Партнёрский
+  контур по сессии (partner_company_from_session, доступ lk: close/paid/триал,
+  не suspended): list/get/folders/report/delete/assign фильтруются строго по
+  его компании; профили/метрики/пресеты — только админ. Админ видит всё +
+  опц. ?company_id. Проверки принадлежности прогонов/папок.
+- [api.ts] StressAuth {session, companyId} + stressHeaders/stressQ. stress-
+  методы list/get/deleteRun/folders*/runsAssignFolder/folderReport принимают
+  необязательный auth (обратно совместимо).
+- [StressTestsTab] prop scope=admin|partner + session. В partner-режиме
+  скрыты вкладки Профили/Метрики, все запросы идут по сессии.
+- [StressFoldersPanel] props session/isPartner, привязка к заказу только у
+  админа, запросы с auth.
+- [Partners.tsx] (новый) ЛК /partners: вход по аккаунту, экраны нет входа /
+  нет доступа / приостановлено / триал истёк, просмотр ingest-токена компании,
+  встроенный StressTestsTab scope=partner. Роут /partners в App.tsx.
+
+### Заметки
+- Интерфейс работы с данными стресс-тестов допиливается позже (редизайн).
+  Модуль ОБЩИЙ: правки в StressTestsTab видны и в админке, и в ЛК.
+- Фильтр по компании в админском UI — в следующей итерации (бэк уже готов).
+
+---
+
 ## v7.64 | 2026-07-31 | Партнёры этап 4: B2B без пароля по аккаунту
 
 ### Изменения

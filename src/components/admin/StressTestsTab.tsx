@@ -61,8 +61,16 @@ function fmtSize(b: number) {
 
 
 
-export default function StressTestsTab() {
+interface StressTestsTabProps {
+  scope?: "admin" | "partner"
+  session?: string | null   // для партнёрского режима (ЛК)
+}
+
+export default function StressTestsTab({ scope = "admin", session }: StressTestsTabProps = {}) {
   const adminKey = getAdminKey()
+  const isPartner = scope === "partner"
+  // Авторизация запросов к stress: партнёр — по сессии, админ — по adminKey
+  const auth = isPartner ? { session } : undefined
   const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
@@ -81,20 +89,24 @@ export default function StressTestsTab() {
 
   const load = useCallback(() => {
     setLoading(true)
-    api.stress.list(adminKey)
+    api.stress.list(adminKey, auth)
       .then(d => setRuns(d.runs || []))
       .finally(() => setLoading(false))
-  }, [adminKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminKey, session])
 
   const loadFolders = useCallback(() => {
-    api.stress.foldersList(adminKey).then(d => setFolders(d.folders || [])).catch(() => {})
-  }, [adminKey])
+    api.stress.foldersList(adminKey, auth).then(d => setFolders(d.folders || [])).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminKey, session])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { loadFolders() }, [loadFolders])
   useEffect(() => {
+    // Настройки отображения метрик — только для админа (партнёру не нужны)
+    if (isPartner) return
     api.stress.metricPrefsList(adminKey).then(d => setPrefs(d.prefs || []))
-  }, [adminKey, view])
+  }, [adminKey, view, isPartner])
 
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => {
@@ -109,21 +121,21 @@ export default function StressTestsTab() {
   const assignToFolder = async (folderId: number | null) => {
     const ids = [...selectedIds]
     if (!ids.length) return
-    await api.stress.runsAssignFolder(ids, folderId, adminKey)
+    await api.stress.runsAssignFolder(ids, folderId, adminKey, auth)
     clearSelection()
     load(); loadFolders()
   }
 
   const openRun = (id: number) => {
     setDetailLoading(true)
-    api.stress.get(id, adminKey)
+    api.stress.get(id, adminKey, auth)
       .then(d => setSelected(d.run || null))
       .finally(() => setDetailLoading(false))
   }
 
   const removeRun = (id: number) => {
     if (!confirm("Удалить этот прогон со всеми результатами?")) return
-    api.stress.deleteRun(id, adminKey).then(() => {
+    api.stress.deleteRun(id, adminKey, auth).then(() => {
       setSelected(null)
       load()
     })
@@ -143,23 +155,28 @@ export default function StressTestsTab() {
           style={{ cursor: "pointer" }}>
           <Icon name="Folder" size={15} /> Папки
         </button>
-        <button onClick={() => setView("profiles")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "profiles" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
-          style={{ cursor: "pointer" }}>
-          <Icon name="ListChecks" size={15} /> Профили тестов
-        </button>
-        <button onClick={() => setView("metrics")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "metrics" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
-          style={{ cursor: "pointer" }}>
-          <Icon name="SlidersHorizontal" size={15} /> Метрики
-        </button>
+        {!isPartner && (
+          <>
+            <button onClick={() => setView("profiles")}
+              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "profiles" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="ListChecks" size={15} /> Профили тестов
+            </button>
+            <button onClick={() => setView("metrics")}
+              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "metrics" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="SlidersHorizontal" size={15} /> Метрики
+            </button>
+          </>
+        )}
       </div>
 
       {view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} />
        : view === "profiles" ? <StressProfilesTab />
        : view === "folders" ? (
          <StressFoldersPanel
-           adminKey={adminKey} folders={folders} runs={runs}
+           adminKey={adminKey} session={session} isPartner={isPartner}
+           folders={folders} runs={runs}
            onChanged={() => { loadFolders(); load() }}
            onOpenRun={openRun}
          />

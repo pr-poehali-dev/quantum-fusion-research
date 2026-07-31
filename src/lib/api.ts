@@ -34,6 +34,22 @@ function authHeaders(session?: string | null) {
   return h
 }
 
+// Авторизация запросов к stress: админ (adminKey) или партнёр (session по ЛК).
+export interface StressAuth { session?: string | null; companyId?: number | null }
+
+// Заголовки: если есть session — идём как партнёр (X-Session-Id),
+// иначе как админ (X-Admin-Token).
+function stressHeaders(adminKey: string, auth?: StressAuth): Record<string, string> {
+  if (auth?.session) return { "X-Session-Id": auth.session }
+  return { "X-Admin-Token": adminKey }
+}
+
+// Доп. query: фильтр по компании (только для админа; партнёру бэкенд сам ставит).
+function stressQ(_adminKey: string, auth?: StressAuth): string {
+  if (auth && !auth.session && auth.companyId != null) return `&company_id=${auth.companyId}`
+  return ""
+}
+
 export const api = {
   products: {
     getAll: (params?: Record<string, string>) => {
@@ -350,12 +366,14 @@ export const api = {
     getStores: () => fetch(`${URLS.snArchive}?action=stores`).then(r => r.json()),
   },
   stress: {
-    list: (adminKey: string) =>
-      fetch(`${URLS.stress}?action=list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    get: (id: number, adminKey: string) =>
-      fetch(`${URLS.stress}?action=get&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    deleteRun: (id: number, adminKey: string) =>
-      fetch(`${URLS.stress}?action=delete_run&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    // Авторизация запроса: админ (adminKey) ИЛИ партнёр (session).
+    // companyId — фильтр по компании (для админа); партнёру бэкенд ставит свою.
+    list: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=list${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    get: (id: number, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=get&id=${id}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    deleteRun: (id: number, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=delete_run&id=${id}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     profilesList: (adminKey: string) =>
       fetch(`${URLS.stress}?action=profiles_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     profileSave: (data: unknown, adminKey: string) =>
@@ -373,16 +391,16 @@ export const api = {
     presetDelete: (id: number, adminKey: string) =>
       fetch(`${URLS.stress}?action=preset_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     // Папки прогонов
-    foldersList: (adminKey: string) =>
-      fetch(`${URLS.stress}?action=folders_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    folderSave: (data: { id?: number; name?: string; order_id?: number | null; order_ref?: string; note?: string }, adminKey: string) =>
-      fetch(`${URLS.stress}?action=folder_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "folder_save", ...data }) }).then(r => r.json()),
-    folderDelete: (id: number, adminKey: string) =>
-      fetch(`${URLS.stress}?action=folder_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    runsAssignFolder: (run_ids: number[], folder_id: number | null, adminKey: string) =>
-      fetch(`${URLS.stress}?action=runs_assign_folder`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "runs_assign_folder", run_ids, folder_id }) }).then(r => r.json()),
-    folderReport: (id: number, adminKey: string) =>
-      fetch(`${URLS.stress}?action=folder_report&id=${id}`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    foldersList: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=folders_list${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    folderSave: (data: { id?: number; name?: string; order_id?: number | null; order_ref?: string; note?: string }, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=folder_save`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "folder_save", ...data }) }).then(r => r.json()),
+    folderDelete: (id: number, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=folder_delete&id=${id}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    runsAssignFolder: (run_ids: number[], folder_id: number | null, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=runs_assign_folder`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "runs_assign_folder", run_ids, folder_id }) }).then(r => r.json()),
+    folderReport: (id: number, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=folder_report&id=${id}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
   },
   companySettings: {
     list: () => fetch(URLS.companySettings).then(r => r.json()),
