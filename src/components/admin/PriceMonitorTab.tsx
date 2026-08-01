@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
-import { runBatched } from "@/lib/batch"
 
 interface Suggestion {
   id: number
@@ -43,11 +42,6 @@ export default function PriceMonitorTab() {
   // Токен последнего запроса: ответы устаревших запросов (напр. от прошлой
   // вкладки) игнорируются — иначе на экране «залипает» старый список.
   const reqSeq = useRef(0)
-  // Кандидаты (похожие товары со склада) по каждому предложению. Раньше их
-  // грузила сама карточка — при 286 предложениях уходил залп из 286 запросов.
-  // Теперь грузим централизованно пакетами по 3 с паузой 300мс.
-  const [candMap, setCandMap] = useState<Record<number, Candidate[]>>({})
-  const [candLoadingIds, setCandLoadingIds] = useState<Set<number>>(new Set())
 
   const load = useCallback(() => {
     const seq = ++reqSeq.current
@@ -69,30 +63,6 @@ export default function PriceMonitorTab() {
   }, [view])
 
   useEffect(() => { load() }, [load])
-
-  // Пакетная загрузка кандидатов для всех предложений: по 3 запроса
-  // параллельно, пауза 300мс между тройками. Так не бомбим бэкенд залпом.
-  useEffect(() => {
-    if (items.length === 0) { setCandMap({}); setCandLoadingIds(new Set()); return }
-    let cancelled = false
-    const ids = items.map(s => s.id)
-    setCandMap({})
-    setCandLoadingIds(new Set(ids))
-    runBatched(
-      items,
-      s => api.priceMonitor.match(s.id, getAdminKey()).then(d => (d.candidates || []) as Candidate[]).catch(() => []),
-      {
-        size: 3,
-        pauseMs: 300,
-        onResult: (s, cands) => {
-          if (cancelled) return
-          setCandMap(m => ({ ...m, [s.id]: cands }))
-          setCandLoadingIds(prev => { const n = new Set(prev); n.delete(s.id); return n })
-        },
-      },
-    )
-    return () => { cancelled = true }
-  }, [items])
 
   // Убирает позицию из списка и уменьшает счётчик её вкладки на 1
   const removeItem = (id: number) => {
@@ -207,8 +177,6 @@ export default function PriceMonitorTab() {
               key={s.id}
               item={s}
               busy={busy === s.id}
-              candidates={candMap[s.id] || []}
-              loadingCand={candLoadingIds.has(s.id)}
               onProcess={() => setProcessItem(s)}
               onAccept={() => accept(s.id)}
               onReject={() => reject(s.id)}
@@ -231,22 +199,34 @@ export default function PriceMonitorTab() {
 
 // Карточка предложения в стиле строки приёмки по счёту:
 // сверху — название из парсера, снизу — сопоставление с товаром склада
-function SuggestionCard({ item, busy, candidates, loadingCand, onProcess, onAccept, onReject, onRelinked }: {
+function SuggestionCard({ item, busy, onProcess, onAccept, onReject, onRelinked }: {
   item: Suggestion
   busy: boolean
-  candidates: Candidate[]   // грузятся централизованно пакетами в родителе
-  loadingCand: boolean
   onProcess: () => void
   onAccept: () => void
   onReject: () => void
   onRelinked: (next: Suggestion) => void
 }) {
   const linked = item.product_id != null
+  // Кандидаты (похожие товары) грузятся ЛЕНИВО — только по клику «Подобрать»,
+  // а не для всех карточек сразу. Это убирает залп запросов к каталогу.
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null)
+  const [loadingCand, setLoadingCand] = useState(false)
   const [picking, setPicking] = useState(false)
   const [searchQ, setSearchQ] = useState("")
   const [searchRes, setSearchRes] = useState<Candidate[]>([])
   const [searching, setSearching] = useState(false)
   const [linking, setLinking] = useState(false)
+
+  // Подобрать похожие со склада — по требованию (клик по кнопке)
+  const loadCandidates = () => {
+    if (candidates !== null || loadingCand) return
+    setLoadingCand(true)
+    api.priceMonitor.match(item.id, getAdminKey())
+      .then(d => setCandidates(d.candidates || []))
+      .catch(() => setCandidates([]))
+      .finally(() => setLoadingCand(false))
+  }
 
   // живой поиск по складу (debounce 300мс)
   useEffect(() => {
@@ -394,6 +374,8 @@ function SuggestionCard({ item, busy, candidates, loadingCand, onProcess, onAcce
           <div className="flex flex-col gap-1.5">
             {loadingCand ? (
               <p className="text-xs text-foreground/40">Ищу похожие…</p>
+            ) : candidates === null ? null : candidates.length === 0 ? (
+              <p className="text-xs text-foreground/40">Похожих не нашлось — выберите вручную или создайте новый</p>
             ) : candidates.slice(0, 3).map(c => {
               const chosen = c.product_id === item.product_id
               return (
@@ -413,6 +395,13 @@ function SuggestionCard({ item, busy, candidates, loadingCand, onProcess, onAcce
               )
             })}
             <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              {candidates === null && !loadingCand && (
+                <button onClick={loadCandidates}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
+                  style={{ cursor: "pointer" }}>
+                  <Icon name="Wand2" size={13} />Подобрать похожие
+                </button>
+              )}
               <button onClick={() => { setPicking(true); setSearchQ("") }}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-foreground/60 hover:text-foreground transition-colors"
                 style={{ cursor: "pointer" }}>
