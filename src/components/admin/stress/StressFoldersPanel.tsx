@@ -75,7 +75,7 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
       return out
     }
     const arr = [...folderRuns]
-    if (mode === "name") arr.sort((a, b) => (a.machine_name || a.profile_name || "").localeCompare(b.machine_name || b.profile_name || "", "ru"))
+    if (mode === "name") arr.sort((a, b) => (a.machine_name || a.profile_name || "").localeCompare(b.machine_name || b.profile_name || "", "ru", { numeric: true, sensitivity: "base" }))
     else if (mode === "date") arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     else if (mode === "duration") arr.sort((a, b) => runDuration(b) - runDuration(a))
     return arr

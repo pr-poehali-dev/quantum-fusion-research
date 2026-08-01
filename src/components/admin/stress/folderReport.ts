@@ -179,7 +179,7 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
 
   // В суперкомпактном режиме сортируем тесты по названию
   const resultList = isSuper
-    ? [...(r.results || [])].sort((a, b) => (a.test_name || "").localeCompare(b.test_name || "", "ru"))
+    ? [...(r.results || [])].sort((a, b) => (a.test_name || "").localeCompare(b.test_name || "", "ru", { numeric: true, sensitivity: "base" }))
     : (r.results || [])
 
   // СТРЕСС-ТЕСТЫ (заголовок с баллом + статистика — 1:1 с EXE)
