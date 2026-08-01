@@ -1079,3 +1079,9 @@ backend/auth: company_access отдаёт report_logo_url; action partner_logo_s
 folderReport.ts: лого в правом верхнем углу страницы отчёта (.head/.logo).
 PartnerSocial.tsx: блок «Логотип в отчётах» (превью/загрузка/удаление) в том же
 поповере, что и соцсети. Partners.tsx прокидывает logo/onLogoSaved.
+
+[v7.70] /partners — плиточный хаб (карточки B2B → /b2b и StressTester →
+/partners/стресстестер), доступность по partner_access.b2b/.lk.
+pages/Partners.tsx = хаб. pages/PartnersStress.tsx = кабинет стресс-тестов
+(шапка компании, ingest-токен, соцсети+логотип, StressTestsTab scope=partner),
+роут /partners/стресстестер (+алиас /partners/stresstester).

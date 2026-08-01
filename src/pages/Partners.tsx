@@ -4,38 +4,27 @@ import { api } from "@/lib/api"
 import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
-import StressTestsTab from "@/components/admin/StressTestsTab"
-import PartnerSocial from "@/components/partners/PartnerSocial"
 
 export default function Partners() {
   const navigate = useNavigate()
   const { user, sessionId, updateUser, logout } = useAuth()
   const [loading, setLoading] = useState(true)
-  const [tokenShown, setTokenShown] = useState(false)
-  const [social, setSocial] = useState("")
-  const [logo, setLogo] = useState("")
 
   // Подтягиваем свежий профиль (partner_access/company) при заходе
   useEffect(() => {
     if (!sessionId) { setLoading(false); return }
     api.auth.me(sessionId)
-      .then(d => {
-        if (d.user) {
-          updateUser(d.user)
-          setSocial(d.user.partner_company?.social_links || "")
-          setLogo(d.user.partner_company?.report_logo_url || "")
-        }
-      })
+      .then(d => { if (d.user) updateUser(d.user) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [sessionId, updateUser])
 
   const company = user?.partner_company
   const access = user?.partner_access
+  const hasB2B = !!(sessionId && access?.b2b)
   const hasLk = !!(sessionId && access?.lk)
 
-  // Экран-обёртка (обычная функция, не компонент — чтобы не ремаунтить шапку)
-  const shell = (children: React.ReactNode, extra?: React.ReactNode) => (
+  const shell = (children: React.ReactNode) => (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
@@ -44,7 +33,6 @@ export default function Partners() {
             <span className="font-semibold text-lg text-foreground">BeGraphics · Кабинет партнёра</span>
           </button>
           <div className="flex items-center gap-2">
-            {extra}
             <ThemeSwitcher />
             {sessionId && (
               <button onClick={() => { logout(); navigate("/") }}
@@ -55,7 +43,7 @@ export default function Partners() {
           </div>
         </div>
       </header>
-      <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>
+      <div className="mx-auto max-w-5xl px-6 py-8">{children}</div>
     </div>
   )
 
@@ -82,69 +70,80 @@ export default function Partners() {
     )
   }
 
-  // Залогинен, но нет доступа в ЛК
-  if (!hasLk) {
-    const suspended = company?.status === "suspended"
-    const trialExpired = !!company && !company.trial_active && !!company.trial_ends_at && company.tier === "basic"
-    return shell(
-      <Centered
-        icon={suspended ? "PauseCircle" : "Lock"}
-        title={suspended ? "Доступ приостановлен" : company ? "Кабинет недоступен" : "Компания не привязана"}
-        text={
-          suspended ? "Доступ вашей компании временно приостановлен. Свяжитесь с менеджером BeGraphics."
-          : trialExpired ? "Пробный период закончился. Чтобы продолжить пользоваться кабинетом, свяжитесь с менеджером."
-          : company ? "У вашей компании нет доступа к личному кабинету. Свяжитесь с менеджером BeGraphics."
-          : "Ваш аккаунт пока не привязан к партнёрской компании. Обратитесь к менеджеру BeGraphics."
-        }
-        action={<a href="https://t.me/begraphics" target="_blank" rel="noreferrer" className="inline-block rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground" style={{ cursor: "pointer" }}>Написать менеджеру</a>}
-      />
-    )
-  }
+  // Плитка сервиса
+  const Tile = ({ icon, iconColor, title, text, available, cta, onGo, lockedText }: {
+    icon: string; iconColor: string; title: string; text: string
+    available: boolean; cta: string; onGo: () => void; lockedText: string
+  }) => (
+    <button
+      onClick={available ? onGo : undefined}
+      disabled={!available}
+      className={`group relative flex flex-col items-start rounded-2xl border p-6 text-left transition-all ${
+        available
+          ? "border-border bg-card hover:border-primary hover:shadow-lg"
+          : "border-border bg-card/40 opacity-70"
+      }`}
+      style={{ cursor: available ? "pointer" : "not-allowed" }}
+    >
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl" style={{ backgroundColor: `${iconColor}1a` }}>
+        <Icon name={icon} size={28} style={{ color: iconColor }} />
+      </div>
+      <div className="mb-1 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        {!available && <Icon name="Lock" size={14} className="text-foreground/40" />}
+      </div>
+      <p className="mb-5 text-sm text-foreground/50">{text}</p>
+      {available ? (
+        <span className="mt-auto inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+          {cta} <Icon name="ArrowRight" size={15} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      ) : (
+        <span className="mt-auto text-xs text-foreground/40">{lockedText}</span>
+      )}
+    </button>
+  )
 
-  // Полный доступ — кабинет со стресс-тестами.
-  // Иконка соцсетей — справа вверху в шапке (extra).
-  const socialBtn = sessionId ? (
-    <PartnerSocial session={sessionId} initial={social} onSaved={setSocial}
-      logo={logo} onLogoSaved={setLogo} />
-  ) : null
-
+  // Плиточный хаб — выбор сервиса
   return shell(
     <>
-      {/* Шапка компании */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <Icon name="Building2" size={16} className="text-primary" />
-            <span className="text-lg font-semibold text-foreground">{company?.name || "Ваша компания"}</span>
-            {company?.trial_active && <span className="rounded-full bg-yellow-400/15 border border-yellow-400/30 px-2 py-0.5 text-xs text-yellow-400">Пробный период</span>}
-          </div>
-          <p className="text-sm text-foreground/50">Личный кабинет · стресс-тесты вашей компании</p>
+      <div className="mb-8">
+        <div className="mb-1 flex items-center gap-2">
+          <Icon name="Building2" size={18} className="text-primary" />
+          <span className="text-xl font-semibold text-foreground">{company?.name || "Ваша компания"}</span>
+          {company?.trial_active && <span className="rounded-full bg-yellow-400/15 border border-yellow-400/30 px-2 py-0.5 text-xs text-yellow-400">Пробный период</span>}
         </div>
-
-        {/* Ingest-токен */}
-        {company?.stress_ingest_token && (
-          <div className="rounded-xl border border-border bg-card p-3">
-            <div className="mb-1 flex items-center gap-1.5 text-xs text-foreground/50">
-              <Icon name="Key" size={12} /> Токен для программы стресс-тестов
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="rounded bg-muted px-2 py-1 font-mono text-xs text-foreground">
-                {tokenShown ? company.stress_ingest_token : "•".repeat(Math.min(company.stress_ingest_token.length, 20))}
-              </code>
-              <button onClick={() => setTokenShown(v => !v)} className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }} title={tokenShown ? "Скрыть" : "Показать"}>
-                <Icon name={tokenShown ? "EyeOff" : "Eye"} size={14} />
-              </button>
-              <button onClick={() => { navigator.clipboard.writeText(company.stress_ingest_token) }} className="text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }} title="Скопировать">
-                <Icon name="Copy" size={14} />
-              </button>
-            </div>
-          </div>
-        )}
+        <p className="text-sm text-foreground/50">Выберите сервис партнёрского кабинета</p>
       </div>
 
-      {/* Единый модуль стресс-тестов в режиме партнёра */}
-      <StressTestsTab scope="partner" session={sessionId} />
-    </>,
-    socialBtn
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Tile
+          icon="Tags"
+          iconColor="#6366f1"
+          title="B2B-каталог"
+          text="Оптовые цены, наличие и характеристики товаров для партнёров."
+          available={hasB2B}
+          cta="Перейти в каталог"
+          onGo={() => navigate("/b2b")}
+          lockedText="Нет доступа — свяжитесь с менеджером"
+        />
+        <Tile
+          icon="Activity"
+          iconColor="#a855f7"
+          title="StressTester"
+          text="Отчёты стресс-тестов вашей компании, папки прогонов и токен для программы."
+          available={hasLk}
+          cta="Открыть стресс-тесты"
+          onGo={() => navigate("/partners/стресстестер")}
+          lockedText="Нет доступа — свяжитесь с менеджером"
+        />
+      </div>
+
+      {!hasB2B && !hasLk && (
+        <div className="mt-6 rounded-xl border border-border bg-card p-4 text-center text-sm text-foreground/50">
+          У вашей компании пока нет активных сервисов.{" "}
+          <a href="https://t.me/begraphics" target="_blank" rel="noreferrer" className="text-primary hover:underline">Написать менеджеру</a>
+        </div>
+      )}
+    </>
   )
 }
