@@ -1,5 +1,7 @@
-// Отчёт по папке прогонов стресс-тестов: печать/PDF (HTML в новом окне)
-// и выгрузка CSV. Данные приходят из api.stress.folderReport.
+// Отчёт по прогонам стресс-тестов: печать/PDF (HTML в новом окне) и CSV.
+// Единый движок renderRunPage(run, mode) под фирменный формат: один прогон =
+// одна страница. Отчёт по одному прогону и по папке (много страниц) используют
+// один и тот же рендер. Данные — из api.stress.folderReport / api.stress.get.
 
 export interface ReportMetric {
   key: string; label: string; unit: string
@@ -21,11 +23,21 @@ export interface ReportFolder {
   note: string; created_at: string
 }
 
+export type ReportMode = "compact" | "detailed"
+
 function fmtDate(s: string | null): string {
   if (!s) return "—"
   return new Date(s).toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
   })
+}
+
+function fmtDur(sec: number): string {
+  if (!sec) return "0 сек"
+  if (sec < 60) return `${sec.toFixed(0)} сек`
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  return `${m}м ${s}с`
 }
 
 const esc = (v: string | number | null): string => {
@@ -33,7 +45,14 @@ const esc = (v: string | number | null): string => {
   return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-// CSV: одна строка = одна метрика внутри прогона (плюс строки-шапки прогонов).
+const h = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+
+// Картинка ли файл (для секции «Скриншоты»)
+const isImage = (name: string, url: string): boolean =>
+  /\.(jpe?g|png|webp|gif|bmp)$/i.test(name) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(url)
+
+// ─── CSV ────────────────────────────────────────────────────────────────────
 export function folderReportCSV(folder: ReportFolder, runs: ReportRun[]): string {
   const head = [
     "Папка", "Заказ", "Прогон_ID", "ПК", "Профиль", "ОС", "Дата",
@@ -68,93 +87,142 @@ export function downloadFolderCSV(folder: ReportFolder, runs: ReportRun[]): void
   URL.revokeObjectURL(url)
 }
 
-const h = (s: string): string =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+// ─── Общие стили отчёта (фирменный формат) ──────────────────────────────────
+const REPORT_CSS = `
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 40px 44px; }
+  h1 { font-size: 30px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .meta { color: #555; font-size: 14px; margin-bottom: 2px; }
+  .mode { color: #9a9a9a; font-size: 13px; margin-bottom: 22px; }
+  .stats { display: flex; gap: 0; border: 1px solid #d7d7d7; border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
+  .stat { flex: 1; padding: 16px 20px; border-right: 1px solid #e4e4e4; }
+  .stat:last-child { border-right: none; }
+  .stat.ok { box-shadow: inset 0 0 0 2px #22c55e; }
+  .stat.err { box-shadow: inset 0 0 0 2px #ef4444; }
+  .stat .n { font-size: 30px; font-weight: 700; line-height: 1; }
+  .stat.ok .n { color: #16a34a; } .stat.err .n { color: #dc2626; }
+  .stat .l { font-size: 13px; color: #666; margin-top: 6px; }
+  .section { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8a8a8a; font-weight: 600; margin: 28px 0 12px; }
+  .test { border: 1px solid #dcdcdc; border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; page-break-inside: avoid; }
+  .test.bad { border-color: #f0a0a0; background: #fdf3f3; }
+  .test-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .test-meta { font-size: 13px; color: #666; }
+  .test-cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #888; margin-top: 6px; word-break: break-all; }
+  .to { background: #ffedd5; color: #ea580c; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
+  /* Датчики — карточки (compact) */
+  .sensors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .sensor { border: 1px solid #dcdcdc; border-radius: 8px; padding: 14px 16px; page-break-inside: avoid; }
+  .s-label { font-size: 13px; color: #666; margin-bottom: 8px; min-height: 34px; }
+  .s-max { display: flex; align-items: baseline; gap: 5px; }
+  .s-num { font-size: 26px; font-weight: 700; line-height: 1; }
+  .s-unit { font-size: 13px; color: #888; }
+  .s-tag { margin-left: 4px; background: #ef4444; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 11px; align-self: center; }
+  .s-mm { font-size: 12px; color: #777; margin-top: 8px; }
+  /* Датчики — таблица (detailed) */
+  table.sensors-t { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.sensors-t th { text-align: left; color: #8a8a8a; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e4e4e4; }
+  table.sensors-t td { padding: 6px 8px; }
+  table.sensors-t td.n { font-variant-numeric: tabular-nums; }
+  table.sensors-t td.mx { font-weight: 700; }
+  table.sensors-t td.u { color: #999; text-align: right; }
+  /* Скриншоты */
+  .shots { display: grid; gap: 14px; }
+  .shot { border: 1px solid #dcdcdc; border-radius: 8px; padding: 14px 16px 16px; page-break-inside: avoid; }
+  .shot-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+  .shot img { max-width: 100%; border-radius: 6px; display: block; }
+  .footer { margin-top: 34px; padding-top: 14px; border-top: 1px solid #eee; text-align: center; color: #b0b0b0; font-size: 12px; }
+  .muted { color: #bbb; font-size: 13px; }
+  @media print { body { padding: 20px; } .noprint { display: none; } }
+  .btn { margin-bottom: 22px; padding: 9px 18px; border: 1px solid #111; background: #111; color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; }
+`
 
-// HTML-отчёт для печати/сохранения в PDF (через окно печати браузера).
-export function openFolderReportPrint(folder: ReportFolder, runs: ReportRun[]): boolean {
-  const totalTests = runs.reduce((s, r) => s + r.total_tests, 0)
-  const totalPassed = runs.reduce((s, r) => s + r.passed_tests, 0)
-  const totalFailed = runs.reduce((s, r) => s + r.failed_tests, 0)
+// Рендер одной страницы = одного прогона в фирменном формате.
+function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): string {
+  const okAll = r.failed_tests === 0
+  // Заголовок = профиль (имя прогона), мета = ПК · старт → финиш · ОС/ядра
+  const title = r.profile_name || r.machine_name || `Прогон #${r.id}`
+  const metaParts: string[] = [
+    r.machine_name || "",
+    `${fmtDate(r.started_at)} → ${fmtDate(r.finished_at)}`,
+    r.os_info || "",
+  ].filter(s => s.length > 0)
 
-  const runBlocks = runs.map(r => {
-    const metricRows = r.metrics.length
-      ? r.metrics.map(m => `
+  // СТРЕСС-ТЕСТЫ
+  const tests = (r.results || []).map(t => `
+    <div class="test ${t.success ? "" : "bad"}">
+      <div class="test-name">${t.success ? "✓" : "✕"} ${h(t.test_name || "Без названия")}${t.timed_out ? '<span class="to">таймаут</span>' : ""}</div>
+      <div class="test-meta">код: ${t.exit_code ?? "—"} · ${fmtDur(t.duration_sec)}</div>
+      ${mode === "detailed" && t.command ? `<div class="test-cmd">${h(t.command)}</div>` : ""}
+    </div>`).join("")
+
+  // ДАТЧИКИ
+  let sensors: string
+  if (!r.metrics.length) {
+    sensors = `<div class="muted">Датчики не записаны</div>`
+  } else if (mode === "compact") {
+    sensors = `<div class="sensors">${r.metrics.map(m => `
+      <div class="sensor">
+        <div class="s-label">${h(m.label)}</div>
+        <div class="s-max"><span class="s-num">${m.max ?? "—"}</span><span class="s-unit">${h(m.unit || "")}</span><span class="s-tag">max</span></div>
+        <div class="s-mm">мин ${m.min ?? "—"} · сред ${m.avg ?? "—"}</div>
+      </div>`).join("")}</div>`
+  } else {
+    sensors = `<table class="sensors-t">
+      <thead><tr><th>Датчик</th><th>мин</th><th>сред</th><th>макс</th><th></th></tr></thead>
+      <tbody>${r.metrics.map(m => `
         <tr>
           <td>${h(m.label)}</td>
-          <td class="num">${m.min ?? "—"}</td>
-          <td class="num">${m.avg ?? "—"}</td>
-          <td class="num strong">${m.max ?? "—"}</td>
-          <td class="unit">${h(m.unit || "")}</td>
-        </tr>`).join("")
-      : `<tr><td colspan="5" class="muted">Метрики не записаны</td></tr>`
-    const badge = r.failed_tests > 0
-      ? `<span class="badge bad">${r.passed_tests}/${r.total_tests}</span>`
-      : `<span class="badge good">${r.passed_tests}/${r.total_tests}</span>`
-    return `
-      <div class="run">
-        <div class="run-head">
-          <div>
-            <div class="run-title">${h(r.machine_name || `Прогон #${r.id}`)}</div>
-            <div class="run-meta">
-              ${r.profile_name ? h(r.profile_name) + " · " : ""}${h(r.os_info || "")}
-              ${r.os_info ? " · " : ""}${fmtDate(r.created_at)}
-            </div>
-          </div>
-          ${badge}
-        </div>
-        ${r.note ? `<div class="run-note">${h(r.note)}</div>` : ""}
-        <table class="metrics">
-          <thead><tr><th>Датчик</th><th>Мин</th><th>Сред</th><th>Макс</th><th>Ед</th></tr></thead>
-          <tbody>${metricRows}</tbody>
-        </table>
-      </div>`
-  }).join("")
+          <td class="n">${m.min ?? "—"}</td>
+          <td class="n">${m.avg ?? "—"}</td>
+          <td class="n mx">${m.max ?? "—"}</td>
+          <td class="u">${h(m.unit || "")}</td>
+        </tr>`).join("")}</tbody>
+    </table>`
+  }
 
+  // СКРИНШОТЫ — только изображения
+  const shots = (r.results || []).flatMap(t =>
+    (t.files || []).filter(f => isImage(f.file_name, f.file_url)).map(f => ({ test: t.test_name, f }))
+  )
+  const shotsBlock = shots.length ? `
+    <div class="section">Скриншоты</div>
+    <div class="shots">${shots.map(s => `
+      <div class="shot">
+        <div class="shot-title">${h(s.test || s.f.file_name)}</div>
+        <img src="${h(s.f.file_url)}" alt="${h(s.f.file_name)}" loading="eager" />
+      </div>`).join("")}</div>` : ""
+
+  return `
+    <section class="page" ${pageBreak ? 'style="page-break-after: always;"' : ""}>
+      <h1>${h(title)}</h1>
+      <div class="meta">${metaParts.map(h).join(" · ")}</div>
+      <div class="mode">${mode === "compact" ? "Компактный отчёт" : "Подробный отчёт"}</div>
+      ${r.note ? `<div class="meta">${h(r.note)}</div>` : ""}
+      <div class="stats">
+        <div class="stat"><div class="n">${r.total_tests}</div><div class="l">всего</div></div>
+        <div class="stat ok"><div class="n">${r.passed_tests}</div><div class="l">успешно</div></div>
+        <div class="stat err"><div class="n">${r.failed_tests}</div><div class="l">ошибок</div></div>
+      </div>
+      ${tests ? `<div class="section">Стресс-тесты</div>${tests}` : ""}
+      <div class="section">Датчики (min / сред / max)</div>
+      ${sensors}
+      ${shotsBlock}
+      <div class="footer">StressTester · ${fmtDate(new Date().toISOString())}${okAll ? "" : " · есть ошибки"}</div>
+    </section>`
+}
+
+// Открыть окно с отчётом (набор прогонов) в выбранном режиме.
+function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode): boolean {
+  const pages = runs.length
+    ? runs.map((r, i) => renderRunPage(r, mode, i < runs.length - 1)).join("")
+    : '<p class="muted">Нет данных для отчёта.</p>'
   const html = `<!DOCTYPE html>
-<html lang="ru"><head><meta charset="utf-8">
-<title>Отчёт: ${h(folder.name)}</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; margin: 0; padding: 32px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
-  .summary { display: flex; gap: 16px; margin-bottom: 24px; }
-  .card { flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 12px; text-align: center; }
-  .card .n { font-size: 24px; font-weight: 700; }
-  .card.good .n { color: #16a34a; } .card.bad .n { color: #dc2626; }
-  .card .l { font-size: 11px; color: #888; }
-  .run { border: 1px solid #e2e2e2; border-radius: 10px; padding: 14px; margin-bottom: 14px; page-break-inside: avoid; }
-  .run-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-  .run-title { font-weight: 600; font-size: 15px; }
-  .run-meta { color: #777; font-size: 12px; margin-top: 2px; }
-  .run-note { margin-top: 8px; padding: 6px 8px; background: #f6f6f6; border-radius: 6px; font-size: 12px; color: #555; }
-  .badge { border-radius: 20px; padding: 3px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-  .badge.good { background: #dcfce7; color: #16a34a; } .badge.bad { background: #fee2e2; color: #dc2626; }
-  table.metrics { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-  table.metrics th { text-align: left; color: #999; font-weight: 500; border-bottom: 1px solid #eee; padding: 4px 6px; }
-  table.metrics td { padding: 4px 6px; border-bottom: 1px solid #f2f2f2; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; } td.strong { font-weight: 700; }
-  td.unit { color: #999; } td.muted { color: #bbb; text-align: center; }
-  @media print { body { padding: 12px; } .noprint { display: none; } }
-  .btn { margin-bottom: 20px; padding: 8px 16px; border: 1px solid #333; background: #111; color: #fff; border-radius: 8px; cursor: pointer; font-size: 13px; }
-</style></head>
+<html lang="ru"><head><meta charset="utf-8"><title>${h(titleTag)}</title>
+<style>${REPORT_CSS}</style></head>
 <body>
-  <button class="btn noprint" onclick="window.print()">🖨 Печать / Сохранить в PDF</button>
-  <h1>${h(folder.name)}</h1>
-  <div class="sub">
-    ${folder.order_ref ? "Заказ: <b>" + h(folder.order_ref) + "</b> · " : ""}
-    Прогонов: ${runs.length} · Сформировано: ${fmtDate(new Date().toISOString())}
-    ${folder.note ? "<br>" + h(folder.note) : ""}
-  </div>
-  <div class="summary">
-    <div class="card"><div class="n">${totalTests}</div><div class="l">всего тестов</div></div>
-    <div class="card good"><div class="n">${totalPassed}</div><div class="l">успешно</div></div>
-    <div class="card bad"><div class="n">${totalFailed}</div><div class="l">с ошибкой</div></div>
-  </div>
-  ${runBlocks || '<p class="muted">В папке нет прогонов.</p>'}
+  <button class="btn noprint" onclick="window.print()">Печать / Сохранить в PDF</button>
+  ${pages}
 </body></html>`
-
   const win = window.open("", "_blank")
   if (!win) return false
   win.document.write(html)
@@ -162,119 +230,17 @@ export function openFolderReportPrint(folder: ReportFolder, runs: ReportRun[]): 
   return true
 }
 
-function fmtDur(sec: number): string {
-  if (!sec) return "0 сек"
-  if (sec < 60) return `${sec.toFixed(0)} сек`
-  const m = Math.floor(sec / 60)
-  const s = Math.round(sec % 60)
-  return `${m} мин ${s} сек`
-}
+// ─── Публичные функции ──────────────────────────────────────────────────────
 
-// КОМПАКТНЫЙ отчёт: каждый прогон на ОТДЕЛЬНОЙ странице в том же виде, что
-// окно детали прогона — сводка (всего/успешно/ошибок), карточки датчиков
-// (min/сред/max) и ниже результаты бенчмарков (тест + команда + файлы).
+// Отчёт по папке: компактный (карточки датчиков)
 export function openFolderReportCompact(folder: ReportFolder, runs: ReportRun[]): boolean {
-  const pages = runs.map((r, idx) => {
-    const sensorCards = r.metrics.length
-      ? r.metrics.map(m => `
-        <div class="sensor">
-          <div class="s-label">${h(m.label)}</div>
-          <div class="s-max"><span class="s-num">${m.max ?? "—"}</span><span class="s-unit">${h(m.unit || "")}</span><span class="s-tag">max</span></div>
-          <div class="s-mm">мин ${m.min ?? "—"} · сред ${m.avg ?? "—"}</div>
-        </div>`).join("")
-      : `<div class="muted">Датчики не записаны</div>`
-
-    const benchBlocks = (r.results || []).map(t => {
-      const files = t.files.length
-        ? `<div class="files">${t.files.map(f => `<a href="${h(f.file_url)}" target="_blank">📄 ${h(f.file_name)}</a>`).join("")}</div>`
-        : ""
-      return `
-        <div class="bench ${t.success ? "" : "bad"}">
-          <div class="bench-head">
-            <div class="bench-name">${t.success ? "✅" : "❌"} ${h(t.test_name || "Без названия")}${t.timed_out ? ' <span class="to">таймаут</span>' : ""}</div>
-            <div class="bench-meta">код: <b>${t.exit_code ?? "—"}</b> · ${fmtDur(t.duration_sec)}</div>
-          </div>
-          ${t.command ? `<div class="cmd">${h(t.command)}</div>` : ""}
-          ${files}
-        </div>`
-    }).join("")
-
-    return `
-      <section class="page" ${idx < runs.length - 1 ? 'style="page-break-after: always;"' : ""}>
-        <div class="run-head">
-          <div>
-            <h2>${h(r.machine_name || `Прогон #${r.id}`)}</h2>
-            <div class="run-meta">
-              ${r.profile_name ? h(r.profile_name) + " · " : ""}${h(r.os_info || "")}
-              ${r.os_info ? " · " : ""}${fmtDate(r.started_at)} → ${fmtDate(r.finished_at)}
-            </div>
-            ${r.note ? `<div class="run-note">${h(r.note)}</div>` : ""}
-          </div>
-        </div>
-        <div class="summary">
-          <div class="card"><div class="n">${r.total_tests}</div><div class="l">всего тестов</div></div>
-          <div class="card good"><div class="n">${r.passed_tests}</div><div class="l">успешно</div></div>
-          <div class="card bad"><div class="n">${r.failed_tests}</div><div class="l">с ошибкой</div></div>
-        </div>
-        <div class="section-title">Датчики (min / сред / max)</div>
-        <div class="sensors">${sensorCards}</div>
-        ${benchBlocks ? `<div class="section-title">Результаты бенчмарков</div>${benchBlocks}` : ""}
-      </section>`
-  }).join("")
-
-  const html = `<!DOCTYPE html>
-<html lang="ru"><head><meta charset="utf-8">
-<title>Компактный отчёт: ${h(folder.name)}</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; margin: 0; padding: 28px; }
-  .top { margin-bottom: 20px; }
-  .top h1 { font-size: 20px; margin: 0 0 3px; }
-  .top .sub { color: #666; font-size: 12px; }
-  .page { padding-top: 6px; }
-  .run-head h2 { font-size: 17px; margin: 0 0 3px; }
-  .run-meta { color: #777; font-size: 12px; }
-  .run-note { margin-top: 8px; padding: 6px 8px; background: #f6f6f6; border-radius: 6px; font-size: 12px; color: #555; }
-  .summary { display: flex; gap: 12px; margin: 16px 0; }
-  .card { flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 12px; text-align: center; }
-  .card .n { font-size: 24px; font-weight: 700; }
-  .card.good .n { color: #16a34a; } .card.bad .n { color: #dc2626; }
-  .card .l { font-size: 11px; color: #888; }
-  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #999; font-weight: 600; margin: 18px 0 8px; }
-  .sensors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .sensor { border: 1px solid #e2e2e2; border-radius: 10px; padding: 10px; page-break-inside: avoid; }
-  .s-label { font-size: 11px; color: #888; margin-bottom: 4px; }
-  .s-max { display: flex; align-items: baseline; gap: 4px; }
-  .s-num { font-size: 20px; font-weight: 700; } .s-unit { font-size: 11px; color: #999; }
-  .s-tag { margin-left: 3px; background: #fee2e2; color: #dc2626; border-radius: 4px; padding: 1px 4px; font-size: 9px; }
-  .s-mm { font-size: 11px; color: #777; margin-top: 4px; }
-  .bench { border: 1px solid #e2e2e2; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; page-break-inside: avoid; }
-  .bench.bad { border-color: #fca5a5; background: #fef2f2; }
-  .bench-head { display: flex; justify-content: space-between; gap: 10px; }
-  .bench-name { font-size: 13px; font-weight: 600; } .to { background: #ffedd5; color: #ea580c; border-radius: 4px; padding: 1px 5px; font-size: 10px; }
-  .bench-meta { font-size: 11px; color: #777; white-space: nowrap; }
-  .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; color: #888; margin-top: 4px; word-break: break-all; }
-  .files { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-  .files a { font-size: 11px; color: #2563eb; text-decoration: none; border: 1px solid #ddd; border-radius: 6px; padding: 2px 8px; }
-  .muted { color: #bbb; font-size: 12px; }
-  @media print { body { padding: 12px; } .noprint { display: none; } }
-  .btn { margin-bottom: 18px; padding: 8px 16px; border: 1px solid #333; background: #111; color: #fff; border-radius: 8px; cursor: pointer; font-size: 13px; }
-</style></head>
-<body>
-  <button class="btn noprint" onclick="window.print()">🖨 Печать / Сохранить в PDF</button>
-  <div class="top">
-    <h1>${h(folder.name)}</h1>
-    <div class="sub">
-      ${folder.order_ref ? "Заказ: <b>" + h(folder.order_ref) + "</b> · " : ""}
-      Прогонов: ${runs.length} · Сформировано: ${fmtDate(new Date().toISOString())}
-    </div>
-  </div>
-  ${pages || '<p class="muted">В папке нет прогонов.</p>'}
-</body></html>`
-
-  const win = window.open("", "_blank")
-  if (!win) return false
-  win.document.write(html)
-  win.document.close()
-  return true
+  return openReport(`Отчёт: ${folder.name}`, runs, "compact")
+}
+// Отчёт по папке: подробный (таблица датчиков + пути)
+export function openFolderReportPrint(folder: ReportFolder, runs: ReportRun[]): boolean {
+  return openReport(`Отчёт: ${folder.name}`, runs, "detailed")
+}
+// Отчёт по одному прогону
+export function openRunReport(run: ReportRun, mode: ReportMode = "compact"): boolean {
+  return openReport(run.profile_name || `Прогон #${run.id}`, [run], mode)
 }

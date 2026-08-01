@@ -5,6 +5,7 @@ import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
 import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
+import { openRunReport, type ReportRun } from "@/components/admin/stress/folderReport"
 import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
@@ -294,9 +295,19 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                 </div>
                 {selected.note && <p className="mt-2 max-w-xl rounded-lg bg-muted/50 p-2 text-xs text-foreground/60">{selected.note}</p>}
               </div>
-              <button onClick={() => removeRun(selected.id)} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors" style={{ cursor: "pointer" }}>
-                <Icon name="Trash2" size={13} /> Удалить
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button onClick={() => openRunReport(selected as unknown as ReportRun, "compact")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }} title="Компактный отчёт (PDF)">
+                  <Icon name="FileText" size={13} /> Отчёт
+                </button>
+                <button onClick={() => openRunReport(selected as unknown as ReportRun, "detailed")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }} title="Подробный отчёт (PDF)">
+                  <Icon name="FileBarChart2" size={13} /> Подробный
+                </button>
+                {!isPartner && (
+                  <button onClick={() => removeRun(selected.id)} className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors" style={{ cursor: "pointer" }}>
+                    <Icon name="Trash2" size={13} /> Удалить
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Сводка */}

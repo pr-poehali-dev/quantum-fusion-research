@@ -228,6 +228,7 @@ export const api = {
     register: (data: unknown) => fetch(`${URLS.auth}?action=register`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
     login: (data: unknown) => fetch(`${URLS.auth}?action=login`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
     me: (session: string) => fetch(`${URLS.auth}?action=me`, { headers: authHeaders(session) }).then(r => r.json()),
+    savePartnerSocial: (social_links: string, session: string) => fetch(`${URLS.auth}?action=partner_social_save`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ social_links }) }).then(r => r.json()),
     logout: (session: string) => fetch(`${URLS.auth}?action=logout`, { method: "POST", headers: authHeaders(session) }).then(r => r.json()),
     getBuilds: (session: string) => fetch(`${URLS.auth}?action=builds`, { headers: authHeaders(session) }).then(r => r.json()),
     getCommunityBuilds: () => fetch(`${URLS.auth}?action=community`).then(r => r.json()),

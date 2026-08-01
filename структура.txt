@@ -1059,3 +1059,15 @@ physical); qty := physical - qty_reserved (>=0). Излишек POSITIVE над 
   Кнопка «Новая сборка» в AdminWipTab → navigate("/admin/wip/new");
   модалка редактирования существующих сборок и copyWip сохранены.
 - Роуты в App.tsx стоят ПЕРЕД /admin/order/:id, чтобы "new" не матчился как id.
+[v7.67] Новый формат отчёта стресс-тестов + соцсети партнёра.
+- folderReport.ts: единый движок renderRunPage(run, mode="compact"|"detailed").
+  Один прогон = одна страница (заголовок=профиль, мета=ПК·старт→финиш·ОС/ядра,
+  плашка всего/успешно/ошибок, секции СТРЕСС-ТЕСТЫ→ДАТЧИКИ→СКРИНШОТЫ, футер).
+  compact=карточки датчиков, detailed=таблица+путь. Скриншоты — ТОЛЬКО картинки
+  (jpg/png/webp/gif/bmp). Экспорт: openFolderReportCompact/Print, openRunReport,
+  downloadFolderCSV. StressTestsTab: кнопки «Отчёт»/«Подробный» в карточке прогона.
+- Соцсети партнёра: partner_companies.social_links (V0218, строка на ссылку).
+  backend/auth: company_access отдаёт social_links; action partner_social_save
+  (по сессии, доступ lk, ≤10 ссылок). api.auth.savePartnerSocial.
+  src/components/partners/PartnerSocial.tsx — иконка-поповер (список+редактор).
+  Partners.tsx: иконка соцсетей в шапке ЛК; Shell→функция shell() без ремаунта.

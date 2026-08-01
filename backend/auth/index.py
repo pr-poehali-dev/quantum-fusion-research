@@ -57,7 +57,7 @@ def company_access(cur, company_id):
     if not company_id:
         return None
     cur.execute(
-        f"SELECT id, name, tier, status, trial_ends_at, stress_ingest_token "
+        f"SELECT id, name, tier, status, trial_ends_at, stress_ingest_token, social_links "
         f"FROM {SCHEMA}.partner_companies WHERE id = {int(company_id)}"
     )
     r = cur.fetchone()
@@ -89,6 +89,7 @@ def company_access(cur, company_id):
             "trial_ends_at": str(trial_ends) if trial_ends else None,
             "trial_active": trial_active,
             "stress_ingest_token": r[5] or "",
+            "social_links": r[6] or "",
         },
         "access": {"b2b": b2b, "lk": lk, "reason": reason},
     }
@@ -214,6 +215,27 @@ def handler(event: dict, context) -> dict:
             if not u:
                 return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"user": fmt_user(u, cur)})}
+
+        elif action == "partner_social_save" and method == "POST":
+            # Партнёр сохраняет ссылки на свои соцсети (по одной на строку).
+            u = get_user(cur, session_id)
+            if not u:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+            company_id = u[17] if len(u) > 17 else None
+            info = company_access(cur, company_id) if company_id else None
+            if not info or not info["access"]["lk"]:
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            # Нормализуем: убираем пустые строки, максимум 10 ссылок по 300 символов
+            body = json.loads(event.get("body") or "{}")
+            raw = (body.get("social_links") or "")
+            lines = [ln.strip()[:300] for ln in raw.splitlines() if ln.strip()][:10]
+            social = "\n".join(lines)
+            cur.execute(
+                f"UPDATE {SCHEMA}.partner_companies SET social_links = {esc(social)}, "
+                f"updated_at = NOW() WHERE id = {int(company_id)}"
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "social_links": social})}
 
         elif action == "public":
             tag = params.get("utag", params.get("tag", "")).strip().lstrip("@").lower()

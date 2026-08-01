@@ -26,6 +26,7 @@ interface User {
     trial_ends_at: string | null
     trial_active: boolean
     stress_ingest_token: string
+    social_links?: string
   }
   partner_access?: { b2b: boolean; lk: boolean; reason: string }
 }

@@ -5,18 +5,22 @@ import { useAuth } from "@/store/auth"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import StressTestsTab from "@/components/admin/StressTestsTab"
+import PartnerSocial from "@/components/partners/PartnerSocial"
 
 export default function Partners() {
   const navigate = useNavigate()
   const { user, sessionId, updateUser, logout } = useAuth()
   const [loading, setLoading] = useState(true)
   const [tokenShown, setTokenShown] = useState(false)
+  const [social, setSocial] = useState("")
 
   // Подтягиваем свежий профиль (partner_access/company) при заходе
   useEffect(() => {
     if (!sessionId) { setLoading(false); return }
     api.auth.me(sessionId)
-      .then(d => { if (d.user) updateUser(d.user) })
+      .then(d => {
+        if (d.user) { updateUser(d.user); setSocial(d.user.partner_company?.social_links || "") }
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [sessionId, updateUser])
@@ -25,8 +29,8 @@ export default function Partners() {
   const access = user?.partner_access
   const hasLk = !!(sessionId && access?.lk)
 
-  // Экран-обёртка (шапка одинаковая для всех состояний)
-  const Shell = ({ children }: { children: React.ReactNode }) => (
+  // Экран-обёртка (обычная функция, не компонент — чтобы не ремаунтить шапку)
+  const shell = (children: React.ReactNode, extra?: React.ReactNode) => (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
@@ -35,6 +39,7 @@ export default function Partners() {
             <span className="font-semibold text-lg text-foreground">BeGraphics · Кабинет партнёра</span>
           </button>
           <div className="flex items-center gap-2">
+            {extra}
             <ThemeSwitcher />
             {sessionId && (
               <button onClick={() => { logout(); navigate("/") }}
@@ -61,16 +66,14 @@ export default function Partners() {
   )
 
   if (loading) {
-    return <Shell><div className="flex justify-center py-20"><div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div></Shell>
+    return shell(<div className="flex justify-center py-20"><div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>)
   }
 
   // Не залогинен
   if (!sessionId || !user) {
-    return (
-      <Shell>
-        <Centered icon="LogIn" title="Вход для партнёров" text="Войдите под аккаунтом BeGraphics, привязанным к вашей компании."
-          action={<button onClick={() => navigate("/auth")} className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90" style={{ cursor: "pointer" }}>Войти в аккаунт</button>} />
-      </Shell>
+    return shell(
+      <Centered icon="LogIn" title="Вход для партнёров" text="Войдите под аккаунтом BeGraphics, привязанным к вашей компании."
+        action={<button onClick={() => navigate("/auth")} className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90" style={{ cursor: "pointer" }}>Войти в аккаунт</button>} />
     )
   }
 
@@ -78,26 +81,29 @@ export default function Partners() {
   if (!hasLk) {
     const suspended = company?.status === "suspended"
     const trialExpired = !!company && !company.trial_active && !!company.trial_ends_at && company.tier === "basic"
-    return (
-      <Shell>
-        <Centered
-          icon={suspended ? "PauseCircle" : "Lock"}
-          title={suspended ? "Доступ приостановлен" : company ? "Кабинет недоступен" : "Компания не привязана"}
-          text={
-            suspended ? "Доступ вашей компании временно приостановлен. Свяжитесь с менеджером BeGraphics."
-            : trialExpired ? "Пробный период закончился. Чтобы продолжить пользоваться кабинетом, свяжитесь с менеджером."
-            : company ? "У вашей компании нет доступа к личному кабинету. Свяжитесь с менеджером BeGraphics."
-            : "Ваш аккаунт пока не привязан к партнёрской компании. Обратитесь к менеджеру BeGraphics."
-          }
-          action={<a href="https://t.me/begraphics" target="_blank" rel="noreferrer" className="inline-block rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground" style={{ cursor: "pointer" }}>Написать менеджеру</a>}
-        />
-      </Shell>
+    return shell(
+      <Centered
+        icon={suspended ? "PauseCircle" : "Lock"}
+        title={suspended ? "Доступ приостановлен" : company ? "Кабинет недоступен" : "Компания не привязана"}
+        text={
+          suspended ? "Доступ вашей компании временно приостановлен. Свяжитесь с менеджером BeGraphics."
+          : trialExpired ? "Пробный период закончился. Чтобы продолжить пользоваться кабинетом, свяжитесь с менеджером."
+          : company ? "У вашей компании нет доступа к личному кабинету. Свяжитесь с менеджером BeGraphics."
+          : "Ваш аккаунт пока не привязан к партнёрской компании. Обратитесь к менеджеру BeGraphics."
+        }
+        action={<a href="https://t.me/begraphics" target="_blank" rel="noreferrer" className="inline-block rounded-lg border border-border px-5 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground" style={{ cursor: "pointer" }}>Написать менеджеру</a>}
+      />
     )
   }
 
-  // Полный доступ — кабинет со стресс-тестами
-  return (
-    <Shell>
+  // Полный доступ — кабинет со стресс-тестами.
+  // Иконка соцсетей — справа вверху в шапке (extra).
+  const socialBtn = sessionId ? (
+    <PartnerSocial session={sessionId} initial={social} onSaved={setSocial} />
+  ) : null
+
+  return shell(
+    <>
       {/* Шапка компании */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -132,6 +138,7 @@ export default function Partners() {
 
       {/* Единый модуль стресс-тестов в режиме партнёра */}
       <StressTestsTab scope="partner" session={sessionId} />
-    </Shell>
+    </>,
+    socialBtn
   )
 }
