@@ -3,6 +3,27 @@
 
 ---
 
+## v7.74 | 2026-08-01 | Баллы бенчмарков (score_text) в отчёте и UI
+
+### Что
+- Раньше сайт выбрасывал баллы при сохранении — расхождение с отчётом EXE.
+  Теперь баллы (score_text) сохраняются, отдаются в API и форматируются
+  на фронте 1:1 с EXE (TestResultFormatter.cs).
+- Заголовок теста: "{test_name} - {shortScore}" (напр. «7-Zip - 133394 MIPS»,
+  «Cinebench R23 … - 22331 CB», «Superposition … - 7198»).
+
+### Изменения
+- [БД] V0220: stress_results.score_text, .ocr_stress_failed.
+- [backend/stress] ingest сохраняет score_text/ocr_stress_failed; get_run и
+  folder_report отдают эти поля в результатах.
+- [scoreFormat.ts] новый util: shortScore (парсинг Superposition/7-Zip/
+  Cinebench/y-cruncher, игнор шумовых строк), testTitle, statsLine.
+- [folderReport.ts] заголовок теста через testTitle, подстрока через statsLine
+  (удалён локальный fmtDur). [StressTestsTab] testTitle в списке результатов.
+  ReportResult/ResultRow/Run: score_text, ocr_stress_failed.
+
+---
+
 ## v7.73 | 2026-08-01 | Полный перечень ссылок партнёра в отчёте
 
 ### Что

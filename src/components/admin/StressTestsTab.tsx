@@ -6,6 +6,7 @@ import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
 import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
 import { openRunReport, type ReportRun } from "@/components/admin/stress/folderReport"
+import { testTitle } from "@/components/admin/stress/scoreFormat"
 import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
@@ -22,6 +23,8 @@ interface ResultRow {
   started_at: string | null
   finished_at: string | null
   files: RunFile[]
+  score_text?: string
+  ocr_stress_failed?: boolean
 }
 interface Run {
   id: number
@@ -400,7 +403,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <Icon name={t.success ? "CircleCheck" : "CircleX"} size={16} className={t.success ? "text-green-400" : "text-red-400"} />
-                      <span className="text-sm font-medium text-foreground">{t.test_name || "Без названия"}</span>
+                      <span className="text-sm font-medium text-foreground">{testTitle(t.test_name || "Без названия", t.score_text)}</span>
                       {t.timed_out && <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] text-orange-400">таймаут</span>}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-foreground/50">

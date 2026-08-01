@@ -329,10 +329,11 @@ def ingest(cur, conn, body, company_id=None):
         cur.execute(
             f"INSERT INTO {SCHEMA}.stress_results "
             f"(run_id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "
-            f"started_at, finished_at, sort_order) VALUES "
+            f"score_text, ocr_stress_failed, started_at, finished_at, sort_order) VALUES "
             f"({run_id}, {esc(r.get('test_name', ''))}, {esc(r.get('command', ''))}, {exit_sql}, "
             f"{num(r.get('duration_sec'))}, {int(num(r.get('planned_sec')))}, "
             f"{'TRUE' if r.get('timed_out') else 'FALSE'}, {'TRUE' if r.get('success') else 'FALSE'}, "
+            f"{esc(r.get('score_text', '') or '')}, {'TRUE' if r.get('ocr_stress_failed') else 'FALSE'}, "
             f"{ts(r.get('started_at'))}, {ts(r.get('finished_at'))}, {i}) RETURNING id"
         )
         result_id = cur.fetchone()[0]
@@ -561,7 +562,7 @@ def folder_report(cur, fid, owner_cid=None):
         # Результаты тестов (бенчмарки) + файлы — для компактного отчёта
         cur.execute(
             f"SELECT id, run_id, test_name, command, exit_code, duration_sec, "
-            f"timed_out, success FROM {SCHEMA}.stress_results "
+            f"timed_out, success, score_text, ocr_stress_failed FROM {SCHEMA}.stress_results "
             f"WHERE run_id IN ({ids}) ORDER BY sort_order, id"
         )
         res_by_run = {}
@@ -570,7 +571,8 @@ def folder_report(cur, fid, owner_cid=None):
             item = {
                 "id": x[0], "test_name": x[2], "command": x[3], "exit_code": x[4],
                 "duration_sec": float(x[5]) if x[5] is not None else 0,
-                "timed_out": x[6], "success": x[7], "files": [],
+                "timed_out": x[6], "success": x[7],
+                "score_text": x[8] or "", "ocr_stress_failed": x[9], "files": [],
             }
             res_by_run.setdefault(x[1], []).append(item)
             res_index[x[0]] = item
@@ -612,7 +614,7 @@ def get_run(cur, run_id, owner_cid=None):
     }
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "
-        f"started_at, finished_at, sort_order FROM {SCHEMA}.stress_results "
+        f"started_at, finished_at, sort_order, score_text, ocr_stress_failed FROM {SCHEMA}.stress_results "
         f"WHERE run_id = {run_id} ORDER BY sort_order, id"
     )
     results = []
@@ -621,7 +623,8 @@ def get_run(cur, run_id, owner_cid=None):
             "id": x[0], "test_name": x[1], "command": x[2], "exit_code": x[3],
             "duration_sec": float(x[4]) if x[4] is not None else 0,
             "planned_sec": x[5], "timed_out": x[6], "success": x[7],
-            "started_at": x[8], "finished_at": x[9], "sort_order": x[10], "files": [],
+            "started_at": x[8], "finished_at": x[9], "sort_order": x[10],
+            "score_text": x[11] or "", "ocr_stress_failed": x[12], "files": [],
         })
     if results:
         ids = ",".join(str(r2["id"]) for r2 in results)

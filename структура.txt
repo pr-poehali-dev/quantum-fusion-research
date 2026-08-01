@@ -1090,3 +1090,9 @@ pages/Partners.tsx = хаб. pages/PartnersStress.tsx = кабинет стре�
 social_links), слева от лого — QR этой ссылки. backend/stress folder_report/get
 отдают partner_link (_first_link). folderReport.ts: async renderRunPage/openReport,
 блок .brand (QR toDataURL через qrcode). Библиотека qrcode.
+
+[v7.74] Баллы бенчмарков. stress_results.score_text/ocr_stress_failed (V0220).
+backend/stress: ingest сохраняет, get_run/folder_report отдают. Фронт:
+scoreFormat.ts (shortScore/testTitle/statsLine — 1:1 с EXE TestResultFormatter.cs),
+применён в folderReport.ts (заголовок теста + statsLine) и StressTestsTab
+(список результатов). Заголовок = "{test_name} - {shortScore}".

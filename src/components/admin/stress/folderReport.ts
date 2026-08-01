@@ -4,6 +4,7 @@
 // один и тот же рендер. Данные — из api.stress.folderReport / api.stress.get.
 
 import QRCode from "qrcode"
+import { testTitle, statsLine } from "./scoreFormat"
 
 // QR-код ссылки партнёра как data-URL (для вставки картинкой в окно отчёта).
 async function qrDataUrl(text: string): Promise<string> {
@@ -22,6 +23,7 @@ export interface ReportFile { file_name: string; file_url: string; file_size: nu
 export interface ReportResult {
   id: number; test_name: string; command: string; exit_code: number | null
   duration_sec: number; timed_out: boolean; success: boolean; files: ReportFile[]
+  score_text?: string; ocr_stress_failed?: boolean
 }
 export interface ReportRun {
   id: number; run_uid: string; profile_name: string; machine_name: string
@@ -46,13 +48,6 @@ function fmtDate(s: string | null): string {
   })
 }
 
-function fmtDur(sec: number): string {
-  if (!sec) return "0 сек"
-  if (sec < 60) return `${sec.toFixed(0)} сек`
-  const m = Math.floor(sec / 60)
-  const s = Math.round(sec % 60)
-  return `${m}м ${s}с`
-}
 
 const esc = (v: string | number | null): string => {
   const s = v == null ? "" : String(v)
@@ -172,13 +167,16 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
     r.os_info || "",
   ].filter(s => s.length > 0)
 
-  // СТРЕСС-ТЕСТЫ
-  const tests = (r.results || []).map(t => `
+  // СТРЕСС-ТЕСТЫ (заголовок с баллом + статистика — 1:1 с EXE)
+  const tests = (r.results || []).map(t => {
+    const stats = statsLine(t.exit_code, t.timed_out, t.duration_sec)
+    return `
     <div class="test ${t.success ? "" : "bad"}">
-      <div class="test-name">${t.success ? "✓" : "✕"} ${h(t.test_name || "Без названия")}${t.timed_out ? '<span class="to">таймаут</span>' : ""}</div>
-      <div class="test-meta">код: ${t.exit_code ?? "—"} · ${fmtDur(t.duration_sec)}</div>
+      <div class="test-name">${t.success ? "✓" : "✕"} ${h(testTitle(t.test_name || "Без названия", t.score_text))}${t.timed_out ? '<span class="to">таймаут</span>' : ""}</div>
+      ${stats ? `<div class="test-meta">${h(stats)}</div>` : ""}
       ${mode === "detailed" && t.command ? `<div class="test-cmd">${h(t.command)}</div>` : ""}
-    </div>`).join("")
+    </div>`
+  }).join("")
 
   // ДАТЧИКИ
   let sensors: string
