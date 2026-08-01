@@ -63,11 +63,9 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
   const [orderMap, setOrderMap] = useState<Record<number, number[]>>({})
   const [dragId, setDragId] = useState<number | null>(null)
 
-  // Упорядоченный список прогонов папки согласно выбранному режиму сортировки
-  const orderedRuns = (fid: number, folderRuns: RunLite[]): RunLite[] => {
-    const mode = sortMode[fid] || "manual"
+  // Чистая сортировка списка по режиму (без обращения к стейту)
+  const sortRuns = (folderRuns: RunLite[], mode: SortMode, saved?: number[]): RunLite[] => {
     if (mode === "manual") {
-      const saved = orderMap[fid]
       const base = [...folderRuns].sort((a, b) => (a.folder_sort ?? 0) - (b.folder_sort ?? 0))
       if (!saved) return base
       const byId = new Map(folderRuns.map(r => [r.id, r]))
@@ -83,18 +81,21 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
     return arr
   }
 
+  // Упорядоченный список прогонов папки согласно ТЕКУЩЕМУ стейту
+  const orderedRuns = (fid: number, folderRuns: RunLite[]): RunLite[] =>
+    sortRuns(folderRuns, sortMode[fid] || "manual", orderMap[fid])
+
   // Сохранить текущий порядок папки на бэкенд (folder_sort = позиция)
   const persistOrder = async (fid: number, ids: number[]) => {
     await api.stress.folderReorder(fid, ids, adminKey, auth)
     onChanged()
   }
 
-  // Применить выбранный режим сортировки как ручной порядок (фиксируем на бэке)
+  // Применить выбранный режим сортировки: сразу считаем новый порядок по mode,
+  // фиксируем его как ручной и сохраняем на бэке.
   const applySort = async (fid: number, folderRuns: RunLite[], mode: SortMode) => {
-    setSortMode(m => ({ ...m, [fid]: mode }))
-    if (mode === "manual") return
-    const ids = orderedRuns(fid, folderRuns).map(r => r.id)
-    // временно применим как ручной порядок и сохраним
+    if (mode === "manual") { setSortMode(m => ({ ...m, [fid]: "manual" })); return }
+    const ids = sortRuns(folderRuns, mode).map(r => r.id)
     setOrderMap(m => ({ ...m, [fid]: ids }))
     setSortMode(m => ({ ...m, [fid]: "manual" }))
     await persistOrder(fid, ids)
@@ -285,13 +286,14 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
                             Порядок = порядок в отчёте. Тяни за <Icon name="GripVertical" size={11} className="inline" /> чтобы переставить.
                           </p>
                           <select
-                            value={sortMode[f.id] || "manual"}
-                            onChange={e => applySort(f.id, folderRuns, e.target.value as SortMode)}
+                            value="__ph"
+                            disabled={reportBusy === f.id}
+                            onChange={e => { const v = e.target.value; if (v !== "__ph") applySort(f.id, folderRuns, v as SortMode) }}
                             className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground/70 focus:border-primary focus:outline-none"
-                            style={{ cursor: "pointer" }} title="Сортировка прогонов">
-                            <option value="manual">Вручную</option>
+                            style={{ cursor: "pointer" }} title="Упорядочить прогоны">
+                            <option value="__ph">Сортировать…</option>
                             <option value="name">По названию</option>
-                            <option value="date">По дате</option>
+                            <option value="date">По дате (новые сверху)</option>
                             <option value="duration">По длительности</option>
                           </select>
                         </div>
