@@ -1103,3 +1103,10 @@ folderReport.ts: ReportMode "super" (только тесты с баллами, 
 названию, колонтитул "Отчёт: N компов", без датчиков/скринов), openFolderReportSuper.
 Кнопки "Суперкомпактный (PDF)" в StressFoldersPanel и в детали прогона.
 StressTestsTab: инлайн-редактор названия компа (карандаш у заголовка).
+
+[v7.76] Снижение нагрузки на бэкенд.
+lib/batch.ts — runBatched (параллелизм N, пауза между пакетами).
+lib/fetchRetry.ts — глобальный retry window.fetch на 503/502/504 (1с, 2 повтора),
+только для functions.poehali.dev; installFetchRetry() в main.tsx.
+PriceMonitorTab: кандидаты (match) грузятся пакетами по 3 с паузой 300мс в
+родителе (candMap), а не в каждой карточке — устранён залп из 286 запросов.
