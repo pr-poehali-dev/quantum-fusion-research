@@ -2,10 +2,16 @@ import json
 import os
 import base64
 import uuid
+import html as html_mod
 import psycopg2
 import boto3
 from botocore.client import Config
-from tg_notify import notify_stress
+from tg_notify import send_stress
+
+
+def _esc(v) -> str:
+    """Экранирование для parse_mode=HTML (иначе <, >, & ломают сообщение → 400)."""
+    return html_mod.escape("—" if v is None or v == "" else str(v), quote=False)
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -255,12 +261,12 @@ def handler(event, context):
         conn.close()
 
 
-def notify(body):
-    """Уведомление в Telegram о событии стресс-теста.
-    body: {event: 'test_failed'|'run_finished', machine, profile, ...}"""
+def _build_notify_text(body):
+    """Собирает текст Telegram-сообщения о событии стресс-теста (все поля
+    экранированы для parse_mode=HTML). Возвращает str или None (неизвестное событие)."""
     event = body.get("event", "")
-    machine = body.get("machine") or "—"
-    profile = body.get("profile") or "—"
+    machine = _esc(body.get("machine"))
+    profile = _esc(body.get("profile"))
     # Ссылка на админку стресс-тестов. Боевой домен по умолчанию — begraphics.ru
     # (preview-адрес в уведомлениях не нужен). Можно переопределить секретом SITE_BASE_URL.
     site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
@@ -269,34 +275,43 @@ def notify(body):
     link = f"\n🔗 {site}/admin/stress"
 
     if event == "test_failed":
-        test_name = body.get("test_name") or "—"
+        test_name = _esc(body.get("test_name"))
         exit_code = body.get("exit_code")
-        code_s = "—" if exit_code is None else str(exit_code)
+        code_s = "—" if exit_code is None else _esc(exit_code)
         dur = body.get("duration_sec")
         dur_s = f"{float(dur):.0f} сек" if dur is not None else "—"
-        text = (
+        return (
             f"🔴 <b>Ошибка стресс-теста</b>\n"
             f"💻 ПК: <b>{machine}</b>\n"
             f"📋 Профиль: {profile}\n"
             f"❌ Тест: <b>{test_name}</b>\n"
             f"   код выхода: {code_s}, длительность: {dur_s}{link}"
         )
-    elif event == "run_finished":
+    if event == "run_finished":
         passed = body.get("passed", 0)
         total = body.get("total", 0)
         failed = total - passed
         status_emoji = "✅" if failed == 0 else "⚠️"
-        text = (
+        return (
             f"{status_emoji} <b>Прогон завершён</b>\n"
             f"💻 ПК: <b>{machine}</b>\n"
             f"📋 Профиль: {profile}\n"
             f"📊 Итог: <b>{passed}/{total}</b> успешно"
             + (f", ошибок: {failed}" if failed else "") + link
         )
-    else:
-        return err("unknown event")
+    return None
 
-    notify_stress(text)
+
+def notify(body):
+    """Уведомление в Telegram о событии стресс-теста.
+    body: {event: 'test_failed'|'run_finished', machine, profile, ...}
+    Возвращает реальный статус доставки (ok:false, если Telegram не принял)."""
+    text = _build_notify_text(body)
+    if text is None:
+        return err("unknown event")
+    res = send_stress(text)
+    if not res.get("ok"):
+        return ok({"ok": False, "error": res.get("error")})
     return ok({"ok": True})
 
 
@@ -362,7 +377,39 @@ def ingest(cur, conn, body, company_id=None):
         )
 
     conn.commit()
-    return ok({"ok": True, "run_id": run_id, "results": len(results), "metrics": len(body.get("metrics") or [])})
+
+    # Уведомление в Telegram сразу после приёма результата — если EXE попросил
+    # (notify:true в теле ingest). Тогда отдельный вызов action=notify не нужен.
+    # Сбой Telegram НЕ роняет приём результата (всё уже сохранено и закоммичено).
+    notify_result = None
+    if body.get("notify"):
+        try:
+            machine = body.get("machine_name") or "—"
+            profile = body.get("profile_name") or "—"
+            # По каждому упавшему тесту — отдельное «test_failed»
+            for r in results:
+                if not r.get("success"):
+                    send_stress(_build_notify_text({
+                        "event": "test_failed", "machine": machine, "profile": profile,
+                        "test_name": r.get("test_name"), "exit_code": r.get("exit_code"),
+                        "duration_sec": r.get("duration_sec"),
+                    }))
+            # Итог прогона
+            notify_result = send_stress(_build_notify_text({
+                "event": "run_finished", "machine": machine, "profile": profile,
+                "passed": passed, "total": len(results),
+            }))
+            if notify_result and not notify_result.get("ok"):
+                print(f"[INGEST_NOTIFY] run_id={run_id} telegram error: {notify_result.get('error')}")
+        except Exception as e:
+            print(f"[INGEST_NOTIFY] run_id={run_id} exception: {e}")
+
+    out = {"ok": True, "run_id": run_id, "results": len(results), "metrics": len(body.get("metrics") or [])}
+    if notify_result is not None:
+        out["notified"] = bool(notify_result.get("ok"))
+        if not notify_result.get("ok"):
+            out["notify_error"] = notify_result.get("error")
+    return ok(out)
 
 
 def _company_where(company_filter, prefix=""):
