@@ -41,6 +41,7 @@ interface Run {
   results?: ResultRow[]
   metrics?: Metric[]
   partner_logo_url?: string
+  partner_link?: string
 }
 
 function fmtDate(s: string | null) {

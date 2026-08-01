@@ -95,9 +95,9 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
     const folder = res.folder as ReportFolder
     const rrs = (res.runs || []) as ReportRun[]
     if (mode === "compact") {
-      if (!openFolderReportCompact(folder, rrs)) alert("Разрешите всплывающие окна для печати")
+      if (!(await openFolderReportCompact(folder, rrs))) alert("Разрешите всплывающие окна для печати")
     } else if (mode === "detailed") {
-      if (!openFolderReportPrint(folder, rrs)) alert("Разрешите всплывающие окна для печати")
+      if (!(await openFolderReportPrint(folder, rrs))) alert("Разрешите всплывающие окна для печати")
     } else {
       downloadFolderCSV(folder, rrs)
     }

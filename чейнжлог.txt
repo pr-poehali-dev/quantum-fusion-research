@@ -3,6 +3,23 @@
 
 ---
 
+## v7.71 | 2026-08-01 | Ссылка партнёра + QR-код в отчёте стресс-тестов
+
+### Что
+- В шапке отчёта под логотипом партнёра выводится его ссылка (первая из
+  «Наши соцсети»), а слева от лого — авто-QR с этой ссылкой.
+
+### Изменения
+- [backend/stress] folder_report/get отдают partner_link (первая строка
+  social_links компании), хелпер _first_link.
+- [package] +qrcode +@types/qrcode.
+- [folderReport.ts] renderRunPage/openReport стали async; блок .brand
+  (QR-код слева + лого справа + ссылка снизу); QR через QRCode.toDataURL.
+  Окно отчёта открывается сразу («Формируем отчёт…»), затем перезаписывается.
+- [StressFoldersPanel] await у openFolderReport*. [StressTestsTab] Run.partner_link.
+
+---
+
 ## v7.70 | 2026-08-01 | Плиточный хаб партнёров + перенос стресс-тестов
 
 ### Что

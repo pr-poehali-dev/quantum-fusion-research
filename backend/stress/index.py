@@ -479,6 +479,17 @@ def runs_assign_folder(cur, conn, body, owner_cid=None):
     return ok({"ok": True, "updated": cur.rowcount})
 
 
+def _first_link(social_links):
+    """Первая непустая ссылка партнёра из social_links (по строке на ссылку)."""
+    if not social_links:
+        return ""
+    for line in str(social_links).splitlines():
+        s = line.strip()
+        if s:
+            return s[:300]
+    return ""
+
+
 def folder_report(cur, fid, owner_cid=None):
     """Полные данные папки для отчёта: папка + все её прогоны с метриками."""
     if not fid:
@@ -499,7 +510,7 @@ def folder_report(cur, fid, owner_cid=None):
     cur.execute(
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
-        f"sr.status, sr.created_at, pc.report_logo_url "
+        f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.created_at DESC"
@@ -511,6 +522,7 @@ def folder_report(cur, fid, owner_cid=None):
             "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
             "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
             "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
+            "partner_link": _first_link(r[14]),
             "metrics": [], "results": [],
         })
     if runs:
@@ -569,7 +581,7 @@ def get_run(cur, run_id, owner_cid=None):
     cur.execute(
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
-        f"sr.status, sr.created_at, pc.report_logo_url "
+        f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.id = {run_id}{own}"
@@ -582,6 +594,7 @@ def get_run(cur, run_id, owner_cid=None):
         "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
         "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
+        "partner_link": _first_link(r[14]),
     }
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "

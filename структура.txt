@@ -1085,3 +1085,8 @@ PartnerSocial.tsx: блок «Логотип в отчётах» (превью/�
 pages/Partners.tsx = хаб. pages/PartnersStress.tsx = кабинет стресс-тестов
 (шапка компании, ingest-токен, соцсети+логотип, StressTestsTab scope=partner),
 роут /partners/стресстестер (+алиас /partners/stresstester).
+
+[v7.71] Отчёт стресс-тестов: под лого партнёра — его ссылка (первая из
+social_links), слева от лого — QR этой ссылки. backend/stress folder_report/get
+отдают partner_link (_first_link). folderReport.ts: async renderRunPage/openReport,
+блок .brand (QR toDataURL через qrcode). Библиотека qrcode.

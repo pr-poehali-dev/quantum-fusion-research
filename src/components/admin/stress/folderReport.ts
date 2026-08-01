@@ -3,6 +3,17 @@
 // одна страница. Отчёт по одному прогону и по папке (много страниц) используют
 // один и тот же рендер. Данные — из api.stress.folderReport / api.stress.get.
 
+import QRCode from "qrcode"
+
+// QR-код ссылки партнёра как data-URL (для вставки картинкой в окно отчёта).
+async function qrDataUrl(text: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(text, { margin: 1, width: 240, errorCorrectionLevel: "M" })
+  } catch {
+    return ""
+  }
+}
+
 export interface ReportMetric {
   key: string; label: string; unit: string
   min: number | null; max: number | null; avg: number | null; samples: number
@@ -18,6 +29,7 @@ export interface ReportRun {
   total_tests: number; passed_tests: number; failed_tests: number; status: string
   created_at: string; metrics: ReportMetric[]; results?: ReportResult[]
   partner_logo_url?: string       // логотип партнёра в углу отчёта
+  partner_link?: string           // ссылка партнёра (под лого + в QR-коде)
 }
 export interface ReportFolder {
   id: number; name: string; order_id: number | null; order_ref: string
@@ -96,7 +108,13 @@ const REPORT_CSS = `
   .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
   .head-l { min-width: 0; }
   .head .mode { margin-bottom: 0; }
-  .logo { flex-shrink: 0; max-height: 96px; max-width: 200px; object-fit: contain; }
+  /* Брендинг партнёра: QR слева, лого справа, ссылка снизу */
+  .brand { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .brand-row { display: flex; align-items: center; gap: 12px; }
+  .qr { width: 92px; height: 92px; border: 1px solid #e4e4e4; border-radius: 8px; padding: 4px; background: #fff; }
+  .logo { flex-shrink: 0; max-height: 92px; max-width: 200px; object-fit: contain; }
+  .brand-link { font-size: 12px; color: #555; word-break: break-all; text-align: right; max-width: 300px; text-decoration: none; }
+  .brand-link:hover { color: #1a1a1a; }
   .meta { color: #555; font-size: 14px; margin-bottom: 2px; }
   .mode { color: #9a9a9a; font-size: 13px; margin-bottom: 22px; }
   .stats { display: flex; gap: 0; border: 1px solid #d7d7d7; border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
@@ -142,7 +160,7 @@ const REPORT_CSS = `
 `
 
 // Рендер одной страницы = одного прогона в фирменном формате.
-function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): string {
+async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): Promise<string> {
   const okAll = r.failed_tests === 0
   // Заголовок = профиль (имя прогона), мета = ПК · старт → финиш · ОС/ядра
   const title = r.profile_name || r.machine_name || `Прогон #${r.id}`
@@ -197,8 +215,17 @@ function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): stri
         <img src="${h(s.f.file_url)}" alt="${h(s.f.file_name)}" loading="eager" />
       </div>`).join("")}</div>` : ""
 
+  // Брендинг партнёра: QR (слева) + лого (справа) + ссылка (снизу)
   const logo = (r.partner_logo_url || "").trim()
+  const link = (r.partner_link || "").trim()
   const logoImg = logo ? `<img class="logo" src="${h(logo)}" alt="logo" />` : ""
+  const qrSrc = link ? await qrDataUrl(link) : ""
+  const qrImg = qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR" />` : ""
+  const linkHref = /^https?:\/\//i.test(link) ? link : link ? `https://${link}` : ""
+  const linkEl = link ? `<a class="brand-link" href="${h(linkHref)}" target="_blank" rel="noreferrer">${h(link)}</a>` : ""
+  const brand = (logoImg || qrImg || linkEl)
+    ? `<div class="brand"><div class="brand-row">${qrImg}${logoImg}</div>${linkEl}</div>`
+    : ""
 
   return `
     <section class="page" ${pageBreak ? 'style="page-break-after: always;"' : ""}>
@@ -209,7 +236,7 @@ function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): stri
           <div class="mode">${mode === "compact" ? "Компактный отчёт" : "Подробный отчёт"}</div>
           ${r.note ? `<div class="meta">${h(r.note)}</div>` : ""}
         </div>
-        ${logoImg}
+        ${brand}
       </div>
       <div class="stats">
         <div class="stat"><div class="n">${r.total_tests}</div><div class="l">всего</div></div>
@@ -225,9 +252,16 @@ function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): stri
 }
 
 // Открыть окно с отчётом (набор прогонов) в выбранном режиме.
-function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode): boolean {
+// Async: страницы содержат QR-код ссылки партнёра (генерится асинхронно).
+async function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode): Promise<boolean> {
+  // Окно открываем сразу (синхронно после клика), чтобы не блокировал попап-блокер.
+  const win = window.open("", "_blank")
+  if (!win) return false
+  win.document.write('<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Отчёт…</title></head><body style="font-family:sans-serif;padding:40px;color:#888">Формируем отчёт…</body></html>')
+  win.document.close()
+
   const pages = runs.length
-    ? runs.map((r, i) => renderRunPage(r, mode, i < runs.length - 1)).join("")
+    ? (await Promise.all(runs.map((r, i) => renderRunPage(r, mode, i < runs.length - 1)))).join("")
     : '<p class="muted">Нет данных для отчёта.</p>'
   const html = `<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8"><title>${h(titleTag)}</title>
@@ -236,8 +270,7 @@ function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode): bool
   <button class="btn noprint" onclick="window.print()">Печать / Сохранить в PDF</button>
   ${pages}
 </body></html>`
-  const win = window.open("", "_blank")
-  if (!win) return false
+  win.document.open()
   win.document.write(html)
   win.document.close()
   return true
@@ -246,14 +279,14 @@ function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode): bool
 // ─── Публичные функции ──────────────────────────────────────────────────────
 
 // Отчёт по папке: компактный (карточки датчиков)
-export function openFolderReportCompact(folder: ReportFolder, runs: ReportRun[]): boolean {
+export function openFolderReportCompact(folder: ReportFolder, runs: ReportRun[]): Promise<boolean> {
   return openReport(`Отчёт: ${folder.name}`, runs, "compact")
 }
 // Отчёт по папке: подробный (таблица датчиков + пути)
-export function openFolderReportPrint(folder: ReportFolder, runs: ReportRun[]): boolean {
+export function openFolderReportPrint(folder: ReportFolder, runs: ReportRun[]): Promise<boolean> {
   return openReport(`Отчёт: ${folder.name}`, runs, "detailed")
 }
 // Отчёт по одному прогону
-export function openRunReport(run: ReportRun, mode: ReportMode = "compact"): boolean {
+export function openRunReport(run: ReportRun, mode: ReportMode = "compact"): Promise<boolean> {
   return openReport(run.profile_name || `Прогон #${run.id}`, [run], mode)
 }
