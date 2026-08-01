@@ -41,6 +41,7 @@ interface Run {
   status: string
   created_at: string
   folder_id?: number | null
+  folder_sort?: number
   results?: ResultRow[]
   metrics?: Metric[]
   partner_logo_url?: string

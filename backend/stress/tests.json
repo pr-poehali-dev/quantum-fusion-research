@@ -88,6 +88,13 @@
       "path": "/?action=rename_run",
       "body": {"id": 1, "machine_name": "__sttest__"},
       "expectedStatus": 403
+    },
+    {
+      "name": "Folder reorder without admin forbidden",
+      "method": "POST",
+      "path": "/?action=folder_reorder",
+      "body": {"folder_id": 1, "run_ids": [1, 2]},
+      "expectedStatus": 403
     }
   ]
 }

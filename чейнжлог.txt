@@ -3,6 +3,27 @@
 
 ---
 
+## v7.79 | 2026-08-01 | Сортировка и drag&drop прогонов в папке
+
+### Что
+- В папке прогонов появилась сортировка: Вручную / По названию / По дате /
+  По длительности + перетаскивание (drag&drop) за ручку.
+- Порядок прогонов в папке = порядок страниц в отчёте (все режимы: super/
+  compact/detailed/CSV).
+
+### Изменения
+- [БД] V0221: stress_runs.folder_sort (инициализирован по дате внутри папок).
+- [backend/stress] folder_report сортирует по folder_sort; list_runs отдаёт
+  folder_sort; новый action folder_reorder {folder_id, run_ids} — проставляет
+  folder_sort по позиции. +тест (15/15).
+- [api.ts] api.stress.folderReorder(folder_id, run_ids).
+- [StressFoldersPanel] селектор сортировки + нативный HTML5 drag&drop списка
+  прогонов; сохранение порядка через folderReorder. runDuration() для сорт.
+  по длительности. RunLite += started_at/finished_at/folder_sort.
+- [StressTestsTab] Run += folder_sort.
+
+---
+
 ## v7.78 | 2026-08-01 | Надёжная доставка Telegram-уведомлений стресс-тестов
 
 ### Проблема

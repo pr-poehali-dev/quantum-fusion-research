@@ -1122,3 +1122,9 @@ Telegram, 4xx без ретрая). stress/index.py: _esc (html.escape всех 
 чинит 400 на <,>,&), _build_notify_text, notify() отдаёт реальный статус.
 ingest при notify:true шлёт уведомление сам после приёма результата
 (test_failed + run_finished), не завися от EXE; сбой TG не роняет приём.
+
+[v7.79] Сортировка+drag&drop прогонов в папке = порядок в отчёте.
+БД: stress_runs.folder_sort (V0221). backend/stress: folder_report ORDER BY
+folder_sort; action folder_reorder {folder_id, run_ids}; list_runs отдаёт
+folder_sort. api.stress.folderReorder. StressFoldersPanel: селектор сортировки
+(вручную/название/дата/длительность) + нативный drag&drop, порядок сохраняется.

@@ -21,7 +21,20 @@ interface RunLite {
   total_tests: number
   failed_tests: number
   created_at: string
+  started_at?: string | null
+  finished_at?: string | null
   folder_id?: number | null
+  folder_sort?: number
+}
+
+type SortMode = "manual" | "name" | "date" | "duration"
+
+// Длительность прогона в секундах (для сортировки)
+function runDuration(r: RunLite): number {
+  if (!r.started_at || !r.finished_at) return 0
+  const a = new Date(r.started_at).getTime()
+  const b = new Date(r.finished_at).getTime()
+  return b > a ? (b - a) / 1000 : 0
 }
 
 interface OrderLite { id: number; display_number: string; customer_name?: string; order_type?: string }
@@ -44,6 +57,63 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
   const [draftOrderId, setDraftOrderId] = useState("")
   const [busy, setBusy] = useState(false)
   const [reportBusy, setReportBusy] = useState<number | null>(null)
+  // Режим сортировки прогонов внутри каждой папки
+  const [sortMode, setSortMode] = useState<Record<number, SortMode>>({})
+  // Локальный порядок прогонов (id) по папкам — для drag&drop и «ручного» режима
+  const [orderMap, setOrderMap] = useState<Record<number, number[]>>({})
+  const [dragId, setDragId] = useState<number | null>(null)
+
+  // Упорядоченный список прогонов папки согласно выбранному режиму сортировки
+  const orderedRuns = (fid: number, folderRuns: RunLite[]): RunLite[] => {
+    const mode = sortMode[fid] || "manual"
+    if (mode === "manual") {
+      const saved = orderMap[fid]
+      const base = [...folderRuns].sort((a, b) => (a.folder_sort ?? 0) - (b.folder_sort ?? 0))
+      if (!saved) return base
+      const byId = new Map(folderRuns.map(r => [r.id, r]))
+      const out: RunLite[] = []
+      for (const id of saved) { const r = byId.get(id); if (r) out.push(r) }
+      for (const r of base) if (!saved.includes(r.id)) out.push(r)  // новые — в конец
+      return out
+    }
+    const arr = [...folderRuns]
+    if (mode === "name") arr.sort((a, b) => (a.machine_name || a.profile_name || "").localeCompare(b.machine_name || b.profile_name || "", "ru"))
+    else if (mode === "date") arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    else if (mode === "duration") arr.sort((a, b) => runDuration(b) - runDuration(a))
+    return arr
+  }
+
+  // Сохранить текущий порядок папки на бэкенд (folder_sort = позиция)
+  const persistOrder = async (fid: number, ids: number[]) => {
+    await api.stress.folderReorder(fid, ids, adminKey, auth)
+    onChanged()
+  }
+
+  // Применить выбранный режим сортировки как ручной порядок (фиксируем на бэке)
+  const applySort = async (fid: number, folderRuns: RunLite[], mode: SortMode) => {
+    setSortMode(m => ({ ...m, [fid]: mode }))
+    if (mode === "manual") return
+    const ids = orderedRuns(fid, folderRuns).map(r => r.id)
+    // временно применим как ручной порядок и сохраним
+    setOrderMap(m => ({ ...m, [fid]: ids }))
+    setSortMode(m => ({ ...m, [fid]: "manual" }))
+    await persistOrder(fid, ids)
+  }
+
+  // Drag&drop: бросили dragId на targetId — переставляем и сохраняем
+  const onDrop = async (fid: number, folderRuns: RunLite[], targetId: number) => {
+    if (dragId == null || dragId === targetId) { setDragId(null); return }
+    const cur = orderedRuns(fid, folderRuns).map(r => r.id)
+    const from = cur.indexOf(dragId)
+    const to = cur.indexOf(targetId)
+    if (from < 0 || to < 0) { setDragId(null); return }
+    cur.splice(from, 1)
+    cur.splice(to, 0, dragId)
+    setDragId(null)
+    setSortMode(m => ({ ...m, [fid]: "manual" }))
+    setOrderMap(m => ({ ...m, [fid]: cur }))
+    await persistOrder(fid, cur)
+  }
 
   // Список реальных заказов для привязки папки (только в админке)
   useEffect(() => {
@@ -206,16 +276,44 @@ export default function StressFoldersPanel({ adminKey, session, isPartner = fals
                       </div>
                     </div>
 
-                    {/* Список прогонов в папке */}
+                    {/* Список прогонов в папке — с сортировкой и drag&drop.
+                        Порядок здесь = порядок страниц в отчёте. */}
                     {folderRuns.length > 0 && (
-                      <div className="mt-3 space-y-1.5">
-                        {folderRuns.map(r => (
-                          <button key={r.id} onClick={() => onOpenRun(r.id)}
-                            className="flex w-full items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-1.5 text-left text-xs hover:border-primary/40 transition-colors" style={{ cursor: "pointer" }}>
-                            <span className="truncate text-foreground/80">{r.machine_name || r.profile_name || `Прогон #${r.id}`}</span>
-                            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>{r.passed_tests}/{r.total_tests}</span>
-                          </button>
-                        ))}
+                      <div className="mt-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-foreground/40">
+                            Порядок = порядок в отчёте. Тяни за <Icon name="GripVertical" size={11} className="inline" /> чтобы переставить.
+                          </p>
+                          <select
+                            value={sortMode[f.id] || "manual"}
+                            onChange={e => applySort(f.id, folderRuns, e.target.value as SortMode)}
+                            className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground/70 focus:border-primary focus:outline-none"
+                            style={{ cursor: "pointer" }} title="Сортировка прогонов">
+                            <option value="manual">Вручную</option>
+                            <option value="name">По названию</option>
+                            <option value="date">По дате</option>
+                            <option value="duration">По длительности</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          {orderedRuns(f.id, folderRuns).map((r, idx) => (
+                            <div key={r.id}
+                              draggable
+                              onDragStart={() => setDragId(r.id)}
+                              onDragOver={e => e.preventDefault()}
+                              onDrop={() => onDrop(f.id, folderRuns, r.id)}
+                              onDragEnd={() => setDragId(null)}
+                              className={`flex items-center gap-2 rounded-lg border bg-background px-2 py-1.5 text-xs transition-colors ${dragId === r.id ? "border-primary opacity-50" : "border-border/60 hover:border-primary/40"}`}>
+                              <Icon name="GripVertical" size={13} className="shrink-0 cursor-grab text-foreground/30" />
+                              <span className="w-5 shrink-0 text-center text-[10px] text-foreground/30">{idx + 1}</span>
+                              <button onClick={() => onOpenRun(r.id)}
+                                className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left" style={{ cursor: "pointer" }}>
+                                <span className="truncate text-foreground/80">{r.machine_name || r.profile_name || `Прогон #${r.id}`}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>{r.passed_tests}/{r.total_tests}</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </>

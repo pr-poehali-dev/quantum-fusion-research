@@ -405,6 +405,8 @@ export const api = {
       fetch(`${URLS.stress}?action=folder_delete&id=${id}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     runsAssignFolder: (run_ids: number[], folder_id: number | null, adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=runs_assign_folder`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "runs_assign_folder", run_ids, folder_id }) }).then(r => r.json()),
+    folderReorder: (folder_id: number, run_ids: number[], adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=folder_reorder`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "folder_reorder", folder_id, run_ids }) }).then(r => r.json()),
     folderReport: (id: number, adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=folder_report&id=${id}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
   },

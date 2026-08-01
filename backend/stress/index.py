@@ -227,6 +227,8 @@ def handler(event, context):
             return folder_delete(cur, conn, int(params.get("id") or 0), partner_cid if not admin else None)
         if action == "runs_assign_folder" and method in ("POST", "PUT"):
             return runs_assign_folder(cur, conn, body, partner_cid if not admin else None)
+        if action == "folder_reorder" and method in ("POST", "PUT"):
+            return folder_reorder(cur, conn, body, partner_cid if not admin else None)
         if action == "folder_report" and method == "GET":
             return folder_report(cur, int(params.get("id") or 0), partner_cid if not admin else None)
 
@@ -427,7 +429,7 @@ def list_runs(cur, company_filter=None):
     where_sql = f"WHERE {where}" if where else ""
     cur.execute(
         f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
-        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at, folder_id, partner_company_id "
+        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at, folder_id, partner_company_id, folder_sort "
         f"FROM {SCHEMA}.stress_runs {where_sql} ORDER BY created_at DESC LIMIT 500"
     )
     runs = [{
@@ -435,6 +437,7 @@ def list_runs(cur, company_filter=None):
         "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
         "status": r[11], "created_at": r[12], "folder_id": r[13], "partner_company_id": r[14],
+        "folder_sort": r[15],
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
@@ -545,6 +548,26 @@ def runs_assign_folder(cur, conn, body, owner_cid=None):
     return ok({"ok": True, "updated": cur.rowcount})
 
 
+def folder_reorder(cur, conn, body, owner_cid=None):
+    """Задаёт порядок прогонов внутри папки (drag&drop). Порядок = порядок в отчёте.
+    body: {folder_id, run_ids: [упорядоченный список id]}"""
+    folder_id = body.get("folder_id")
+    run_ids = [int(x) for x in (body.get("run_ids") or []) if str(x).isdigit()]
+    if not folder_id or not run_ids:
+        return err("folder_id and run_ids required")
+    if owner_cid is not None and not _own_folder(cur, folder_id, owner_cid):
+        return err("forbidden", 403)
+    own = f" AND partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
+    # Проставляем folder_sort по позиции в списке (0,1,2,…) только для прогонов этой папки
+    for idx, rid in enumerate(run_ids):
+        cur.execute(
+            f"UPDATE {SCHEMA}.stress_runs SET folder_sort = {idx} "
+            f"WHERE id = {int(rid)} AND folder_id = {int(folder_id)}{own}"
+        )
+    conn.commit()
+    return ok({"ok": True, "reordered": len(run_ids)})
+
+
 def _first_link(social_links):
     """Первая непустая ссылка партнёра из social_links (по строке на ссылку)."""
     if not social_links:
@@ -593,7 +616,7 @@ def folder_report(cur, fid, owner_cid=None):
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
-        f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.created_at DESC"
+        f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.folder_sort, sr.created_at DESC"
     )
     runs = []
     for r in cur.fetchall():
