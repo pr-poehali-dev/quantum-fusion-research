@@ -1084,7 +1084,7 @@ PartnerSocial.tsx: блок «Логотип в отчётах» (превью/�
 /partners/стресстестер), доступность по partner_access.b2b/.lk.
 pages/Partners.tsx = хаб. pages/PartnersStress.tsx = кабинет стресс-тестов
 (шапка компании, ingest-токен, соцсети+логотип, StressTestsTab scope=partner),
-роут /partners/стресстестер (+алиас /partners/stresstester).
+роут /partners/stresstester (кириллица → редирект).
 
 [v7.71] Отчёт стресс-тестов: под лого партнёра — его ссылка (первая из
 social_links), слева от лого — QR этой ссылки. backend/stress folder_report/get

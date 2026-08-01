@@ -1,7 +1,7 @@
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense, ComponentType } from "react";
@@ -141,8 +141,9 @@ const App = () => (
               <Route path="/user-build/:token" element={<UserBuild />} />
               <Route path="/b2b" element={<B2B />} />
               <Route path="/partners" element={<Partners />} />
-              <Route path="/partners/стресстестер" element={<PartnersStress />} />
               <Route path="/partners/stresstester" element={<PartnersStress />} />
+              {/* Старый кириллический путь — редирект на латиницу */}
+              <Route path="/partners/стресстестер" element={<Navigate to="/partners/stresstester" replace />} />
               <Route path="/report" element={<ProjectReport />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

@@ -133,7 +133,7 @@ export default function Partners() {
           text="Отчёты стресс-тестов вашей компании, папки прогонов и токен для программы."
           available={hasLk}
           cta="Открыть стресс-тесты"
-          onGo={() => navigate("/partners/стресстестер")}
+          onGo={() => navigate("/partners/stresstester")}
           lockedText="Нет доступа — свяжитесь с менеджером"
         />
       </div>
