@@ -497,9 +497,12 @@ def folder_report(cur, fid, owner_cid=None):
         "note": f[4], "created_at": f[5],
     }
     cur.execute(
-        f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
-        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at "
-        f"FROM {SCHEMA}.stress_runs WHERE folder_id = {int(fid)} ORDER BY created_at DESC"
+        f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
+        f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
+        f"sr.status, sr.created_at, pc.report_logo_url "
+        f"FROM {SCHEMA}.stress_runs sr "
+        f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
+        f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.created_at DESC"
     )
     runs = []
     for r in cur.fetchall():
@@ -507,7 +510,8 @@ def folder_report(cur, fid, owner_cid=None):
             "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
             "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
             "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
-            "status": r[11], "created_at": r[12], "metrics": [], "results": [],
+            "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
+            "metrics": [], "results": [],
         })
     if runs:
         ids = ",".join(str(x["id"]) for x in runs)
@@ -561,11 +565,14 @@ def folder_report(cur, fid, owner_cid=None):
 def get_run(cur, run_id, owner_cid=None):
     if not run_id:
         return err("id required")
-    own = f" AND partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
+    own = f" AND sr.partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
     cur.execute(
-        f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
-        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at "
-        f"FROM {SCHEMA}.stress_runs WHERE id = {run_id}{own}"
+        f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
+        f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
+        f"sr.status, sr.created_at, pc.report_logo_url "
+        f"FROM {SCHEMA}.stress_runs sr "
+        f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
+        f"WHERE sr.id = {run_id}{own}"
     )
     r = cur.fetchone()
     if not r:
@@ -574,7 +581,7 @@ def get_run(cur, run_id, owner_cid=None):
         "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
         "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
-        "status": r[11], "created_at": r[12],
+        "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
     }
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "

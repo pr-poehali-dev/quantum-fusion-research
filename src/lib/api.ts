@@ -229,6 +229,7 @@ export const api = {
     login: (data: unknown) => fetch(`${URLS.auth}?action=login`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
     me: (session: string) => fetch(`${URLS.auth}?action=me`, { headers: authHeaders(session) }).then(r => r.json()),
     savePartnerSocial: (social_links: string, session: string) => fetch(`${URLS.auth}?action=partner_social_save`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ social_links }) }).then(r => r.json()),
+    savePartnerLogo: (report_logo_url: string, session: string) => fetch(`${URLS.auth}?action=partner_logo_save`, { method: "POST", headers: authHeaders(session), body: JSON.stringify({ report_logo_url }) }).then(r => r.json()),
     logout: (session: string) => fetch(`${URLS.auth}?action=logout`, { method: "POST", headers: authHeaders(session) }).then(r => r.json()),
     getBuilds: (session: string) => fetch(`${URLS.auth}?action=builds`, { headers: authHeaders(session) }).then(r => r.json()),
     getCommunityBuilds: () => fetch(`${URLS.auth}?action=community`).then(r => r.json()),
@@ -265,6 +266,7 @@ export const api = {
     avatar: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "avatars", compress: true }) }).then(r => r.json()),
     receipt: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "receipts", compress: true }) }).then(r => r.json()),
     receiptFile: (file: string, compress = false) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "receipts", compress }) }).then(r => r.json()),
+    partnerLogo: (file: string) => fetch(URLS.upload, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, folder: "partner_logos", compress: true }) }).then(r => r.json()),
   },
   receiptScan: {
     workerConfig: (ak: string) =>

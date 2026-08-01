@@ -17,6 +17,7 @@ export interface ReportRun {
   os_info: string; note: string; started_at: string | null; finished_at: string | null
   total_tests: number; passed_tests: number; failed_tests: number; status: string
   created_at: string; metrics: ReportMetric[]; results?: ReportResult[]
+  partner_logo_url?: string       // логотип партнёра в углу отчёта
 }
 export interface ReportFolder {
   id: number; name: string; order_id: number | null; order_ref: string
@@ -92,6 +93,10 @@ const REPORT_CSS = `
   * { box-sizing: border-box; }
   body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 40px 44px; }
   h1 { font-size: 30px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+  .head-l { min-width: 0; }
+  .head .mode { margin-bottom: 0; }
+  .logo { flex-shrink: 0; max-height: 96px; max-width: 200px; object-fit: contain; }
   .meta { color: #555; font-size: 14px; margin-bottom: 2px; }
   .mode { color: #9a9a9a; font-size: 13px; margin-bottom: 22px; }
   .stats { display: flex; gap: 0; border: 1px solid #d7d7d7; border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
@@ -192,12 +197,20 @@ function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): stri
         <img src="${h(s.f.file_url)}" alt="${h(s.f.file_name)}" loading="eager" />
       </div>`).join("")}</div>` : ""
 
+  const logo = (r.partner_logo_url || "").trim()
+  const logoImg = logo ? `<img class="logo" src="${h(logo)}" alt="logo" />` : ""
+
   return `
     <section class="page" ${pageBreak ? 'style="page-break-after: always;"' : ""}>
-      <h1>${h(title)}</h1>
-      <div class="meta">${metaParts.map(h).join(" · ")}</div>
-      <div class="mode">${mode === "compact" ? "Компактный отчёт" : "Подробный отчёт"}</div>
-      ${r.note ? `<div class="meta">${h(r.note)}</div>` : ""}
+      <div class="head">
+        <div class="head-l">
+          <h1>${h(title)}</h1>
+          <div class="meta">${metaParts.map(h).join(" · ")}</div>
+          <div class="mode">${mode === "compact" ? "Компактный отчёт" : "Подробный отчёт"}</div>
+          ${r.note ? `<div class="meta">${h(r.note)}</div>` : ""}
+        </div>
+        ${logoImg}
+      </div>
       <div class="stats">
         <div class="stat"><div class="n">${r.total_tests}</div><div class="l">всего</div></div>
         <div class="stat ok"><div class="n">${r.passed_tests}</div><div class="l">успешно</div></div>

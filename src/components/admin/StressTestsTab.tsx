@@ -40,6 +40,7 @@ interface Run {
   folder_id?: number | null
   results?: ResultRow[]
   metrics?: Metric[]
+  partner_logo_url?: string
 }
 
 function fmtDate(s: string | null) {

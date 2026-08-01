@@ -1071,3 +1071,11 @@ physical); qty := physical - qty_reserved (>=0). Излишек POSITIVE над 
   (по сессии, доступ lk, ≤10 ссылок). api.auth.savePartnerSocial.
   src/components/partners/PartnerSocial.tsx — иконка-поповер (список+редактор).
   Partners.tsx: иконка соцсетей в шапке ЛК; Shell→функция shell() без ремаунта.
+
+[v7.69] Логотип партнёра в отчётах. partner_companies.report_logo_url (V0219).
+backend/stress folder_report/get: partner_logo_url прогона (JOIN partner_companies).
+backend/auth: company_access отдаёт report_logo_url; action partner_logo_save
+(по сессии+lk, готовый CDN URL). api.upload.partnerLogo + api.auth.savePartnerLogo.
+folderReport.ts: лого в правом верхнем углу страницы отчёта (.head/.logo).
+PartnerSocial.tsx: блок «Логотип в отчётах» (превью/загрузка/удаление) в том же
+поповере, что и соцсети. Partners.tsx прокидывает logo/onLogoSaved.

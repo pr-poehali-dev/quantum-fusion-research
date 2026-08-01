@@ -3,6 +3,29 @@
 
 ---
 
+## v7.69 | 2026-08-01 | Логотип партнёра в углу отчётов стресс-тестов
+
+### Что
+- Партнёр в /partners загружает свой логотип — он выводится в правом верхнем
+  углу отчётов ЕГО прогонов (и в ЛК, и у админа). Управление — в поповере
+  иконки соцсетей (загрузить/заменить/убрать).
+
+### Изменения
+- [БД] V0219: partner_companies.report_logo_url.
+- [backend/stress] folder_report и get отдают partner_logo_url прогона
+  (LEFT JOIN partner_companies по partner_company_id).
+- [backend/auth] company_access отдаёт report_logo_url; action
+  partner_logo_save (по сессии+lk, принимает готовый CDN URL, валидирует
+  домен cdn.poehali.dev, "" = сброс).
+- [api.ts] upload.partnerLogo (folder partner_logos), auth.savePartnerLogo.
+  [store/auth] report_logo_url в partner_company.
+- [folderReport.ts] ReportRun.partner_logo_url; шапка страницы .head с лого
+  справа (max 96×200, object-fit contain). StressTestsTab: Run.partner_logo_url.
+- [PartnerSocial.tsx] блок «Логотип в отчётах»: превью + загрузка (файл→upload
+  →savePartnerLogo) + удаление. [Partners.tsx] прокидывает logo/onLogoSaved.
+
+---
+
 ## v7.68 | 2026-08-01 | Фикс: «залипает» старый список в ценах от парсера
 
 ### Проблема

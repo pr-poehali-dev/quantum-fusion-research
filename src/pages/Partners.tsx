@@ -13,13 +13,18 @@ export default function Partners() {
   const [loading, setLoading] = useState(true)
   const [tokenShown, setTokenShown] = useState(false)
   const [social, setSocial] = useState("")
+  const [logo, setLogo] = useState("")
 
   // Подтягиваем свежий профиль (partner_access/company) при заходе
   useEffect(() => {
     if (!sessionId) { setLoading(false); return }
     api.auth.me(sessionId)
       .then(d => {
-        if (d.user) { updateUser(d.user); setSocial(d.user.partner_company?.social_links || "") }
+        if (d.user) {
+          updateUser(d.user)
+          setSocial(d.user.partner_company?.social_links || "")
+          setLogo(d.user.partner_company?.report_logo_url || "")
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -99,7 +104,8 @@ export default function Partners() {
   // Полный доступ — кабинет со стресс-тестами.
   // Иконка соцсетей — справа вверху в шапке (extra).
   const socialBtn = sessionId ? (
-    <PartnerSocial session={sessionId} initial={social} onSaved={setSocial} />
+    <PartnerSocial session={sessionId} initial={social} onSaved={setSocial}
+      logo={logo} onLogoSaved={setLogo} />
   ) : null
 
   return shell(

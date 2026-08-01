@@ -57,7 +57,7 @@ def company_access(cur, company_id):
     if not company_id:
         return None
     cur.execute(
-        f"SELECT id, name, tier, status, trial_ends_at, stress_ingest_token, social_links "
+        f"SELECT id, name, tier, status, trial_ends_at, stress_ingest_token, social_links, report_logo_url "
         f"FROM {SCHEMA}.partner_companies WHERE id = {int(company_id)}"
     )
     r = cur.fetchone()
@@ -90,6 +90,7 @@ def company_access(cur, company_id):
             "trial_active": trial_active,
             "stress_ingest_token": r[5] or "",
             "social_links": r[6] or "",
+            "report_logo_url": r[7] or "",
         },
         "access": {"b2b": b2b, "lk": lk, "reason": reason},
     }
@@ -236,6 +237,28 @@ def handler(event: dict, context) -> dict:
             )
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "social_links": social})}
+
+        elif action == "partner_logo_save" and method == "POST":
+            # Партнёр сохраняет URL логотипа для угла своих отчётов.
+            # Картинка уже залита через функцию upload, сюда приходит готовый URL.
+            u = get_user(cur, session_id)
+            if not u:
+                return {"statusCode": 401, "headers": cors, "body": json.dumps({"error": "Не авторизован"})}
+            company_id = u[17] if len(u) > 17 else None
+            info = company_access(cur, company_id) if company_id else None
+            if not info or not info["access"]["lk"]:
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            body = json.loads(event.get("body") or "{}")
+            logo = (body.get("report_logo_url") or "").strip()[:500]
+            # Разрешаем только наш CDN или пустую строку (сброс)
+            if logo and not logo.startswith("https://cdn.poehali.dev/"):
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Некорректный URL"})}
+            cur.execute(
+                f"UPDATE {SCHEMA}.partner_companies SET report_logo_url = {esc(logo)}, "
+                f"updated_at = NOW() WHERE id = {int(company_id)}"
+            )
+            conn.commit()
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "report_logo_url": logo})}
 
         elif action == "public":
             tag = params.get("utag", params.get("tag", "")).strip().lstrip("@").lower()

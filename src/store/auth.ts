@@ -27,6 +27,7 @@ interface User {
     trial_active: boolean
     stress_ingest_token: string
     social_links?: string
+    report_logo_url?: string
   }
   partner_access?: { b2b: boolean; lk: boolean; reason: string }
 }

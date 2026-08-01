@@ -6,6 +6,8 @@ interface Props {
   session: string
   initial: string                 // текущее значение social_links (по строке на ссылку)
   onSaved: (value: string) => void
+  logo?: string                   // текущий логотип для отчётов (CDN URL)
+  onLogoSaved?: (url: string) => void
 }
 
 // Нормализация ссылки в кликабельный href
@@ -33,14 +35,45 @@ function iconFor(raw: string): string {
   return "Link"
 }
 
-export default function PartnerSocial({ session, initial, onSaved }: Props) {
+export default function PartnerSocial({ session, initial, onSaved, logo = "", onLogoSaved }: Props) {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(initial)
   const [saving, setSaving] = useState(false)
+  const [logoBusy, setLogoBusy] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setDraft(initial) }, [initial])
+
+  // Загрузка логотипа: файл → S3 (upload) → сохранить URL в компании
+  const onPickLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 4 * 1024 * 1024) { alert("Файл больше 4 МБ"); return }
+      setLogoBusy(true)
+      const reader = new FileReader()
+      reader.onload = async () => {
+        const up = await api.upload.partnerLogo(String(reader.result))
+        if (up?.url) {
+          const res = await api.auth.savePartnerLogo(up.url, session)
+          if (res?.ok) onLogoSaved?.(res.report_logo_url ?? up.url)
+        } else {
+          alert("Не удалось загрузить логотип")
+        }
+        setLogoBusy(false)
+      }
+      reader.readAsDataURL(file)
+    }
+    if (fileRef.current) fileRef.current.value = ""
+  }
+
+  const removeLogo = async () => {
+    setLogoBusy(true)
+    const res = await api.auth.savePartnerLogo("", session)
+    setLogoBusy(false)
+    if (res?.ok) onLogoSaved?.("")
+  }
 
   // Закрытие при клике вне
   useEffect(() => {
@@ -119,6 +152,32 @@ export default function PartnerSocial({ session, initial, onSaved }: Props) {
           ) : (
             <p className="py-2 text-center text-xs text-foreground/40">Ссылки ещё не добавлены</p>
           )}
+
+          {/* Логотип для отчётов */}
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="mb-2 text-sm font-semibold text-foreground">Логотип в отчётах</div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
+                {logo
+                  ? <img src={logo} alt="logo" className="h-full w-full object-contain" />
+                  : <Icon name="Image" size={20} className="text-foreground/30" />}
+              </div>
+              <div className="flex flex-1 flex-col gap-1.5">
+                <button onClick={() => fileRef.current?.click()} disabled={logoBusy}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60" style={{ cursor: "pointer" }}>
+                  {logoBusy ? "Загрузка…" : logo ? "Заменить" : "Загрузить"}
+                </button>
+                {logo && !logoBusy && (
+                  <button onClick={removeLogo}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:text-red-400 hover:border-red-400/40" style={{ cursor: "pointer" }}>
+                    Убрать
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] text-foreground/40">Появится в правом верхнем углу ваших отчётов</p>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onPickLogo} className="hidden" />
+          </div>
         </div>
       )}
     </div>
