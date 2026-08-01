@@ -378,6 +378,8 @@ export const api = {
       fetch(`${URLS.stress}?action=get&id=${id}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     deleteRun: (id: number, adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=delete_run&id=${id}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    renameRun: (id: number, machine_name: string, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=rename_run`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "rename_run", id, machine_name }) }).then(r => r.json()),
     profilesList: (adminKey: string) =>
       fetch(`${URLS.stress}?action=profiles_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     profileSave: (data: unknown, adminKey: string) =>

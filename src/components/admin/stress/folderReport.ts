@@ -39,7 +39,7 @@ export interface ReportFolder {
   note: string; created_at: string
 }
 
-export type ReportMode = "compact" | "detailed"
+export type ReportMode = "compact" | "detailed" | "super"
 
 function fmtDate(s: string | null): string {
   if (!s) return "—"
@@ -152,6 +152,15 @@ const REPORT_CSS = `
   .shot img { max-width: 100%; border-radius: 6px; display: block; }
   .footer { margin-top: 34px; padding-top: 14px; border-top: 1px solid #eee; text-align: center; color: #b0b0b0; font-size: 12px; }
   .muted { color: #bbb; font-size: 13px; }
+  /* Верхний колонтитул суперкомпактного отчёта */
+  .rep-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #888; margin-bottom: 18px; }
+  .rep-head .rep-head-c { font-weight: 600; color: #555; }
+  /* Суперкомпактный режим — плотнее вёрстка */
+  body.super .test { padding: 10px 16px; margin-bottom: 7px; }
+  body.super .test-name { font-size: 15px; margin-bottom: 2px; }
+  body.super .test-meta { font-size: 12px; }
+  body.super .stats { margin-bottom: 18px; }
+  body.super h1 { font-size: 26px; }
   @media print { body { padding: 20px; } .noprint { display: none; } }
   .btn { margin-bottom: 22px; padding: 9px 18px; border: 1px solid #111; background: #111; color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; }
 `
@@ -159,6 +168,7 @@ const REPORT_CSS = `
 // Рендер одной страницы = одного прогона в фирменном формате.
 async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean): Promise<string> {
   const okAll = r.failed_tests === 0
+  const isSuper = mode === "super"
   // Заголовок = профиль (имя прогона), мета = ПК · старт → финиш · ОС/ядра
   const title = r.profile_name || r.machine_name || `Прогон #${r.id}`
   const metaParts: string[] = [
@@ -167,8 +177,13 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
     r.os_info || "",
   ].filter(s => s.length > 0)
 
+  // В суперкомпактном режиме сортируем тесты по названию
+  const resultList = isSuper
+    ? [...(r.results || [])].sort((a, b) => (a.test_name || "").localeCompare(b.test_name || "", "ru"))
+    : (r.results || [])
+
   // СТРЕСС-ТЕСТЫ (заголовок с баллом + статистика — 1:1 с EXE)
-  const tests = (r.results || []).map(t => {
+  const tests = resultList.map(t => {
     const stats = statsLine(t.exit_code, t.timed_out, t.duration_sec)
     return `
     <div class="test ${t.success ? "" : "bad"}">
@@ -246,7 +261,7 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
         <div class="head-l">
           <h1>${h(title)}</h1>
           <div class="meta">${metaParts.map(h).join(" · ")}</div>
-          <div class="mode">${mode === "compact" ? "Компактный отчёт" : "Подробный отчёт"}</div>
+          <div class="mode">${isSuper ? "Суперкомпактный отчёт" : mode === "compact" ? "Компактный отчёт" : "Подробный отчёт"}</div>
           ${r.note ? `<div class="meta">${h(r.note)}</div>` : ""}
         </div>
         ${brand}
@@ -257,9 +272,7 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
         <div class="stat err"><div class="n">${r.failed_tests}</div><div class="l">ошибок</div></div>
       </div>
       ${tests ? `<div class="section">Стресс-тесты</div>${tests}` : ""}
-      <div class="section">Датчики (min / сред / max)</div>
-      ${sensors}
-      ${shotsBlock}
+      ${isSuper ? "" : `<div class="section">Датчики (min / сред / max)</div>${sensors}${shotsBlock}`}
       <div class="footer">StressTester · ${fmtDate(new Date().toISOString())}${okAll ? "" : " · есть ошибки"}</div>
     </section>`
 }
@@ -276,17 +289,33 @@ async function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode)
   const pages = runs.length
     ? (await Promise.all(runs.map((r, i) => renderRunPage(r, mode, i < runs.length - 1)))).join("")
     : '<p class="muted">Нет данных для отчёта.</p>'
+  // Верхний колонтитул (как в EXE): дата слева, «Отчёт: N компов» по центру
+  const repHead = mode === "super" ? `
+    <div class="rep-head">
+      <span>${h(fmtDate(new Date().toISOString()))}</span>
+      <span class="rep-head-c">Отчёт: ${runs.length} ${plural(runs.length, "комп", "компа", "компов")}</span>
+      <span></span>
+    </div>` : ""
   const html = `<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8"><title>${h(titleTag)}</title>
 <style>${REPORT_CSS}</style></head>
-<body>
+<body class="${mode === "super" ? "super" : ""}">
   <button class="btn noprint" onclick="window.print()">Печать / Сохранить в PDF</button>
+  ${repHead}
   ${pages}
 </body></html>`
   win.document.open()
   win.document.write(html)
   win.document.close()
   return true
+}
+
+// Русское склонение существительного по числу
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few
+  return many
 }
 
 // ─── Публичные функции ──────────────────────────────────────────────────────
@@ -298,6 +327,10 @@ export function openFolderReportCompact(folder: ReportFolder, runs: ReportRun[])
 // Отчёт по папке: подробный (таблица датчиков + пути)
 export function openFolderReportPrint(folder: ReportFolder, runs: ReportRun[]): Promise<boolean> {
   return openReport(`Отчёт: ${folder.name}`, runs, "detailed")
+}
+// Отчёт по папке: суперкомпактный (только тесты с баллами, без датчиков/скринов)
+export function openFolderReportSuper(folder: ReportFolder, runs: ReportRun[]): Promise<boolean> {
+  return openReport(`Отчёт: ${folder.name}`, runs, "super")
 }
 // Отчёт по одному прогону
 export function openRunReport(run: ReportRun, mode: ReportMode = "compact"): Promise<boolean> {

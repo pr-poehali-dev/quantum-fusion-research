@@ -81,6 +81,13 @@
       "method": "GET",
       "path": "/?action=folder_report&id=1",
       "expectedStatus": 403
+    },
+    {
+      "name": "Rename run without admin forbidden",
+      "method": "POST",
+      "path": "/?action=rename_run",
+      "body": {"id": 1, "machine_name": "__sttest__"},
+      "expectedStatus": 403
     }
   ]
 }

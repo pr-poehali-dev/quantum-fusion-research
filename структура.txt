@@ -1096,3 +1096,10 @@ backend/stress: ingest сохраняет, get_run/folder_report отдают. �
 scoreFormat.ts (shortScore/testTitle/statsLine — 1:1 с EXE TestResultFormatter.cs),
 применён в folderReport.ts (заголовок теста + statsLine) и StressTestsTab
 (список результатов). Заголовок = "{test_name} - {shortScore}".
+
+[v7.75] Суперкомпактный отчёт + переименование компа.
+backend/stress: action rename_run (UPDATE machine_name). api.stress.renameRun.
+folderReport.ts: ReportMode "super" (только тесты с баллами, сортировка по
+названию, колонтитул "Отчёт: N компов", без датчиков/скринов), openFolderReportSuper.
+Кнопки "Суперкомпактный (PDF)" в StressFoldersPanel и в детали прогона.
+StressTestsTab: инлайн-редактор названия компа (карандаш у заголовка).

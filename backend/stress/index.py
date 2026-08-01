@@ -209,6 +209,8 @@ def handler(event, context):
             return get_run(cur, int(params.get("id") or 0), partner_cid if not admin else None)
         if action == "delete_run" and method == "DELETE":
             return delete_run(cur, conn, int(params.get("id") or 0), partner_cid if not admin else None)
+        if action == "rename_run" and method in ("POST", "PUT"):
+            return rename_run(cur, conn, body, partner_cid if not admin else None)
 
         # Папки прогонов
         if action == "folders_list" and method == "GET":
@@ -456,6 +458,22 @@ def folder_delete(cur, conn, fid, owner_cid=None):
     cur.execute(f"DELETE FROM {SCHEMA}.stress_folders WHERE id = {int(fid)}")
     conn.commit()
     return ok({"ok": True})
+
+
+def rename_run(cur, conn, body, owner_cid=None):
+    # Переименование компа (machine_name) прогона. body: {id, machine_name}
+    run_id = int(num(body.get("id")))
+    if not run_id:
+        return err("id required")
+    name = (body.get("machine_name") or "").strip()[:200]
+    own = f" AND partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
+    cur.execute(
+        f"UPDATE {SCHEMA}.stress_runs SET machine_name = {esc(name)} WHERE id = {run_id}{own}"
+    )
+    conn.commit()
+    if not cur.rowcount:
+        return err("not found", 404)
+    return ok({"ok": True, "id": run_id, "machine_name": name})
 
 
 def runs_assign_folder(cur, conn, body, owner_cid=None):

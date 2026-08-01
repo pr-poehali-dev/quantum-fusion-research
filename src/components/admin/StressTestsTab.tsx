@@ -83,6 +83,8 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameDraft, setRenameDraft] = useState("")
   const [prefs, setPrefs] = useState<MetricPref[]>([])
   const [catFilter, setCatFilter] = useState<string>("all")
   const [highlightMetric, setHighlightMetric] = useState<string | null>(null)
@@ -146,6 +148,21 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
       setSelected(null)
       load()
     })
+  }
+
+  const startRename = () => {
+    if (!selected) return
+    setRenameDraft(selected.machine_name || "")
+    setRenaming(true)
+  }
+  const saveRename = async () => {
+    if (!selected) return
+    const name = renameDraft.trim()
+    setRenaming(false)
+    if (!name || name === selected.machine_name) return
+    await api.stress.renameRun(selected.id, name, adminKey, auth)
+    setSelected({ ...selected, machine_name: name })
+    setRuns(prev => prev.map(r => r.id === selected.id ? { ...r, machine_name: name } : r))
   }
 
   return (
@@ -293,7 +310,21 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
           <div>
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">{selected.machine_name || `Прогон #${selected.id}`}</h3>
+                {renaming ? (
+                  <div className="flex items-center gap-2">
+                    <input value={renameDraft} onChange={e => setRenameDraft(e.target.value)} autoFocus
+                      onKeyDown={e => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenaming(false) }}
+                      placeholder="Название компа"
+                      className="rounded-lg border border-border bg-background px-2.5 py-1 text-lg font-semibold text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                    <button onClick={saveRename} title="Сохранить" className="rounded-lg bg-primary p-1.5 text-primary-foreground hover:bg-primary/90" style={{ cursor: "pointer" }}><Icon name="Check" size={14} /></button>
+                    <button onClick={() => setRenaming(false)} title="Отмена" className="rounded-lg border border-border p-1.5 text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="X" size={14} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold text-foreground">{selected.machine_name || `Прогон #${selected.id}`}</h3>
+                    <button onClick={startRename} title="Переименовать комп" className="rounded p-1 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="Pencil" size={13} /></button>
+                  </div>
+                )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
                   {selected.profile_name && <span><Icon name="ListChecks" size={12} className="mr-1 inline" />{selected.profile_name}</span>}
                   {selected.os_info && <span><Icon name="Cpu" size={12} className="mr-1 inline" />{selected.os_info}</span>}
@@ -302,6 +333,9 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                 {selected.note && <p className="mt-2 max-w-xl rounded-lg bg-muted/50 p-2 text-xs text-foreground/60">{selected.note}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button onClick={() => openRunReport(selected as unknown as ReportRun, "super")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }} title="Суперкомпактный отчёт (PDF): только тесты с баллами">
+                  <Icon name="AlignJustify" size={13} /> Суперкомпактный
+                </button>
                 <button onClick={() => openRunReport(selected as unknown as ReportRun, "compact")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }} title="Компактный отчёт (PDF)">
                   <Icon name="FileText" size={13} /> Отчёт
                 </button>
