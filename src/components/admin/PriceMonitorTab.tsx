@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
@@ -39,16 +39,27 @@ export default function PriceMonitorTab() {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState<number | null>(null)
   const [processItem, setProcessItem] = useState<Suggestion | null>(null)
+  // Токен последнего запроса: ответы устаревших запросов (напр. от прошлой
+  // вкладки) игнорируются — иначе на экране «залипает» старый список.
+  const reqSeq = useRef(0)
 
   const load = useCallback(() => {
+    const seq = ++reqSeq.current
     setLoading(true)
+    // Сразу очищаем старый список, чтобы при смене вкладки не оставались
+    // предложения от предыдущей вкладки, пока грузятся новые.
+    setItems([])
     api.priceMonitor.list(getAdminKey(), view)
       .then(d => {
+        if (seq !== reqSeq.current) return   // пришёл ответ не на последний запрос
         setItems(d.items || [])
         setCounts(d.counts || {})
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(() => {
+        if (seq !== reqSeq.current) return
+        setLoading(false)
+      })
   }, [view])
 
   useEffect(() => { load() }, [load])
