@@ -490,6 +490,20 @@ def _first_link(social_links):
     return ""
 
 
+def _all_links(social_links):
+    """Весь перечень строк/ссылок партнёра (по строке на элемент, до 10)."""
+    if not social_links:
+        return []
+    out = []
+    for line in str(social_links).splitlines():
+        s = line.strip()
+        if s:
+            out.append(s[:300])
+        if len(out) >= 10:
+            break
+    return out
+
+
 def folder_report(cur, fid, owner_cid=None):
     """Полные данные папки для отчёта: папка + все её прогоны с метриками."""
     if not fid:
@@ -522,7 +536,7 @@ def folder_report(cur, fid, owner_cid=None):
             "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
             "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
             "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
-            "partner_link": _first_link(r[14]),
+            "partner_link": _first_link(r[14]), "partner_links": _all_links(r[14]),
             "metrics": [], "results": [],
         })
     if runs:
@@ -594,7 +608,7 @@ def get_run(cur, run_id, owner_cid=None):
         "os_info": r[4], "note": r[5], "started_at": r[6], "finished_at": r[7],
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
         "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
-        "partner_link": _first_link(r[14]),
+        "partner_link": _first_link(r[14]), "partner_links": _all_links(r[14]),
     }
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "

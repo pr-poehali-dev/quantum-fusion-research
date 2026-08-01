@@ -29,7 +29,8 @@ export interface ReportRun {
   total_tests: number; passed_tests: number; failed_tests: number; status: string
   created_at: string; metrics: ReportMetric[]; results?: ReportResult[]
   partner_logo_url?: string       // логотип партнёра в углу отчёта
-  partner_link?: string           // ссылка партнёра (под лого + в QR-коде)
+  partner_link?: string           // первая ссылка партнёра (для QR-кода)
+  partner_links?: string[]        // весь перечень строк/ссылок (список под лого)
 }
 export interface ReportFolder {
   id: number; name: string; order_id: number | null; order_ref: string
@@ -113,8 +114,9 @@ const REPORT_CSS = `
   .brand-row { display: flex; align-items: center; gap: 12px; }
   .qr { width: 92px; height: 92px; border: 1px solid #e4e4e4; border-radius: 8px; padding: 4px; background: #fff; }
   .logo { flex-shrink: 0; max-height: 92px; max-width: 200px; object-fit: contain; }
-  .brand-link { font-size: 12px; color: #555; word-break: break-all; text-align: right; max-width: 300px; text-decoration: none; }
-  .brand-link:hover { color: #1a1a1a; }
+  .brand-links { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .brand-link { display: block; font-size: 12px; color: #555; word-break: break-all; text-align: right; max-width: 300px; text-decoration: none; }
+  a.brand-link:hover { color: #1a1a1a; text-decoration: underline; }
   .meta { color: #555; font-size: 14px; margin-bottom: 2px; }
   .mode { color: #9a9a9a; font-size: 13px; margin-bottom: 22px; }
   .stats { display: flex; gap: 0; border: 1px solid #d7d7d7; border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
@@ -215,16 +217,29 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
         <img src="${h(s.f.file_url)}" alt="${h(s.f.file_name)}" loading="eager" />
       </div>`).join("")}</div>` : ""
 
-  // Брендинг партнёра: QR (слева) + лого (справа) + ссылка (снизу)
+  // Брендинг партнёра: QR (слева, по первой ссылке) + лого (справа) +
+  // полный перечень строк/ссылок снизу списком.
   const logo = (r.partner_logo_url || "").trim()
-  const link = (r.partner_link || "").trim()
+  const links = (r.partner_links && r.partner_links.length
+    ? r.partner_links
+    : (r.partner_link ? [r.partner_link] : [])
+  ).map(s => s.trim()).filter(Boolean)
+  const firstLink = links[0] || ""
   const logoImg = logo ? `<img class="logo" src="${h(logo)}" alt="logo" />` : ""
-  const qrSrc = link ? await qrDataUrl(link) : ""
+  const qrSrc = firstLink ? await qrDataUrl(firstLink) : ""
   const qrImg = qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR" />` : ""
-  const linkHref = /^https?:\/\//i.test(link) ? link : link ? `https://${link}` : ""
-  const linkEl = link ? `<a class="brand-link" href="${h(linkHref)}" target="_blank" rel="noreferrer">${h(link)}</a>` : ""
-  const brand = (logoImg || qrImg || linkEl)
-    ? `<div class="brand"><div class="brand-row">${qrImg}${logoImg}</div>${linkEl}</div>`
+  // Строка-ссылка (http) → кликабельно; любой другой текст → просто текст
+  const linkRow = (s: string) => {
+    const isUrl = /^(https?:\/\/|t\.me\/|vk\.com\/|@)/i.test(s) || /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(s)
+    if (isUrl) {
+      const href = /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^@/, "t.me/")}`
+      return `<a class="brand-link" href="${h(href)}" target="_blank" rel="noreferrer">${h(s)}</a>`
+    }
+    return `<span class="brand-link">${h(s)}</span>`
+  }
+  const linksEl = links.length ? `<div class="brand-links">${links.map(linkRow).join("")}</div>` : ""
+  const brand = (logoImg || qrImg || linksEl)
+    ? `<div class="brand"><div class="brand-row">${qrImg}${logoImg}</div>${linksEl}</div>`
     : ""
 
   return `
