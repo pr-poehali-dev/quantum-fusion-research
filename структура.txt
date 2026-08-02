@@ -1128,3 +1128,10 @@ ingest при notify:true шлёт уведомление сам после пр
 folder_sort; action folder_reorder {folder_id, run_ids}; list_runs отдаёт
 folder_sort. api.stress.folderReorder. StressFoldersPanel: селектор сортировки
 (вручную/название/дата/длительность) + нативный drag&drop, порядок сохраняется.
+
+[v7.82] Массовая сборка (batch) в WIP теперь подбивает железо с учётом кол-ва
+сборок. wip-builds/warehouse_core.py: reserve_batch_group (component.qty ×
+group.qty, идемпотентно по slot 'g{gid}:%'), _release_group_slot_reserves.
+wip-builds/index.py: на этапе «Заказ» при build_id=NULL резервирует по
+order_build_groups (связь через wip_id); «Отменён» снимает резервы только
+своей batch-группы. Ранее qty из перечня терялась (резерв на 1 шт).

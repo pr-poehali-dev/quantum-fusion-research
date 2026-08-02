@@ -350,3 +350,62 @@ def fulfill_order_reserves(cur, order_id):
         )
     log(cur, "fulfill_order", order_id=order_id, payload=fulfilled)
     return fulfilled
+
+
+def _release_group_slot_reserves(cur, order_id, gid):
+    """Снимает ACTIVE-резервы ТОЛЬКО одной batch-группы заказа (slot LIKE 'g{gid}:%').
+    Нужно для идемпотентного повторного резервирования отдельной группы партии,
+    не задевая резервы других групп того же заказа."""
+    like = f"g{int(gid)}:%"
+    cur.execute(
+        f"SELECT id, group_id, supply_id, qty, type FROM {SCHEMA}.warehouse_reserves "
+        f"WHERE order_id = %s AND status = 'ACTIVE' AND slot LIKE %s FOR UPDATE",
+        (order_id, like),
+    )
+    for rid, group_id, supply_id, r_qty, r_type in cur.fetchall():
+        if r_type == POSITIVE:
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty = qty + %s, qty_reserved = GREATEST(0, qty_reserved - %s), updated_at = NOW() "
+                f"WHERE id = %s",
+                (r_qty, r_qty, supply_id),
+            )
+        else:
+            cur.execute(
+                f"UPDATE {SCHEMA}.warehouse_supplies "
+                f"SET qty_negative = GREATEST(0, qty_negative - %s), updated_at = NOW() WHERE id = %s",
+                (r_qty, supply_id),
+            )
+            basket_reduce(cur, group_id, r_qty)
+        cur.execute(
+            f"UPDATE {SCHEMA}.warehouse_reserves SET status = 'RELEASED', updated_at = NOW() WHERE id = %s",
+            (rid,),
+        )
+
+
+def reserve_batch_group(cur, order_id, gid, gqty, components):
+    """Резервирует комплектующие ОДНОЙ batch-группы с учётом количества сборок:
+    для каждого компонента резервируется component.qty × group.qty.
+    Идемпотентно: сначала снимает прежние резервы этой группы (slot 'g{gid}:%').
+    Возвращает {"reserved": n, "shortage": n, "lines": n}."""
+    lock_order(cur, order_id)
+    _release_group_slot_reserves(cur, order_id, gid)
+
+    gqty = max(1, int(gqty or 1))
+    comps = components if isinstance(components, list) else json.loads(components or "[]")
+    reserved = shortage = lines = 0
+    for comp in comps:
+        if comp.get("source") != "catalog" or not comp.get("source_id"):
+            continue  # пользовательское железо — не резервируем
+        comp_qty = int(comp.get("qty", 1) or 1) * gqty
+        if comp_qty <= 0:
+            continue
+        slot = comp.get("slot") or "extra"
+        res = reserve_line(cur, order_id, product_id=int(comp["source_id"]),
+                           qty=comp_qty, slot=f"g{int(gid)}:{slot}")
+        reserved += int(res.get("positive", 0) or 0)
+        shortage += int(res.get("negative", 0) or 0)
+        lines += 1
+    log(cur, "reserve_batch_group", order_id=order_id, payload={
+        "gid": gid, "gqty": gqty, "reserved": reserved, "shortage": shortage})
+    return {"reserved": reserved, "shortage": shortage, "lines": lines}

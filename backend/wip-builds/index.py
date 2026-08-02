@@ -750,11 +750,38 @@ def handler(event: dict, context) -> dict:
                         wc.recalc_order_reserves(cur, wip_order_id, reserve_lines)
                         print(f"WIP {wip_id}: резерв 'Заказ' (recalc), order={wip_order_id}, lines={len(reserve_lines)}")
 
+                # ── Резервирование МАССОВОЙ сборки (batch) при переходе на «Заказ» ──
+                # У batch-групп build_id = NULL, зато WIP связан с order_build_groups
+                # (wip_id). Резервируем состав группы с УЧЁТОМ количества сборок
+                # (component.qty × group.qty) — раньше это количество терялось.
+                if new_stage == "Заказ" and old_stage != "Заказ" and wip_order_id and not wip_build_id:
+                    cur.execute(
+                        f"SELECT id, qty, components FROM {SCHEMA}.order_build_groups WHERE wip_id = %s",
+                        (wip_id,),
+                    )
+                    grp = cur.fetchone()
+                    if grp:
+                        gid, gqty, gcomps = grp[0], grp[1], grp[2]
+                        res = core.reserve_batch_group(cur, wip_order_id, gid, gqty, gcomps)
+                        print(f"WIP {wip_id}: резерв batch-группы {gid}×{gqty}, "
+                              f"order={wip_order_id}, reserved={res['reserved']}, shortage={res['shortage']}")
+
                 # ── Снятие резервов при отмене ──
                 if new_stage == "Отменён" and old_stage != "Отменён" and wip_order_id:
                     import warehouse_core as wc
-                    released = wc.release_order_reserves(cur, wip_order_id)
-                    print(f"WIP {wip_id}: резервы сняты, order={wip_order_id}: {released}")
+                    # Для batch снимаем резервы ТОЛЬКО этой группы (slot 'g{gid}:%'),
+                    # чтобы не задеть другие группы той же партии.
+                    cur.execute(
+                        f"SELECT id FROM {SCHEMA}.order_build_groups WHERE wip_id = %s",
+                        (wip_id,),
+                    )
+                    grp = cur.fetchone()
+                    if grp and not wip_build_id:
+                        wc._release_group_slot_reserves(cur, wip_order_id, grp[0])
+                        print(f"WIP {wip_id}: сняты резервы batch-группы {grp[0]}, order={wip_order_id}")
+                    else:
+                        released = wc.release_order_reserves(cur, wip_order_id)
+                        print(f"WIP {wip_id}: резервы сняты, order={wip_order_id}: {released}")
 
                 # ── Перед выдачей («Забрали») остаток должен быть оплачен ──
                 if new_stage == "Забрали" and old_stage != "Забрали" and wip_order_id:
