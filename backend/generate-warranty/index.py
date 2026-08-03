@@ -585,14 +585,22 @@ def handler(event: dict, context) -> dict:
         price_str = f"{it['price']:,.0f}".replace(",", " ") if it["price"] else "—"
         warranty_str = months_label(it["warranty"]) if it["warranty"] else "—"
         p.c.setFont("dj", 8)
-        if it["serials"]:
-            # Отдельная строка на каждый серийник — все данные в каждой строке
-            for sn in it["serials"]:
+        qty_total = int(it.get("qty", 1) or 1)
+        serials = it["serials"]
+        if serials:
+            # Отдельная строка на каждый серийник (кол-во 1 на строку).
+            for sn in serials:
                 cells = [it["name"], sn, warranty_str, "1", price_str]
                 p.cell_row(cells, col_w, font="dj", size=8)
+            # Если серийников МЕНЬШЕ, чем количество товара — оставшиеся единицы
+            # печатаем одной строкой без серийника (иначе часть товара терялась).
+            rest = qty_total - len(serials)
+            if rest > 0:
+                cells = [it["name"], "—", warranty_str, str(rest), price_str]
+                p.cell_row(cells, col_w, font="dj", size=8)
         else:
-            # Нет серийника — одна строка с общим кол-вом
-            cells = [it["name"], "—", warranty_str, str(it["qty"]), price_str]
+            # Нет серийников — одна строка с общим кол-вом.
+            cells = [it["name"], "—", warranty_str, str(qty_total), price_str]
             p.cell_row(cells, col_w, font="dj", size=8)
 
     p.ln(18)

@@ -1343,9 +1343,21 @@ def handler(event: dict, context) -> dict:
                 # Для pc_build: обновляем wip_builds и pc_builds
                 if slot and wip_row:
                     wip_id_r, build_id_r = wip_row
-                    name_field = "case_name" if slot == "case" else slot
+                    # PC-слот конфигуратора → wip-слот (колонка wip_builds).
+                    # Критично: slot вроде 'fan'/'accessory' не имеет своей колонки
+                    # (fan_status не существует) — их надо свести к 'extra', иначе
+                    # UPDATE падал с ошибкой и замена не срабатывала.
+                    _pc_to_wip = {
+                        "cpu": "cpu", "motherboard": "motherboard", "ram": "ram",
+                        "gpu": "gpu", "storage": "storage", "psu": "psu",
+                        "case": "case", "cooling": "cooling",
+                        "extra": "extra", "fan": "extra", "accessory": "extra",
+                    }
+                    wip_slot_r = _pc_to_wip.get(slot, "extra")
+                    name_field = "case_name" if wip_slot_r == "case" else wip_slot_r
+                    status_field = f"{wip_slot_r}_status"
                     cur.execute(
-                        f"UPDATE {schema}.wip_builds SET {name_field}=%s, {slot if slot != 'case' else 'case'}_status='ready', updated_at=NOW() WHERE id=%s",
+                        f"UPDATE {schema}.wip_builds SET {name_field}=%s, {status_field}='ready', updated_at=NOW() WHERE id=%s",
                         (new_name, wip_id_r)
                     )
                     if build_id_r:
@@ -1511,8 +1523,11 @@ def handler(event: dict, context) -> dict:
                         if free <= 0:
                             kept_ordered_slots.add(wip_slot)
                     reserved_any_component = True
+                    # Для заказанных у поставщика слотов минус-резерв нужен, но
+                    # закупку в корзину не задваиваем (уже заказано) — no_purchase.
                     res = wc.reserve_line(cur, order_id, product_id=product_id,
-                                          qty=comp_qty, slot=wip_slot)
+                                          qty=comp_qty, slot=wip_slot,
+                                          no_purchase=slot_ordered)
                     pos = int(res.get("positive", 0) or 0)
                     neg = int(res.get("negative", 0) or 0)
                     cname = comp.get("name") or ""

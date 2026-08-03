@@ -118,7 +118,12 @@ def basket_reduce(cur, group_id, qty):
     log(cur, "basket_reduce", group_id=group_id, delta=-qty)
 
 
-def reserve_line(cur, order_id, product_id, qty, slot=None):
+def reserve_line(cur, order_id, product_id, qty, slot=None, no_purchase=False):
+    """no_purchase=True: при нехватке создаём NEGATIVE-резерв (потребность
+    заказа), но НЕ добавляем в корзину закупки. Нужно для слотов, уже
+    заказанных у поставщика (ordered_transit/ordered_delay) — минус-резерв
+    обязателен (иначе приход не «прицепится» к заказу), но повторную закупку
+    заводить нельзя."""
     group_id = resolve_group_id(cur, product_id)
     if group_id is None:
         return {"status": "skipped", "skipped_reason": "user_hardware", "group_id": None,
@@ -181,8 +186,10 @@ def reserve_line(cur, order_id, product_id, qty, slot=None):
         )
         _movement(cur, group_id, buf, order_id, "negative", -shortage,
                   note=f"NEGATIVE резерв по заказу #{order_id}")
-        basket_add(cur, group_id, shortage)
-        log(cur, "reserve_negative", group_id=group_id, order_id=order_id, delta=shortage)
+        if not no_purchase:
+            basket_add(cur, group_id, shortage)
+        log(cur, "reserve_negative", group_id=group_id, order_id=order_id, delta=shortage,
+            payload={"no_purchase": no_purchase})
 
     return {"status": "ok", "group_id": group_id,
             "positive": positive_done, "negative": shortage}
@@ -195,7 +202,8 @@ def handle_reserve_and_purchase(cur, order_id, lines):
         res = reserve_line(cur, order_id,
                            product_id=ln.get("product_id"),
                            qty=int(ln.get("qty", 0) or 0),
-                           slot=ln.get("slot"))
+                           slot=ln.get("slot"),
+                           no_purchase=bool(ln.get("no_purchase")))
         res["input"] = ln
         results.append(res)
     log(cur, "handle_done", order_id=order_id, payload={"results": len(results)})
@@ -277,16 +285,16 @@ def build_order_lines(cur, order_id):
             continue
         pid = int(comp["source_id"])
         if wip_slot in ordered:
-            # Слот помечен «заказан у поставщика». Раньше он ПОЛНОСТЬЮ выпадал из
-            # резерва — но если товар лежит на складе, его нужно зарезервировать
-            # (POSITIVE), иначе наличие не бронируется. Резервируем ТОЛЬКО в
-            # пределах свободного остатка: то, что реально едет от поставщика,
-            # в минус-резерв/закупку повторно не заносим.
-            gid = resolve_group_id(cur, pid)
-            free = free_stock(cur, gid)
-            if free <= 0:
-                continue  # товара нет — он в пути, дубликат закупки не создаём
-            qty = min(qty, free)
+            # Слот помечен «заказан у поставщика» (ordered_transit/ordered_delay).
+            # Что есть на складе — резервируем POSITIVE; чего не хватает —
+            # создаём NEGATIVE-резерв (потребность заказа) с флагом no_purchase,
+            # чтобы приход товара «прицепился» к заказу через receive_stock, но
+            # повторную закупку в корзину НЕ заводить (уже заказано).
+            # Раньше при free<=0 строка ПОЛНОСТЬЮ пропускалась → минус-резерва не
+            # было → принятый на склад товар не падал в заказ (баг заказа #484).
+            lines.append({"product_id": pid, "qty": qty, "slot": wip_slot,
+                          "no_purchase": True})
+            continue
         lines.append({"product_id": pid, "qty": qty, "slot": wip_slot})
     return lines
 
