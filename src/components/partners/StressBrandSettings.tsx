@@ -102,9 +102,10 @@ export default function StressBrandSettings({ session }: { session: string }) {
     return api.stress.brandSave(
       {
         logo_png_base64: logo, links, qr_url_template: qrTpl,
-        // Прямая ссылка на логотип и адрес страницы проверки — попадают в pack
+        // Прямая ссылка на логотип попадает в pack. Адрес страницы проверки
+        // НЕ берём из текущей вкладки — иначе в QR уйдёт preview-домен;
+        // боевой адрес подставит сервер.
         logo_url: brand?.logo_url || "",
-        verify_page_url: `${window.location.origin}/v`,
         ...extra,
       }, "", auth)
       .then(d => {
@@ -357,7 +358,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
               Ссылка проверки в QR-коде <span className="text-foreground/30">— оставьте пустым для стандартной</span>
             </p>
             <input value={qrTpl} onChange={e => setQrTpl(e.target.value)}
-              placeholder={`${window.location.origin}/v/{verify_code}`} style={{ cursor: "text" }}
+              placeholder="https://begraphics.ru/v/{verify_code}" style={{ cursor: "text" }}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:border-primary focus:outline-none" />
             <p className="mt-1 text-[11px] text-foreground/30">
               Клиент сканирует QR из отчёта и попадает на страницу проверки подлинности.

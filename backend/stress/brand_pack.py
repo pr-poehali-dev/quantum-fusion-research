@@ -77,6 +77,60 @@ def sign_pack(pack: dict) -> dict:
     return out
 
 
+def site_base_url() -> str:
+    """Боевой адрес сайта для verify-ссылок (preview-домены не годятся)."""
+    site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
+    if not site or "poehali.dev" in site:
+        site = "https://begraphics.ru"
+    return site
+
+
+def public_key_pem() -> str:
+    """Публичный ключ, вычисленный из приватного (для self-test и сверки
+    отпечатка с тем, что вшит в StressRunner)."""
+    pem = os.environ.get("STRESS_BRAND_SIGNING_KEY_PEM", "").strip()
+    if not pem:
+        return ""
+    from cryptography.hazmat.primitives import serialization
+
+    key = serialization.load_pem_private_key(pem.encode(), password=None)
+    return key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+
+
+def public_key_fingerprint() -> str:
+    """Отпечаток SPKI-SHA256 (первые 16 hex) — этим же форматом StressRunner
+    пишет в журнал отпечаток вшитого public key. Нужен для сверки пары."""
+    pub = public_key_pem()
+    if not pub:
+        return ""
+    from cryptography.hazmat.primitives import serialization
+
+    key = serialization.load_pem_public_key(pub.encode())
+    der = key.public_bytes(serialization.Encoding.DER,
+                           serialization.PublicFormat.SubjectPublicKeyInfo)
+    return hashlib.sha256(der).hexdigest()[:16]
+
+
+def signature_self_test(pack: dict) -> str:
+    """Проверяет подпись пака публичным ключом из той же пары.
+    Возвращает "" при успехе или текст ошибки."""
+    try:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        pub = public_key_pem()
+        if not pub:
+            return "no_signing_key"
+        key = serialization.load_pem_public_key(pub.encode())
+        key.verify(base64.b64decode(pack.get("signature") or ""),
+                   canonical_payload(pack), padding.PKCS1v15(), hashes.SHA256())
+        return ""
+    except Exception as e:
+        return str(e) or "verify_failed"
+
+
 def verify_code(brand_key: str, run_uid: str, finished_at) -> str:
     """verify_code = первые 16 символов base64url(HMAC-SHA256(brand_key, msg)),
     где msg = run_uid + "|" + finished_at (ISO UTC, без миллисекунд)."""
@@ -228,12 +282,51 @@ def build_pack(cur, company_id, signed=True):
     revoked = pack.pop("_revoked", False)
     if revoked:
         return None, "revoked"
+
+    # Страховка: в паке НЕ должно быть пустого логотипа/QR — иначе PDF выйдет
+    # без картинок. Чего не хватает — добираем из профиля компании и адреса
+    # сайта. Дополняем ДО подписи, чтобы подпись покрывала итоговые данные.
+    br = pack["branding"]
+    if not br.get("logo_png_base64") or not br.get("logo_url") or not br.get("links"):
+        d = company_defaults(cur, company_id)
+        if not br.get("logo_png_base64"):
+            br["logo_png_base64"] = d["logo_png_base64"]
+        if not br.get("logo_url"):
+            br["logo_url"] = d["logo_url"]
+        if not br.get("links"):
+            br["links"] = d["links"]
+    # Логотип задан только ссылкой — вшиваем и inline, чтобы работал офлайн.
+    if not br.get("logo_png_base64") and br.get("logo_url"):
+        br["logo_png_base64"] = logo_base64_from_url(br["logo_url"])
+
+    site = site_base_url()
+    # Preview-адрес в QR недопустим: он временный. Заменяем на боевой домен,
+    # даже если такой адрес когда-то сохранили в настройках.
+    for fld in ("qr_url_template", "verify_page_url"):
+        if "poehali.dev" in (br.get(fld) or ""):
+            tail = br[fld].split("/v", 1)[1] if "/v" in br[fld] else ""
+            br[fld] = f"{site}/v{tail}"
+    if not br.get("qr_url_template"):
+        base = (br.get("verify_page_url") or f"{site}/v").rstrip("/")
+        br["qr_url_template"] = f"{base}/{{verify_code}}"
+    if not br.get("verify_page_url"):
+        tpl = br["qr_url_template"]
+        br["verify_page_url"] = (tpl.split("{verify_code}", 1)[0].rstrip("/")
+                                 if "{verify_code}" in tpl else f"{site}/v")
+
     if not signed:
         return pack, None
     try:
-        return sign_pack(pack), None
+        out = sign_pack(pack)
     except RuntimeError:
         return None, "no_signing_key"
+    # Self-test по спецификации: проверяем свою же подпись публичным ключом.
+    # Ловит рассинхрон пары ключей ДО того, как файл уйдёт партнёру.
+    err = signature_self_test(out)
+    if err:
+        print(f"[BRANDING] self-test подписи не пройден: {err}")
+        return None, "signature_self_test_failed"
+    return out, None
 
 
 def save_brand(cur, company_id, body):

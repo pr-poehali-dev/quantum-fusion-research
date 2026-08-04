@@ -1183,3 +1183,12 @@ index.py: action=brand_archive (zip_base64); brand_download и
 partner_branding отдают ещё и assets {logo_base64, logo_url, qr_url_template}.
 ВАЖНО: старые сборки StressRunner не примут новый порядок полей — нужен
 релиз с обновлённым каноническим payload.
+
+[v7.89] Brand pack сверен со спекой v2. build_pack достраивает пак ДО подписи
+(логотип из профиля/по logo_url inline, qr_url_template<->verify_page_url) —
+пустой пак невозможен. Адрес verify задаёт сервер (SITE_BASE_URL), preview-
+домены poehali.dev заменяются на боевой. signature_self_test() проверяет
+подпись публичным ключом перед выдачей (иначе 503), public_key_fingerprint()
+— отпечаток SPKI-SHA256 для сверки с EXE (в brand_config: key_fingerprint).
+Новые экшены: partner_branding_assets (докачка картинок),
+partner_branding_zip (ZIP по X-Stress-Token).

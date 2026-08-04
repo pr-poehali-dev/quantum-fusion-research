@@ -3,6 +3,48 @@
 
 ---
 
+## v7.89 | 2026-08-04 | Brand pack: сверка со спекой v2, self-test, боевой домен
+
+### Проверено по обновлённой PARTNER_BRANDING_SITE.md
+Канонический порядок полей, структура ZIP и формат assets уже совпадали.
+Добавлено недостающее.
+
+### Главная проблема (из §2.1 спеки: «у PowerTechStore приходят пустые
+### logo_png_base64 и qr_url_template — в PDF нет ни фото, ни QR»)
+- [brand_pack.build_pack] пак больше НЕ может уйти полупустым: недостающие
+  логотип/ссылки добираются из профиля компании, логотип по logo_url
+  подтягивается inline (offline), qr_url_template достраивается из
+  verify_page_url и наоборот. Всё дополняется ДО подписи.
+
+### Боевой домен в QR (найдено при проверке)
+- В сохранённых настройках оказался preview-адрес (фронт подставлял
+  window.location.origin) — QR в отчётах вёл бы на временный домен.
+  Теперь адрес страницы проверки задаёт сервер (SITE_BASE_URL), а любой
+  poehali.dev-адрес в qr_url_template/verify_page_url заменяется на боевой.
+
+### Self-test подписи (§3.2 спеки — обязателен перед выдачей)
+- [brand_pack] +signature_self_test(): после подписи пак проверяется публичным
+  ключом из той же пары; при расхождении файл НЕ отдаётся (503 с понятным
+  текстом). +public_key_pem()/public_key_fingerprint() — отпечаток SPKI-SHA256
+  (16 hex) для сверки с тем, что StressRunner пишет в журнал.
+  brand_config отдаёт key_fingerprint.
+
+### Новые эндпоинты (§4.2, §4.4)
+- action=partner_branding_assets — докачка тяжёлых картинок (logo_base64,
+  logo_url, qr_url_template, verify_page_url).
+- action=partner_branding_zip — тот же ZIP, что в ЛК, по X-Stress-Token.
+- partner_branding: в assets добавлен verify_page_url.
+
+### Проверка
+- Тесты stress 18/18. Секрет ключа подписи добавлен: signing_ready=true,
+  отпечаток f513be5cd6510fd8 совпадает с выданным публичным ключом.
+  Архив brand-powertechstore.zip: pack.stbrand + logo.png + qr-sample.png +
+  README.txt; логотип 157952 симв., ссылки Avito/TikTok/YouTube,
+  QR на https://begraphics.ru/v/{verify_code}; подпись проверена публичным
+  ключом StressRunner.
+
+---
+
 ## v7.88 | 2026-08-04 | Brand pack v2: logo_url, verify_page_url, ZIP-архив
 
 ### Изменения формата (ВНИМАНИЕ: ломает совместимость подписи)

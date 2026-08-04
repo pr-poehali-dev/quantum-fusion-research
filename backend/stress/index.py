@@ -180,7 +180,8 @@ def handler(event, context):
             return ok({"ok": True, **data})
 
         if action in ("ingest", "profiles_pull", "verify_token", "notify",
-                      "partner_branding"):
+                      "partner_branding", "partner_branding_assets",
+                      "partner_branding_zip"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
             is_global = bool(token) and token == os.environ.get("STRESS_INGEST_TOKEN")
             # Партнёрский токен компании (если не совпал с общим)
@@ -203,8 +204,9 @@ def handler(event, context):
                 return profiles_pull(cur)
             if action == "notify" and method == "POST":
                 return notify(body, cur, conn, partner_cid)
-            if action == "partner_branding" and method == "GET":
-                # Синхронизация brand pack при онлайн-входе StressRunner.
+            if action in ("partner_branding", "partner_branding_assets",
+                          "partner_branding_zip") and method == "GET":
+                # Синхронизация брендинга при онлайн-входе StressRunner.
                 if not partner_cid:
                     # Общий (не партнёрский) токен — брендинга нет.
                     return err("no branding for this token", 404)
@@ -216,20 +218,32 @@ def handler(event, context):
                 if error == "no_signing_key":
                     print("[BRANDING] STRESS_BRAND_SIGNING_KEY_PEM не задан")
                     return err("signing key not configured", 503)
+                if error == "signature_self_test_failed":
+                    return err("signature self-test failed: key mismatch", 503)
                 if not pack:
                     return err("brand pack unavailable", 404)
+
+                br = pack.get("branding") or {}
+                assets = {
+                    "logo_base64": br.get("logo_png_base64") or "",
+                    "logo_url": br.get("logo_url") or "",
+                    "qr_url_template": br.get("qr_url_template") or "",
+                    "verify_page_url": br.get("verify_page_url") or "",
+                }
+                if action == "partner_branding_assets":
+                    # Докачка тяжёлых картинок отдельно от пака.
+                    return ok({"ok": True, "assets": assets})
+                if action == "partner_branding_zip":
+                    # Тот же ZIP, что и в ЛК, — для импорта одним файлом.
+                    comp = bp.get_company(cur, partner_cid)
+                    slug = "".join(ch if ch.isalnum() else "-"
+                                   for ch in (comp[1] or "partner")).strip("-").lower()
+                    data = bp.build_brand_archive(cur, partner_cid, pack)
+                    return ok({"ok": True, "filename": f"brand-{slug or 'brand'}.zip",
+                               "zip_base64": base64.b64encode(data).decode()})
                 # pack + assets: если PNG большой, клиент может взять логотип
                 # отдельно (или по logo_url), не разбирая пак.
-                br = pack.get("branding") or {}
-                return ok({
-                    "ok": True,
-                    "pack": pack,
-                    "assets": {
-                        "logo_base64": br.get("logo_png_base64") or "",
-                        "logo_url": br.get("logo_url") or "",
-                        "qr_url_template": br.get("qr_url_template") or "",
-                    },
-                })
+                return ok({"ok": True, "pack": pack, "assets": assets})
             return err("bad request", 400)
 
         # ── Контур ПАРТНЁРА (ЛК): данные строго своей компании ──────────────
@@ -417,6 +431,9 @@ def brand_route(cur, conn, action, method, body, company_id):
     if action == "brand_config" and method == "GET":
         st = bp.brand_status(cur, company_id)
         st["signing_ready"] = bool(os.environ.get("STRESS_BRAND_SIGNING_KEY_PEM", "").strip())
+        # Отпечаток публичного ключа — сверяется с тем, что вшит в StressRunner
+        # (программа пишет свой отпечаток в журнал при ошибке импорта).
+        st["key_fingerprint"] = bp.public_key_fingerprint()
         return ok({"ok": True, "brand": st})
 
     if action == "brand_prefill" and method == "GET":
@@ -441,6 +458,9 @@ def brand_route(cur, conn, action, method, body, company_id):
             return err("Брендинг отозван", 400)
         if error == "no_signing_key":
             return err("Подпись не настроена на сервере — обратитесь к администратору", 503)
+        if error == "signature_self_test_failed":
+            return err("Ключ подписи на сервере не совпадает с ключом в программе — "
+                       "обратитесь к администратору", 503)
         if not pack:
             return err("brand pack unavailable", 400)
         comp = bp.get_company(cur, company_id)
