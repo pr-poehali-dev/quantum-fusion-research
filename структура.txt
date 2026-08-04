@@ -1135,3 +1135,15 @@ group.qty, идемпотентно по slot 'g{gid}:%'), _release_group_slot_r
 wip-builds/index.py: на этапе «Заказ» при build_id=NULL резервирует по
 order_build_groups (связь через wip_id); «Отменён» снимает резервы только
 своей batch-группы. Ранее qty из перечня терялась (резерв на 1 шт).
+
+[v7.84] Партнёрские TG-уведомления о стресс-тестах.
+БД: stress_notify_settings (настройки компании), stress_notify_chats (чаты
+партнёра, chat_id UNIQUE, флаги событий NULL=наследовать компанию).
+backend/stress/notify_prefs.py — настройки/чаты, рендер шаблонов с
+подстановками, notify_company() (рассылка), prefs_for_agent() (пресет для EXE).
+backend/stress/tg_notify.py — send_stress(text, chat_id=None).
+backend/stress/index.py — экшены notify_config/notify_settings_save/
+notify_chat_save/notify_chat_delete/notify_chat_test; verify_token отдаёт
+notify_prefs; ingest шлёт события в чаты партнёра.
+Фронт: src/components/partners/StressNotifySettings.tsx (в PartnersStress.tsx).
+ID чата партнёр узнаёт командой /chatid у бота (уже есть в tg-bot).

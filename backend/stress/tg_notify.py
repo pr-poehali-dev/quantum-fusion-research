@@ -10,15 +10,20 @@ import urllib.parse
 import urllib.error
 
 
-def send_stress(text: str) -> dict:
+def send_stress(text: str, chat_id: str = None) -> dict:
     """Шлёт сообщение в Telegram. Возвращает {ok, error?} с реальным статусом.
+
+    chat_id=None — общий админский чат из STRESS_TG_CHAT_ID (прежнее поведение).
+    chat_id задан — шлём в этот чат (чаты партнёров из stress_notify_chats).
 
     Логирует ответ Telegram (в т.ч. description ошибки) для диагностики.
     """
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("STRESS_TG_CHAT_ID")
+    if chat_id is None:
+        chat_id = os.environ.get("STRESS_TG_CHAT_ID")
+    chat_id = str(chat_id or "").strip()
     if not token or not chat_id:
-        print("STRESS_TG: пропуск — нет TELEGRAM_BOT_TOKEN / STRESS_TG_CHAT_ID")
+        print("STRESS_TG: пропуск — нет TELEGRAM_BOT_TOKEN / chat_id")
         return {"ok": False, "error": "no_token_or_chat"}
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = urllib.parse.urlencode({

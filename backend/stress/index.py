@@ -7,6 +7,7 @@ import psycopg2
 import boto3
 from botocore.client import Config
 from tg_notify import send_stress
+import notify_prefs as np
 
 
 def _esc(v) -> str:
@@ -177,13 +178,21 @@ def handler(event, context):
             if not is_global and partner_cid is None:
                 return err("forbidden", 403)
             if action == "verify_token" and method == "GET":
-                return ok({"ok": True, "valid": True})
+                # Совместимость: прежние поля ok/valid сохранены. Дополнительно
+                # отдаём пресет уведомлений компании, чтобы софт знал, какие
+                # события вообще имеет смысл слать.
+                out = {"ok": True, "valid": True}
+                try:
+                    out["notify_prefs"] = np.prefs_for_agent(cur, partner_cid)
+                except Exception as e:
+                    print(f"[VERIFY_TOKEN] prefs error: {e}")
+                return ok(out)
             if action == "ingest" and method == "POST":
                 return ingest(cur, conn, body, partner_cid)
             if action == "profiles_pull" and method == "GET":
                 return profiles_pull(cur)
             if action == "notify" and method == "POST":
-                return notify(body)
+                return notify(body, cur, conn, partner_cid)
             return err("bad request", 400)
 
         # ── Контур ПАРТНЁРА (ЛК): данные строго своей компании ──────────────
@@ -205,6 +214,9 @@ def handler(event, context):
         partner_allowed = {
             "list", "get", "folders_list", "folder_save", "folder_delete",
             "runs_assign_folder", "folder_report", "delete_run",
+            # Настройки Telegram-уведомлений своей компании
+            "notify_config", "notify_settings_save", "notify_chat_save",
+            "notify_chat_delete", "notify_chat_test",
         }
         if not admin and action not in partner_allowed:
             return err("forbidden", 403)
@@ -231,6 +243,15 @@ def handler(event, context):
             return folder_reorder(cur, conn, body, partner_cid if not admin else None)
         if action == "folder_report" and method == "GET":
             return folder_report(cur, int(params.get("id") or 0), partner_cid if not admin else None)
+
+        # Telegram-уведомления партнёра (его чаты + события + шаблоны).
+        # Компания берётся из сессии; админ может смотреть чужую через company_id.
+        notify_cid = company_filter if not admin else company_filter
+        if action in ("notify_config", "notify_settings_save", "notify_chat_save",
+                      "notify_chat_delete", "notify_chat_test"):
+            if not notify_cid:
+                return err("company_required", 400)
+            return notify_config_route(cur, conn, action, method, params, body, notify_cid)
 
         # Профили (редактор в админке)
         if action == "profiles_list" and method == "GET":
@@ -304,17 +325,97 @@ def _build_notify_text(body):
     return None
 
 
-def notify(body):
+def notify(body, cur=None, conn=None, company_id=None):
     """Уведомление в Telegram о событии стресс-теста.
-    body: {event: 'test_failed'|'run_finished', machine, profile, ...}
-    Возвращает реальный статус доставки (ok:false, если Telegram не принял)."""
+    body: {event: 'run_started'|'test_failed'|'run_finished', machine, profile, ...}
+
+    Шлёт в общий админский чат (как раньше) и, если прогон принадлежит
+    партнёру, — в его чаты по его настройкам/шаблонам.
+    """
+    partner_res = None
+    if cur is not None and company_id:
+        try:
+            partner_res = np.notify_company(cur, company_id, body.get("event", ""), {
+                "machine": body.get("machine"), "profile": body.get("profile"),
+                "test_name": body.get("test_name"), "exit_code": body.get("exit_code"),
+                "duration_sec": body.get("duration_sec"),
+                "passed": body.get("passed"), "total": body.get("total"),
+                "failed": body.get("failed"),
+            })
+            if conn is not None:
+                conn.commit()
+        except Exception as e:
+            if conn is not None:
+                conn.rollback()
+            print(f"[PARTNER_NOTIFY] notify exception: {e}")
+
     text = _build_notify_text(body)
     if text is None:
+        # Событие вне общего шаблона (например run_started) — не ошибка,
+        # если оно ушло партнёру.
+        if partner_res and (partner_res.get("sent") or partner_res.get("failed")):
+            return ok({"ok": True, "partner": partner_res})
         return err("unknown event")
     res = send_stress(text)
+    out = {"ok": bool(res.get("ok"))}
     if not res.get("ok"):
-        return ok({"ok": False, "error": res.get("error")})
-    return ok({"ok": True})
+        out["error"] = res.get("error")
+    if partner_res is not None:
+        out["partner"] = partner_res
+    return ok(out)
+
+
+def notify_config_route(cur, conn, action, method, params, body, company_id):
+    """Настройки Telegram-уведомлений компании: чтение, сохранение, тест."""
+    if action == "notify_config" and method == "GET":
+        return ok({
+            "ok": True,
+            "settings": np.get_settings(cur, company_id),
+            "chats": np.list_chats(cur, company_id),
+            "defaults": np.DEFAULT_TPL,
+            "placeholders": np.PLACEHOLDERS,
+        })
+
+    if action == "notify_settings_save" and method in ("POST", "PUT"):
+        st = np.save_settings(cur, company_id, body)
+        conn.commit()
+        return ok({"ok": True, "settings": st})
+
+    if action == "notify_chat_save" and method in ("POST", "PUT"):
+        rec_id, error = np.save_chat(cur, company_id, body)
+        if error == "chat_taken":
+            return err("Этот чат уже подключён к другой компании", 400)
+        if error == "empty_chat_id":
+            return err("Укажите ID чата", 400)
+        conn.commit()
+        return ok({"ok": True, "id": rec_id, "chats": np.list_chats(cur, company_id)})
+
+    if action == "notify_chat_delete" and method == "DELETE":
+        rec_id = int(params.get("id") or body.get("id") or 0)
+        if not rec_id:
+            return err("id required", 400)
+        np.delete_chat(cur, company_id, rec_id)
+        conn.commit()
+        return ok({"ok": True, "chats": np.list_chats(cur, company_id)})
+
+    if action == "notify_chat_test" and method in ("POST", "PUT"):
+        # Проверка связи: шлём тестовое сообщение и возвращаем ответ Telegram
+        # как есть — партнёр сразу видит причину (бот не добавлен и т.п.).
+        chat_id = str(body.get("chat_id") or "").strip()
+        if not chat_id:
+            rec_id = int(body.get("id") or 0)
+            for c in np.list_chats(cur, company_id):
+                if c["id"] == rec_id:
+                    chat_id = c["chat_id"]
+                    break
+        if not chat_id:
+            return err("Укажите ID чата", 400)
+        res = send_stress(
+            "🔔 <b>Проверка связи</b>\nУведомления о стресс-тестах будут приходить сюда.",
+            chat_id=chat_id)
+        return ok({"ok": bool(res.get("ok")), "error": res.get("error")})
+
+    return err(f"unknown action: {action}")
 
 
 def ingest(cur, conn, body, company_id=None):
@@ -405,6 +506,30 @@ def ingest(cur, conn, body, company_id=None):
                 print(f"[INGEST_NOTIFY] run_id={run_id} telegram error: {notify_result.get('error')}")
         except Exception as e:
             print(f"[INGEST_NOTIFY] run_id={run_id} exception: {e}")
+
+    # Уведомления партнёра — в ЕГО чаты, по ЕГО настройкам и шаблонам.
+    # Не зависят от флага notify софта (им управляет панель партнёра) и никак
+    # не влияют на общий админский чат выше.
+    if company_id:
+        try:
+            for r in results:
+                if not r.get("success"):
+                    np.notify_company(cur, company_id, "test_failed", {
+                        "machine": body.get("machine_name"),
+                        "profile": body.get("profile_name"),
+                        "test_name": r.get("test_name"),
+                        "exit_code": r.get("exit_code"),
+                        "duration_sec": r.get("duration_sec"),
+                    })
+            np.notify_company(cur, company_id, "run_finished", {
+                "machine": body.get("machine_name"),
+                "profile": body.get("profile_name"),
+                "passed": passed, "total": len(results),
+            })
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[PARTNER_NOTIFY] run_id={run_id} exception: {e}")
 
     out = {"ok": True, "run_id": run_id, "results": len(results), "metrics": len(body.get("metrics") or [])}
     if notify_result is not None:

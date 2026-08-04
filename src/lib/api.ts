@@ -409,6 +409,17 @@ export const api = {
       fetch(`${URLS.stress}?action=folder_reorder`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "folder_reorder", folder_id, run_ids }) }).then(r => r.json()),
     folderReport: (id: number, adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=folder_report&id=${id}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    // Telegram-уведомления партнёра: чаты, события, шаблоны
+    notifyConfig: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=notify_config${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    notifySettingsSave: (data: Record<string, unknown>, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=notify_settings_save${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "notify_settings_save", ...data }) }).then(r => r.json()),
+    notifyChatSave: (data: Record<string, unknown>, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=notify_chat_save${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "notify_chat_save", ...data }) }).then(r => r.json()),
+    notifyChatDelete: (id: number, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=notify_chat_delete&id=${id}${stressQ(adminKey, auth)}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    notifyChatTest: (data: { id?: number; chat_id?: string }, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=notify_chat_test${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "notify_chat_test", ...data }) }).then(r => r.json()),
   },
   companySettings: {
     list: () => fetch(URLS.companySettings).then(r => r.json()),

@@ -6,6 +6,7 @@ import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import StressTestsTab from "@/components/admin/StressTestsTab"
 import PartnerSocial from "@/components/partners/PartnerSocial"
+import StressNotifySettings from "@/components/partners/StressNotifySettings"
 
 export default function PartnersStress() {
   const navigate = useNavigate()
@@ -142,6 +143,9 @@ export default function PartnersStress() {
           </div>
         )}
       </div>
+
+      {/* Telegram-уведомления: свои чаты, события и шаблоны */}
+      <StressNotifySettings session={sessionId} />
 
       {/* Единый модуль стресс-тестов в режиме партнёра */}
       <StressTestsTab scope="partner" session={sessionId} />
