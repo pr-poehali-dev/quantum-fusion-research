@@ -1170,3 +1170,16 @@ action=verify (публичный), brand_config/brand_save/brand_download/brand
 links_from_social/logo_base64_from_url/company_defaults, флаг prefilled
 в brand_status. Экшен brand_prefill — кнопка «Взять из профиля».
 Зависимость: pillow.
+
+[v7.88] Brand pack v2. В branding добавлены logo_url и verify_page_url.
+КАНОНИЧЕСКИЙ ПОРЯДОК ПОЛЕЙ (значим для подписи):
+logo_png_base64 -> logo_url -> verify_page_url -> links -> qr_url_template.
+БД: partner_brands +logo_url +verify_page_url (второе выводится из
+qr_url_template, если не задано).
+brand_pack.py: _qr_matrix/_qr_png — своя генерация QR (v5, EC L, маска 0,
+сверена с эталоном qrcode), build_brand_archive — ZIP (pack.stbrand,
+logo.png, qr-sample.png, README.txt).
+index.py: action=brand_archive (zip_base64); brand_download и
+partner_branding отдают ещё и assets {logo_base64, logo_url, qr_url_template}.
+ВАЖНО: старые сборки StressRunner не примут новый порядок полей — нужен
+релиз с обновлённым каноническим payload.

@@ -218,7 +218,18 @@ def handler(event, context):
                     return err("signing key not configured", 503)
                 if not pack:
                     return err("brand pack unavailable", 404)
-                return ok({"ok": True, "pack": pack})
+                # pack + assets: если PNG большой, клиент может взять логотип
+                # отдельно (или по logo_url), не разбирая пак.
+                br = pack.get("branding") or {}
+                return ok({
+                    "ok": True,
+                    "pack": pack,
+                    "assets": {
+                        "logo_base64": br.get("logo_png_base64") or "",
+                        "logo_url": br.get("logo_url") or "",
+                        "qr_url_template": br.get("qr_url_template") or "",
+                    },
+                })
             return err("bad request", 400)
 
         # ── Контур ПАРТНЁРА (ЛК): данные строго своей компании ──────────────
@@ -245,7 +256,7 @@ def handler(event, context):
             "notify_chat_delete", "notify_chat_test",
             # White-label брендинг PDF и файл-ключ .stbrand
             "brand_config", "brand_save", "brand_download", "brand_revoke",
-            "brand_prefill",
+            "brand_prefill", "brand_archive",
         }
         if not admin and action not in partner_allowed:
             return err("forbidden", 403)
@@ -284,7 +295,7 @@ def handler(event, context):
 
         # White-label брендинг PDF-отчётов + выдача файла-ключа .stbrand
         if action in ("brand_config", "brand_save", "brand_download",
-                      "brand_revoke", "brand_prefill"):
+                      "brand_revoke", "brand_prefill", "brand_archive"):
             if not notify_cid:
                 return err("company_required", 400)
             return brand_route(cur, conn, action, method, body, notify_cid)
@@ -422,7 +433,7 @@ def brand_route(cur, conn, action, method, body, company_id):
         conn.commit()
         return ok({"ok": True, "brand": bp.brand_status(cur, company_id)})
 
-    if action == "brand_download" and method in ("GET", "POST"):
+    if action in ("brand_download", "brand_archive") and method in ("GET", "POST"):
         pack, error = bp.build_pack(cur, company_id, signed=True)
         if error == "no_brand":
             return err("Сначала сохраните настройки брендинга", 400)
@@ -434,7 +445,26 @@ def brand_route(cur, conn, action, method, body, company_id):
             return err("brand pack unavailable", 400)
         comp = bp.get_company(cur, company_id)
         slug = "".join(ch if ch.isalnum() else "-" for ch in (comp[1] or "partner")).strip("-").lower()
-        return ok({"ok": True, "pack": pack, "filename": f"partner-{slug or 'brand'}.stbrand"})
+        slug = slug or "brand"
+
+        if action == "brand_archive":
+            # ZIP: подписанный pack + логотип + пример QR + инструкция
+            data = bp.build_brand_archive(cur, company_id, pack)
+            return ok({"ok": True, "filename": f"brand-{slug}.zip",
+                       "zip_base64": base64.b64encode(data).decode()})
+
+        # Плоский ответ: pack + отдельно ассеты (удобно при большом PNG)
+        br = pack.get("branding") or {}
+        return ok({
+            "ok": True,
+            "pack": pack,
+            "filename": f"partner-{slug}.stbrand",
+            "assets": {
+                "logo_base64": br.get("logo_png_base64") or "",
+                "logo_url": br.get("logo_url") or "",
+                "qr_url_template": br.get("qr_url_template") or "",
+            },
+        })
 
     if action == "brand_revoke" and method in ("POST", "PUT", "DELETE"):
         cur.execute(

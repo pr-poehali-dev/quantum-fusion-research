@@ -3,6 +3,45 @@
 
 ---
 
+## v7.88 | 2026-08-04 | Brand pack v2: logo_url, verify_page_url, ZIP-архив
+
+### Изменения формата (ВНИМАНИЕ: ломает совместимость подписи)
+В branding добавлены logo_url и verify_page_url. Порядок полей в каноническом
+payload теперь строго:
+  logo_png_base64 -> logo_url -> verify_page_url -> links -> qr_url_template
+Старые сборки StressRunner такой пак НЕ примут — нужен релиз с новым
+каноническим payload (public key менять не требуется).
+
+### БД (V0225)
+- partner_brands: +logo_url, +verify_page_url.
+  verify_page_url автоматически выводится из qr_url_template
+  (".../v/{verify_code}" -> ".../v"), если не передан явно.
+
+### Backend
+- [brand_pack.py] canonical_payload/_row_to_pack/save_brand/brand_status —
+  поддержка новых полей. +_qr_matrix()/_qr_png(): генерация QR (версия 5, EC L,
+  маска 0) СВОЕЙ реализацией без внешних зависимостей — сверена с эталоном
+  библиотеки qrcode, расхождений 0 модулей. +build_brand_archive(): ZIP с
+  pack.stbrand, logo.png, qr-sample.png и README.txt (инструкция на русском).
+- [index.py] +action=brand_archive (ZIP в zip_base64); brand_download и
+  partner_branding дополнительно отдают блок assets
+  {logo_base64, logo_url, qr_url_template} — удобно при большом PNG.
+  Поле pack в ответах сохранено (совместимость).
+- [requirements] +qrcode (фолбэк на свою реализацию, если пакета нет).
+
+### Frontend
+- [StressBrandSettings.tsx] основная кнопка «Сохранить и скачать архив» (ZIP
+  с картинками), рядом «Только файл-ключ». В сохранение передаются logo_url и
+  verify_page_url (origin + /v).
+
+### Проверка
+- Тесты stress 18/18. Порядок полей payload совпадает с ТЗ. Подпись пака из
+  архива проверяется публичным ключом. QR идентичен эталону на 3 разных URL.
+  Архив: pack.stbrand + logo.png + qr-sample.png + README.txt.
+- [V0226] тестовые данные брендинга сброшены.
+
+---
+
 ## v7.87 | 2026-08-04 | Брендинг PDF: автозаполнение из профиля компании
 
 ### Проблема

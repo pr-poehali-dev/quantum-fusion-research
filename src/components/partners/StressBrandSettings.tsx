@@ -9,6 +9,8 @@ type Brand = {
   partner_id: string
   partner_name: string
   logo_png_base64: string
+  logo_url?: string
+  verify_page_url?: string
   links: Link[]
   qr_url_template: string
   issued_at: string
@@ -98,7 +100,13 @@ export default function StressBrandSettings({ session }: { session: string }) {
   const save = (extra: Record<string, unknown> = {}) => {
     setSaving(true)
     return api.stress.brandSave(
-      { logo_png_base64: logo, links, qr_url_template: qrTpl, ...extra }, "", auth)
+      {
+        logo_png_base64: logo, links, qr_url_template: qrTpl,
+        // Прямая ссылка на логотип и адрес страницы проверки — попадают в pack
+        logo_url: brand?.logo_url || "",
+        verify_page_url: `${window.location.origin}/v`,
+        ...extra,
+      }, "", auth)
       .then(d => {
         if (d.error) { flash(false, d.error); return null }
         if (d.brand) apply(d.brand)
@@ -106,6 +114,28 @@ export default function StressBrandSettings({ session }: { session: string }) {
       })
       .catch(() => { flash(false, "Не удалось сохранить"); return null })
       .finally(() => setSaving(false))
+  }
+
+  const downloadArchive = async () => {
+    setSaving(true)
+    try {
+      const saved = await save()
+      if (!saved) return
+      const d = await api.stress.brandArchive("", auth)
+      if (d.error || !d.zip_base64) { flash(false, d.error || "Не удалось собрать архив"); return }
+      const bin = atob(d.zip_base64)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }))
+      const a = document.createElement("a")
+      a.href = url
+      a.download = d.filename || "brand.zip"
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      flash(true, "Архив скачан: файл-ключ, логотип, пример QR и инструкция")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const downloadKey = async () => {
@@ -337,10 +367,17 @@ export default function StressBrandSettings({ session }: { session: string }) {
 
           {/* Кнопки */}
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <button onClick={downloadKey} disabled={saving} style={{ cursor: "pointer" }}
+            <button onClick={downloadArchive} disabled={saving} style={{ cursor: "pointer" }}
+              title="ZIP: файл-ключ, логотип, пример QR-кода и инструкция"
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              <Icon name="FileArchive" size={14} />
+              Сохранить и скачать архив
+            </button>
+            <button onClick={downloadKey} disabled={saving} style={{ cursor: "pointer" }}
+              title="Только файл-ключ .stbrand, без картинок"
+              className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-xs text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-50">
               <Icon name="Download" size={14} />
-              Сохранить и скачать файл-ключ
+              Только файл-ключ
             </button>
             <button onClick={() => save().then(d => d && flash(true, "Сохранено"))} disabled={saving}
               style={{ cursor: "pointer" }}

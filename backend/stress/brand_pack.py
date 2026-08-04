@@ -48,7 +48,11 @@ def canonical_payload(pack: dict) -> bytes:
         "expires_at": pack.get("expires_at") or "",
         "brand_key": pack.get("brand_key") or "",
         "branding": {
+            # ПОРЯДОК КЛЮЧЕЙ ФИКСИРОВАН И ЗНАЧИМ (подпись считается по байтам):
+            # logo_png_base64 → logo_url → verify_page_url → links → qr_url_template
             "logo_png_base64": br.get("logo_png_base64") or "",
+            "logo_url": br.get("logo_url") or "",
+            "verify_page_url": br.get("verify_page_url") or "",
             "links": links,
             "qr_url_template": br.get("qr_url_template") or "",
         },
@@ -164,7 +168,8 @@ def company_defaults(cur, company_id):
 
 
 def _row_to_pack(row, company_uid, company_name):
-    (brand_key, logo, links, qr_tpl, issued_at, expires_at, revoked_at) = row
+    (brand_key, logo, links, qr_tpl, issued_at, expires_at, revoked_at,
+     logo_url, verify_page_url) = row
     if isinstance(links, str):
         try:
             links = json.loads(links or "[]")
@@ -179,6 +184,8 @@ def _row_to_pack(row, company_uid, company_name):
         "brand_key": brand_key or "",
         "branding": {
             "logo_png_base64": logo or "",
+            "logo_url": logo_url or "",
+            "verify_page_url": verify_page_url or "",
             "links": (links or [])[:MAX_LINKS],
             "qr_url_template": qr_tpl or "",
         },
@@ -189,7 +196,8 @@ def _row_to_pack(row, company_uid, company_name):
 def get_brand_row(cur, company_id):
     cur.execute(
         f"SELECT brand_key, logo_base64, links, qr_url_template, issued_at, "
-        f"expires_at, revoked_at FROM {SCHEMA}.partner_brands WHERE company_id = %s",
+        f"expires_at, revoked_at, logo_url, verify_page_url "
+        f"FROM {SCHEMA}.partner_brands WHERE company_id = %s",
         (int(company_id),),
     )
     return cur.fetchone()
@@ -253,6 +261,11 @@ def save_brand(cur, company_id, body):
         return False, "logo_too_big"
 
     qr_tpl = str(body.get("qr_url_template") or "").strip()[:512]
+    logo_url = str(body.get("logo_url") or "").strip()[:512]
+    verify_page_url = str(body.get("verify_page_url") or "").strip().rstrip("/")[:512]
+    # verify_page_url можно вывести из шаблона QR: .../v/{verify_code} → .../v
+    if not verify_page_url and "{verify_code}" in qr_tpl:
+        verify_page_url = qr_tpl.split("{verify_code}", 1)[0].rstrip("/")
 
     row = get_brand_row(cur, company_id)
     rotate = bool(body.get("rotate_key"))
@@ -267,16 +280,19 @@ def save_brand(cur, company_id, body):
     if row:
         cur.execute(
             f"UPDATE {SCHEMA}.partner_brands SET brand_key=%s, logo_base64=%s, "
-            f"links=%s, qr_url_template=%s, expires_at=%s, revoked_at=NULL, "
-            f"updated_at=NOW() WHERE company_id=%s",
-            (brand_key, logo, json.dumps(clean), qr_tpl, expires_at, int(company_id)),
+            f"links=%s, qr_url_template=%s, logo_url=%s, verify_page_url=%s, "
+            f"expires_at=%s, revoked_at=NULL, updated_at=NOW() WHERE company_id=%s",
+            (brand_key, logo, json.dumps(clean), qr_tpl, logo_url, verify_page_url,
+             expires_at, int(company_id)),
         )
     else:
         cur.execute(
             f"INSERT INTO {SCHEMA}.partner_brands "
-            f"(company_id, brand_key, logo_base64, links, qr_url_template, expires_at) "
-            f"VALUES (%s,%s,%s,%s,%s,%s)",
-            (int(company_id), brand_key, logo, json.dumps(clean), qr_tpl, expires_at),
+            f"(company_id, brand_key, logo_base64, links, qr_url_template, "
+            f"logo_url, verify_page_url, expires_at) "
+            f"VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (int(company_id), brand_key, logo, json.dumps(clean), qr_tpl,
+             logo_url, verify_page_url, expires_at),
         )
     # Брендинг настроен — включаем white-label для компании.
     cur.execute(
@@ -315,8 +331,9 @@ def brand_status(cur, company_id):
     # — подставляем данные из профиля компании, чтобы не вводить их вручную.
     logo = pack["branding"]["logo_png_base64"]
     links = pack["branding"]["links"]
+    logo_url = pack["branding"]["logo_url"]
     prefilled = False
-    if not logo or not links:
+    if not logo or not links or not logo_url:
         d = company_defaults(cur, company_id)
         if not logo and d["logo_png_base64"]:
             logo = d["logo_png_base64"]
@@ -324,6 +341,8 @@ def brand_status(cur, company_id):
         if not links and d["links"]:
             links = d["links"]
             prefilled = True
+        if not logo_url and d["logo_url"]:
+            logo_url = d["logo_url"]
 
     return {
         "configured": True,
@@ -331,6 +350,8 @@ def brand_status(cur, company_id):
         "partner_id": pack["partner_id"],
         "partner_name": pack["partner_name"],
         "logo_png_base64": logo,
+        "logo_url": logo_url,
+        "verify_page_url": pack["branding"]["verify_page_url"],
         "links": links,
         "qr_url_template": pack["branding"]["qr_url_template"],
         "issued_at": pack["issued_at"],
@@ -339,6 +360,218 @@ def brand_status(cur, company_id):
         "expired": expired,
         "has_key": bool(row[0]),
     }
+
+
+def _qr_matrix(data: str):
+    """QR-код версии 5 (37×37), коррекция L, байтовый режим — своя реализация,
+    чтобы не зависеть от внешней библиотеки. Возвращает матрицу bool или None."""
+    ver, size, cap, ec_len, blocks = 5, 37, 108, 26, 1  # 5-L: 108 байт данных
+    raw = data.encode("utf-8")
+    if len(raw) > cap - 2:
+        return None
+
+    # Битовый поток: режим 0100 + длина (8 бит для версий 1-9) + данные
+    bits = []
+    put = lambda val, n: bits.extend((val >> (n - 1 - i)) & 1 for i in range(n))
+    put(0b0100, 4)
+    put(len(raw), 8)
+    for byte in raw:
+        put(byte, 8)
+    put(0, min(4, cap * 8 - len(bits)))            # терминатор
+    while len(bits) % 8:
+        bits.append(0)
+    codewords = [int("".join(map(str, bits[i:i + 8])), 2) for i in range(0, len(bits), 8)]
+    for i in range(cap - len(codewords)):          # padding
+        codewords.append(0xEC if i % 2 == 0 else 0x11)
+
+    # Рид-Соломон в GF(256)
+    exp, log = [0] * 512, [0] * 256
+    x = 1
+    for i in range(255):
+        exp[i] = x
+        log[x] = i
+        x <<= 1
+        if x & 0x100:
+            x ^= 0x11D
+    for i in range(255, 512):
+        exp[i] = exp[i - 255]
+
+    gen = [1]
+    for i in range(ec_len):
+        new = [0] * (len(gen) + 1)
+        for j, c in enumerate(gen):
+            new[j] ^= c
+            new[j + 1] ^= exp[(log[c] + i) % 255] if c else 0
+        gen = new
+
+    rem = list(codewords) + [0] * ec_len
+    for i in range(len(codewords)):
+        factor = rem[i]
+        if factor:
+            lf = log[factor]
+            for j, g in enumerate(gen):
+                if g:
+                    rem[i + j] ^= exp[(log[g] + lf) % 255]
+    ec = rem[len(codewords):]
+    full = codewords + ec
+
+    # Разметка модулей
+    m = [[None] * size for _ in range(size)]
+
+    def finder(r0, c0):
+        for r in range(-1, 8):
+            for c in range(-1, 8):
+                rr, cc = r0 + r, c0 + c
+                if 0 <= rr < size and 0 <= cc < size:
+                    inside = (0 <= r <= 6 and 0 <= c <= 6)
+                    dark = inside and (r in (0, 6) or c in (0, 6) or (2 <= r <= 4 and 2 <= c <= 4))
+                    m[rr][cc] = dark
+    finder(0, 0); finder(0, size - 7); finder(size - 7, 0)
+
+    for i in range(8, size - 8):                    # тайминги
+        m[6][i] = m[i][6] = (i % 2 == 0)
+
+    for r in range(28, 33):                         # выравнивание (версия 5)
+        for c in range(28, 33):
+            m[r][c] = (r in (28, 32) or c in (28, 32) or (r == 30 and c == 30))
+
+    m[size - 8][8] = True                           # dark module
+    for i in range(9):                              # зоны формата
+        if m[8][i] is None: m[8][i] = False
+        if m[i][8] is None: m[i][8] = False
+    for i in range(8):
+        if m[8][size - 1 - i] is None: m[8][size - 1 - i] = False
+        if m[size - 1 - i][8] is None: m[size - 1 - i][8] = False
+
+    # Укладка данных зигзагом снизу вверх + маска 0
+    bitstream = [(b >> (7 - i)) & 1 for b in full for i in range(8)]
+    idx, upward, col = 0, True, size - 1
+    while col > 0:
+        if col == 6:
+            col -= 1
+        rows = range(size - 1, -1, -1) if upward else range(size)
+        for row in rows:
+            for c in (col, col - 1):
+                if m[row][c] is None:
+                    bit = bitstream[idx] if idx < len(bitstream) else 0
+                    idx += 1
+                    if (row + c) % 2 == 0:          # маска 000
+                        bit ^= 1
+                    m[row][c] = bool(bit)
+        upward = not upward
+        col -= 2
+
+    # Формат: маска 000 + уровень L → биты 111011111000100
+    # fmt[0] — старший бит. Копия 1: вокруг левого верхнего искателя,
+    # копия 2: снизу слева (fmt[0..6]) и справа сверху (fmt[7..14]).
+    fmt = [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0]
+    for i in range(6):
+        m[8][i] = bool(fmt[i])
+    m[8][7] = bool(fmt[6])
+    m[8][8] = bool(fmt[7])
+    m[7][8] = bool(fmt[8])
+    for i in range(9, 15):
+        m[14 - i][8] = bool(fmt[i])
+    # Вторая копия
+    for i in range(7):
+        m[size - 1 - i][8] = bool(fmt[i])
+    for i in range(7, 15):
+        m[8][size - 15 + i] = bool(fmt[i])
+    return [[bool(v) for v in row] for row in m]
+
+
+def _qr_png(data: str, box: int = 8) -> bytes:
+    """QR-код в PNG. Возвращает b"" при неудаче — архив всё равно соберётся,
+    просто без картинки QR (файл-ключ и логотип важнее)."""
+    try:
+        import io
+        try:
+            import qrcode  # если библиотека есть — берём её (надёжнее)
+            buf = io.BytesIO()
+            qrcode.make(data, box_size=box, border=2).save(buf, format="PNG")
+            return buf.getvalue()
+        except ImportError:
+            pass
+
+        from PIL import Image
+        matrix = _qr_matrix(data)
+        if not matrix:
+            return b""
+        n, border = len(matrix), 2
+        side = (n + border * 2) * box
+        img = Image.new("RGB", (side, side), "white")
+        px = img.load()
+        for r, row in enumerate(matrix):
+            for c, dark in enumerate(row):
+                if not dark:
+                    continue
+                x0, y0 = (c + border) * box, (r + border) * box
+                for y in range(y0, y0 + box):
+                    for x in range(x0, x0 + box):
+                        px[x, y] = (0, 0, 0)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        print(f"[BRANDING] QR не сгенерирован: {e}")
+        return b""
+
+
+def build_brand_archive(cur, company_id, pack):
+    """ZIP с готовыми материалами брендинга: подписанный pack + картинки.
+
+    Внутри:
+      pack.stbrand   — подписанный brand pack (его импортирует StressRunner)
+      logo.png       — логотип для шапки отчёта
+      qr-sample.png  — пример QR (с плейсхолдером), чтобы проверить вёрстку
+      README.txt     — короткая инструкция на русском
+    """
+    import io
+    import zipfile
+
+    br = pack.get("branding") or {}
+    logo_b64 = br.get("logo_png_base64") or ""
+    qr_tpl = br.get("qr_url_template") or ""
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("pack.stbrand", json.dumps(pack, ensure_ascii=False, indent=2))
+
+        if logo_b64:
+            try:
+                z.writestr("logo.png", base64.b64decode(logo_b64))
+            except Exception as e:
+                print(f"[BRANDING] логотип не вшит в архив: {e}")
+
+        sample_url = qr_tpl.replace("{verify_code}", "SAMPLE0000000000") if qr_tpl else ""
+        if sample_url:
+            qr = _qr_png(sample_url)
+            if qr:
+                z.writestr("qr-sample.png", qr)
+
+        links_txt = "\n".join(
+            f"  - {l.get('label') or ''}: {l.get('url') or ''}"
+            for l in (br.get("links") or [])) or "  (не заданы)"
+        z.writestr("README.txt", (
+            "Материалы брендинга отчётов\n"
+            "===========================\n\n"
+            f"Компания: {pack.get('partner_name') or ''}\n"
+            f"Выдан:    {pack.get('issued_at') or ''}\n"
+            f"Действует до: {pack.get('expires_at') or ''}\n\n"
+            "Что внутри:\n"
+            "  pack.stbrand  - файл-ключ. Импортируйте его в программе\n"
+            "                  StressRunner: раздел \"Брендинг PDF\" -> Импорт.\n"
+            "                  После этого отчёты выходят под вашим брендом,\n"
+            "                  в том числе без интернета.\n"
+            "  logo.png      - ваш логотип из шапки отчёта.\n"
+            "  qr-sample.png - пример QR-кода (с тестовым кодом), чтобы\n"
+            "                  посмотреть, как он будет выглядеть.\n\n"
+            f"Контакты в отчёте:\n{links_txt}\n\n"
+            "ВАЖНО: файл-ключ подписан. Не редактируйте pack.stbrand вручную -\n"
+            "программа перестанет его принимать. Если нужно что-то изменить,\n"
+            "поправьте настройки в личном кабинете и скачайте архив заново.\n"
+        ))
+    return buf.getvalue()
 
 
 def index_verify_code(cur, company_id, run_id, run_uid, finished_at):
