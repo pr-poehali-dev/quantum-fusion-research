@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
+import StressBrandingTab from "@/components/admin/StressBrandingTab"
 import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
 import { openRunReport, type ReportRun } from "@/components/admin/stress/folderReport"
 import { testTitle } from "@/components/admin/stress/scoreFormat"
@@ -79,7 +80,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
   const isPartner = scope === "partner"
   // Авторизация запросов к stress: партнёр — по сессии, админ — по adminKey
   const auth = isPartner ? { session } : undefined
-  const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics">("runs")
+  const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics" | "branding">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
@@ -192,11 +193,17 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
               style={{ cursor: "pointer" }}>
               <Icon name="SlidersHorizontal" size={15} /> Метрики
             </button>
+            <button onClick={() => setView("branding")}
+              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "branding" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="BadgeCheck" size={15} /> Брендинг и уведомления
+            </button>
           </>
         )}
       </div>
 
-      {view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} />
+      {view === "branding" ? <StressBrandingTab adminKey={adminKey} />
+       : view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} />
        : view === "profiles" ? <StressProfilesTab />
        : view === "folders" ? (
          <StressFoldersPanel

@@ -24,8 +24,20 @@ type Brand = {
 
 const MAX_LINKS = 5
 
-export default function StressBrandSettings({ session }: { session: string }) {
-  const [open, setOpen] = useState(false)
+type Props = {
+  /** Партнёрский режим: сессия из ЛК. */
+  session?: string | null
+  /** Админский режим: ключ админа + выбранная компания. */
+  adminKey?: string
+  companyId?: number | null
+  /** Показать блок сразу раскрытым (в админке — да). */
+  defaultOpen?: boolean
+}
+
+export default function StressBrandSettings({
+  session, adminKey = "", companyId = null, defaultOpen = false,
+}: Props) {
+  const [open, setOpen] = useState(defaultOpen)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [brand, setBrand] = useState<Brand | null>(null)
@@ -37,7 +49,8 @@ export default function StressBrandSettings({ session }: { session: string }) {
   const loadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const auth = { session }
+  // Партнёр ходит по сессии, админ — по adminKey + выбранной компании.
+  const auth = session ? { session } : { companyId }
 
   const apply = (b: Brand) => {
     setBrand(b)
@@ -49,7 +62,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
   const load = useCallback(() => {
     setLoading(true)
     setLoadError(null)
-    api.stress.brandConfig("", auth)
+    api.stress.brandConfig(adminKey, auth)
       .then(d => {
         if (d.error || !d.brand) { setLoadError(d.error || "Не удалось загрузить"); return }
         apply(d.brand)
@@ -57,7 +70,13 @@ export default function StressBrandSettings({ session }: { session: string }) {
       .catch(() => setLoadError("Нет связи с сервером"))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
+  }, [session, adminKey, companyId])
+
+  // Смена компании в админке — сбрасываем и грузим заново
+  useEffect(() => {
+    loadedRef.current = false
+    setBrand(null)
+  }, [companyId])
 
   useEffect(() => {
     if (!open || loadedRef.current) return
@@ -107,7 +126,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
         // боевой адрес подставит сервер.
         logo_url: brand?.logo_url || "",
         ...extra,
-      }, "", auth)
+      }, adminKey, auth)
       .then(d => {
         if (d.error) { flash(false, d.error); return null }
         if (d.brand) apply(d.brand)
@@ -122,7 +141,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
     try {
       const saved = await save()
       if (!saved) return
-      const d = await api.stress.brandArchive("", auth)
+      const d = await api.stress.brandArchive(adminKey, auth)
       if (d.error || !d.zip_base64) { flash(false, d.error || "Не удалось собрать архив"); return }
       const bin = atob(d.zip_base64)
       const bytes = new Uint8Array(bin.length)
@@ -144,7 +163,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
     try {
       const saved = await save()
       if (!saved) return
-      const d = await api.stress.brandDownload("", auth)
+      const d = await api.stress.brandDownload(adminKey, auth)
       if (d.error || !d.pack) { flash(false, d.error || "Не удалось создать файл"); return }
       const blob = new Blob([JSON.stringify(d.pack, null, 2)], { type: "application/json" })
       const url = URL.createObjectURL(blob)
@@ -168,7 +187,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
   const revoke = async () => {
     if (!confirm("Отозвать брендинг? Программа перестанет использовать ваш логотип в отчётах.")) return
     setSaving(true)
-    api.stress.brandRevoke("", auth)
+    api.stress.brandRevoke(adminKey, auth)
       .then(d => { if (d.brand) apply(d.brand); flash(true, "Брендинг отозван") })
       .catch(() => flash(false, "Не удалось отозвать"))
       .finally(() => setSaving(false))
@@ -176,7 +195,7 @@ export default function StressBrandSettings({ session }: { session: string }) {
 
   const prefill = () => {
     setSaving(true)
-    api.stress.brandPrefill("", auth)
+    api.stress.brandPrefill(adminKey, auth)
       .then(d => {
         if (d.error) { flash(false, d.error); return }
         if (d.logo_png_base64) setLogo(d.logo_png_base64)

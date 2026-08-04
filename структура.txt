@@ -1201,3 +1201,10 @@ logo_png_base64 обнуляется (логотип едет через logo.pn
 assets), ссылки percent-кодируются, названия ссылок — только латиница.
 build_brand_archive кладёт logo.png всегда (берёт из logo_url/профиля).
 assets не подписывается → логотип там отдаётся всегда.
+
+[v7.91] Админка: вкладка «Брендинг и уведомления» в стресс-тестах
+(src/components/admin/StressBrandingTab.tsx) — выбор компании-партнёра +
+токен + те же блоки, что в ЛК. StressBrandSettings и StressNotifySettings
+теперь двухрежимные: props session (партнёр) ЛИБО adminKey+companyId (админ),
+defaultOpen. Смена companyId перезагружает данные. Бэкенд не менялся —
+admin + ?company_id уже поддерживался.

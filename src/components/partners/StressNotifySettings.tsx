@@ -37,8 +37,20 @@ const EVENTS = [
   { key: "run_finished", label: "Прогон завершён", hint: "Итог: пройдено/провалено" },
 ] as const
 
-export default function StressNotifySettings({ session }: { session: string }) {
-  const [open, setOpen] = useState(false)
+type Props = {
+  /** Партнёрский режим: сессия из ЛК. */
+  session?: string | null
+  /** Админский режим: ключ админа + выбранная компания. */
+  adminKey?: string
+  companyId?: number | null
+  /** Показать блок сразу раскрытым (в админке — да). */
+  defaultOpen?: boolean
+}
+
+export default function StressNotifySettings({
+  session, adminKey = "", companyId = null, defaultOpen = false,
+}: Props) {
+  const [open, setOpen] = useState(defaultOpen)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -54,12 +66,13 @@ export default function StressNotifySettings({ session }: { session: string }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const loadedRef = useRef(false)
 
-  const auth = { session }
+  // Партнёр ходит по сессии, админ — по adminKey + выбранной компании.
+  const auth = session ? { session } : { companyId }
 
   const load = useCallback(() => {
     setLoading(true)
     setLoadError(null)
-    api.stress.notifyConfig("", auth)
+    api.stress.notifyConfig(adminKey, auth)
       .then(d => {
         if (d.error || !d.settings) {
           setLoadError(d.error || "Не удалось загрузить настройки")
@@ -73,7 +86,13 @@ export default function StressNotifySettings({ session }: { session: string }) {
       .catch(() => setLoadError("Нет связи с сервером"))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
+  }, [session, adminKey, companyId])
+
+  // Смена компании в админке — сбрасываем и грузим заново
+  useEffect(() => {
+    loadedRef.current = false
+    setSettings(null)
+  }, [companyId])
 
   // Грузим ОДИН раз при первом открытии. Раньше зависимость от settings
   // зацикливала эффект: при ошибке settings оставался пустым → бесконечная
@@ -94,7 +113,7 @@ export default function StressNotifySettings({ session }: { session: string }) {
     const next = { ...settings, ...patch }
     setSettings(next)
     setSaving(true)
-    api.stress.notifySettingsSave(next as unknown as Record<string, unknown>, "", auth)
+    api.stress.notifySettingsSave(next as unknown as Record<string, unknown>, adminKey, auth)
       .then(d => { if (d.settings) setSettings(d.settings) })
       .catch(() => flash(false, "Не удалось сохранить"))
       .finally(() => setSaving(false))
@@ -104,7 +123,7 @@ export default function StressNotifySettings({ session }: { session: string }) {
     const cid = newChatId.trim()
     if (!cid) return
     setSaving(true)
-    api.stress.notifyChatSave({ chat_id: cid, title: newTitle.trim() }, "", auth)
+    api.stress.notifyChatSave({ chat_id: cid, title: newTitle.trim() }, adminKey, auth)
       .then(d => {
         if (d.error) { flash(false, d.error); return }
         setChats(d.chats || [])
@@ -118,21 +137,21 @@ export default function StressNotifySettings({ session }: { session: string }) {
   const patchChat = (chat: Chat, patch: Partial<Chat>) => {
     const next = { ...chat, ...patch }
     setChats(cs => cs.map(c => (c.id === chat.id ? next : c)))
-    api.stress.notifyChatSave(next as unknown as Record<string, unknown>, "", auth)
+    api.stress.notifyChatSave(next as unknown as Record<string, unknown>, adminKey, auth)
       .then(d => { if (d.chats) setChats(d.chats) })
       .catch(() => flash(false, "Не удалось сохранить чат"))
   }
 
   const delChat = (id: number) => {
     if (!confirm("Удалить этот чат из уведомлений?")) return
-    api.stress.notifyChatDelete(id, "", auth)
+    api.stress.notifyChatDelete(id, adminKey, auth)
       .then(d => { if (d.chats) setChats(d.chats) })
       .catch(() => flash(false, "Не удалось удалить"))
   }
 
   const testChat = (chat_id: string) => {
     setTesting(chat_id)
-    api.stress.notifyChatTest({ chat_id }, "", auth)
+    api.stress.notifyChatTest({ chat_id }, adminKey, auth)
       .then(d => {
         if (d.ok) flash(true, "Сообщение отправлено — проверьте чат")
         else flash(false, `Telegram: ${d.error || "не доставлено"}. Добавьте бота в чат.`)
