@@ -17,6 +17,7 @@ type Brand = {
   expired: boolean
   has_key?: boolean
   signing_ready?: boolean
+  prefilled?: boolean
 }
 
 const MAX_LINKS = 5
@@ -142,6 +143,23 @@ export default function StressBrandSettings({ session }: { session: string }) {
       .finally(() => setSaving(false))
   }
 
+  const prefill = () => {
+    setSaving(true)
+    api.stress.brandPrefill("", auth)
+      .then(d => {
+        if (d.error) { flash(false, d.error); return }
+        if (d.logo_png_base64) setLogo(d.logo_png_base64)
+        if (d.links?.length) setLinks(d.links)
+        if (!d.logo_png_base64 && !d.links?.length) {
+          flash(false, "В профиле компании пока нет логотипа и ссылок")
+          return
+        }
+        flash(true, "Данные из профиля подставлены — не забудьте сохранить")
+      })
+      .catch(() => flash(false, "Не удалось загрузить данные профиля"))
+      .finally(() => setSaving(false))
+  }
+
   const setLink = (i: number, patch: Partial<Link>) =>
     setLinks(ls => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
 
@@ -209,6 +227,17 @@ export default function StressBrandSettings({ session }: { session: string }) {
             </p>
           </div>
 
+          {/* Данные подтянуты из профиля компании */}
+          {brand.prefilled && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-green-500/25 bg-green-500/5 p-3">
+              <Icon name="Sparkles" size={14} className="mt-0.5 shrink-0 text-green-500" />
+              <p className="text-xs text-foreground/70">
+                Логотип и контакты подставлены из профиля вашей компании — проверьте
+                и нажмите «Сохранить и скачать файл-ключ».
+              </p>
+            </div>
+          )}
+
           {/* Статус */}
           {brand.configured && (
             <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
@@ -247,6 +276,11 @@ export default function StressBrandSettings({ session }: { session: string }) {
                 <button onClick={() => fileRef.current?.click()} style={{ cursor: "pointer" }}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground">
                   Выбрать картинку
+                </button>
+                <button onClick={prefill} disabled={saving} style={{ cursor: "pointer" }}
+                  title="Подставить логотип и контакты из профиля компании"
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground disabled:opacity-50">
+                  <Icon name="RefreshCw" size={12} /> Взять из профиля
                 </button>
                 {logo && (
                   <button onClick={() => setLogo("")} style={{ cursor: "pointer" }}

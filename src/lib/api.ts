@@ -427,6 +427,8 @@ export const api = {
       fetch(`${URLS.stress}?action=brand_save${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "brand_save", ...data }) }).then(r => r.json()),
     brandDownload: (adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=brand_download${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    brandPrefill: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=brand_prefill${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     brandRevoke: (adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=brand_revoke${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "brand_revoke" }) }).then(r => r.json()),
     verifyReport: (code: string) =>

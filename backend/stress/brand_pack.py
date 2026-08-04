@@ -85,6 +85,84 @@ def verify_code(brand_key: str, run_uid: str, finished_at) -> str:
     return b64.replace("+", "-").replace("/", "_").rstrip("=")[:16]
 
 
+def _label_for_url(url: str) -> str:
+    """Человекочитаемое название ссылки по домену (Telegram, Avito, ...)."""
+    u = (url or "").lower()
+    known = [
+        ("t.me", "Telegram"), ("telegram", "Telegram"), ("vk.com", "ВКонтакте"),
+        ("avito", "Avito"), ("youtube", "YouTube"), ("youtu.be", "YouTube"),
+        ("tiktok", "TikTok"), ("instagram", "Instagram"), ("wa.me", "WhatsApp"),
+        ("whatsapp", "WhatsApp"), ("ozon", "Ozon"), ("wildberries", "Wildberries"),
+        ("dzen", "Дзен"), ("rutube", "RuTube"), ("mailto:", "Почта"), ("tel:", "Телефон"),
+    ]
+    for needle, label in known:
+        if needle in u:
+            return label
+    # Иначе — домен без www и схемы
+    host = u.split("//", 1)[-1].split("/", 1)[0].replace("www.", "")
+    return host or "Сайт"
+
+
+def links_from_social(social_links: str):
+    """Ссылки из профиля партнёра (по одной на строку) → [{label, url}]."""
+    out = []
+    for line in (social_links or "").splitlines():
+        url = line.strip()
+        if not url:
+            continue
+        if not url.startswith(("http://", "https://", "mailto:", "tel:")):
+            url = "https://" + url
+        out.append({"label": _label_for_url(url), "url": url})
+        if len(out) >= MAX_LINKS:
+            break
+    return out
+
+
+def logo_base64_from_url(url: str) -> str:
+    """Скачивает логотип партнёра и приводит к PNG base64 (≤512×512).
+
+    Логотипы в профиле лежат в WebP, а brand pack требует PNG — конвертируем.
+    Любая ошибка не критична: вернём пусто, партнёр сможет загрузить вручную.
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+    try:
+        import io
+        import urllib.request
+        from PIL import Image
+
+        req = urllib.request.Request(url, headers={"User-Agent": "BeGraphics/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read(8 * 1024 * 1024)
+        im = Image.open(io.BytesIO(raw))
+        # Прозрачность сохраняем (RGBA), остальное приводим к RGB
+        im = im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") else "RGB")
+        im.thumbnail((512, 512), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        print(f"[BRANDING] не удалось подготовить логотип {url}: {e}")
+        return ""
+
+
+def company_defaults(cur, company_id):
+    """Логотип и контакты, уже заполненные партнёром в кабинете, — чтобы
+    брендинг не пришлось вводить второй раз."""
+    cur.execute(
+        f"SELECT report_logo_url, social_links FROM {SCHEMA}.partner_companies "
+        f"WHERE id = %s", (int(company_id),))
+    r = cur.fetchone()
+    if not r:
+        return {"logo_png_base64": "", "links": [], "logo_url": ""}
+    return {
+        "logo_png_base64": logo_base64_from_url(r[0]),
+        "links": links_from_social(r[1]),
+        "logo_url": r[0] or "",
+    }
+
+
 def _row_to_pack(row, company_uid, company_name):
     (brand_key, logo, links, qr_tpl, issued_at, expires_at, revoked_at) = row
     if isinstance(links, str):
@@ -214,23 +292,46 @@ def brand_status(cur, company_id):
     comp = get_company(cur, company_id)
     row = get_brand_row(cur, company_id)
     if not row:
+        # Брендинг ещё не настраивали — подставляем логотип и контакты,
+        # которые партнёр уже указал в кабинете, чтобы не вводить дважды.
+        d = company_defaults(cur, company_id)
         return {
             "configured": False,
             "partner_id": str(comp[0]) if comp else "",
             "partner_name": comp[1] if comp else "",
-            "links": [], "logo_png_base64": "", "qr_url_template": "",
+            "links": d["links"],
+            "logo_png_base64": d["logo_png_base64"],
+            "logo_url": d["logo_url"],
+            "prefilled": bool(d["logo_png_base64"] or d["links"]),
+            "qr_url_template": "",
             "issued_at": "", "expires_at": "", "revoked": False, "expired": False,
         }
     pack = _row_to_pack(row, comp[0], comp[1])
     revoked = pack.pop("_revoked", False)
     expires_at = row[5]
     expired = bool(expires_at and expires_at < datetime.now(timezone.utc))
+
+    # Запись есть, но логотип/ссылки пустые (например, сохранили до заполнения)
+    # — подставляем данные из профиля компании, чтобы не вводить их вручную.
+    logo = pack["branding"]["logo_png_base64"]
+    links = pack["branding"]["links"]
+    prefilled = False
+    if not logo or not links:
+        d = company_defaults(cur, company_id)
+        if not logo and d["logo_png_base64"]:
+            logo = d["logo_png_base64"]
+            prefilled = True
+        if not links and d["links"]:
+            links = d["links"]
+            prefilled = True
+
     return {
         "configured": True,
+        "prefilled": prefilled,
         "partner_id": pack["partner_id"],
         "partner_name": pack["partner_name"],
-        "logo_png_base64": pack["branding"]["logo_png_base64"],
-        "links": pack["branding"]["links"],
+        "logo_png_base64": logo,
+        "links": links,
         "qr_url_template": pack["branding"]["qr_url_template"],
         "issued_at": pack["issued_at"],
         "expires_at": pack["expires_at"],

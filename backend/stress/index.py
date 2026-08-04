@@ -245,6 +245,7 @@ def handler(event, context):
             "notify_chat_delete", "notify_chat_test",
             # White-label брендинг PDF и файл-ключ .stbrand
             "brand_config", "brand_save", "brand_download", "brand_revoke",
+            "brand_prefill",
         }
         if not admin and action not in partner_allowed:
             return err("forbidden", 403)
@@ -282,7 +283,8 @@ def handler(event, context):
             return notify_config_route(cur, conn, action, method, params, body, notify_cid)
 
         # White-label брендинг PDF-отчётов + выдача файла-ключа .stbrand
-        if action in ("brand_config", "brand_save", "brand_download", "brand_revoke"):
+        if action in ("brand_config", "brand_save", "brand_download",
+                      "brand_revoke", "brand_prefill"):
             if not notify_cid:
                 return err("company_required", 400)
             return brand_route(cur, conn, action, method, body, notify_cid)
@@ -405,6 +407,11 @@ def brand_route(cur, conn, action, method, body, company_id):
         st = bp.brand_status(cur, company_id)
         st["signing_ready"] = bool(os.environ.get("STRESS_BRAND_SIGNING_KEY_PEM", "").strip())
         return ok({"ok": True, "brand": st})
+
+    if action == "brand_prefill" and method == "GET":
+        # Подтянуть логотип и контакты из профиля партнёра (для кнопки
+        # «Взять из профиля», когда брендинг уже сохранён).
+        return ok({"ok": True, **bp.company_defaults(cur, company_id)})
 
     if action == "brand_save" and method in ("POST", "PUT"):
         done, error = bp.save_brand(cur, company_id, body)

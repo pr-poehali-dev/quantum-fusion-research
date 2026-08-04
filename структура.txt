@@ -1163,3 +1163,10 @@ action=verify (публичный), brand_config/brand_save/brand_download/brand
 файла-ключа), src/pages/VerifyReport.tsx (роут /v/:code — проверка по QR).
 ВАЖНО: публичный RSA-ключ должен быть вшит в StressRunner
 (PartnerBrandingKeys.cs), иначе программа не примет подпись.
+
+[v7.87] Брендинг PDF автозаполняется из профиля компании: логотип
+(report_logo_url, WebP→PNG ≤512px base64) и контакты (social_links →
+[{label,url}] с определением названия по домену). brand_pack.py:
+links_from_social/logo_base64_from_url/company_defaults, флаг prefilled
+в brand_status. Экшен brand_prefill — кнопка «Взять из профиля».
+Зависимость: pillow.

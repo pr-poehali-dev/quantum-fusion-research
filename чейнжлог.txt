@@ -3,6 +3,33 @@
 
 ---
 
+## v7.87 | 2026-08-04 | Брендинг PDF: автозаполнение из профиля компании
+
+### Проблема
+В блоке «Брендинг PDF-отчётов» логотип и контакты приходилось вводить заново,
+хотя партнёр уже указал их в кабинете (partner_companies.report_logo_url и
+social_links).
+
+### Изменения
+- [stress/brand_pack.py] +links_from_social() — ссылки из профиля с
+  автоопределением названия по домену (Telegram, Avito, TikTok, YouTube, VK,
+  WhatsApp, Ozon, Wildberries и др.); +logo_base64_from_url() — логотип с CDN
+  приводится к PNG ≤512×512 base64 (в профиле хранится WebP, а brand pack
+  требует PNG); +company_defaults(). brand_status() подставляет эти данные,
+  если брендинг ещё не настроен ИЛИ поля пустые, и отдаёт флаг prefilled.
+- [stress/index.py] +action=brand_prefill — подтянуть данные профиля по кнопке.
+- [stress/requirements.txt] +pillow.
+- [partners/StressBrandSettings.tsx] плашка «данные подставлены из профиля» и
+  кнопка «Взять из профиля» рядом с выбором логотипа.
+- [V0224] очищены тестовые данные брендинга (company_id=3), созданные при
+  проверке функционала, — чтобы сработало автозаполнение.
+
+### Проверка
+- Тесты stress 18/18. PowerTechStore: логотип + 3 ссылки (Avito/TikTok/YouTube),
+  PulsePC и RedShark: логотип + Telegram — всё подтянулось автоматически.
+
+---
+
 ## v7.86 | 2026-08-04 | White-label брендинг PDF партнёров (.stbrand, offline)
 
 ### Задача
