@@ -1192,3 +1192,12 @@ partner_branding отдают ещё и assets {logo_base64, logo_url, qr_url_te
 — отпечаток SPKI-SHA256 для сверки с EXE (в brand_config: key_fingerprint).
 Новые экшены: partner_branding_assets (докачка картинок),
 partner_branding_zip (ZIP по X-Stress-Token).
+
+[v7.90] ВАЖНО про подпись brand pack: payload ОБЯЗАН быть чистым ASCII без
+символов + < > & ' — иначе .NET (System.Text.Json, JavaScriptEncoder.Default)
+экранирует их в \uXXXX и подпись не сойдётся, хотя ключи верные.
+brand_pack._payload_is_portable проверяет это ПЕРЕД подписью; при нарушении
+logo_png_base64 обнуляется (логотип едет через logo.png в ZIP / logo_url /
+assets), ссылки percent-кодируются, названия ссылок — только латиница.
+build_brand_archive кладёт logo.png всегда (берёт из logo_url/профиля).
+assets не подписывается → логотип там отдаётся всегда.

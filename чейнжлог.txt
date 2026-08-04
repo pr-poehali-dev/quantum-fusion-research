@@ -3,6 +3,40 @@
 
 ---
 
+## v7.90 | 2026-08-04 | ФИКС: «подпись не совпала» при импорте .stbrand
+
+### Симптом
+StressRunner отвергал корректно подписанный pack: «Public key в EXE правильный,
+но pack подписан другим private key». Отпечаток в EXE F513BE5CD6510FD8 —
+совпадает с нашим, т.е. ключи были ни при чём.
+
+### Причина
+Расходился САМ ПОДПИСЫВАЕМЫЙ ТЕКСТ, а не ключи. В payload попадал inline-логотип
+(logo_png_base64), где 2632 раза встречается символ «+». System.Text.Json (.NET)
+по умолчанию (JavaScriptEncoder.Default) экранирует «+» в \u002B, а также
+< > & ' и любые не-ASCII. JSON.stringify в Node и json.dumps в Python этого не
+делают → байты payload на сайте и в EXE не совпадали → verify падал.
+
+### Решение (payload делаем «переносимым»: чистый ASCII без спецсимволов)
+- [brand_pack] +_UNSAFE_CHARS/_payload_is_portable/_url_safe/_ascii_safe.
+  build_pack проверяет payload перед подписью: если он не переносим —
+  logo_png_base64 обнуляется (логотип всё равно доезжает тремя другими
+  путями: logo.png в ZIP, logo_url, assets — все разрешены спекой §2.1),
+  при необходимости ссылки приводятся к percent-encoding.
+- Названия ссылок теперь строго латиницей (ВКонтакте→VK, Дзен→Dzen,
+  Почта→Email, Телефон→Phone) — кириллица тоже ломала подпись.
+- [brand_pack.build_brand_archive] логотип для logo.png берётся из logo_url или
+  профиля компании, если в паке он пуст, — архив всегда с картинкой.
+- [index.py] в assets (не подписывается) логотип отдаётся всегда, даже когда
+  в паке пусто; +verify_page_url в assets для brand_download.
+
+### Результат
+- pack.stbrand: 155 КБ -> 1.2 КБ, payload .NET-совместим, подпись проверяется
+  публичным ключом StressRunner. Архив: pack.stbrand + logo.png (118 КБ) +
+  qr-sample.png + README.txt. Тесты stress 18/18.
+
+---
+
 ## v7.89 | 2026-08-04 | Brand pack: сверка со спекой v2, self-test, боевой домен
 
 ### Проверено по обновлённой PARTNER_BRANDING_SITE.md

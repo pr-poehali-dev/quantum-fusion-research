@@ -34,6 +34,45 @@ def _iso(dt) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Символы, которые сериализаторы кодируют ПО-РАЗНОМУ: JSON.stringify (Node)
+# оставляет их как есть, а System.Text.Json (.NET) по умолчанию экранирует в
+# \uXXXX. Если такой символ попадёт в подписываемый текст, байты payload на
+# сайте и в StressRunner разойдутся → «подпись не совпала», хотя ключи верные.
+# Поэтому payload держим строго ASCII и без этих символов.
+_UNSAFE_CHARS = "+<>&'"
+
+
+def _url_safe(url: str) -> str:
+    """Адрес без символов, которые .NET экранирует: кириллица и спецсимволы
+    переводятся в процентную кодировку (ссылка остаётся рабочей)."""
+    import urllib.parse
+
+    out = urllib.parse.quote(url or "", safe=":/?#[]@!$()*,;=-._~%")
+    for ch in _UNSAFE_CHARS:
+        out = out.replace(ch, "%{:02X}".format(ord(ch)))
+    return out
+
+
+def _ascii_safe(text: str) -> str:
+    """Подпись ссылки без проблемных символов (для названий вроде «Ozon&Co»)."""
+    cleaned = "".join(" " if ch in _UNSAFE_CHARS else ch for ch in (text or ""))
+    if any(ord(ch) > 127 for ch in cleaned):
+        # Кириллицу в подписи заменяем на домен — он всегда ASCII
+        return ""
+    return " ".join(cleaned.split())
+
+
+def _payload_is_portable(payload: bytes) -> bool:
+    """True, если payload одинаково сериализуется и в Node, и в .NET."""
+    try:
+        text = payload.decode("utf-8")
+    except Exception:
+        return False
+    if any(ord(ch) > 127 for ch in text):
+        return False
+    return not any(ch in _UNSAFE_CHARS for ch in text)
+
+
 def canonical_payload(pack: dict) -> bytes:
     """Канонический JSON для подписи (без поля signature)."""
     br = pack.get("branding") or {}
@@ -146,12 +185,14 @@ def verify_code(brand_key: str, run_uid: str, finished_at) -> str:
 def _label_for_url(url: str) -> str:
     """Человекочитаемое название ссылки по домену (Telegram, Avito, ...)."""
     u = (url or "").lower()
+    # Названия строго латиницей: не-ASCII в подписываемом тексте .NET
+    # экранирует в \uXXXX, и подпись перестаёт сходиться.
     known = [
-        ("t.me", "Telegram"), ("telegram", "Telegram"), ("vk.com", "ВКонтакте"),
+        ("t.me", "Telegram"), ("telegram", "Telegram"), ("vk.com", "VK"),
         ("avito", "Avito"), ("youtube", "YouTube"), ("youtu.be", "YouTube"),
         ("tiktok", "TikTok"), ("instagram", "Instagram"), ("wa.me", "WhatsApp"),
         ("whatsapp", "WhatsApp"), ("ozon", "Ozon"), ("wildberries", "Wildberries"),
-        ("dzen", "Дзен"), ("rutube", "RuTube"), ("mailto:", "Почта"), ("tel:", "Телефон"),
+        ("dzen", "Dzen"), ("rutube", "RuTube"), ("mailto:", "Email"), ("tel:", "Phone"),
     ]
     for needle, label in known:
         if needle in u:
@@ -313,6 +354,28 @@ def build_pack(cur, company_id, signed=True):
         tpl = br["qr_url_template"]
         br["verify_page_url"] = (tpl.split("{verify_code}", 1)[0].rstrip("/")
                                  if "{verify_code}" in tpl else f"{site}/v")
+
+    # Inline-логотип — это base64, где почти всегда есть символ «+», а .NET
+    # экранирует его в \u002B. Подписываемый текст тогда не совпадёт с тем,
+    # что считает StressRunner, и он отвергнет корректно подписанный файл.
+    # Логотип всё равно доедет: файлом logo.png внутри ZIP, по logo_url и
+    # блоком assets — все три способа разрешены спецификацией.
+    if not _payload_is_portable(canonical_payload(pack)):
+        br["logo_png_base64"] = ""
+        if not br.get("logo_url"):
+            print("[BRANDING] логотип убран из подписи, а logo_url пуст — "
+                  "PDF возьмёт логотип из logo.png в архиве")
+    # Те же символы могут прийти из ссылок партнёра (например «&» в адресе).
+    # Тогда подпись снова не сойдётся — приводим ссылки к безопасному виду.
+    if not _payload_is_portable(canonical_payload(pack)):
+        for l in br.get("links") or []:
+            for fld in ("label", "url"):
+                val = l.get(fld) or ""
+                if any(ch in _UNSAFE_CHARS for ch in val) or any(ord(c) > 127 for c in val):
+                    l[fld] = _url_safe(val) if fld == "url" else _ascii_safe(val)
+        if not _payload_is_portable(canonical_payload(pack)):
+            print("[BRANDING] payload содержит символы, которые .NET экранирует — "
+                  "подпись может не сойтись")
 
     if not signed:
         return pack, None
@@ -623,8 +686,18 @@ def build_brand_archive(cur, company_id, pack):
     import zipfile
 
     br = pack.get("branding") or {}
-    logo_b64 = br.get("logo_png_base64") or ""
     qr_tpl = br.get("qr_url_template") or ""
+    # Логотип в паке может быть намеренно пустым (base64 ломает подпись в .NET),
+    # поэтому для файла в архиве берём его из logo_url или профиля компании —
+    # StressRunner как раз предпочитает logo.png из ZIP.
+    logo_b64 = br.get("logo_png_base64") or ""
+    if not logo_b64 and br.get("logo_url"):
+        logo_b64 = logo_base64_from_url(br["logo_url"])
+    if not logo_b64 and cur is not None and company_id:
+        try:
+            logo_b64 = company_defaults(cur, company_id)["logo_png_base64"]
+        except Exception as e:
+            print(f"[BRANDING] логотип для архива не получен: {e}")
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -656,7 +729,8 @@ def build_brand_archive(cur, company_id, pack):
             "                  StressRunner: раздел \"Брендинг PDF\" -> Импорт.\n"
             "                  После этого отчёты выходят под вашим брендом,\n"
             "                  в том числе без интернета.\n"
-            "  logo.png      - ваш логотип из шапки отчёта.\n"
+            "  logo.png      - ваш логотип для шапки отчёта. Программа берёт\n"
+            "                  его из этого архива, поэтому держите файлы вместе.\n"
             "  qr-sample.png - пример QR-кода (с тестовым кодом), чтобы\n"
             "                  посмотреть, как он будет выглядеть.\n\n"
             f"Контакты в отчёте:\n{links_txt}\n\n"
