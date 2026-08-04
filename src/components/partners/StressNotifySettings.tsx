@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 
@@ -51,24 +51,38 @@ export default function StressNotifySettings({ session }: { session: string }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [tplOpen, setTplOpen] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState<number | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const loadedRef = useRef(false)
 
   const auth = { session }
 
   const load = useCallback(() => {
     setLoading(true)
+    setLoadError(null)
     api.stress.notifyConfig("", auth)
       .then(d => {
-        if (d.settings) setSettings(d.settings)
+        if (d.error || !d.settings) {
+          setLoadError(d.error || "Не удалось загрузить настройки")
+          return
+        }
+        setSettings(d.settings)
         setChats(d.chats || [])
         setDefaults(d.defaults || {})
         setPlaceholders(d.placeholders || [])
       })
-      .catch(() => {})
+      .catch(() => setLoadError("Нет связи с сервером"))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
 
-  useEffect(() => { if (open && !settings) load() }, [open, settings, load])
+  // Грузим ОДИН раз при первом открытии. Раньше зависимость от settings
+  // зацикливала эффект: при ошибке settings оставался пустым → бесконечная
+  // загрузка и повторные запросы.
+  useEffect(() => {
+    if (!open || loadedRef.current) return
+    loadedRef.current = true
+    load()
+  }, [open, load])
 
   const flash = (ok: boolean, text: string) => {
     setMsg({ ok, text })
@@ -226,9 +240,18 @@ export default function StressNotifySettings({ session }: { session: string }) {
         </div>
       )}
 
-      {loading || !settings ? (
+      {loading ? (
         <div className="flex justify-center py-10">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : !settings ? (
+        <div className="rounded-xl border border-border px-4 py-8 text-center">
+          <Icon name="TriangleAlert" size={20} className="mx-auto mb-2 text-foreground/30" />
+          <p className="mb-3 text-sm text-foreground/60">{loadError || "Не удалось загрузить настройки"}</p>
+          <button onClick={load} style={{ cursor: "pointer" }}
+            className="rounded-lg border border-border px-4 py-2 text-xs text-foreground/70 hover:border-primary hover:text-foreground">
+            Повторить
+          </button>
         </div>
       ) : (
         <>
