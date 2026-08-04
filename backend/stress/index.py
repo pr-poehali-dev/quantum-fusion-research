@@ -8,6 +8,7 @@ import boto3
 from botocore.client import Config
 from tg_notify import send_stress
 import notify_prefs as np
+import brand_pack as bp
 
 
 def _esc(v) -> str:
@@ -169,8 +170,17 @@ def handler(event, context):
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # ── Контур EXE: приём результатов / выдача профилей по токену ────────
-        if action in ("ingest", "profiles_pull", "verify_token", "notify"):
+        # ── Публичная проверка отчёта по QR-коду (без авторизации) ──────────
+        if action == "verify" and method == "GET":
+            data = bp.lookup_verify(cur, params.get("code"))
+            if not data:
+                # Код валиден по форме, но прогон ещё не загружен на сервер
+                # (offline-PDF) — либо кода не существует. Наружу не различаем.
+                return ok({"ok": True, "found": False})
+            return ok({"ok": True, **data})
+
+        if action in ("ingest", "profiles_pull", "verify_token", "notify",
+                      "partner_branding"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
             is_global = bool(token) and token == os.environ.get("STRESS_INGEST_TOKEN")
             # Партнёрский токен компании (если не совпал с общим)
@@ -193,6 +203,22 @@ def handler(event, context):
                 return profiles_pull(cur)
             if action == "notify" and method == "POST":
                 return notify(body, cur, conn, partner_cid)
+            if action == "partner_branding" and method == "GET":
+                # Синхронизация brand pack при онлайн-входе StressRunner.
+                if not partner_cid:
+                    # Общий (не партнёрский) токен — брендинга нет.
+                    return err("no branding for this token", 404)
+                pack, error = bp.build_pack(cur, partner_cid, signed=True)
+                if error == "no_brand":
+                    return err("brand pack not configured", 404)
+                if error == "revoked":
+                    return err("brand pack revoked", 404)
+                if error == "no_signing_key":
+                    print("[BRANDING] STRESS_BRAND_SIGNING_KEY_PEM не задан")
+                    return err("signing key not configured", 503)
+                if not pack:
+                    return err("brand pack unavailable", 404)
+                return ok({"ok": True, "pack": pack})
             return err("bad request", 400)
 
         # ── Контур ПАРТНЁРА (ЛК): данные строго своей компании ──────────────
@@ -217,6 +243,8 @@ def handler(event, context):
             # Настройки Telegram-уведомлений своей компании
             "notify_config", "notify_settings_save", "notify_chat_save",
             "notify_chat_delete", "notify_chat_test",
+            # White-label брендинг PDF и файл-ключ .stbrand
+            "brand_config", "brand_save", "brand_download", "brand_revoke",
         }
         if not admin and action not in partner_allowed:
             return err("forbidden", 403)
@@ -252,6 +280,12 @@ def handler(event, context):
             if not notify_cid:
                 return err("company_required", 400)
             return notify_config_route(cur, conn, action, method, params, body, notify_cid)
+
+        # White-label брендинг PDF-отчётов + выдача файла-ключа .stbrand
+        if action in ("brand_config", "brand_save", "brand_download", "brand_revoke"):
+            if not notify_cid:
+                return err("company_required", 400)
+            return brand_route(cur, conn, action, method, body, notify_cid)
 
         # Профили (редактор в админке)
         if action == "profiles_list" and method == "GET":
@@ -363,6 +397,49 @@ def notify(body, cur=None, conn=None, company_id=None):
     if partner_res is not None:
         out["partner"] = partner_res
     return ok(out)
+
+
+def brand_route(cur, conn, action, method, body, company_id):
+    """Брендинг PDF: настройки, сохранение, файл-ключ .stbrand, отзыв."""
+    if action == "brand_config" and method == "GET":
+        st = bp.brand_status(cur, company_id)
+        st["signing_ready"] = bool(os.environ.get("STRESS_BRAND_SIGNING_KEY_PEM", "").strip())
+        return ok({"ok": True, "brand": st})
+
+    if action == "brand_save" and method in ("POST", "PUT"):
+        done, error = bp.save_brand(cur, company_id, body)
+        if error == "logo_too_big":
+            return err("Логотип слишком большой — уменьшите картинку", 400)
+        if not done:
+            return err("save_failed", 400)
+        conn.commit()
+        return ok({"ok": True, "brand": bp.brand_status(cur, company_id)})
+
+    if action == "brand_download" and method in ("GET", "POST"):
+        pack, error = bp.build_pack(cur, company_id, signed=True)
+        if error == "no_brand":
+            return err("Сначала сохраните настройки брендинга", 400)
+        if error == "revoked":
+            return err("Брендинг отозван", 400)
+        if error == "no_signing_key":
+            return err("Подпись не настроена на сервере — обратитесь к администратору", 503)
+        if not pack:
+            return err("brand pack unavailable", 400)
+        comp = bp.get_company(cur, company_id)
+        slug = "".join(ch if ch.isalnum() else "-" for ch in (comp[1] or "partner")).strip("-").lower()
+        return ok({"ok": True, "pack": pack, "filename": f"partner-{slug or 'brand'}.stbrand"})
+
+    if action == "brand_revoke" and method in ("POST", "PUT", "DELETE"):
+        cur.execute(
+            f"UPDATE {SCHEMA}.partner_brands SET revoked_at=NOW(), updated_at=NOW() "
+            f"WHERE company_id=%s", (int(company_id),))
+        cur.execute(
+            f"UPDATE {SCHEMA}.partner_companies SET white_label_enabled=FALSE, "
+            f"updated_at=NOW() WHERE id=%s", (int(company_id),))
+        conn.commit()
+        return ok({"ok": True, "brand": bp.brand_status(cur, company_id)})
+
+    return err(f"unknown action: {action}")
 
 
 def notify_config_route(cur, conn, action, method, params, body, company_id):
@@ -478,6 +555,15 @@ def ingest(cur, conn, body, company_id=None):
             f"({run_id}, {esc(m.get('key', ''))}, {esc(m.get('label', ''))}, {esc(m.get('unit', ''))}, "
             f"{num(m.get('min'))}, {num(m.get('max'))}, {num(m.get('avg'))}, {int(num(m.get('samples')))})"
         )
+
+    # Индексируем verify-код прогона (HMAC на brand_key партнёра) — чтобы
+    # страница /v/{код} по QR из PDF находила прогон сразу, без перебора.
+    if company_id:
+        try:
+            bp.index_verify_code(cur, company_id, run_id, run_uid,
+                                 body.get("finished_at") or body.get("started_at"))
+        except Exception as e:
+            print(f"[VERIFY_INDEX] run_id={run_id} error: {e}")
 
     conn.commit()
 

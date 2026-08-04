@@ -7,6 +7,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import StressTestsTab from "@/components/admin/StressTestsTab"
 import PartnerSocial from "@/components/partners/PartnerSocial"
 import StressNotifySettings from "@/components/partners/StressNotifySettings"
+import StressBrandSettings from "@/components/partners/StressBrandSettings"
 
 export default function PartnersStress() {
   const navigate = useNavigate()
@@ -144,8 +145,11 @@ export default function PartnersStress() {
         )}
       </div>
 
-      {/* Telegram-уведомления: свои чаты, события и шаблоны */}
-      <StressNotifySettings session={sessionId} />
+      {/* Настройки партнёра: брендинг PDF (файл-ключ) и Telegram-уведомления */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <StressBrandSettings session={sessionId} />
+        <StressNotifySettings session={sessionId} />
+      </div>
 
       {/* Единый модуль стресс-тестов в режиме партнёра */}
       <StressTestsTab scope="partner" session={sessionId} />

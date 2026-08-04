@@ -1147,3 +1147,19 @@ notify_chat_save/notify_chat_delete/notify_chat_test; verify_token отдаёт
 notify_prefs; ingest шлёт события в чаты партнёра.
 Фронт: src/components/partners/StressNotifySettings.tsx (в PartnersStress.tsx).
 ID чата партнёр узнаёт командой /chatid у бота (уже есть в tg-bot).
+
+[v7.86] White-label брендинг PDF партнёров (.stbrand).
+БД: partner_brands (brand_key, logo_base64, links, qr_url_template, issued_at,
+expires_at, revoked_at); partner_companies +public_uid +white_label_enabled;
+stress_runs +verify_code (индекс).
+backend/stress/brand_pack.py — канонический payload (строгий порядок ключей,
+сверен с эталоном Node из ТЗ), подпись RSA-SHA256 PKCS#1v15 через секрет
+STRESS_BRAND_SIGNING_KEY_PEM, verify_code = 16 симв. base64url HMAC-SHA256,
+CRUD/ротация/отзыв, lookup_verify.
+backend/stress/index.py — action=partner_branding (X-Stress-Token, для EXE),
+action=verify (публичный), brand_config/brand_save/brand_download/brand_revoke
+(ЛК партнёра), индексация verify_code при ingest.
+Фронт: src/components/partners/StressBrandSettings.tsx (кнопка скачивания
+файла-ключа), src/pages/VerifyReport.tsx (роут /v/:code — проверка по QR).
+ВАЖНО: публичный RSA-ключ должен быть вшит в StressRunner
+(PartnerBrandingKeys.cs), иначе программа не примет подпись.

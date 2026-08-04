@@ -420,6 +420,17 @@ export const api = {
       fetch(`${URLS.stress}?action=notify_chat_delete&id=${id}${stressQ(adminKey, auth)}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     notifyChatTest: (data: { id?: number; chat_id?: string }, adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=notify_chat_test${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "notify_chat_test", ...data }) }).then(r => r.json()),
+    // White-label брендинг PDF + файл-ключ .stbrand
+    brandConfig: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=brand_config${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    brandSave: (data: Record<string, unknown>, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=brand_save${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "brand_save", ...data }) }).then(r => r.json()),
+    brandDownload: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=brand_download${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    brandRevoke: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=brand_revoke${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "brand_revoke" }) }).then(r => r.json()),
+    verifyReport: (code: string) =>
+      fetch(`${URLS.stress}?action=verify&code=${encodeURIComponent(code)}`).then(r => r.json()),
   },
   companySettings: {
     list: () => fetch(URLS.companySettings).then(r => r.json()),

@@ -1,6 +1,24 @@
 {
   "tests": [
     {
+      "name": "Partner branding without token forbidden",
+      "method": "GET",
+      "path": "/?action=partner_branding",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Brand config without auth forbidden",
+      "method": "GET",
+      "path": "/?action=brand_config",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Verify unknown code returns not found",
+      "method": "GET",
+      "path": "/?action=verify&code=__nosuchcode__",
+      "expectedStatus": 200
+    },
+    {
       "name": "Ingest without token forbidden",
       "method": "POST",
       "path": "/?action=ingest",

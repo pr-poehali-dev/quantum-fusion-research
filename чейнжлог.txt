@@ -3,6 +3,55 @@
 
 ---
 
+## v7.86 | 2026-08-04 | White-label брендинг PDF партнёров (.stbrand, offline)
+
+### Задача
+Партнёр настраивает свой логотип/контакты в шапке PDF-отчётов StressRunner,
+скачивает подписанный файл-ключ .stbrand и работает под своим брендом даже
+без интернета. Реализация по спецификации PARTNER_BRANDING_SITE.md.
+
+### БД (V0223)
+- partner_companies: +public_uid (UUID для partner_id в паке),
+  +white_label_enabled.
+- partner_brands: brand_key, logo_base64, links(JSONB), qr_url_template,
+  issued_at, expires_at, revoked_at.
+- stress_runs: +verify_code (+индекс) — быстрый lookup для страницы /v/{code}.
+
+### Backend
+- [stress/brand_pack.py] НОВЫЙ модуль: канонический payload (порядок ключей
+  строго по спеке, separators без пробелов) — сверен байт-в-байт с эталоном
+  Node из ТЗ; подпись RSA-SHA256 PKCS#1 v1.5 (secret
+  STRESS_BRAND_SIGNING_KEY_PEM); verify_code = 16 симв. base64url
+  HMAC-SHA256(brand_key, run_uid|finished_at); CRUD брендинга, ротация и
+  отзыв ключа, lookup_verify (без раскрытия brand_key).
+- [stress/index.py] GET action=partner_branding (по X-Stress-Token, 404 если
+  не настроен/отозван, 503 без ключа подписи); GET action=verify (публичный,
+  без авторизации); партнёрские brand_config/brand_save/brand_download/
+  brand_revoke; при ingest считается и сохраняется verify_code.
+- [stress/requirements.txt] +cryptography.
+
+### Frontend
+- [partners/StressBrandSettings.tsx] НОВЫЙ блок в ЛК: логотип (авто-сжатие до
+  512×512 → PNG base64), до 5 контактов, шаблон QR-ссылки, статус/срок,
+  кнопка «Сохранить и скачать файл-ключ», перевыпуск и отзыв.
+- [pages/VerifyReport.tsx] + роут /v/:code — публичная страница проверки
+  отчёта по QR (партнёр, ПК, профиль, дата, результат, контакты).
+- [pages/PartnersStress.tsx] брендинг и уведомления в одну строку.
+- [lib/api.ts] brandConfig/brandSave/brandDownload/brandRevoke/verifyReport.
+
+### Действия админа
+- Добавить секрет STRESS_BRAND_SIGNING_KEY_PEM (приватный ключ RSA).
+- Передать публичный ключ разработчику StressRunner для встраивания
+  в PartnerBrandingKeys.cs следующего релиза.
+
+### Проверка
+- Тесты stress 18/18. Канонический payload идентичен эталону Node (diff пуст),
+  подпись проверяется публичным ключом, подделка отклоняется, verify_code
+  длиной 16. Проверены brand_config/brand_save, корректные 503 без ключа
+  подписи. Тестовая запись брендинга отозвана.
+
+---
+
 ## v7.85 | 2026-08-04 | Фикс: бесконечная загрузка в блоке уведомлений
 
 ### Проблема

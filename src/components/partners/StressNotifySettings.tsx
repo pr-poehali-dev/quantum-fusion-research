@@ -218,7 +218,7 @@ export default function StressNotifySettings({ session }: { session: string }) {
   }
 
   return (
-    <div className="mb-6 rounded-2xl border border-border bg-card p-5">
+    <div className="w-full rounded-2xl border border-border bg-card p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
