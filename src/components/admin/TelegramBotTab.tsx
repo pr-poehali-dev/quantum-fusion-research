@@ -80,6 +80,7 @@ export default function TelegramBotTab() {
         setRoutes(d.routes || [])
         setStats(d.stats || null)
       })
+      .catch(() => setMsg("Нет связи с сервером — обнови страницу"))
       .finally(() => setLoading(false))
   }, [adminKey])
 
@@ -96,57 +97,86 @@ export default function TelegramBotTab() {
   // ─── Чаты ───────────────────────────────────────────────
   const [editing, setEditing] = useState<Partial<Chat> | null>(null)
 
+  const [saving, setSaving] = useState(false)
+
   const saveChat = async () => {
     if (!editing?.chat_id || !editing?.title?.trim()) {
       flash("Заполни ID чата и название")
       return
     }
-    const r = await api.tgBot.saveChat(editing, adminKey)
-    if (r.error) { flash(r.error); return }
-    setChats(r.chats || [])
-    setEditing(null)
-    flash("Чат сохранён")
+    setSaving(true)
+    try {
+      const r = await api.tgBot.saveChat(editing, adminKey)
+      if (r?.error) { flash(r.error); return }
+      setChats(r.chats || [])
+      setEditing(null)
+      flash("Чат сохранён")
+    } catch {
+      flash("Не удалось сохранить — проверь связь и попробуй ещё раз")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const detect = async () => {
     if (!editing?.chat_id) { flash("Сначала укажи ID чата"); return }
-    const r = await api.tgBot.detectChat(String(editing.chat_id), adminKey)
-    if (r.ok) {
-      setEditing({ ...editing, title: r.title, kind: r.kind })
-      flash("Название загружено из Telegram")
-    } else {
-      flash(r.error || "Не удалось получить чат")
+    try {
+      const r = await api.tgBot.detectChat(String(editing.chat_id), adminKey)
+      if (r?.ok) {
+        setEditing({ ...editing, title: r.title, kind: r.kind })
+        flash("Название загружено из Telegram")
+      } else {
+        flash(r?.error || "Не удалось получить чат")
+      }
+    } catch {
+      flash("Нет связи с сервером")
     }
   }
 
   const removeChat = async (c: Chat) => {
     if (!confirm(`Удалить чат «${c.title}»? События из него вернутся в чат по умолчанию.`)) return
-    const r = await api.tgBot.deleteChat(c.id, adminKey)
-    setChats(r.chats || [])
-    load()
-    flash("Чат удалён")
+    try {
+      const r = await api.tgBot.deleteChat(c.id, adminKey)
+      setChats(r.chats || [])
+      load()
+      flash("Чат удалён")
+    } catch {
+      flash("Не удалось удалить — нет связи с сервером")
+    }
   }
 
   const testChat = async (c: Chat) => {
     setTesting(c.id)
     try {
       const r = await api.tgBot.test(c.chat_id, adminKey, c.thread_id ?? undefined)
-      flash(r.sent ? `Сообщение отправлено в «${c.title}»` : "Не доставлено — проверь, что бот в чате")
+      flash(r?.sent ? `Сообщение отправлено в «${c.title}»` : "Не доставлено — проверь, что бот в чате")
+    } catch {
+      flash("Нет связи с сервером")
     } finally {
       setTesting(null)
     }
   }
 
   const toggleChat = async (c: Chat) => {
-    const r = await api.tgBot.saveChat({ ...c, is_active: !c.is_active }, adminKey)
-    setChats(r.chats || [])
+    try {
+      const r = await api.tgBot.saveChat({ ...c, is_active: !c.is_active }, adminKey)
+      setChats(r.chats || [])
+    } catch {
+      flash("Не удалось изменить — нет связи с сервером")
+    }
   }
 
   // ─── События ────────────────────────────────────────────
   const saveRoute = async (event_key: string, patch: Partial<Route>) => {
+    const before = routes
     setRoutes(rs => rs.map(r => r.event_key === event_key ? { ...r, ...patch } : r))
-    const r = await api.tgBot.saveRoute({ event_key, ...patch }, adminKey)
-    if (r.routes) setRoutes(r.routes)
+    try {
+      const r = await api.tgBot.saveRoute({ event_key, ...patch }, adminKey)
+      if (r?.routes) setRoutes(r.routes)
+    } catch {
+      setRoutes(before)
+      flash("Не удалось сохранить — нет связи с сервером")
+    }
   }
 
   const grouped = routes.reduce<Record<string, Route[]>>((acc, r) => {
@@ -255,8 +285,10 @@ export default function TelegramBotTab() {
                 </div>
               </div>
               <div className="mt-3 flex gap-2">
-                <button onClick={saveChat} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" style={{ cursor: "pointer" }}>
-                  Сохранить
+                <button onClick={saveChat} disabled={saving}
+                  className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                  style={{ cursor: saving ? "default" : "pointer" }}>
+                  {saving ? "Сохраняю…" : "Сохранить"}
                 </button>
                 <button onClick={() => setEditing(null)} className="rounded-lg border border-border px-3 py-2 text-sm" style={{ cursor: "pointer" }}>
                   Отмена

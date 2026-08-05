@@ -1006,5 +1006,5 @@ def handler(event: dict, context) -> dict:
 def _cors():
     return {"Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
             "Content-Type": "application/json"}

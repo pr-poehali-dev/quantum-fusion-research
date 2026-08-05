@@ -1237,3 +1237,7 @@ http.client вместо urlopen, таймаут 0.6с, 6 попыток с па
 - src/components/admin/TelegramBotTab.tsx + api.tgBot.*
 - GET tg-bot?action=test_notify отключён (410): тест только из админки,
   с явным выбором чата — чтобы не спамить рабочий чат.
+
+[v7.97] tg-bot CORS разрешает заголовок X-Admin-Token (без него браузер
+блокировал все запросы вкладки «Telegram-бот»); в TelegramBotTab все действия
+обрабатывают сбой сети и показывают сообщение вместо тихого отказа.
