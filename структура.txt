@@ -1222,3 +1222,9 @@ api.stress.deleteRuns. В StressTestsTab панель выбора получи�
 «Удалить (N)» + ссылку «выбрать все»; фильтр по папке вынесен в visibleRuns.
 
 [v7.94] StressTestsTab: фильтр по папкам стартует с «Без папки» (folderFilter=0).
+
+[v7.95] Telegram: все вызовы API идут через ОДНО keep-alive соединение
+(tg-bot/index.py: _tg_connect/tg_call; */tg_notify.py: _tg_post) —
+http.client вместо urlopen, таймаут 0.6с, 6 попыток с паузой 0.25с,
+принудительный IPv4. Причина прежних 504: новое TLS-соединение на каждый
+ответ из облака часто зависало и съедало весь лимит функции.

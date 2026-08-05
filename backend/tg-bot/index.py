@@ -18,10 +18,29 @@ Webhook: Telegram шлёт POST с update. Токен — TELEGRAM_BOT_TOKEN.
 """
 import os
 import json
+import socket
+import http.client
+import time
 import urllib.request
 import urllib.parse
 import urllib.error
 import psycopg2
+
+# В облаке у api.telegram.org резолвится ещё и IPv6-адрес, но исходящего IPv6
+# нет — попытка соединения висит до таймаута, и бот отвечает с задержкой.
+# Форсируем IPv4, иначе каждый ответ стоит лишних секунд ожидания.
+_getaddrinfo_orig = socket.getaddrinfo
+
+
+def _getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+    try:
+        return _getaddrinfo_orig(host, port, socket.AF_INET, type, proto, flags)
+    except socket.gaierror:
+        # Хост без IPv4 (например, база) — возвращаем как есть
+        return _getaddrinfo_orig(host, port, family, type, proto, flags)
+
+
+socket.getaddrinfo = _getaddrinfo_ipv4
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 TG_API = "https://api.telegram.org/bot{token}/{method}"
@@ -41,29 +60,55 @@ def get_conn():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
 
+_tg_conn = None
+
+
+def _tg_connect():
+    """Одно keep-alive соединение с Telegram на весь запуск функции.
+    TLS-хендшейк из облака дорогой и часто виснет, поэтому переиспользуем
+    уже открытый канал: следующие вызовы идут по нему за ~150 мс."""
+    global _tg_conn
+    if _tg_conn is None:
+        # Таймаут короткий: удачный вызов укладывается в ~50 мс, а зависшую
+        # попытку выгоднее быстро бросить и переоткрыть соединение.
+        _tg_conn = http.client.HTTPSConnection("api.telegram.org", timeout=0.6)
+    return _tg_conn
+
+
+def _tg_drop():
+    global _tg_conn
+    if _tg_conn is not None:
+        try:
+            _tg_conn.close()
+        except Exception:
+            pass
+        _tg_conn = None
+
+
 def tg_call(method: str, payload: dict):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
         print("TG_BOT: нет TELEGRAM_BOT_TOKEN")
         return None
-    url = TG_API.format(token=token, method=method)
+    path = f"/bot{token}/{method}"
     data = json.dumps(payload).encode()
     last_err = None
-    for _ in range(2):  # 1 ретрай на случай сетевого подвисания
+    # Соединение из облака либо открывается сразу, либо виснет — при сбое
+    # закрываем канал и пробуем заново, а не ждём длинный таймаут.
+    for _ in range(6):
         try:
-            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode()
-            except Exception:
-                pass
-            print(f"TG_BOT {method}: HTTP {e.code} {body}")
-            return None
+            c = _tg_connect()
+            c.request("POST", path, data, {"Content-Type": "application/json"})
+            resp = c.getresponse()
+            raw = resp.read()
+            if resp.status != 200:
+                print(f"TG_BOT {method}: HTTP {resp.status} {raw[:300].decode('utf-8', 'replace')}")
+                return None
+            return json.loads(raw)
         except Exception as e:
             last_err = e
+            _tg_drop()
+            time.sleep(0.25)
     print(f"TG_BOT {method}: {last_err}")
     return None
 

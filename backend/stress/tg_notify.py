@@ -4,10 +4,42 @@
 Никогда не роняет основной поток: при ошибке логирует и возвращает статус.
 """
 import os
+import http.client
+import time
 import json
 import urllib.request
 import urllib.parse
 import urllib.error
+
+
+
+_tg_conn = None
+
+
+def _tg_post(path: str, data: bytes, headers: dict):
+    """POST в Telegram по переиспользуемому соединению.
+    TLS-хендшейк из облака дорогой и иногда виснет, поэтому держим один
+    открытый канал и при сбое переоткрываем его, а не ждём долгий таймаут."""
+    global _tg_conn
+    last_err = None
+    for _ in range(6):
+        try:
+            if _tg_conn is None:
+                _tg_conn = http.client.HTTPSConnection("api.telegram.org", timeout=0.6)
+            _tg_conn.request("POST", path, data, headers)
+            resp = _tg_conn.getresponse()
+            raw = resp.read()
+            return resp.status, raw
+        except Exception as e:
+            last_err = e
+            try:
+                if _tg_conn is not None:
+                    _tg_conn.close()
+            except Exception:
+                pass
+            _tg_conn = None
+            time.sleep(0.25)
+    raise last_err if last_err else RuntimeError("telegram unreachable")
 
 
 def send_stress(text: str, chat_id: str = None) -> dict:
@@ -33,36 +65,20 @@ def send_stress(text: str, chat_id: str = None) -> dict:
         "disable_web_page_preview": "true",
     }).encode()
     last_err = None
-    for attempt in range(3):
-        try:
-            req = urllib.request.Request(url, data=data)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = resp.read().decode("utf-8", "replace")
-            payload = json.loads(body) if body else {}
-            if payload.get("ok"):
-                return {"ok": True}
-            # Telegram ответил ok:false — логируем описание и не ретраим (это не сетевой сбой)
-            desc = payload.get("description") or body
-            print(f"STRESS_TG: Telegram отклонил chat_id={chat_id} — {desc}")
-            return {"ok": False, "error": desc}
-        except urllib.error.HTTPError as e:
-            # 400/403 и т.п. — тело содержит description с причиной
-            try:
-                err_body = e.read().decode("utf-8", "replace")
-            except Exception:
-                err_body = str(e)
-            try:
-                desc = json.loads(err_body).get("description") or err_body
-            except Exception:
-                desc = err_body
-            print(f"STRESS_TG: HTTP {e.code} от Telegram chat_id={chat_id} — {desc}")
-            # 4xx не лечится ретраем — выходим сразу
-            if 400 <= e.code < 500:
-                return {"ok": False, "error": f"http_{e.code}: {desc}"}
-            last_err = desc
-        except Exception as e:
-            last_err = str(e)
-            print(f"STRESS_TG: сетевая ошибка (попытка {attempt + 1}/3) chat_id={chat_id} — {e}")
+    try:
+        status, raw = _tg_post(
+            url.split("api.telegram.org", 1)[1], data,
+            {"Content-Type": "application/x-www-form-urlencoded"})
+        body = raw.decode("utf-8", "replace")
+        payload = json.loads(body) if body else {}
+        if payload.get("ok"):
+            return {"ok": True}
+        desc = payload.get("description") or body
+        print(f"STRESS_TG: Telegram отклонил chat_id={chat_id} — {desc}")
+        return {"ok": False, "error": desc if status == 200 else f"http_{status}: {desc}"}
+    except Exception as e:
+        last_err = str(e)
+        print(f"STRESS_TG: сетевая ошибка chat_id={chat_id} — {e}")
     return {"ok": False, "error": str(last_err)}
 
 
