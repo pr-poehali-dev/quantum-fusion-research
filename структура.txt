@@ -1220,3 +1220,5 @@ partner_company_id IS NULL OR = наша), все — по ?all_companies=1 (к�
 каскад файлы->результаты->метрики->прогоны; партнёр — только свои, иначе 403),
 api.stress.deleteRuns. В StressTestsTab панель выбора получила кнопку
 «Удалить (N)» + ссылку «выбрать все»; фильтр по папке вынесен в visibleRuns.
+
+[v7.94] StressTestsTab: фильтр по папкам стартует с «Без папки» (folderFilter=0).

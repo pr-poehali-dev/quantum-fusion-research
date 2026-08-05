@@ -102,7 +102,8 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   // Фильтр списка по папке: null = все, 0 = «Без папки», иначе id папки
-  const [folderFilter, setFolderFilter] = useState<number | null>(null)
+  // По умолчанию показываем прогоны без папки (свежие, ещё не разобранные)
+  const [folderFilter, setFolderFilter] = useState<number | null>(0)
 
   const load = useCallback(() => {
     setLoading(true)
