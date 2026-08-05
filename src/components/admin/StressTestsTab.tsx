@@ -143,6 +143,27 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
     load(); loadFolders()
   }
 
+  // Массовое удаление выбранных прогонов
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const removeSelected = async () => {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    if (!confirm(`Удалить ${ids.length} ${ids.length === 1 ? "прогон" : "прогонов"} со всеми результатами? Отменить будет нельзя.`)) return
+    setBulkDeleting(true)
+    try {
+      await api.stress.deleteRuns(ids, adminKey, auth)
+      if (selected && ids.includes(selected.id)) setSelected(null)
+      clearSelection()
+      load(); loadFolders()
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  // Прогоны, видимые с учётом фильтра по папке (по ним же работает «выбрать все»)
+  const visibleRuns = runs.filter(r =>
+    folderFilter === null ? true : folderFilter === 0 ? !r.folder_id : r.folder_id === folderFilter)
+
   const openRun = (id: number) => {
     setDetailLoading(true)
     api.stress.get(id, adminKey, auth)
@@ -269,7 +290,15 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
         {/* Панель действий над выбранными */}
         {selectMode && selectedIds.size > 0 && (
           <div className="mb-3 rounded-xl border border-primary/40 bg-primary/5 p-3">
-            <p className="mb-2 text-xs font-medium text-foreground">Выбрано: {selectedIds.size}</p>
+            <p className="mb-2 text-xs font-medium text-foreground">
+              Выбрано: {selectedIds.size}
+              {visibleRuns.length > selectedIds.size && (
+                <button onClick={() => setSelectedIds(new Set(visibleRuns.map(r => r.id)))}
+                  className="ml-2 font-normal text-primary hover:underline" style={{ cursor: "pointer" }}>
+                  выбрать все ({visibleRuns.length})
+                </button>
+              )}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <select defaultValue="" onChange={e => { const v = e.target.value; if (v !== "") { assignToFolder(v === "none" ? null : Number(v)); e.target.value = "" } }}
                 className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground" style={{ cursor: "pointer" }}>
@@ -277,6 +306,11 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                 {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 <option value="none">— Убрать из папки</option>
               </select>
+              <button onClick={removeSelected} disabled={bulkDeleting}
+                className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                style={{ cursor: bulkDeleting ? "default" : "pointer" }}>
+                <Icon name="Trash2" size={13} /> {bulkDeleting ? "Удаляю…" : `Удалить (${selectedIds.size})`}
+              </button>
               <button onClick={clearSelection} className="text-xs text-foreground/50 hover:text-foreground" style={{ cursor: "pointer" }}>Сбросить</button>
             </div>
           </div>
@@ -291,9 +325,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
           </div>
         ) : (
           <div className="space-y-2">
-            {runs
-              .filter(r => folderFilter === null ? true : folderFilter === 0 ? !r.folder_id : r.folder_id === folderFilter)
-              .map(r => {
+            {visibleRuns.map(r => {
               const checked = selectedIds.has(r.id)
               return (
               <div key={r.id}

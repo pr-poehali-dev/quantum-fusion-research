@@ -1215,3 +1215,8 @@ admin + ?company_id уже поддерживался.
 partner_company_id IS NULL OR = наша), все — по ?all_companies=1 (кнопка
 «Показать все»). list_runs/get_run отдают company_name + company_is_own —
 янтарный бейдж партнёра в списке и в карточке прогона.
+
+[v7.93] Массовое удаление прогонов: action=delete_runs (body.run_ids, до 500,
+каскад файлы->результаты->метрики->прогоны; партнёр — только свои, иначе 403),
+api.stress.deleteRuns. В StressTestsTab панель выбора получила кнопку
+«Удалить (N)» + ссылку «выбрать все»; фильтр по папке вынесен в visibleRuns.

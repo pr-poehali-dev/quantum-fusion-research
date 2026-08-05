@@ -22,7 +22,10 @@
       "name": "Ingest without token forbidden",
       "method": "POST",
       "path": "/?action=ingest",
-      "body": {"run_uid": "__sttest__", "results": []},
+      "body": {
+        "run_uid": "__sttest__",
+        "results": []
+      },
       "expectedStatus": 403
     },
     {
@@ -71,7 +74,9 @@
       "name": "Notify without token forbidden",
       "method": "POST",
       "path": "/?action=notify",
-      "body": {"event": "run_finished"},
+      "body": {
+        "event": "run_finished"
+      },
       "expectedStatus": 403
     },
     {
@@ -84,14 +89,21 @@
       "name": "Folder save without admin forbidden",
       "method": "POST",
       "path": "/?action=folder_save",
-      "body": {"name": "__sttest__"},
+      "body": {
+        "name": "__sttest__"
+      },
       "expectedStatus": 403
     },
     {
       "name": "Runs assign folder without admin forbidden",
       "method": "POST",
       "path": "/?action=runs_assign_folder",
-      "body": {"run_ids": [1], "folder_id": 1},
+      "body": {
+        "run_ids": [
+          1
+        ],
+        "folder_id": 1
+      },
       "expectedStatus": 403
     },
     {
@@ -104,14 +116,35 @@
       "name": "Rename run without admin forbidden",
       "method": "POST",
       "path": "/?action=rename_run",
-      "body": {"id": 1, "machine_name": "__sttest__"},
+      "body": {
+        "id": 1,
+        "machine_name": "__sttest__"
+      },
       "expectedStatus": 403
     },
     {
       "name": "Folder reorder without admin forbidden",
       "method": "POST",
       "path": "/?action=folder_reorder",
-      "body": {"folder_id": 1, "run_ids": [1, 2]},
+      "body": {
+        "folder_id": 1,
+        "run_ids": [
+          1,
+          2
+        ]
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Bulk delete runs without admin forbidden",
+      "method": "POST",
+      "path": "/?action=delete_runs",
+      "body": {
+        "action": "delete_runs",
+        "run_ids": [
+          999999
+        ]
+      },
       "expectedStatus": 403
     }
   ]

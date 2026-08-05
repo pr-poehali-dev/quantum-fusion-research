@@ -279,7 +279,7 @@ def handler(event, context):
         # Партнёру доступны только read-операции и папки; профили/метрики/пресеты — админ
         partner_allowed = {
             "list", "get", "folders_list", "folder_save", "folder_delete",
-            "runs_assign_folder", "folder_report", "delete_run",
+            "runs_assign_folder", "folder_report", "delete_run", "delete_runs",
             # Настройки Telegram-уведомлений своей компании
             "notify_config", "notify_settings_save", "notify_chat_save",
             "notify_chat_delete", "notify_chat_test",
@@ -294,6 +294,9 @@ def handler(event, context):
             return list_runs(cur, company_filter)
         if action == "get" and method == "GET":
             return get_run(cur, int(params.get("id") or 0), partner_cid if not admin else None)
+        if action == "delete_runs" and method in ("POST", "DELETE"):
+            return delete_runs(cur, conn, body.get("run_ids"),
+                               partner_cid if not admin else None)
         if action == "delete_run" and method == "DELETE":
             return delete_run(cur, conn, int(params.get("id") or 0), partner_cid if not admin else None)
         if action == "rename_run" and method in ("POST", "PUT"):
@@ -1081,6 +1084,33 @@ def delete_run(cur, conn, run_id, owner_cid=None):
     cur.execute(f"DELETE FROM {SCHEMA}.stress_runs WHERE id = {run_id}")
     conn.commit()
     return ok({"ok": True})
+
+
+def delete_runs(cur, conn, run_ids, owner_cid=None):
+    """Массовое удаление прогонов (кнопка «Выбрать» → «Удалить»).
+    Партнёру доступны только прогоны своей компании — чужие молча пропускаем."""
+    ids = [int(x) for x in (run_ids or []) if str(x).isdigit() or isinstance(x, int)]
+    if not ids:
+        return err("run_ids required")
+    ids = ids[:500]
+    in_list = ",".join(str(i) for i in ids)
+    if owner_cid is not None:
+        cur.execute(
+            f"SELECT id FROM {SCHEMA}.stress_runs "
+            f"WHERE id IN ({in_list}) AND partner_company_id = {int(owner_cid)}")
+        ids = [r[0] for r in cur.fetchall()]
+        if not ids:
+            return err("forbidden", 403)
+        in_list = ",".join(str(i) for i in ids)
+
+    cur.execute(
+        f"DELETE FROM {SCHEMA}.stress_files WHERE result_id IN "
+        f"(SELECT id FROM {SCHEMA}.stress_results WHERE run_id IN ({in_list}))")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_results WHERE run_id IN ({in_list})")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_metrics WHERE run_id IN ({in_list})")
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_runs WHERE id IN ({in_list})")
+    conn.commit()
+    return ok({"ok": True, "deleted": len(ids)})
 
 
 # ─── Профили тестов (редактор в админке + выдача приложению) ────────────────
