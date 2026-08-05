@@ -1208,3 +1208,10 @@ assets не подписывается → логотип там отдаётс�
 теперь двухрежимные: props session (партнёр) ЛИБО adminKey+companyId (админ),
 defaultOpen. Смена companyId перезагружает данные. Бэкенд не менялся —
 admin + ?company_id уже поддерживался.
+
+[v7.92] Наша компания = partner_companies.is_own (id 6 «Deboshir», V0227).
+Админ БЕЗ company_id настраивает её брендинг/уведомления (own_company_id()).
+Прогоны: админ по умолчанию видит только наши (режим фильтра "own_{id}" =
+partner_company_id IS NULL OR = наша), все — по ?all_companies=1 (кнопка
+«Показать все»). list_runs/get_run отдают company_name + company_is_own —
+янтарный бейдж партнёра в списке и в карточке прогона.

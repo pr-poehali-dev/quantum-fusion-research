@@ -267,7 +267,13 @@ def handler(event, context):
         # Фильтр по компании: партнёр — жёстко своя; админ — опц. ?company_id
         if admin:
             cid_param = params.get("company_id")
-            company_filter = int(cid_param) if cid_param and str(cid_param).isdigit() else None
+            if cid_param and str(cid_param).isdigit():
+                company_filter = int(cid_param)
+            elif str(params.get("all_companies") or "") == "1":
+                company_filter = None          # «Показать все» — явный запрос
+            else:
+                # По умолчанию админ видит ТОЛЬКО наши прогоны
+                company_filter = f"own_{own_company_id(cur) or ''}"
         else:
             company_filter = partner_cid
         # Партнёру доступны только read-операции и папки; профили/метрики/пресеты — админ
@@ -309,7 +315,12 @@ def handler(event, context):
 
         # Telegram-уведомления партнёра (его чаты + события + шаблоны).
         # Компания берётся из сессии; админ может смотреть чужую через company_id.
-        notify_cid = company_filter if not admin else company_filter
+        # Админ без явной компании настраивает НАШУ компанию (is_own).
+        # company_filter у админа может быть строкой-режимом («только наши») —
+        # для настроек нужен конкретный id компании.
+        notify_cid = company_filter if isinstance(company_filter, int) else None
+        if admin and not notify_cid:
+            notify_cid = own_company_id(cur)
         if action in ("notify_config", "notify_settings_save", "notify_chat_save",
                       "notify_chat_delete", "notify_chat_test"):
             if not notify_cid:
@@ -699,23 +710,41 @@ def ingest(cur, conn, body, company_id=None):
     return ok(out)
 
 
+def own_company_id(cur):
+    """id нашей компании (is_own) — под ней живёт брендинг наших отчётов."""
+    cur.execute(f"SELECT id FROM {SCHEMA}.partner_companies WHERE is_own LIMIT 1")
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 def _company_where(company_filter, prefix=""):
     """WHERE-условие фильтра по компании. None → все; 0 → без компании; N → компания N."""
     p = f"{prefix}." if prefix else ""
     if company_filter is None:
         return ""
+    if isinstance(company_filter, str) and company_filter.startswith("own"):
+        # «Наши» прогоны: без партнёра + помеченные нашей компанией
+        own = company_filter[4:]
+        if own.isdigit():
+            return f"({p}partner_company_id IS NULL OR {p}partner_company_id = {int(own)})"
+        return f"{p}partner_company_id IS NULL"
     if company_filter == 0:
         return f"{p}partner_company_id IS NULL"
     return f"{p}partner_company_id = {int(company_filter)}"
 
 
 def list_runs(cur, company_filter=None):
-    where = _company_where(company_filter)
+    where = _company_where(company_filter, "r")
     where_sql = f"WHERE {where}" if where else ""
+    # Название компании — для бейджа «чей прогон» в списке
     cur.execute(
-        f"SELECT id, run_uid, profile_name, machine_name, os_info, note, "
-        f"started_at, finished_at, total_tests, passed_tests, failed_tests, status, created_at, folder_id, partner_company_id, folder_sort "
-        f"FROM {SCHEMA}.stress_runs {where_sql} ORDER BY created_at DESC LIMIT 500"
+        f"SELECT r.id, r.run_uid, r.profile_name, r.machine_name, r.os_info, r.note, "
+        f"r.started_at, r.finished_at, r.total_tests, r.passed_tests, r.failed_tests, "
+        f"r.status, r.created_at, r.folder_id, r.partner_company_id, r.folder_sort, "
+        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE) "
+        f"FROM {SCHEMA}.stress_runs r "
+        f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
+        f"{where_sql} ORDER BY r.created_at DESC LIMIT 500"
     )
     runs = [{
         "id": r[0], "run_uid": r[1], "profile_name": r[2], "machine_name": r[3],
@@ -723,6 +752,8 @@ def list_runs(cur, company_filter=None):
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
         "status": r[11], "created_at": r[12], "folder_id": r[13], "partner_company_id": r[14],
         "folder_sort": r[15],
+        # Пустая компания = наш прогон (загружен не партнёром)
+        "company_name": r[16] or "", "company_is_own": bool(r[17]) or not r[14],
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
@@ -898,7 +929,8 @@ def folder_report(cur, fid, owner_cid=None):
     cur.execute(
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
-        f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links "
+        f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
+        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE) "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.folder_sort, sr.created_at DESC"
@@ -970,7 +1002,8 @@ def get_run(cur, run_id, owner_cid=None):
     cur.execute(
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
-        f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links "
+        f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
+        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE) "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.id = {run_id}{own}"
@@ -984,6 +1017,9 @@ def get_run(cur, run_id, owner_cid=None):
         "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
         "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
         "partner_link": _first_link(r[14]), "partner_links": _all_links(r[14]),
+        # Чей прогон — для бейджа компании в карточке
+        "partner_company_id": r[15], "company_name": r[16] or "",
+        "company_is_own": bool(r[17]) or not r[15],
     }
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "

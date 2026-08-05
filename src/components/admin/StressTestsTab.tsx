@@ -48,6 +48,10 @@ interface Run {
   partner_logo_url?: string
   partner_link?: string
   partner_links?: string[]
+  /** Чей прогон: название компании и признак «наш» (для бейджа в списке). */
+  partner_company_id?: number | null
+  company_name?: string
+  company_is_own?: boolean
 }
 
 function fmtDate(s: string | null) {
@@ -78,8 +82,10 @@ interface StressTestsTabProps {
 export default function StressTestsTab({ scope = "admin", session }: StressTestsTabProps = {}) {
   const adminKey = getAdminKey()
   const isPartner = scope === "partner"
+  // Показывать прогоны всех компаний (только админ; по умолчанию — наши)
+  const [allCompanies, setAllCompanies] = useState(false)
   // Авторизация запросов к stress: партнёр — по сессии, админ — по adminKey
-  const auth = isPartner ? { session } : undefined
+  const auth = isPartner ? { session } : { allCompanies }
   const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics" | "branding">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
@@ -104,12 +110,12 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
       .then(d => setRuns(d.runs || []))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminKey, session])
+  }, [adminKey, session, allCompanies])
 
   const loadFolders = useCallback(() => {
     api.stress.foldersList(adminKey, auth).then(d => setFolders(d.folders || [])).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminKey, session])
+  }, [adminKey, session, allCompanies])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { loadFolders() }, [loadFolders])
@@ -217,8 +223,21 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
       {/* Список прогонов */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Прогоны стресс-тестов</h2>
+          <h2 className="text-lg font-semibold text-foreground">
+            Прогоны стресс-тестов
+            {!isPartner && !allCompanies && (
+              <span className="ml-2 align-middle text-[11px] font-normal text-foreground/40">наши</span>
+            )}
+          </h2>
           <div className="flex items-center gap-2">
+            {!isPartner && (
+              <button onClick={() => { setAllCompanies(v => !v); setSelectedIds(new Set()) }}
+                title={allCompanies ? "Показывать только наши прогоны" : "Показать прогоны всех партнёров"}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${allCompanies ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}>
+                <Icon name="Building2" size={13} /> {allCompanies ? "Все компании" : "Показать все"}
+              </button>
+            )}
             <button onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()) }}
               className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${selectMode ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}
               style={{ cursor: "pointer" }}>
@@ -293,6 +312,14 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                       {r.passed_tests}/{r.total_tests}
                     </span>
                   </div>
+                  {/* Бейдж компании: чей это прогон (в режиме «все компании») */}
+                  {!isPartner && r.partner_company_id && !r.company_is_own && (
+                    <div className="mt-1">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                        <Icon name="Building2" size={9} /> {r.company_name || "партнёр"}
+                      </span>
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/40">
                     <Icon name="Clock" size={11} /> {fmtDate(r.created_at)}
                     {r.profile_name && <><span>·</span><span className="truncate">{r.profile_name}</span></>}
@@ -331,6 +358,11 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold text-foreground">{selected.machine_name || `Прогон #${selected.id}`}</h3>
                     <button onClick={startRename} title="Переименовать комп" className="rounded p-1 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="Pencil" size={13} /></button>
+                    {!isPartner && selected.partner_company_id && !selected.company_is_own && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+                        <Icon name="Building2" size={10} /> {selected.company_name || "партнёр"}
+                      </span>
+                    )}
                   </div>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">

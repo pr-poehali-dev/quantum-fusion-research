@@ -35,7 +35,12 @@ function authHeaders(session?: string | null) {
 }
 
 // Авторизация запросов к stress: админ (adminKey) или партнёр (session по ЛК).
-export interface StressAuth { session?: string | null; companyId?: number | null }
+export interface StressAuth {
+  session?: string | null
+  companyId?: number | null
+  /** Админ: показать прогоны ВСЕХ компаний (по умолчанию — только наши). */
+  allCompanies?: boolean
+}
 
 // Заголовки: если есть session — идём как партнёр (X-Session-Id + флаг
 // партнёрского режима, чтобы даже админ видел только свою компанию),
@@ -47,7 +52,10 @@ function stressHeaders(adminKey: string, auth?: StressAuth): Record<string, stri
 
 // Доп. query: фильтр по компании (только для админа; партнёру бэкенд сам ставит).
 function stressQ(_adminKey: string, auth?: StressAuth): string {
-  if (auth && !auth.session && auth.companyId != null) return `&company_id=${auth.companyId}`
+  if (auth?.session) return ""
+  if (auth?.companyId != null) return `&company_id=${auth.companyId}`
+  // Без явной компании админ видит только наши прогоны, пока не попросит все
+  if (auth?.allCompanies) return "&all_companies=1"
   return ""
 }
 
