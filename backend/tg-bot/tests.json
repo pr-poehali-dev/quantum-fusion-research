@@ -5,7 +5,9 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "expectedBody": {
+        "ok": true
+      },
       "bodyMatcher": "partial"
     },
     {
@@ -14,16 +16,28 @@
       "path": "/",
       "body": {},
       "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "expectedBody": {
+        "ok": true
+      },
       "bodyMatcher": "partial"
     },
     {
       "name": "Webhook unknown text -> menu",
       "method": "POST",
       "path": "/",
-      "body": {"message": {"chat": {"id": 100000001, "username": "selftest_bot_user"}, "text": "__selftest__ ping"}},
+      "body": {
+        "message": {
+          "chat": {
+            "id": 100000001,
+            "username": "selftest_bot_user"
+          },
+          "text": "__selftest__ ping"
+        }
+      },
       "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "expectedBody": {
+        "ok": true
+      },
       "bodyMatcher": "partial"
     },
     {
@@ -31,8 +45,43 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "expectedBody": {
+        "ok": true
+      },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Admin overview without key forbidden",
+      "method": "GET",
+      "path": "/?action=tg_overview",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Admin chat save without key forbidden",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "tg_chat_save",
+        "chat_id": -100,
+        "title": "x"
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Admin test send without key forbidden",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "tg_test",
+        "chat_id": -100
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Legacy test_notify disabled",
+      "method": "GET",
+      "path": "/?action=test_notify",
+      "expectedStatus": 410
     }
   ]
 }

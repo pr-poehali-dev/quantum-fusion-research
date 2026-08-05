@@ -26,6 +26,7 @@ const URLS = {
   marketing: "https://functions.poehali.dev/1683aaf5-e13f-4ef7-9848-9ca2ecf03b8a",
   faq: "https://functions.poehali.dev/b058cfaf-eb48-4710-90b0-f38899b0b16a",
   promos: "https://functions.poehali.dev/b70b011e-6249-4d99-8b90-f0f695e62cae",
+  tgBot: "https://functions.poehali.dev/6cf7e69d-a5f1-45db-b94e-43f37dd16961",
 }
 
 function authHeaders(session?: string | null) {
@@ -514,5 +515,26 @@ export const api = {
     update: (data: unknown) => fetch(URLS.rma, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", ...data as object }) }).then(r => r.json()),
     resolveReplacement: (data: unknown) => fetch(URLS.rma, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resolve_replacement", ...data as object }) }).then(r => r.json()),
     resolveRefund: (data: unknown) => fetch(URLS.rma, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resolve_refund", ...data as object }) }).then(r => r.json()),
+  },
+  // Telegram-бот: чаты, маршруты уведомлений, журнал (вкладка админки)
+  tgBot: {
+    overview: (ak: string) =>
+      fetch(`${URLS.tgBot}?action=tg_overview`, { headers: { "X-Admin-Token": ak } }).then(r => r.json()),
+    saveChat: (data: unknown, ak: string) =>
+      fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_chat_save", ...data as object }) }).then(r => r.json()),
+    deleteChat: (id: number, ak: string) =>
+      fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_chat_delete", id }) }).then(r => r.json()),
+    detectChat: (chat_id: string, ak: string) =>
+      fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_chat_detect", chat_id }) }).then(r => r.json()),
+    saveRoute: (data: unknown, ak: string) =>
+      fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_route_save", ...data as object }) }).then(r => r.json()),
+    log: (ak: string, params: { limit?: number; event_key?: string; status?: string } = {}) => {
+      const q = new URLSearchParams({ action: "tg_log", ...Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)])) })
+      return fetch(`${URLS.tgBot}?${q}`, { headers: { "X-Admin-Token": ak } }).then(r => r.json())
+    },
+    clearLog: (ak: string) =>
+      fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_log_clear" }) }).then(r => r.json()),
+    test: (chat_id: string | number, ak: string, thread_id?: string | number) =>
+      fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_test", chat_id, thread_id }) }).then(r => r.json()),
   },
 }

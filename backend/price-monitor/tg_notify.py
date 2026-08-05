@@ -17,14 +17,34 @@ _tg_conn = None
 
 def _tg_post(path: str, data: bytes, headers: dict):
     """POST в Telegram по переиспользуемому соединению.
-    TLS-хендшейк из облака дорогой и иногда виснет, поэтому держим один
-    открытый канал и при сбое переоткрываем его, а не ждём долгий таймаут."""
+
+    Важно про дубли: таймаут ОТВЕТА не означает, что сообщение не дошло —
+    Telegram мог принять его и не успеть ответить. Поэтому повторяем только
+    то, что заведомо не доставлено:
+      * не удалось установить соединение — сообщение точно не ушло;
+      * оборвалось переиспользованное соединение (сервер закрыл его по
+        таймауту) — запрос до Telegram тоже не дошёл.
+    А вот сбой на СВЕЖЕМ соединении уже после отправки не повторяем никогда:
+    именно такой ретрай и слал одно и то же сообщение по несколько раз.
+    """
     global _tg_conn
     last_err = None
-    for _ in range(6):
+    for _ in range(5):
+        fresh = False
         try:
             if _tg_conn is None:
-                _tg_conn = http.client.HTTPSConnection("api.telegram.org", timeout=0.6)
+                c = http.client.HTTPSConnection("api.telegram.org", timeout=1.0)
+                c.connect()
+                # Соединение поднято — ответ ждём спокойно, без спешки
+                c.sock.settimeout(3.0)
+                _tg_conn = c
+                fresh = True
+        except Exception as e:
+            last_err = e
+            _tg_conn = None
+            time.sleep(0.2)
+            continue
+        try:
             _tg_conn.request("POST", path, data, headers)
             resp = _tg_conn.getresponse()
             raw = resp.read()
@@ -32,13 +52,60 @@ def _tg_post(path: str, data: bytes, headers: dict):
         except Exception as e:
             last_err = e
             try:
-                if _tg_conn is not None:
-                    _tg_conn.close()
+                _tg_conn.close()
             except Exception:
                 pass
             _tg_conn = None
-            time.sleep(0.25)
+            if fresh:
+                # Запрос мог дойти до Telegram — повтор создаст дубль
+                raise
+            time.sleep(0.2)
     raise last_err if last_err else RuntimeError("telegram unreachable")
+
+
+# ── Маршрутизация событий из админки (вкладка «Telegram-бот») ──────────────
+SCHEMA_TG = os.environ.get("MAIN_DB_SCHEMA") or "t_p72635010_quantum_fusion_resea"
+
+
+def _tg_route(event_key: str):
+    """Настройки события: включено ли и в какой чат слать.
+    Настроек нет или БД недоступна — работаем как раньше (чат по умолчанию)."""
+    if not event_key:
+        return True, None
+    try:
+        import psycopg2
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as c:
+            with c.cursor() as cur:
+                cur.execute(
+                    f"SELECT enabled, chat_id FROM {SCHEMA_TG}.tg_event_routes "
+                    f"WHERE event_key = '" + event_key.replace("'", "''") + "'")
+                row = cur.fetchone()
+        if not row:
+            return True, None
+        return bool(row[0]), (str(row[1]) if row[1] is not None else None)
+    except Exception as e:
+        print(f"TG_ROUTE: {e}")
+        return True, None
+
+
+def _tg_log(event_key, chat_id, ok, error=None, preview=None):
+    """Журнал отправок для админки. Никогда не роняет основной поток."""
+    try:
+        import psycopg2
+        def q(v):
+            return "NULL" if v is None else "'" + str(v)[:300].replace("'", "''") + "'"
+        cid = str(chat_id or "").strip()
+        cid_sql = cid if cid.lstrip("-").isdigit() else "NULL"
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as c:
+            with c.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO {SCHEMA_TG}.tg_send_log "
+                    f"(event_key, chat_id, status, error, preview) VALUES "
+                    f"({q(event_key)}, {cid_sql}, '{'ok' if ok else 'error'}', "
+                    f"{q(error)}, {q(preview)})")
+            c.commit()
+    except Exception as e:
+        print(f"TG_LOG: {e}")
 
 
 def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n",
@@ -71,9 +138,16 @@ def _send(text: str, chat_id: str, prefix: str = "@BeGraphicsPC\n",
 
 
 def notify_price(text: str) -> bool:
-    chat_id = os.environ.get("PRICE_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_MANAGER_CHAT_ID")
-    thread_id = os.environ.get("PRICE_ALERT_THREAD_ID", "")
-    return _send(text, chat_id or "", thread_id=thread_id)
+    """Изменение цен. Событие можно выключить/перенаправить в админке."""
+    enabled, route_chat = _tg_route("price_change")
+    if not enabled:
+        print("TG_NOTIFY: событие price_change выключено в админке")
+        return False
+    chat_id = route_chat or os.environ.get("PRICE_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_MANAGER_CHAT_ID")
+    thread_id = "" if route_chat else os.environ.get("PRICE_ALERT_THREAD_ID", "")
+    ok = _send(text, chat_id or "", thread_id=thread_id)
+    _tg_log("price_change", chat_id, ok, None if ok else "Telegram не принял сообщение", text)
+    return ok
 
 
 def notify_main(text: str) -> bool:

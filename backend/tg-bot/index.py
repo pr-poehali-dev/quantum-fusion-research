@@ -65,14 +65,16 @@ _tg_conn = None
 
 def _tg_connect():
     """Одно keep-alive соединение с Telegram на весь запуск функции.
-    TLS-хендшейк из облака дорогой и часто виснет, поэтому переиспользуем
-    уже открытый канал: следующие вызовы идут по нему за ~150 мс."""
+    Возвращает (соединение, свежее_ли_оно): для свежего повтор запроса опасен."""
     global _tg_conn
-    if _tg_conn is None:
-        # Таймаут короткий: удачный вызов укладывается в ~50 мс, а зависшую
-        # попытку выгоднее быстро бросить и переоткрыть соединение.
-        _tg_conn = http.client.HTTPSConnection("api.telegram.org", timeout=0.6)
-    return _tg_conn
+    if _tg_conn is not None:
+        return _tg_conn, False
+    c = http.client.HTTPSConnection("api.telegram.org", timeout=1.0)
+    c.connect()
+    # Канал поднят — на сам ответ даём больше времени
+    c.sock.settimeout(3.0)
+    _tg_conn = c
+    return _tg_conn, True
 
 
 def _tg_drop():
@@ -93,11 +95,18 @@ def tg_call(method: str, payload: dict):
     path = f"/bot{token}/{method}"
     data = json.dumps(payload).encode()
     last_err = None
-    # Соединение из облака либо открывается сразу, либо виснет — при сбое
-    # закрываем канал и пробуем заново, а не ждём длинный таймаут.
-    for _ in range(6):
+    # Повторяем только заведомо недоставленное: обрыв при установке связи или
+    # на переиспользованном канале. Сбой на свежем соединении уже после
+    # отправки не повторяем — иначе сообщение уйдёт в чат дважды.
+    for _ in range(5):
         try:
-            c = _tg_connect()
+            c, fresh = _tg_connect()
+        except Exception as e:
+            last_err = e
+            _tg_drop()
+            time.sleep(0.2)
+            continue
+        try:
             c.request("POST", path, data, {"Content-Type": "application/json"})
             resp = c.getresponse()
             raw = resp.read()
@@ -108,7 +117,9 @@ def tg_call(method: str, payload: dict):
         except Exception as e:
             last_err = e
             _tg_drop()
-            time.sleep(0.25)
+            if fresh:
+                break
+            time.sleep(0.2)
     print(f"TG_BOT {method}: {last_err}")
     return None
 
@@ -634,7 +645,7 @@ def create_order(cur, chat_id, name, phone, username):
         notify_managers(
             f"🛒 <b>Новый заказ {display_number}</b> (из бота)\n"
             f"Тип: Железо\nКлиент: {name}\nТелефон: {phone}{tag}\n"
-            f"Сумма: {fmt_price(total)}")
+            f"Сумма: {fmt_price(total)}", event_key="bot_order")
     except Exception as e:
         print(f"TG_BOT notify: {e}")
 
@@ -804,13 +815,125 @@ def handle_callback(cur, cb):
         send(chat_id, "🗑 Корзина очищена.")
 
 
+ADMIN_ACTIONS = {
+    "tg_overview", "tg_chats", "tg_chat_save", "tg_chat_delete",
+    "tg_routes", "tg_route_save", "tg_log", "tg_log_clear",
+    "tg_test", "tg_chat_detect",
+}
+
+
+def _is_admin(event) -> bool:
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    key = os.environ.get("ADMIN_KEY") or ""
+    return bool(key) and headers.get("x-admin-token") == key
+
+
+def _handle_admin(action, event, params, body):
+    """Вкладка «Telegram-бот» в админке: чаты, события, журнал, тест."""
+    import admin_api as aa
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        if action == "tg_overview":
+            aa.seed_chats_from_env(cur, conn, SCHEMA)
+            return _ok({
+                "stats": aa.stats(cur, SCHEMA),
+                "chats": aa.list_chats(cur, SCHEMA),
+                "routes": aa.list_routes(cur, SCHEMA),
+                "defaults": aa.env_defaults(),
+                "webhook": (tg_call("getWebhookInfo", {}) or {}).get("result"),
+            })
+        if action == "tg_chats":
+            return _ok({"chats": aa.list_chats(cur, SCHEMA)})
+        if action == "tg_chat_save":
+            data, code = aa.save_chat(cur, conn, SCHEMA, body)
+            return _ok(data, code)
+        if action == "tg_chat_delete":
+            data, code = aa.delete_chat(cur, conn, SCHEMA, body)
+            return _ok(data, code)
+        if action == "tg_routes":
+            return _ok({"routes": aa.list_routes(cur, SCHEMA)})
+        if action == "tg_route_save":
+            data, code = aa.save_route(cur, conn, SCHEMA, body)
+            return _ok(data, code)
+        if action == "tg_log":
+            return _ok({"log": aa.list_log(cur, SCHEMA, params)})
+        if action == "tg_log_clear":
+            data, code = aa.clear_log(cur, conn, SCHEMA)
+            return _ok(data, code)
+        if action == "tg_chat_detect":
+            # Подтянуть название чата из Telegram по chat_id
+            cid = (body.get("chat_id") or params.get("chat_id") or "").strip()
+            if not cid:
+                return _ok({"error": "chat_id обязателен"}, 400)
+            res = tg_call("getChat", {"chat_id": cid}) or {}
+            r = res.get("result") or {}
+            if not r:
+                return _ok({"ok": False, "error": "Чат не найден. Добавь бота в чат."}, 200)
+            return _ok({"ok": True, "title": r.get("title") or r.get("username") or str(cid),
+                        "kind": r.get("type") or "group"})
+        if action == "tg_test":
+            # Тест шлём ТОЛЬКО в явно выбранный чат
+            cid = str(body.get("chat_id") or "").strip()
+            if not cid:
+                return _ok({"error": "Выбери чат для теста"}, 400)
+            thread = body.get("thread_id")
+            payload = {"chat_id": cid, "parse_mode": "HTML",
+                       "text": "🔔 <b>Проверка связи</b>\nСообщение отправлено из админки."}
+            if str(thread or "").strip().lstrip("-").isdigit():
+                payload["message_thread_id"] = int(thread)
+            res = tg_call("sendMessage", payload)
+            ok = bool(res and res.get("ok"))
+            log_send(cur, conn, "manual_test", cid, ok,
+                     None if ok else "Telegram не принял сообщение", "Проверка связи")
+            return _ok({"sent": ok})
+        return _ok({"error": "unknown action"}, 400)
+    finally:
+        cur.close(); conn.close()
+
+
+def _ok(data, code=200):
+    return {"statusCode": code, "headers": _cors(), "body": json.dumps(data, ensure_ascii=False)}
+
+
+def log_send(cur, conn, event_key, chat_id, ok, error=None, preview=None, ms=None):
+    """Записать факт отправки в журнал админки."""
+    try:
+        def q(v):
+            return "NULL" if v is None else "'" + str(v)[:300].replace("'", "''") + "'"
+        cid = str(chat_id).strip()
+        cid_sql = cid if cid.lstrip("-").isdigit() else "NULL"
+        cur.execute(
+            f"""INSERT INTO {SCHEMA}.tg_send_log
+                (event_key, chat_id, status, error, preview, duration_ms)
+                VALUES ({q(event_key)}, {cid_sql}, '{'ok' if ok else 'error'}',
+                        {q(error)}, {q(preview)}, {int(ms) if ms else 'NULL'})""")
+        conn.commit()
+    except Exception as e:
+        print(f"TG_BOT log_send: {e}")
+
+
 def handler(event: dict, context) -> dict:
-    """Webhook Telegram-бота склада: поиск железа, корзина, заказы."""
+    """Webhook Telegram-бота склада: поиск железа, корзина, заказы.
+    Плюс админский API вкладки «Telegram-бот» (action=tg_*)."""
     method = event.get("httpMethod", "POST")
     if method == "OPTIONS":
         return {"statusCode": 200, "headers": _cors(), "body": ""}
+
+    params = event.get("queryStringParameters") or {}
+    action_any = params.get("action")
+    body_any = {}
+    if method == "POST":
+        try:
+            body_any = json.loads(event.get("body") or "{}")
+        except Exception:
+            body_any = {}
+        action_any = body_any.get("action") or action_any
+    if action_any in ADMIN_ACTIONS:
+        if not _is_admin(event):
+            return _ok({"error": "forbidden"}, 403)
+        return _handle_admin(action_any, event, params, body_any)
+
     if method == "GET":
-        params = event.get("queryStringParameters") or {}
         action = params.get("action")
         if action == "set_webhook":
             res = tg_call("setWebhook", {
@@ -825,12 +948,11 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 200, "headers": _cors(),
                     "body": json.dumps({"ok": True, "result": res})}
         if action == "test_notify":
-            from tg_notify import notify_managers
-            ok = notify_managers("✅ <b>Тест уведомлений</b>\n"
-                                 "Если ты видишь это сообщение — уведомления о "
-                                 "заявках настроены и работают.")
-            return {"statusCode": 200, "headers": _cors(),
-                    "body": json.dumps({"sent": ok})}
+            # Раньше этот GET слал сообщение в рабочий чат без подтверждения.
+            # Теперь тест — только из админки, с явным выбором чата (tg_test).
+            return {"statusCode": 410, "headers": _cors(), "body": json.dumps(
+                {"error": "Тест доступен в админке: вкладка «Telegram-бот» — "
+                          "там выбирается конкретный чат"}, ensure_ascii=False)}
         if action == "resend_last":
             from tg_notify import notify_managers
             conn = get_conn(); cur = conn.cursor()

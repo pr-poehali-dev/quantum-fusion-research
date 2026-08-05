@@ -457,8 +457,7 @@ def handler(event: dict, context) -> dict:
                         f"Заказ: #{ordn}\n"
                         f"Компонент: {component_name or '—'} ({slot_label})\n"
                         f"Ожидался: {eta_date.isoformat() if eta_date else '—'}"
-                        f"{_link}"
-                    )
+                        f"{_link}", event_key="wip_delay")
                     sent += 1
                 except Exception as _te:
                     print(f"NOTIFY_DELAYS: {_te}")

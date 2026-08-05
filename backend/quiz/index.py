@@ -155,8 +155,7 @@ def handler(event: dict, context) -> dict:
                 f"Телефон: {body.get('phone','—')}\n"
                 f"{_contact}"
                 f"{_budget}"
-                f"{_link}"
-            )
+                f"{_link}", event_key="quiz_lead")
         except Exception as _e:
             print(f"TG_NOTIFY quiz: {_e}")
 

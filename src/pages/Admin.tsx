@@ -20,6 +20,7 @@ const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
 const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
 const StressTestsTab = lazy(() => import("@/components/admin/StressTestsTab"))
 const CompanySettings = lazy(() => import("@/components/admin/CompanySettings"))
+const TelegramBotTab = lazy(() => import("@/components/admin/TelegramBotTab"))
 const AdminCatalogTab = lazy(() => import("@/components/admin/AdminCatalogTab").then(m => ({ default: m.AdminCatalogTab })))
 const AdminUsersTab = lazy(() => import("@/components/admin/AdminUsersTab").then(m => ({ default: m.AdminUsersTab })))
 import { AdminOrdersTab } from "@/components/admin/AdminOrdersTab"
@@ -189,6 +190,7 @@ export default function Admin() {
     { key: "faq", label: "Вопросы (FAQ)", icon: "MessagesSquare" },
     { key: "promos", label: "Промокоды", icon: "BadgePercent" },
     { key: "company_settings", label: "Реквизиты", icon: "Building2" },
+    { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
   ]
   // Группа 4 — Быстрый доступ
   const quickTabs = [
@@ -372,6 +374,13 @@ export default function Admin() {
         {tab === "company_settings" && (
           <div style={{ padding: "32px 50px 48px" }}>
             <CompanySettings />
+          </div>
+        )}
+
+        {/* TELEGRAM BOT — чаты, уведомления, журнал */}
+        {tab === "telegram_bot" && (
+          <div style={{ padding: "32px 50px 48px" }}>
+            <TelegramBotTab />
           </div>
         )}
 

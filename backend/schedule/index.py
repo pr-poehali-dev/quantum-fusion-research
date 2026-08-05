@@ -194,7 +194,7 @@ def handler(event: dict, context) -> dict:
                 lines = ["📦 <b>Забрать заказы сегодня</b>", ""]
                 for store, cnt in pickups:
                     lines.append(f"• {store} — {int(cnt)} заказ(ов)")
-                notify_managers("\n".join(lines) + _cal_link)
+                notify_managers("\n".join(lines) + _cal_link, event_key="calendar_morning")
                 sent.append("pickups")
 
             # 2) ВСЕ СОБЫТИЯ И ЗАДАЧИ КАЛЕНДАРЯ НА СЕГОДНЯ (kind='task' и 'event').
@@ -228,7 +228,7 @@ def handler(event: dict, context) -> dict:
                     if resp:
                         block += f"\nОтветственные: {resp}"
                     blocks.append(block)
-                notify_tasks("\n".join(blocks) + _cal_link)
+                notify_tasks("\n".join(blocks) + _cal_link, event_key="calendar_morning")
                 sent.append("calendar")
 
             # 3) ВЫДАЧА ПК НА СЕГОДНЯ (wip_builds.issued_at)
@@ -245,7 +245,7 @@ def handler(event: dict, context) -> dict:
                 lines = ["🚀 <b>Выдача ПК сегодня</b>", ""]
                 for order_num, customer in handouts:
                     lines.append(f"• Заказ <b>#{order_num}</b>" + (f" · {customer}" if customer else ""))
-                notify_tasks("\n".join(lines) + _cal_link)
+                notify_tasks("\n".join(lines) + _cal_link, event_key="calendar_morning")
                 sent.append("handouts")
 
             # 4) КОРЗИНА ЗАКУПКИ: есть железо для заказа (status=NEW) — в основной чат
@@ -261,8 +261,7 @@ def handler(event: dict, context) -> dict:
                 _wip_link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть корзину закупки</a>" if _base else ""
                 notify_managers(
                     f"🛒 <b>В корзине закупки есть железо для заказа</b>\n"
-                    f"Позиций: {basket_positions} (всего {basket_qty} шт)" + _wip_link
-                )
+                    f"Позиций: {basket_positions} (всего {basket_qty} шт)" + _wip_link, event_key="purchase_basket")
                 sent.append("basket")
 
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": sent})}
@@ -527,8 +526,7 @@ def handler(event: dict, context) -> dict:
                     f"📅 <b>{_kind_label} в календаре</b>\n"
                     f"{title}\n"
                     f"Дата: {event_date}"
-                    f"{_resp}{_descr}"
-                )
+                    f"{_resp}{_descr}", event_key="calendar_event")
             except Exception as _e:
                 print(f"TG_NOTIFY calendar: {_e}")
 

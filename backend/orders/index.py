@@ -341,8 +341,7 @@ def handler(event: dict, context) -> dict:
                     f"Телефон: {body.get('customer_phone','—')}"
                     f"{_contact_line}\n"
                     f"Сумма: {_amount} ₽"
-                    f"{_link_line}"
-                )
+                    f"{_link_line}", event_key="order_new")
             except Exception as _e:
                 print(f"TG_NOTIFY order: {_e}")
 
@@ -462,8 +461,7 @@ def handler(event: dict, context) -> dict:
                             f"Тип: ПК\n"
                             f"Клиент: {body.get('customer_name','—')}\n"
                             f"Телефон: {body.get('customer_phone','—')}"
-                            f"{_link}"
-                        )
+                            f"{_link}", event_key="order_new")
                     except Exception as _e:
                         print(f"TG_NOTIFY stock-sale: {_e}")
                     conn.commit()
@@ -540,8 +538,7 @@ def handler(event: dict, context) -> dict:
                             f"Клиент: {customer}\n"
                             f"Телефон: {body.get('customer_phone','—')}\n"
                             f"Сумма: {_amt} ₽"
-                            f"{_link}"
-                        )
+                            f"{_link}", event_key="order_new")
                     else:
                         _notify(
                             f"🖥 <b>Новый заказ-сборка {display_number}</b>\n"
@@ -616,8 +613,7 @@ def handler(event: dict, context) -> dict:
                     f"Тип: ПК\n"
                     f"Клиент: {_cn or '—'}\n"
                     f"Телефон: {_cp or '—'}"
-                    f"{_link}"
-                )
+                    f"{_link}", event_key="order_new")
                 return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": bool(ok)})}
 
             # Один заказ по id
@@ -1652,8 +1648,7 @@ def handler(event: dict, context) -> dict:
                                 _wip_link = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть корзину закупки</a>" if _base else ""
                                 notify_managers(
                                     f"🛒 <b>В корзине закупки есть железо для заказа</b>\n"
-                                    f"Позиций: {_positions} (всего {_qty} шт)" + _wip_link
-                                )
+                                    f"Позиций: {_positions} (всего {_qty} шт)" + _wip_link, event_key="purchase_basket")
                     except Exception as _be:
                         print(f"TG_NOTIFY basket: {_be}")
 

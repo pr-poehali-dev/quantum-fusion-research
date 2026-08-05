@@ -502,8 +502,7 @@ def handler(event: dict, context) -> dict:
                         f"Клиент: {cust_name}\n"
                         f"Телефон: {cust_phone}\n"
                         f"Сумма: {_sum_str} ₽"
-                        f"{_link_line}"
-                    )
+                        f"{_link_line}", event_key="order_new")
                 except Exception as _e:
                     print(f"TG_NOTIFY wip ensure_order: {_e}")
 

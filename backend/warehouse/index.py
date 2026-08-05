@@ -1131,8 +1131,7 @@ def handler(event: dict, context) -> dict:
                             from tg_notify import notify_managers
                             notify_managers(
                                 f"📦 <b>Товар приехал под заказ №{str(neg_order_id).zfill(4)}</b>\n"
-                                f"«{prod_name}» поступил на склад и зарезервирован."
-                            )
+                                f"«{prod_name}» поступил на склад и зарезервирован.", event_key="warehouse_low")
                         except Exception as _e:
                             print(f"TG_NOTIFY backorder: {_e}")
 

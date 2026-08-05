@@ -1228,3 +1228,12 @@ api.stress.deleteRuns. В StressTestsTab панель выбора получи�
 http.client вместо urlopen, таймаут 0.6с, 6 попыток с паузой 0.25с,
 принудительный IPv4. Причина прежних 504: новое TLS-соединение на каждый
 ответ из облака часто зависало и съедало весь лимит функции.
+
+[v7.96] Вкладка админки «Telegram-бот» (/admin/telegram_bot):
+- БД: tg_chats, tg_event_routes, tg_send_log (миграция V0229).
+- backend/tg-bot/admin_api.py + action=tg_* в index.py (доступ X-Admin-Token).
+- */tg_notify.py: notify_managers(text, event_key) — событие можно выключить
+  или направить в другой чат из админки; каждая отправка пишется в журнал.
+- src/components/admin/TelegramBotTab.tsx + api.tgBot.*
+- GET tg-bot?action=test_notify отключён (410): тест только из админки,
+  с явным выбором чата — чтобы не спамить рабочий чат.
