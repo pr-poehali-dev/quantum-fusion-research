@@ -597,14 +597,18 @@ def ingest(cur, conn, body, company_id=None):
     status = body.get("status") or ("completed" if failed == 0 else "partial")
 
     company_sql = str(int(company_id)) if company_id else "NULL"
+    # Конфигурация ПК (процессор/мат.плата/ОЗУ/видеокарта/диски) — десктоп
+    # собирает её сам и шлёт вместе с прогоном. Формат см. в шапке отчёта.
+    hardware = body.get("hardware")
+    hardware_sql = f"{esc(json.dumps(hardware, ensure_ascii=False))}::jsonb" if hardware else "NULL"
     cur.execute(
         f"INSERT INTO {SCHEMA}.stress_runs "
         f"(run_uid, profile_name, machine_name, os_info, note, started_at, finished_at, "
-        f"total_tests, passed_tests, failed_tests, status, partner_company_id) VALUES "
+        f"total_tests, passed_tests, failed_tests, status, partner_company_id, hardware) VALUES "
         f"({esc(run_uid)}, {esc(body.get('profile_name', ''))}, {esc(body.get('machine_name', ''))}, "
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
-        f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}) RETURNING id"
+        f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}) RETURNING id"
     )
     run_id = cur.fetchone()[0]
 
@@ -744,7 +748,7 @@ def list_runs(cur, company_filter=None):
         f"SELECT r.id, r.run_uid, r.profile_name, r.machine_name, r.os_info, r.note, "
         f"r.started_at, r.finished_at, r.total_tests, r.passed_tests, r.failed_tests, "
         f"r.status, r.created_at, r.folder_id, r.partner_company_id, r.folder_sort, "
-        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE) "
+        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE), r.hardware "
         f"FROM {SCHEMA}.stress_runs r "
         f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
         f"{where_sql} ORDER BY r.created_at DESC LIMIT 500"
@@ -757,6 +761,7 @@ def list_runs(cur, company_filter=None):
         "folder_sort": r[15],
         # Пустая компания = наш прогон (загружен не партнёром)
         "company_name": r[16] or "", "company_is_own": bool(r[17]) or not r[14],
+        "hardware": r[18] or None,
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
@@ -933,7 +938,7 @@ def folder_report(cur, fid, owner_cid=None):
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
-        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE) "
+        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.folder_sort, sr.created_at DESC"
@@ -946,6 +951,7 @@ def folder_report(cur, fid, owner_cid=None):
             "total_tests": r[8], "passed_tests": r[9], "failed_tests": r[10],
             "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
             "partner_link": _first_link(r[14]), "partner_links": _all_links(r[14]),
+            "hardware": r[18] or None,
             "metrics": [], "results": [],
         })
     if runs:
@@ -1006,7 +1012,7 @@ def get_run(cur, run_id, owner_cid=None):
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
-        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE) "
+        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.id = {run_id}{own}"
@@ -1023,6 +1029,7 @@ def get_run(cur, run_id, owner_cid=None):
         # Чей прогон — для бейджа компании в карточке
         "partner_company_id": r[15], "company_name": r[16] or "",
         "company_is_own": bool(r[17]) or not r[15],
+        "hardware": r[18] or None,
     }
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "

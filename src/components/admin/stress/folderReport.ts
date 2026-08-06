@@ -25,6 +25,9 @@ export interface ReportResult {
   duration_sec: number; timed_out: boolean; success: boolean; files: ReportFile[]
   score_text?: string; ocr_stress_failed?: boolean
 }
+export interface ReportHardware {
+  cpu?: string; motherboard?: string; ram?: string; gpu?: string; disks?: string[]
+}
 export interface ReportRun {
   id: number; run_uid: string; profile_name: string; machine_name: string
   os_info: string; note: string; started_at: string | null; finished_at: string | null
@@ -33,6 +36,7 @@ export interface ReportRun {
   partner_logo_url?: string       // логотип партнёра в углу отчёта
   partner_link?: string           // первая ссылка партнёра (для QR-кода)
   partner_links?: string[]        // весь перечень строк/ссылок (список под лого)
+  hardware?: ReportHardware | null // конфигурация ПК, которую прислал десктоп
 }
 export interface ReportFolder {
   id: number; name: string; order_id: number | null; order_ref: string
@@ -114,6 +118,12 @@ const REPORT_CSS = `
   a.brand-link:hover { color: #1a1a1a; text-decoration: underline; }
   .meta { color: #555; font-size: 14px; margin-bottom: 2px; }
   .mode { color: #9a9a9a; font-size: 13px; margin-bottom: 22px; }
+  /* Конфигурация ПК — из данных, которые собрал десктоп */
+  .hw { margin: 4px 0 22px; }
+  .hw-row { display: grid; grid-template-columns: 130px 1fr; gap: 4px 14px; font-size: 13px; padding: 3px 0; }
+  .hw-row .k { color: #8a8a8a; }
+  .hw-row .v { color: #1a1a1a; }
+  .hw-row .v span { display: block; }
   .stats { display: flex; gap: 0; border: 1px solid #d7d7d7; border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
   .stat { flex: 1; padding: 16px 20px; border-right: 1px solid #e4e4e4; }
   .stat:last-child { border-right: none; }
@@ -255,6 +265,22 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
     ? `<div class="brand"><div class="brand-row">${qrImg}${logoImg}</div>${linksEl}</div>`
     : ""
 
+  // КОНФИГУРАЦИЯ ПК — присылает десктоп вместе с прогоном (может отсутствовать
+  // у старых прогонов или если сборщик оборудования не сработал).
+  const hw = r.hardware
+  const hwRows: [string, string][] = hw ? ([
+    ["Процессор", hw.cpu || ""],
+    ["Материнская плата", hw.motherboard || ""],
+    ["ОЗУ", hw.ram || ""],
+    ["Видеокарта", hw.gpu || ""],
+    ["Диски", (hw.disks || []).join("\n")],
+  ] as [string, string][]).filter(([, v]) => v.trim().length > 0) : []
+  const hwBlock = hwRows.length ? `
+    <div class="section">Конфигурация ПК</div>
+    <div class="hw">${hwRows.map(([k, v]) => `
+      <div class="hw-row"><div class="k">${h(k)}</div><div class="v">${v.split("\n").map(line => `<span>${h(line)}</span>`).join("")}</div></div>`).join("")}
+    </div>` : ""
+
   return `
     <section class="page" ${pageBreak ? 'style="page-break-after: always;"' : ""}>
       <div class="head">
@@ -266,6 +292,7 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
         </div>
         ${brand}
       </div>
+      ${hwBlock}
       <div class="stats">
         <div class="stat"><div class="n">${r.total_tests}</div><div class="l">всего</div></div>
         <div class="stat ok"><div class="n">${r.passed_tests}</div><div class="l">успешно</div></div>
@@ -289,11 +316,11 @@ async function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode)
   const pages = runs.length
     ? (await Promise.all(runs.map((r, i) => renderRunPage(r, mode, i < runs.length - 1)))).join("")
     : '<p class="muted">Нет данных для отчёта.</p>'
-  // Верхний колонтитул (как в EXE): дата слева, «Отчёт: N компов» по центру
+  // Верхний колонтитул (как в EXE): дата слева, название отчёта/папки по центру
   const repHead = mode === "super" ? `
     <div class="rep-head">
       <span>${h(fmtDate(new Date().toISOString()))}</span>
-      <span class="rep-head-c">Отчёт: ${runs.length} ${plural(runs.length, "комп", "компа", "компов")}</span>
+      <span class="rep-head-c">${h(titleTag)}</span>
       <span></span>
     </div>` : ""
   const html = `<!DOCTYPE html>
@@ -308,14 +335,6 @@ async function openReport(titleTag: string, runs: ReportRun[], mode: ReportMode)
   win.document.write(html)
   win.document.close()
   return true
-}
-
-// Русское склонение существительного по числу
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return one
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few
-  return many
 }
 
 // ─── Публичные функции ──────────────────────────────────────────────────────

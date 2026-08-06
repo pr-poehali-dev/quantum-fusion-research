@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { Fragment, useEffect, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
@@ -52,6 +52,8 @@ interface Run {
   partner_company_id?: number | null
   company_name?: string
   company_is_own?: boolean
+  /** Конфигурация ПК, которую собрал и прислал десктоп вместе с прогоном. */
+  hardware?: { cpu?: string; motherboard?: string; ram?: string; gpu?: string; disks?: string[] } | null
 }
 
 function fmtDate(s: string | null) {
@@ -404,6 +406,22 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   <span><Icon name="Calendar" size={12} className="mr-1 inline" />{fmtDate(selected.started_at)} → {fmtDate(selected.finished_at)}</span>
                 </div>
                 {selected.note && <p className="mt-2 max-w-xl rounded-lg bg-muted/50 p-2 text-xs text-foreground/60">{selected.note}</p>}
+                {selected.hardware && (
+                  <div className="mt-3 grid max-w-xl grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-xs">
+                    {([
+                      ["Процессор", selected.hardware.cpu],
+                      ["Мат. плата", selected.hardware.motherboard],
+                      ["ОЗУ", selected.hardware.ram],
+                      ["Видеокарта", selected.hardware.gpu],
+                      ["Диски", (selected.hardware.disks || []).join(", ")],
+                    ] as [string, string | undefined][]).filter(([, v]) => v && v.trim()).map(([k, v]) => (
+                      <Fragment key={k}>
+                        <span className="text-foreground/40">{k}</span>
+                        <span className="text-foreground/70">{v}</span>
+                      </Fragment>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button onClick={() => openRunReport(selected as unknown as ReportRun, "super")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }} title="Суперкомпактный отчёт (PDF): только тесты с баллами">

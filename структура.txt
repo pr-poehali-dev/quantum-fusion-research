@@ -1241,3 +1241,13 @@ http.client вместо urlopen, таймаут 0.6с, 6 попыток с па
 [v7.97] tg-bot CORS разрешает заголовок X-Admin-Token (без него браузер
 блокировал все запросы вкладки «Telegram-бот»); в TelegramBotTab все действия
 обрабатывают сбой сети и показывают сообщение вместо тихого отказа.
+
+[v7.98] Конфигурация ПК в отчётах стресс-теста:
+- БД: stress_runs.hardware JSONB (V0230) — {cpu, motherboard, ram, gpu, disks[]}.
+- backend/stress/index.py: ingest принимает hardware; get_run/folder_report/
+  list_runs отдают его в ответе.
+- src/components/admin/stress/folderReport.ts: блок «Конфигурация ПК» в шапке
+  PDF-отчёта; колонтитул суперкомпактного режима — название отчёта/папки
+  вместо счётчика «N компов».
+- src/components/admin/StressTestsTab.tsx: конфигурация ПК видна и в карточке
+  прогона в админке.
