@@ -246,6 +246,34 @@ def logo_base64_from_url(url: str) -> str:
         return ""
 
 
+def splash_base64_from_url(url: str) -> str:
+    """Скачивает splash-картинку партнёра и приводит к PNG base64 (≤1080×1080).
+
+    Splash не участвует в подписи — ошибка здесь не критична: просто вернём
+    пусто, и desktop покажет стандартный экран Deboshir.
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+    try:
+        import io
+        import urllib.request
+        from PIL import Image
+
+        req = urllib.request.Request(url, headers={"User-Agent": "BeGraphics/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read(8 * 1024 * 1024)
+        im = Image.open(io.BytesIO(raw))
+        im = im.convert("RGB")
+        im.thumbnail((1080, 1080), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        print(f"[BRANDING] не удалось подготовить splash {url}: {e}")
+        return ""
+
+
 def company_defaults(cur, company_id):
     """Логотип и контакты, уже заполненные партнёром в кабинете, — чтобы
     брендинг не пришлось вводить второй раз."""
@@ -264,7 +292,7 @@ def company_defaults(cur, company_id):
 
 def _row_to_pack(row, company_uid, company_name):
     (brand_key, logo, links, qr_tpl, issued_at, expires_at, revoked_at,
-     logo_url, verify_page_url) = row
+     logo_url, verify_page_url, splash_b64, splash_url) = row
     if isinstance(links, str):
         try:
             links = json.loads(links or "[]")
@@ -283,6 +311,11 @@ def _row_to_pack(row, company_uid, company_name):
             "verify_page_url": verify_page_url or "",
             "links": (links or [])[:MAX_LINKS],
             "qr_url_template": qr_tpl or "",
+            # Splash (загрузочный экран) — НЕ входит в канон подписи (см.
+            # canonical_payload), поэтому его можно докачивать/менять без
+            # перевыпуска pack.stbrand. Поля идут последними намеренно.
+            "splash_png_base64": splash_b64 or "",
+            "splash_url": splash_url or "",
         },
         "_revoked": revoked_at is not None,
     }
@@ -291,7 +324,8 @@ def _row_to_pack(row, company_uid, company_name):
 def get_brand_row(cur, company_id):
     cur.execute(
         f"SELECT brand_key, logo_base64, links, qr_url_template, issued_at, "
-        f"expires_at, revoked_at, logo_url, verify_page_url "
+        f"expires_at, revoked_at, logo_url, verify_page_url, "
+        f"splash_base64, splash_url "
         f"FROM {SCHEMA}.partner_brands WHERE company_id = %s",
         (int(company_id),),
     )
@@ -339,6 +373,11 @@ def build_pack(cur, company_id, signed=True):
     # Логотип задан только ссылкой — вшиваем и inline, чтобы работал офлайн.
     if not br.get("logo_png_base64") and br.get("logo_url"):
         br["logo_png_base64"] = logo_base64_from_url(br["logo_url"])
+
+    # Splash (загрузочный экран) — тот же приём, но необязателен: без него
+    # desktop просто показывает стандартный экран Deboshir (не ошибка).
+    if not br.get("splash_png_base64") and br.get("splash_url"):
+        br["splash_png_base64"] = splash_base64_from_url(br["splash_url"])
 
     site = site_base_url()
     # Preview-адрес в QR недопустим: он временный. Заменяем на боевой домен,
@@ -416,8 +455,17 @@ def save_brand(cur, company_id, body):
     if len(logo) > 400_000:
         return False, "logo_too_big"
 
+    splash = str(body.get("splash_png_base64") or "")
+    if "," in splash[:64] and splash.lstrip().startswith("data:"):
+        splash = splash.split(",", 1)[1]
+    splash = splash.strip()
+    # ≤3 MB на CDN по спеке — для inline (base64, в ZIP) берём запас поменьше
+    if len(splash) > 2_800_000:
+        return False, "splash_too_big"
+
     qr_tpl = str(body.get("qr_url_template") or "").strip()[:512]
     logo_url = str(body.get("logo_url") or "").strip()[:512]
+    splash_url = str(body.get("splash_url") or "").strip()[:512]
     verify_page_url = str(body.get("verify_page_url") or "").strip().rstrip("/")[:512]
     # verify_page_url можно вывести из шаблона QR: .../v/{verify_code} → .../v
     if not verify_page_url and "{verify_code}" in qr_tpl:
@@ -437,18 +485,19 @@ def save_brand(cur, company_id, body):
         cur.execute(
             f"UPDATE {SCHEMA}.partner_brands SET brand_key=%s, logo_base64=%s, "
             f"links=%s, qr_url_template=%s, logo_url=%s, verify_page_url=%s, "
+            f"splash_base64=%s, splash_url=%s, "
             f"expires_at=%s, revoked_at=NULL, updated_at=NOW() WHERE company_id=%s",
             (brand_key, logo, json.dumps(clean), qr_tpl, logo_url, verify_page_url,
-             expires_at, int(company_id)),
+             splash, splash_url, expires_at, int(company_id)),
         )
     else:
         cur.execute(
             f"INSERT INTO {SCHEMA}.partner_brands "
             f"(company_id, brand_key, logo_base64, links, qr_url_template, "
-            f"logo_url, verify_page_url, expires_at) "
-            f"VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            f"logo_url, verify_page_url, splash_base64, splash_url, expires_at) "
+            f"VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (int(company_id), brand_key, logo, json.dumps(clean), qr_tpl,
-             logo_url, verify_page_url, expires_at),
+             logo_url, verify_page_url, splash, splash_url, expires_at),
         )
     # Брендинг настроен — включаем white-label для компании.
     cur.execute(
@@ -474,6 +523,8 @@ def brand_status(cur, company_id):
             "links": d["links"],
             "logo_png_base64": d["logo_png_base64"],
             "logo_url": d["logo_url"],
+            "splash_png_base64": "",
+            "splash_url": "",
             "prefilled": bool(d["logo_png_base64"] or d["links"]),
             "qr_url_template": "",
             "issued_at": "", "expires_at": "", "revoked": False, "expired": False,
@@ -507,6 +558,8 @@ def brand_status(cur, company_id):
         "partner_name": pack["partner_name"],
         "logo_png_base64": logo,
         "logo_url": logo_url,
+        "splash_png_base64": pack["branding"]["splash_png_base64"],
+        "splash_url": pack["branding"]["splash_url"],
         "verify_page_url": pack["branding"]["verify_page_url"],
         "links": links,
         "qr_url_template": pack["branding"]["qr_url_template"],
@@ -678,7 +731,8 @@ def build_brand_archive(cur, company_id, pack):
 
     Внутри:
       pack.stbrand   — подписанный brand pack (его импортирует StressRunner)
-      logo.png       — логотип для шапки отчёта
+      logo.png       — логотип для шапки отчёта и левого верхнего угла UI
+      splash.png     — загрузочный экран 720×720 (опционально)
       qr-sample.png  — пример QR (с плейсхолдером), чтобы проверить вёрстку
       README.txt     — короткая инструкция на русском
     """
@@ -699,6 +753,11 @@ def build_brand_archive(cur, company_id, pack):
         except Exception as e:
             print(f"[BRANDING] логотип для архива не получен: {e}")
 
+    # Splash не входит в подпись, поэтому его можно смело брать откуда есть.
+    splash_b64 = br.get("splash_png_base64") or ""
+    if not splash_b64 and br.get("splash_url"):
+        splash_b64 = splash_base64_from_url(br["splash_url"])
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("pack.stbrand", json.dumps(pack, ensure_ascii=False, indent=2))
@@ -708,6 +767,12 @@ def build_brand_archive(cur, company_id, pack):
                 z.writestr("logo.png", base64.b64decode(logo_b64))
             except Exception as e:
                 print(f"[BRANDING] логотип не вшит в архив: {e}")
+
+        if splash_b64:
+            try:
+                z.writestr("splash.png", base64.b64decode(splash_b64))
+            except Exception as e:
+                print(f"[BRANDING] splash не вшит в архив: {e}")
 
         sample_url = qr_tpl.replace("{verify_code}", "SAMPLE0000000000") if qr_tpl else ""
         if sample_url:
@@ -729,9 +794,11 @@ def build_brand_archive(cur, company_id, pack):
             "                  StressRunner: раздел \"Брендинг PDF\" -> Импорт.\n"
             "                  После этого отчёты выходят под вашим брендом,\n"
             "                  в том числе без интернета.\n"
-            "  logo.png      - ваш логотип для шапки отчёта. Программа берёт\n"
-            "                  его из этого архива, поэтому держите файлы вместе.\n"
-            "  qr-sample.png - пример QR-кода (с тестовым кодом), чтобы\n"
+            "  logo.png      - ваш логотип для шапки отчёта и левого верхнего\n"
+            "                  угла программы. Держите файл вместе с архивом.\n"
+            + ("  splash.png    - загрузочный экран программы (720x720). Без\n"
+               "                  него показывается стандартный экран.\n" if splash_b64 else "")
+            + "  qr-sample.png - пример QR-кода (с тестовым кодом), чтобы\n"
             "                  посмотреть, как он будет выглядеть.\n\n"
             f"Контакты в отчёте:\n{links_txt}\n\n"
             "ВАЖНО: файл-ключ подписан. Не редактируйте pack.stbrand вручную -\n"

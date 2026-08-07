@@ -224,18 +224,24 @@ def handler(event, context):
                     return err("brand pack unavailable", 404)
 
                 br = pack.get("branding") or {}
-                # assets НЕ подписывается, поэтому логотип здесь отдаём всегда
-                # (в самом паке он может быть пустым — base64 ломает сверку
-                # подписи на стороне .NET).
+                # assets НЕ подписывается, поэтому логотип/splash здесь отдаём
+                # всегда (в самом паке логотип может быть пустым — base64
+                # ломает сверку подписи на стороне .NET; splash в подпись не
+                # входит вовсе, но докачивается тем же путём).
                 logo_b64 = br.get("logo_png_base64") or ""
                 if not logo_b64:
                     try:
                         logo_b64 = bp.company_defaults(cur, partner_cid)["logo_png_base64"]
                     except Exception as e:
                         print(f"[BRANDING] assets: логотип не получен: {e}")
+                splash_b64 = br.get("splash_png_base64") or ""
+                if not splash_b64 and br.get("splash_url"):
+                    splash_b64 = bp.splash_base64_from_url(br["splash_url"])
                 assets = {
                     "logo_base64": logo_b64,
                     "logo_url": br.get("logo_url") or "",
+                    "splash_base64": splash_b64,
+                    "splash_url": br.get("splash_url") or "",
                     "qr_url_template": br.get("qr_url_template") or "",
                     "verify_page_url": br.get("verify_page_url") or "",
                 }
@@ -468,6 +474,8 @@ def brand_route(cur, conn, action, method, body, company_id):
         done, error = bp.save_brand(cur, company_id, body)
         if error == "logo_too_big":
             return err("Логотип слишком большой — уменьшите картинку", 400)
+        if error == "splash_too_big":
+            return err("Картинка загрузочного экрана слишком большая — уменьшите файл", 400)
         if not done:
             return err("save_failed", 400)
         conn.commit()
@@ -497,7 +505,7 @@ def brand_route(cur, conn, action, method, body, company_id):
                        "zip_base64": base64.b64encode(data).decode()})
 
         # Плоский ответ: pack + отдельно ассеты (удобно при большом PNG).
-        # assets не подписывается — логотип отдаём даже если в паке он пуст.
+        # assets не подписывается — логотип/splash отдаём даже если в паке пусто.
         br = pack.get("branding") or {}
         logo_b64 = br.get("logo_png_base64") or ""
         if not logo_b64:
@@ -505,6 +513,9 @@ def brand_route(cur, conn, action, method, body, company_id):
                 logo_b64 = bp.company_defaults(cur, company_id)["logo_png_base64"]
             except Exception as e:
                 print(f"[BRANDING] assets: логотип не получен: {e}")
+        splash_b64 = br.get("splash_png_base64") or ""
+        if not splash_b64 and br.get("splash_url"):
+            splash_b64 = bp.splash_base64_from_url(br["splash_url"])
         return ok({
             "ok": True,
             "pack": pack,
@@ -512,6 +523,8 @@ def brand_route(cur, conn, action, method, body, company_id):
             "assets": {
                 "logo_base64": logo_b64,
                 "logo_url": br.get("logo_url") or "",
+                "splash_base64": splash_b64,
+                "splash_url": br.get("splash_url") or "",
                 "qr_url_template": br.get("qr_url_template") or "",
                 "verify_page_url": br.get("verify_page_url") or "",
             },

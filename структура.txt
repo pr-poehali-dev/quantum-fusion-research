@@ -1251,3 +1251,21 @@ http.client вместо urlopen, таймаут 0.6с, 6 попыток с па
   вместо счётчика «N компов».
 - src/components/admin/StressTestsTab.tsx: конфигурация ПК видна и в карточке
   прогона в админке.
+
+[v7.99] Splash-экран партнёра (загрузочный экран StressRunner при старте,
+720×720, можно 1080×1080). Логотип теперь и в UI программы (левый верх), не
+только в PDF.
+- БД: partner_brands +splash_base64 +splash_url (V0231).
+- backend/stress/brand_pack.py: splash_png_base64/splash_url добавлены в
+  branding ПОСЛЕ qr_url_template — canonical_payload() их НЕ включает,
+  подпись RSA не меняется, старые .stbrand остаются валидными. Новая
+  splash_base64_from_url() (аналог logo_base64_from_url). build_pack()
+  докачивает splash из URL; build_brand_archive() кладёт splash.png в ZIP.
+- backend/stress/index.py: brand_save обрабатывает splash_too_big;
+  brand_download/brand_archive и partner_branding/partner_branding_assets
+  (X-Stress-Token) отдают splash_base64+splash_url в assets — докачка без
+  переподписи пака, как у логотипа.
+- src/components/partners/StressBrandSettings.tsx: блок «Загрузочный экран
+  программы» — загрузка картинки (canvas обрезает в квадрат ≤1080×1080),
+  превью 1:1 с визуальной safe zone (нижние ~21% — там на desktop градиент
+  + прогресс-бар).

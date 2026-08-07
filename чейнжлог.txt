@@ -3,6 +3,49 @@
 
 ---
 
+## v7.99 | 2026-08-07 | Splash-экран партнёра (загрузочный экран StressRunner)
+
+### Задача
+Партнёры теперь могут загрузить картинку загрузочного экрана (splash) для
+десктоп-программы StressRunner — 720×720 (можно 1080×1080), показывается при
+старте программы вместо стандартного Deboshir. Логотип партнёра теперь ещё и
+в UI программы (левый верхний угол), не только в PDF. По спеке
+docs: PARTNER_BRANDING_SITE §2.2, §4.4.
+
+### БД (V0231)
+partner_brands: +splash_base64, +splash_url (та же схема хранения, что у
+logo — inline base64 для офлайна + прямая ссылка для докачки).
+
+### Backend (brand_pack.py)
+- _row_to_pack/get_brand_row/save_brand/brand_status — читают/пишут splash.
+- КРИТИЧНО: splash_png_base64/splash_url добавлены в branding ПОСЛЕ
+  qr_url_template — canonical_payload() их не включает вообще, подпись RSA
+  не меняется и старые .stbrand остаются валидными.
+- Новая splash_base64_from_url() — скачивание + приведение к PNG ≤1080×1080
+  (аналог logo_base64_from_url, но без обрезки под квадрат на бэке).
+- build_pack() докачивает splash из splash_url, если base64 пуст.
+- build_brand_archive(): splash.png в ZIP (если задан), README.txt упоминает
+  файл только когда он есть.
+
+### Backend (index.py)
+- brand_save: обрабатывает ошибку splash_too_big (лимит ~2.8 MB inline).
+- brand_download/brand_archive и partner_branding/partner_branding_assets
+  (X-Stress-Token): assets теперь содержат splash_base64 + splash_url —
+  тем же путём, что и logo, докачка не требует переподписи пака.
+
+### Frontend (StressBrandSettings.tsx)
+- Новый блок «Загрузочный экран программы»: загрузка картинки → canvas
+  обрезает по центру в квадрат ≤1080×1080 → PNG base64 (аналог логотипа).
+- Превью 1:1 с визуальной safe zone (нижние ~21% высоты, где на desktop
+  градиент + статус + прогресс-бар) — предупреждение прямо на превью.
+- save() отправляет splash_png_base64 + splash_url вместе с остальным
+  брендингом.
+
+### Проверка
+tsc --noEmit — чисто, backend 19/19 тестов зелёные, задеплоено.
+
+---
+
 ## v7.98 | 2026-08-05 | Конфигурация ПК в отчётах стресс-теста + колонтитул
 
 ### Задача

@@ -10,6 +10,8 @@ type Brand = {
   partner_name: string
   logo_png_base64: string
   logo_url?: string
+  splash_png_base64?: string
+  splash_url?: string
   verify_page_url?: string
   links: Link[]
   qr_url_template: string
@@ -44,10 +46,12 @@ export default function StressBrandSettings({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [logo, setLogo] = useState("")
+  const [splash, setSplash] = useState("")
   const [links, setLinks] = useState<Link[]>([])
   const [qrTpl, setQrTpl] = useState("")
   const loadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const splashFileRef = useRef<HTMLInputElement>(null)
 
   // Партнёр ходит по сессии, админ — по adminKey + выбранной компании.
   const auth = session ? { session } : { companyId }
@@ -55,6 +59,7 @@ export default function StressBrandSettings({
   const apply = (b: Brand) => {
     setBrand(b)
     setLogo(b.logo_png_base64 || "")
+    setSplash(b.splash_png_base64 || "")
     setLinks(b.links?.length ? b.links : [])
     setQrTpl(b.qr_url_template || "")
   }
@@ -116,6 +121,33 @@ export default function StressBrandSettings({
     reader.readAsDataURL(file)
   }
 
+  // Splash (загрузочный экран): любое изображение → PNG ≤1080×1080 → base64.
+  // Итоговая картинка квадратная 1:1 — обрезаем по центру (UniformToFill,
+  // как на desktop), чтобы превью совпадало с тем, что покажет программа.
+  const pickSplash = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const side = Math.min(1080, Math.max(img.width, img.height))
+        const srcSide = Math.min(img.width, img.height)
+        const sx = (img.width - srcSide) / 2
+        const sy = (img.height - srcSide) / 2
+        const canvas = document.createElement("canvas")
+        canvas.width = side; canvas.height = side
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return
+        ctx.drawImage(img, sx, sy, srcSide, srcSide, 0, 0, side, side)
+        const dataUrl = canvas.toDataURL("image/png")
+        const b64 = dataUrl.split(",")[1] || ""
+        if (b64.length > 2_800_000) { flash(false, "Картинка слишком большая — возьмите файл поменьше"); return }
+        setSplash(b64)
+      }
+      img.src = String(reader.result || "")
+    }
+    reader.readAsDataURL(file)
+  }
+
   const save = (extra: Record<string, unknown> = {}) => {
     setSaving(true)
     return api.stress.brandSave(
@@ -125,6 +157,8 @@ export default function StressBrandSettings({
         // НЕ берём из текущей вкладки — иначе в QR уйдёт preview-домен;
         // боевой адрес подставит сервер.
         logo_url: brand?.logo_url || "",
+        splash_png_base64: splash,
+        splash_url: brand?.splash_url || "",
         ...extra,
       }, adminKey, auth)
       .then(d => {
@@ -338,6 +372,51 @@ export default function StressBrandSettings({
                     Убрать
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Splash — загрузочный экран программы */}
+          <div className="mb-4">
+            <p className="mb-2 text-xs font-medium text-foreground/50">
+              Загрузочный экран программы <span className="text-foreground/30">— необязательно, квадрат 720×720 (можно 1080×1080)</span>
+            </p>
+            <div className="flex items-start gap-3">
+              <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-border bg-background">
+                {splash ? (
+                  <>
+                    <img src={`data:image/png;base64,${splash}`} alt="Загрузочный экран"
+                      className="h-full w-full object-cover" />
+                    {/* Safe zone: нижние ~150px из 720 (≈21%) заняты градиентом/прогресс-баром на desktop */}
+                    <div className="absolute inset-x-0 bottom-0 border-t border-dashed border-white/50 bg-black/40"
+                      style={{ height: "21%" }} title="Здесь на экране прогресс-бар — не размещайте здесь текст/лого" />
+                  </>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Icon name="Image" size={18} className="text-foreground/25" />
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <input ref={splashFileRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) pickSplash(f); e.target.value = "" }} />
+                  <button onClick={() => splashFileRef.current?.click()} style={{ cursor: "pointer" }}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground">
+                    Выбрать картинку
+                  </button>
+                  {splash && (
+                    <button onClick={() => setSplash("")} style={{ cursor: "pointer" }}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/50 hover:border-red-400 hover:text-red-400">
+                      Убрать
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-foreground/30">
+                  Показывается при запуске StressRunner вместо стандартного экрана. Нижняя
+                  закрашенная область на превью — туда программа накладывает статус и прогресс-бар,
+                  логотип/текст туда не помещайте. Без картинки — стандартный экран, это не ошибка.
+                </p>
               </div>
             </div>
           </div>
