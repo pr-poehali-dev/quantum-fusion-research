@@ -3,20 +3,36 @@ import Icon from "@/components/ui/icon"
 
 const UPLOAD_URL = "https://functions.poehali.dev/5d666dbd-55fd-470b-8b67-fa9fcf6ecd81"
 
-interface Props {
-  images: string[]
-  onChange: (urls: string[]) => void
-  folder?: string
-  maxImages?: number
+// Тело запроса облачной функции ограничено (~5–10 МБ по документации). base64
+// раздувает бинарник ещё на треть, поэтому держим итоговую строку с запасом.
+const MAX_UPLOAD_BASE64 = 4_000_000
+// Не грузим все фото параллельно разом — на медленном интернете это выглядит
+// как «зависло», а на деле просто много больших запросов одновременно.
+const UPLOAD_CONCURRENCY = 2
+
+// Есть ли у картинки реально видимая прозрачность (не просто RGBA-режим —
+// у многих PNG альфа-канал полностью непрозрачный, например скриншоты).
+const hasVisibleAlpha = (ctx: CanvasRenderingContext2D, w: number, h: number): boolean => {
+  // Сэмплируем не весь холст (может быть медленно на больших фото), а сетку точек
+  const step = Math.max(1, Math.floor(Math.min(w, h) / 40))
+  for (let y = 0; y < h; y += step) {
+    const row = ctx.getImageData(0, y, w, 1).data
+    for (let x = 0; x < row.length; x += 4 * step) {
+      if (row[x + 3] < 250) return true
+    }
+  }
+  return false
 }
 
 // Сжимает/уменьшает изображение в браузере перед загрузкой.
 // Большие фото (5–10 МБ) не помещаются в тело запроса облачной функции,
-// поэтому ресайзим до maxSide и пережимаем в JPEG.
+// поэтому ресайзим до maxSide и пережимаем в JPEG. Если итог всё ещё
+// слишком большой — уменьшаем качество/размер ещё несколько раз, чтобы
+// гарантированно уложиться в лимит (иначе запрос падает с 413).
 const compressImage = (file: File, maxSide = 2000, quality = 0.85): Promise<string> =>
   new Promise((resolve, reject) => {
-    // SVG и GIF не трогаем — отдаём как есть
-    if (file.type === "image/svg+xml" || file.type === "image/gif") {
+    // SVG не трогаем — отдаём как есть (векторный формат, лёгкий)
+    if (file.type === "image/svg+xml") {
       const r = new FileReader()
       r.onload = () => resolve(r.result as string)
       r.onerror = reject
@@ -27,21 +43,48 @@ const compressImage = (file: File, maxSide = 2000, quality = 0.85): Promise<stri
     reader.onload = () => {
       const img = new Image()
       img.onload = () => {
-        let { width, height } = img
-        if (width > maxSide || height > maxSide) {
-          const scale = maxSide / Math.max(width, height)
-          width = Math.round(width * scale)
-          height = Math.round(height * scale)
+        const draw = (side: number) => {
+          let { width, height } = img
+          if (width > side || height > side) {
+            const scale = side / Math.max(width, height)
+            width = Math.round(width * scale)
+            height = Math.round(height * scale)
+          }
+          const canvas = document.createElement("canvas")
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext("2d")
+          if (!ctx) throw new Error("no canvas")
+          ctx.drawImage(img, 0, 0, width, height)
+          return { canvas, ctx, width, height }
         }
-        const canvas = document.createElement("canvas")
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext("2d")
-        if (!ctx) { reject(new Error("no canvas")); return }
-        ctx.drawImage(img, 0, 0, width, height)
-        // PNG с прозрачностью → оставляем PNG, иначе JPEG (меньше вес)
-        const hasAlpha = file.type === "image/png"
-        resolve(canvas.toDataURL(hasAlpha ? "image/png" : "image/jpeg", quality))
+        try {
+          const { canvas, ctx, width, height } = draw(maxSide)
+          // PNG/GIF с реальной прозрачностью → оставляем PNG, иначе JPEG
+          // (для скриншотов и фото без альфы JPEG в разы легче).
+          const wantAlpha = (file.type === "image/png" || file.type === "image/gif")
+            && hasVisibleAlpha(ctx, width, height)
+
+          if (wantAlpha) {
+            resolve(canvas.toDataURL("image/png", quality))
+            return
+          }
+
+          // Итеративно ужимаем, пока не уложимся в лимит тела запроса.
+          let side = maxSide
+          let q = quality
+          let out = canvas.toDataURL("image/jpeg", q)
+          let attempts = 0
+          while (out.length > MAX_UPLOAD_BASE64 && attempts < 5) {
+            attempts++
+            if (q > 0.5) { q -= 0.15 } else { side = Math.round(side * 0.75) }
+            const r2 = draw(side)
+            out = r2.canvas.toDataURL("image/jpeg", q)
+          }
+          resolve(out)
+        } catch (e) {
+          reject(e)
+        }
       }
       img.onerror = reject
       img.src = reader.result as string
@@ -50,10 +93,19 @@ const compressImage = (file: File, maxSide = 2000, quality = 0.85): Promise<stri
     reader.readAsDataURL(file)
   })
 
+interface Props {
+  images: string[]
+  onChange: (urls: string[]) => void
+  folder?: string
+  maxImages?: number
+}
+
 export function ImageUploader({ images: imagesProp, onChange, folder = "builds", maxImages = 8 }: Props) {
   const images = imagesProp || []
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
+  const [error, setError] = useState<string | null>(null)
   const [uploadUrl, setUploadUrl] = useState("")
 
   const uploadFile = async (file: File): Promise<string> => {
@@ -69,23 +121,55 @@ export function ImageUploader({ images: imagesProp, onChange, folder = "builds",
         r.readAsDataURL(file)
       })
     }
-    const res = await fetch(UPLOAD_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file: dataUrl, name: file.name, folder }),
-    })
+    // Таймаут на сам запрос — без него зависший или очень медленный ответ
+    // выглядит для пользователя как «вечная загрузка» без единого сигнала.
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30_000)
+    let res: Response
+    try {
+      res = await fetch(UPLOAD_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: dataUrl, name: file.name, folder }),
+        signal: controller.signal,
+      })
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") throw new Error(`${file.name}: превышено время ожидания`)
+      throw new Error(`${file.name}: нет связи с сервером`)
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (res.status === 413) throw new Error(`${file.name}: файл слишком большой даже после сжатия`)
+    if (!res.ok) throw new Error(`${file.name}: сервер ответил ошибкой (${res.status})`)
     const data = await res.json()
     if (data.url) return data.url
-    throw new Error(data.error || "No URL")
+    throw new Error(`${file.name}: ${data.error || "не удалось загрузить"}`)
   }
 
   const handleFiles = async (files: FileList) => {
     if (images.length >= maxImages) return
     setUploading(true)
+    setError(null)
     const toUpload = Array.from(files).slice(0, maxImages - images.length)
-    const urls = await Promise.all(toUpload.map(uploadFile).map(p => p.catch(() => null)))
-    const valid = urls.filter(Boolean) as string[]
-    onChange([...images, ...valid])
+    setProgress({ done: 0, total: toUpload.length })
+
+    // Грузим ограниченными пачками — параллельно, но не всё разом, чтобы не
+    // упереться в лимиты сети/функции и видеть честный прогресс по файлам.
+    const results: (string | null)[] = []
+    const failures: string[] = []
+    for (let i = 0; i < toUpload.length; i += UPLOAD_CONCURRENCY) {
+      const batch = toUpload.slice(i, i + UPLOAD_CONCURRENCY)
+      const settled = await Promise.allSettled(batch.map(uploadFile))
+      for (const r of settled) {
+        if (r.status === "fulfilled") results.push(r.value)
+        else failures.push((r.reason as Error)?.message || "неизвестная ошибка")
+      }
+      setProgress(p => ({ ...p, done: Math.min(p.total, p.done + batch.length) }))
+    }
+
+    const valid = results.filter(Boolean) as string[]
+    if (valid.length) onChange([...images, ...valid])
+    if (failures.length) setError(failures.join("; "))
     setUploading(false)
     if (inputRef.current) inputRef.current.value = ""
   }
@@ -148,9 +232,20 @@ export function ImageUploader({ images: imagesProp, onChange, folder = "builds",
             <Icon name="Upload" size={18} className="text-foreground/40" />
           )}
           <div>
-            <p className="text-sm text-foreground/60">{uploading ? "Загружаем..." : "Нажмите чтобы загрузить фото"}</p>
+            <p className="text-sm text-foreground/60">
+              {uploading
+                ? `Загружаем${progress.total > 1 ? ` ${progress.done}/${progress.total}` : "..."}`
+                : "Нажмите чтобы загрузить фото"}
+            </p>
             <p className="text-xs text-foreground/30">JPG, PNG, WebP · до {maxImages} фото</p>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-400">
+          <Icon name="TriangleAlert" size={14} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
