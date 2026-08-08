@@ -9,7 +9,7 @@ import { BuildsList } from "../BuildsList"
 export function BuildsSection({
   tab, setTab, loading,
   builds, setBuilds, configSlots, categories, tags,
-  autoEditBuildId, clearAutoEditBuildId,
+  autoEditBuildId, clearAutoEditBuildId, setAutoEditBuildId,
 }: {
   tab: AdminTab
   setTab: (t: AdminTab) => void
@@ -21,6 +21,9 @@ export function BuildsSection({
   tags: Tag[]
   autoEditBuildId?: number | null
   clearAutoEditBuildId?: () => void
+  // Клик «Ред.» тоже проставляет autoEditBuildId (state живёт в Admin.tsx,
+  // переживает remount дерева при navigate между вкладками).
+  setAutoEditBuildId?: (id: number | null) => void
 }) {
   const fmt = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
@@ -51,6 +54,7 @@ export function BuildsSection({
   const componentSearchRef = useRef<HTMLInputElement>(null)
   const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
   const [dupeLoading, setDupeLoading] = useState<number | null>(null)
+  const [copyLoading, setCopyLoading] = useState<number | null>(null)
   const [expandedVariants, setExpandedVariants] = useState<number | null>(null)
   const [buildTagIds, setBuildTagIds] = useState<number[]>([])
 
@@ -92,31 +96,30 @@ export function BuildsSection({
     setBuildTagIds(b.tags?.map(t => t.id) || [])
   }
 
-  // Какую сборку сейчас редактируем (id переживает навигацию/перерисовку —
-  // тот же надёжный подход, что и авто-открытие из WIP через autoEditBuildId).
-  const [pendingEditId, setPendingEditId] = useState<number | null>(null)
-
+  // Какую сборку сейчас редактируем — id живёт в Admin.tsx (autoEditBuildId),
+  // а НЕ в локальном state этого компонента. Переключение на add_build — это
+  // navigate() в setTab(), из-за которого дерево пересоздаётся целиком
+  // (key={main-${tab}} в Admin.tsx) и любой локальный state здесь обнуляется
+  // ДО того, как успевает открыться форма. Тот же приём уже использовался
+  // для авто-открытия из WIP — теперь кнопка «Ред.» в списке идёт тем же путём.
   const editBuild = (b: PCBuild) => {
-    setPendingEditId(b.id)
-    fillBuildForm(b)
+    setAutoEditBuildId?.(b.id)
     setTab("add_build")
   }
 
-  // Наполняем форму из pendingEditId (клик «Ред.») ИЛИ autoEditBuildId (из WIP),
-  // как только сборка есть в списке. Устойчиво к перезагрузке списка/навигации.
-  // one-shot: после наполнения id сбрасываем, чтобы не «тянуть» назад в форму.
+  // Наполняем форму из autoEditBuildId (клик «Ред.» в списке ИЛИ переход из
+  // WIP), как только сборка есть в списке. Устойчиво к перезагрузке списка/
+  // навигации. one-shot: после наполнения id сбрасываем.
   useEffect(() => {
-    const wantId = pendingEditId ?? autoEditBuildId
-    if (!wantId) return
-    const b = builds.find(x => x.id === wantId)
+    if (!autoEditBuildId) return
+    const b = builds.find(x => x.id === autoEditBuildId)
     if (b) {
       fillBuildForm(b)
       setTab("add_build")
-      setPendingEditId(null)
-      if (autoEditBuildId) clearAutoEditBuildId?.()
+      clearAutoEditBuildId?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingEditId, autoEditBuildId, builds])
+  }, [autoEditBuildId, builds])
 
   const submitBuild = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,7 +163,7 @@ export function BuildsSection({
     setBuildComponents([])
     setBuildTagIds([])
     setPointPickIdx(null)
-    setPendingEditId(null)
+    setAutoEditBuildId?.(null)
     setTab("builds")
   }
 
@@ -181,6 +184,22 @@ export function BuildsSection({
       setBuilds(Array.isArray(d) ? d : (d.builds || []))
     }
     setDupeLoading(null)
+  }
+
+  // «Скопировать билд» — самостоятельная независимая копия (в отличие от
+  // «Вариант» не привязана как parent_id к оригиналу, свободно редактируется
+  // и удаляется отдельно от него).
+  const copyBuild = async (b: PCBuild) => {
+    setCopyLoading(b.id)
+    const res = await api.builds.create({
+      ...b, id: undefined, name: b.name + " (копия)", status: "draft",
+      parent_id: null, client_token: null, short_code: null,
+    })
+    if (res.id) {
+      const d = await api.builds.getAll()
+      setBuilds(Array.isArray(d) ? d : (d.builds || []))
+    }
+    setCopyLoading(null)
   }
 
   const generateClientLink = async (b: PCBuild) => {
@@ -220,9 +239,9 @@ export function BuildsSection({
         builds={builds.filter(b => showArchive ? b.status === "archive" : b.status !== "archive")}
         loading={loading}
         expandedVariants={expandedVariants} setExpandedVariants={setExpandedVariants}
-        dupeLoading={dupeLoading} copiedBuildId={copiedBuildId} fmt={fmt}
-        onNew={() => { setPendingEditId(null); setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null }); setBuildComponents([]); setTab("add_build") }}
-        onEdit={editBuild} onDupe={duplicateBuild} onLink={generateClientLink}
+        dupeLoading={dupeLoading} copyLoading={copyLoading} copiedBuildId={copiedBuildId} fmt={fmt}
+        onNew={() => { setAutoEditBuildId?.(null); setBuildForm({ id: null, name: "", description: "", status: "catalog", is_featured: false, in_stock: false, assembly_type: "percent", assembly_fee_manual: "", image_urls: [], sell_with_vat: false, lock_prices: false, parent_id: null }); setBuildComponents([]); setTab("add_build") }}
+        onEdit={editBuild} onDupe={duplicateBuild} onCopy={copyBuild} onLink={generateClientLink}
         onStatus={async (b, status) => { await api.builds.patch({ id: b.id, status }); setBuilds(bs => bs.map(bb => bb.id === b.id || bb.parent_id === b.id ? { ...bb, status } : bb)) }}
         onDelete={deleteBuild} isArchive={showArchive}
         onToggleArchive={() => setBuildsViewArchive(v => !v)} />
@@ -585,7 +604,7 @@ export function BuildsSection({
           <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             {buildForm.id ? "Сохранить" : "Опубликовать сборку"}
           </button>
-          <button type="button" onClick={() => { setPendingEditId(null); setTab("builds") }} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+          <button type="button" onClick={() => { setAutoEditBuildId?.(null); setTab("builds") }} className="rounded-lg border border-border px-6 py-2.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
             Отмена
           </button>
         </div>

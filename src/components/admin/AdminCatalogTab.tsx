@@ -28,9 +28,11 @@ interface Props {
   // Articles
   articles: Article[]
   setArticles: React.Dispatch<React.SetStateAction<Article[]>>
-  // авто-открытие сборки на редактирование (из WIP)
+  // авто-открытие сборки на редактирование (из WIP, а также клик «Ред.»
+  // в списке — state живёт в Admin.tsx, переживает remount при navigate)
   autoEditBuildId?: number | null
   clearAutoEditBuildId?: () => void
+  setAutoEditBuildId?: (id: number | null) => void
   // авто-открытие статьи на редактирование (переживает remount поддерева)
   autoEditArticleId?: number | null
   setAutoEditArticleId?: (id: number | null) => void
@@ -42,7 +44,7 @@ export function AdminCatalogTab({
   builds, setBuilds, configSlots,
   tags, setTags,
   articles, setArticles,
-  autoEditBuildId, clearAutoEditBuildId,
+  autoEditBuildId, clearAutoEditBuildId, setAutoEditBuildId,
   autoEditArticleId, setAutoEditArticleId,
 }: Props) {
   // ── Products вынесены в ./catalog/ProductsSection.tsx ───────────────────────
@@ -66,7 +68,7 @@ export function AdminCatalogTab({
   if (tab === "builds" || tab === "archive" || tab === "add_build")
     return <BuildsSection tab={tab} setTab={setTab} loading={loading}
       builds={builds} setBuilds={setBuilds} configSlots={configSlots} categories={categories} tags={tags}
-      autoEditBuildId={autoEditBuildId} clearAutoEditBuildId={clearAutoEditBuildId} />
+      autoEditBuildId={autoEditBuildId} clearAutoEditBuildId={clearAutoEditBuildId} setAutoEditBuildId={setAutoEditBuildId} />
 
   // CABLES
   if (tab === "cables") {

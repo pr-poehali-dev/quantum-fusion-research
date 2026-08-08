@@ -13,17 +13,19 @@ function buildTotal(b: PCBuild): number {
 }
 
 // ── Строка одной сборки ──
-export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }: {
+export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoading, copyLoading, copiedBuildId, fmt, onEdit, onDupe, onCopy, onLink, onStatus, onDelete }: {
   b: PCBuild
   isVariant: boolean
   isMain: boolean
   hasVariants: boolean
   isArchive: boolean
   dupeLoading: number | null
+  copyLoading: number | null
   copiedBuildId: number | null
   fmt: (n: number) => string
   onEdit: (b: PCBuild) => void
   onDupe: (b: PCBuild) => void
+  onCopy: (b: PCBuild) => void
   onLink: (b: PCBuild) => void
   onStatus: (b: PCBuild, status: string) => void
   onDelete: (id: number) => void
@@ -52,6 +54,12 @@ export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoa
       <div className="flex flex-wrap gap-1.5 shrink-0">
         <button onClick={() => onEdit(b)} title="Редактировать" className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Pencil" size={12} /><span className="hidden sm:inline">Ред.</span>
+        </button>
+        <button onClick={() => onCopy(b)} disabled={copyLoading === b.id} title="Скопировать билд — создаст независимую копию"
+          className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors disabled:opacity-50"
+          style={{ cursor: "pointer" }}>
+          <Icon name={copyLoading === b.id ? "Loader2" : "Copy"} size={12} className={copyLoading === b.id ? "animate-spin" : ""} />
+          <span className="hidden sm:inline">{copyLoading === b.id ? "..." : "Копия"}</span>
         </button>
         {isMain && !isArchive && (
           <button onClick={() => onDupe(b)} disabled={dupeLoading === b.id} title="Создать вариант"
@@ -91,14 +99,15 @@ export function BuildRow({ b, isVariant, isMain, hasVariants, isArchive, dupeLoa
 }
 
 // ── Список сборок с группировкой по вариантам ──
-export function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, dupeLoading, copiedBuildId, fmt, onNew, onEdit, onDupe, onLink, onStatus, onDelete, isArchive, onToggleArchive }: {
+export function BuildsList({ builds, loading, expandedVariants, setExpandedVariants, dupeLoading, copyLoading, copiedBuildId, fmt, onNew, onEdit, onDupe, onCopy, onLink, onStatus, onDelete, isArchive, onToggleArchive }: {
   builds: PCBuild[]; loading: boolean; expandedVariants: number | null
   setExpandedVariants: (id: number | null) => void
-  dupeLoading: number | null; copiedBuildId: number | null
+  dupeLoading: number | null; copyLoading: number | null; copiedBuildId: number | null
   fmt: (n: number) => string
   onNew: () => void
   onEdit: (b: PCBuild) => void
   onDupe: (b: PCBuild) => void
+  onCopy: (b: PCBuild) => void
   onLink: (b: PCBuild) => void
   onStatus: (b: PCBuild, status: string) => void
   onDelete: (id: number) => void
@@ -121,7 +130,7 @@ export function BuildsList({ builds, loading, expandedVariants, setExpandedVaria
   }))
   groups.sort((a, b) => b.main.id - a.main.id)
 
-  const rowProps = { isArchive, dupeLoading, copiedBuildId, fmt, onEdit, onDupe, onLink, onStatus, onDelete }
+  const rowProps = { isArchive, dupeLoading, copyLoading, copiedBuildId, fmt, onEdit, onDupe, onCopy, onLink, onStatus, onDelete }
 
   return (
     <div>

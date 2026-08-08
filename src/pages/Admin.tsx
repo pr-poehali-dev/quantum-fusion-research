@@ -348,6 +348,7 @@ export default function Admin() {
             tags={tags} setTags={setTags}
             articles={articles} setArticles={setArticles}
             autoEditBuildId={autoEditBuildId} clearAutoEditBuildId={() => setAutoEditBuildId(null)}
+            setAutoEditBuildId={setAutoEditBuildId}
             autoEditArticleId={autoEditArticleId} setAutoEditArticleId={setAutoEditArticleId}
           />
         )}
