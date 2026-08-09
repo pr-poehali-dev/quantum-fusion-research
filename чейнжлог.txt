@@ -3,6 +3,53 @@
 
 ---
 
+## v8.02 | 2026-08-09 | Оплата за сборку в партийных заказах (как в «Актуальных сборках»)
+
+### Задача
+В обычном заказе-сборке (Конфигуратор → «Актуальные сборки») при заказе с
+галочкой «Хочу сборку BeGraphics» отдельно считается и сохраняется оплата
+за работу — 7% от стоимости железа. В ПАРТИЙНЫХ заказах (Партия ПК,
+AdminBatchOrderPage) такой возможности не было вообще — таблица групп партии
+не хранила ни флаг «нужна сборка», ни саму сумму, итог считался только по
+стоимости компонентов.
+
+### БД
+Миграция V0232: в order_build_groups добавлены поля
+- wants_assembly (boolean, default false) — нужна ли сборка для варианта
+- assembly_fee (numeric, default 0) — сумма сборки за 1 ПК варианта
+Старые группы получили значения по умолчанию (сборка выключена, суммы не
+изменились — проверено SQL-запросом после миграции).
+
+### Backend (backend/orders/batch_builds.py)
+- Добавлена константа ASSEMBLY_FEE_PERCENT = 0.07 (тот же процент, что и в
+  Configurator.tsx / backend/orders/index.py для обычных заказов).
+- _calc_group_totals() теперь принимает wants_assembly и возвращает
+  (parts_total, assembly_fee) отдельно; total_price = parts_total + fee.
+- add_group()/update_group() принимают параметр wants_assembly, сохраняют
+  wants_assembly и assembly_fee в БД.
+- list_groups() возвращает wants_assembly и assembly_fee по каждой группе.
+- _recalc_order_total() не менялся — по-прежнему суммирует total_price × qty
+  по группам, но total_price теперь уже включает сборку.
+
+### Backend (backend/orders/index.py)
+- batch_add_group / batch_update_group пробрасывают body.wants_assembly в
+  bb.add_group()/bb.update_group().
+
+### Frontend
+- src/lib/api.ts: batchAddGroup/batchUpdateGroup принимают wants_assembly.
+- src/pages/AdminBatchOrderPage.tsx: интерфейс Group дополнен полями
+  wants_assembly/assembly_fee; в карточке варианта партии — переключатель
+  «Сборка» (аналог тумблера в Configurator.tsx) и подпись с суммой сборки
+  за 1 ПК. copyGroup() копирует флаг сборки вместе с остальными полями.
+
+### Проверка
+tsc --noEmit — чисто. sync_backend — orders задеплоен, тесты 2/2 прошли.
+Ручной тест через API: включение wants_assembly на реальной группе партии
+корректно посчитало 7% (81700 → +5719 = 87419), затем откатил обратно —
+данные в БД не пострадали.
+
+---
+
 ## v8.01 | 2026-08-09 | Фикс загрузки фото: не грузились / грузились очень долго
 
 ### Задача

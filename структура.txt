@@ -747,8 +747,13 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
 - [v7.54] МАССОВАЯ СБОРКА (партия ПК): один заказ = набор групп-вариантов.
   order_type='pc_batch', номер PB00NNN. Таблицы:
   • order_build_groups (order_id, label, qty, components jsonb, parts_total,
-    total_price, wip_id, sort_order) — строка-вариант: конфигурация + кол-во ПК.
+    total_price, wip_id, sort_order, wants_assembly, assembly_fee) —
+    строка-вариант: конфигурация + кол-во ПК.
     Свой wip_builds на группу (один статус слотов на весь вариант).
+    [v8.02] wants_assembly/assembly_fee (V0232) — оплата за сборку варианта,
+    ровно как в обычном заказе (7% от parts_total, ASSEMBLY_FEE_PERCENT в
+    batch_builds.py). total_price = parts_total + assembly_fee. Раньше
+    сборка вообще не считалась в партии — total_price = только компоненты.
   • order_build_units (group_id, order_id, unit_no, serial_number, status
     pending/assembled/issued, warranty_until, issued_at) — отдельный ПК для
     серийников и поэтапной выдачи.
@@ -767,6 +772,9 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   кол-во ПК, поиск компонентов по слотам, дублирование), пересчёт резервов,
   панель серийников/выдачи по каждому ПК. Кнопка «Массовая сборка» в
   AdminOrdersTab + бейдж «Массовая сборка».
+  [v8.02] Переключатель «Сборка» в карточке варианта партии (иконка Wrench) —
+  вкл/выкл wants_assembly, подпись с суммой сборки за 1 ПК под карточкой.
+  copyGroup() копирует флаг вместе с остальными полями.
   [v7.59] Экспорт/импорт серийников в Excel: src/pages/batch/batchExcel.ts
   (lib xlsx / SheetJS). Экспорт .xlsx — строка на ПК (колонки ID, Вариант,
   № ПК, Серийник ПК + по колонке на комплектующую). Импорт разбирает файл,

@@ -27,6 +27,7 @@ interface Unit { id: number; unit_no: number; serial_number: string | null; stat
 interface Group {
   id: number; label: string; qty: number; components: Comp[]
   parts_total: number; total_price: number; wip_id: number | null; stage: string | null
+  wants_assembly: boolean; assembly_fee: number
   slot_statuses: Record<string, string>; units: Unit[]; issued_count: number; assembled_count: number
 }
 interface Prod { id: number; name: string; price: number; category?: { slug?: string } | string }
@@ -73,7 +74,7 @@ export default function AdminBatchOrderPage() {
   }
   const copyGroup = async (g: Group) => {
     setBusy(true)
-    const res = await api.orders.batchAddGroup(orderId, { label: g.label + " (копия)", qty: g.qty, components: g.components })
+    const res = await api.orders.batchAddGroup(orderId, { label: g.label + " (копия)", qty: g.qty, components: g.components, wants_assembly: g.wants_assembly })
     setBusy(false)
     if (res.groups) refresh(res.groups)
   }
@@ -85,10 +86,10 @@ export default function AdminBatchOrderPage() {
     if (res.groups) refresh(res.groups)
     await load()
   }
-  const patchGroup = async (gid: number, data: { label?: string; qty?: number; components?: Comp[] }) => {
+  const patchGroup = async (gid: number, data: { label?: string; qty?: number; components?: Comp[]; wants_assembly?: boolean }) => {
     const res = await api.orders.batchUpdateGroup(orderId, gid, data)
     if (res.groups) refresh(res.groups)
-    if (data.qty !== undefined || data.components) { const o = await api.orders.getById(orderId); setOrder(o.order || null) }
+    if (data.qty !== undefined || data.components || data.wants_assembly !== undefined) { const o = await api.orders.getById(orderId); setOrder(o.order || null) }
   }
   const syncAll = async () => {
     setBusy(true); setSyncMsg(null)
@@ -305,7 +306,7 @@ export default function AdminBatchOrderPage() {
 
 function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPatchUnit }: {
   group: Group; expanded: boolean; onToggle: () => void
-  onPatch: (gid: number, data: { label?: string; qty?: number; components?: Comp[] }) => void
+  onPatch: (gid: number, data: { label?: string; qty?: number; components?: Comp[]; wants_assembly?: boolean }) => void
   onCopy: () => void; onRemove: () => void
   onPatchUnit: (uid: number, data: { serial_number?: string; status?: string }) => void
 }) {
@@ -341,11 +342,21 @@ function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPat
           <input type="number" min={1} value={qty} onChange={e => setQty(Number(e.target.value))} onBlur={() => qty !== group.qty && onPatch(group.id, { qty })}
             className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground" />
         </div>
+        <button
+          onClick={() => onPatch(group.id, { wants_assembly: !group.wants_assembly })}
+          title="Профессиональная сборка BeGraphics — 7% от стоимости железа"
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${group.wants_assembly ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground/50 hover:border-primary/50"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name="Wrench" size={13} /> Сборка
+        </button>
         <span className="text-sm font-medium text-foreground">{money(group.total_price)} <span className="text-xs text-foreground/40">/ шт</span></span>
         <span className="text-sm font-semibold text-accent">= {money(group.total_price * group.qty)}</span>
         <button onClick={onCopy} title="Дублировать вариант" className="text-foreground/40 hover:text-accent" style={{ cursor: "pointer" }}><Icon name="Copy" size={16} /></button>
         <button onClick={onRemove} title="Удалить вариант" className="text-foreground/40 hover:text-red-500" style={{ cursor: "pointer" }}><Icon name="Trash2" size={16} /></button>
       </div>
+      {group.wants_assembly && (
+        <p className="px-4 pb-2 -mt-2 text-xs text-primary">+ {money(group.assembly_fee)} за сборку 1 ПК (7% от стоимости железа)</p>
+      )}
 
       {expanded && (
         <div className="border-t border-border p-4">

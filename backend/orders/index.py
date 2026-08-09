@@ -863,7 +863,8 @@ def handler(event: dict, context) -> dict:
                 if action == "batch_add_group":
                     gid = bb.add_group(cur, order_id, order_number,
                                        body.get("label"), body.get("qty", 1),
-                                       body.get("components") or [])
+                                       body.get("components") or [],
+                                       wants_assembly=body.get("wants_assembly", False))
                     conn.commit()
                     return {"statusCode": 200, "headers": cors,
                             "body": json.dumps({"ok": True, "group_id": gid,
@@ -871,7 +872,8 @@ def handler(event: dict, context) -> dict:
                 if action == "batch_update_group":
                     bb.update_group(cur, order_id, order_number, int(body["group_id"]),
                                     label=body.get("label"), qty=body.get("qty"),
-                                    components=body.get("components"))
+                                    components=body.get("components"),
+                                    wants_assembly=body.get("wants_assembly"))
                     conn.commit()
                     return {"statusCode": 200, "headers": cors,
                             "body": json.dumps({"ok": True,
