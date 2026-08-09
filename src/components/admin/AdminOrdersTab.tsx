@@ -57,6 +57,19 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     }
   }
 
+  // Синхронизация партии (pc_batch) прямо из общего списка заказов — та же
+  // кнопка, что и для одиночных ПК-сборок, но дёргает batchSync (пересчёт
+  // резервов по всем группам-вариантам партии).
+  const syncBatchOrder = async (orderId: number) => {
+    setSyncingId(orderId)
+    setSyncResultId(null)
+    const res = await api.orders.batchSync(orderId)
+    setSyncingId(null)
+    if (res.error) { alert(res.error); return }
+    setSyncResultId(orderId)
+    setTimeout(() => setSyncResultId(null), 3000)
+  }
+
   // Очистить резерв: снять складской резерв и пометку «в резерве» (for_sale),
   // но заказ остаётся активным и привязанным к сборке для дальнейшей обработки.
   const clearReservation = async (orderId: number) => {
@@ -296,6 +309,17 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                         className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:px-3 ${syncResultId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-yellow-400/40 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
                         style={{ cursor: "pointer" }}
                         title="Выбить компоненты со склада, создать резервы">
+                        <Icon name={syncingId === order.id ? "Loader" : syncResultId === order.id ? "Check" : "RefreshCw"} size={12} className={syncingId === order.id ? "animate-spin" : ""} />
+                        <span className="hidden sm:inline">{syncResultId === order.id ? "Готово" : "Синхронизировать"}</span>
+                      </button>
+                    )}
+                    {order.order_type === "pc_batch" && !isArchive && (
+                      <button
+                        onClick={() => syncBatchOrder(order.id)}
+                        disabled={syncingId === order.id}
+                        className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:px-3 ${syncResultId === order.id ? "border-green-400/40 bg-green-400/5 text-green-400" : "border-yellow-400/40 bg-yellow-400/5 text-yellow-400 hover:bg-yellow-400/10"}`}
+                        style={{ cursor: "pointer" }}
+                        title="Пересчитать резервы по всем вариантам партии">
                         <Icon name={syncingId === order.id ? "Loader" : syncResultId === order.id ? "Check" : "RefreshCw"} size={12} className={syncingId === order.id ? "animate-spin" : ""} />
                         <span className="hidden sm:inline">{syncResultId === order.id ? "Готово" : "Синхронизировать"}</span>
                       </button>
