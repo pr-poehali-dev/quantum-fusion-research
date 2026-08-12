@@ -793,6 +793,13 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   гарантийный талон партии (warrantyPrint.ts) теперь показывает строку
   «Работа по сборке и настройке ПК» с суммой у каждого ПК — как в PDF-гарантии
   для одиночных заказов (generate-warranty).
+  [v8.06] ВАЖНО: кнопка «Гарантийный лист» в ОБЩЕМ списке заказов
+  (AdminOrdersTab) для pc_batch печатает талон через тот же путь, что и
+  страница партии (printBatchWarranty → api.orders.batchWarranty →
+  buildBatchWarrantyHtml), НЕ через generate-warranty (та PDF-функция читает
+  orders.items, который для партий почти всегда пустой — состав партии
+  живёт в order_build_groups/units). Для pc_build/parts кнопка по-прежнему
+  скачивает PDF через generate-warranty.
   [v7.59] Экспорт/импорт серийников в Excel: src/pages/batch/batchExcel.ts
   (lib xlsx / SheetJS). Экспорт .xlsx — строка на ПК (колонки ID, Вариант,
   № ПК, Серийник ПК + по колонке на комплектующую). Импорт разбирает файл,

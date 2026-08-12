@@ -6,6 +6,7 @@ import { Order, AdminTab } from "@/pages/admin/types"
 import {
   STATUS_LABELS, PC_STATUS_LABELS, ACTIVE_STATUSES,
 } from "@/pages/admin/constants"
+import { buildBatchWarrantyHtml, BatchWarranty } from "@/pages/batch/warrantyPrint"
 
 interface Props {
   tab: AdminTab
@@ -148,6 +149,24 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a"); a.href = url; a.download = data.filename || `warranty_${orderId}.pdf`; a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Гарантийный талон для ПАРТИЙНОГО заказа (pc_batch): в отличие от обычных
+  // заказов, состав партии лежит не в orders.items, а в order_build_groups —
+  // общая PDF-функция generate-warranty про это не знает и печатает пустой
+  // талон без оплаты за сборку. Используем тот же путь, что и внутри страницы
+  // партии (/admin/batch/:id): batchWarranty + HTML-печать в новом окне.
+  const printBatchWarranty = async (orderId: number) => {
+    setWarrantyLoadingId(orderId)
+    const res = await api.orders.batchWarranty(orderId)
+    setWarrantyLoadingId(null)
+    const w: BatchWarranty | null = res.warranty || null
+    if (!w) { alert("Нет данных для талона"); return }
+    const html = buildBatchWarrantyHtml(w)
+    const win = window.open("", "_blank")
+    if (!win) { alert("Разрешите всплывающие окна для печати"); return }
+    win.document.write(html)
+    win.document.close()
   }
 
 
@@ -294,11 +313,11 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                       </button>
                     )}
                     <button
-                      onClick={() => downloadWarranty(order.id)}
+                      onClick={() => order.order_type === "pc_batch" ? printBatchWarranty(order.id) : downloadWarranty(order.id)}
                       disabled={warrantyLoadingId === order.id}
                       className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground/50 hover:border-green-400/50 hover:text-green-400 transition-colors disabled:opacity-50 sm:px-3"
                       style={{ cursor: "pointer" }}
-                      title="Скачать гарантийный лист PDF">
+                      title={order.order_type === "pc_batch" ? "Открыть гарантийный талон партии на печать" : "Скачать гарантийный лист PDF"}>
                       <Icon name={warrantyLoadingId === order.id ? "Loader" : "FileText"} size={12} className={warrantyLoadingId === order.id ? "animate-spin" : ""} />
                       <span className="hidden sm:inline">Гарантийный лист</span>
                     </button>
