@@ -68,7 +68,9 @@ export default function AdminBatchOrderPage() {
 
   const addGroup = async () => {
     setBusy(true)
-    const res = await api.orders.batchAddGroup(orderId, { label: `Вариант ${groups.length + 1}`, qty: 1, components: [] })
+    // wants_assembly: true по умолчанию — так же, как в Конфигураторе
+    // («Актуальные сборки»), чтобы оплата за работу сразу считалась.
+    const res = await api.orders.batchAddGroup(orderId, { label: `Вариант ${groups.length + 1}`, qty: 1, components: [], wants_assembly: true })
     setBusy(false)
     if (res.groups) { refresh(res.groups); setExpanded(res.group_id) }
   }

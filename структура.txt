@@ -779,6 +779,9 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   заказов (AdminOrdersTab.tsx, syncBatchOrder → api.orders.batchSync), не
   только внутри страницы партии. Backend не менялся — эндпоинт batch_sync
   уже существовал, не хватало только кнопки в общем списке.
+  [v8.04] addGroup() создаёт новый вариант партии с wants_assembly=true по
+  умолчанию (как wantAssembly в Configurator.tsx) — раньше сборка была
+  выключена, и новые партии выходили без оплаты за работу.
   [v7.59] Экспорт/импорт серийников в Excel: src/pages/batch/batchExcel.ts
   (lib xlsx / SheetJS). Экспорт .xlsx — строка на ПК (колонки ID, Вариант,
   № ПК, Серийник ПК + по колонке на комплектующую). Импорт разбирает файл,
