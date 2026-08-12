@@ -51,17 +51,24 @@ def _components_of(group_row_components):
 ASSEMBLY_FEE_PERCENT = 0.07
 
 
-def _calc_group_totals(components, wants_assembly=False):
-    """parts_total (только компоненты) и assembly_fee (7% от parts_total, если
-    нужна сборка) за 1 ПК группы. total_price = parts_total + assembly_fee —
-    ровно как считается сборка в обычном заказе (pc_build)."""
+def _calc_group_totals(components, wants_assembly=False, assembly_type="percent", manual_fee=None):
+    """parts_total (только компоненты) и assembly_fee за 1 ПК группы.
+    assembly_type='percent' — 7% от parts_total (как в обычном заказе).
+    assembly_type='manual' — фиксированная сумма, заданная менеджером
+    (manual_fee), не пересчитывается при изменении состава/qty.
+    total_price = parts_total + assembly_fee."""
     parts = 0.0
     for comp in components:
         price = float(comp.get("price", 0) or 0)
         q = int(comp.get("qty", 1) or 1)
         parts += price * q
     parts = round(parts, 2)
-    fee = round(parts * ASSEMBLY_FEE_PERCENT) if wants_assembly else 0
+    if not wants_assembly:
+        return parts, 0
+    if assembly_type == "manual":
+        fee = round(float(manual_fee or 0), 2)
+    else:
+        fee = round(parts * ASSEMBLY_FEE_PERCENT)
     return parts, fee
 
 
@@ -138,7 +145,7 @@ def list_groups(cur, order_id):
     """Полный состав партии: группы + их units. Для админки."""
     cur.execute(
         f"SELECT id, label, qty, components, parts_total, total_price, wip_id, sort_order, "
-        f"wants_assembly, assembly_fee "
+        f"wants_assembly, assembly_fee, assembly_type "
         f"FROM {SCHEMA}.order_build_groups WHERE order_id=%s ORDER BY sort_order, id",
         (order_id,))
     groups = []
@@ -184,6 +191,7 @@ def list_groups(cur, order_id):
             "parts_total": float(r[4]), "total_price": float(r[5]),
             "wip_id": r[6], "sort_order": r[7], "stage": stage,
             "wants_assembly": bool(r[8]), "assembly_fee": float(r[9] or 0),
+            "assembly_type": r[10] or "percent",
             "slot_statuses": statuses, "units": units,
             "issued_count": sum(1 for u in units if u["status"] == "issued"),
             "assembled_count": sum(1 for u in units if u["status"] in ("assembled", "issued")),
@@ -191,10 +199,11 @@ def list_groups(cur, order_id):
     return groups
 
 
-def add_group(cur, order_id, order_number, label, qty, components, wants_assembly=False):
+def add_group(cur, order_id, order_number, label, qty, components, wants_assembly=False,
+              assembly_type="percent", assembly_fee_manual=None):
     qty = max(1, int(qty or 1))
     comps = components or []
-    parts, fee = _calc_group_totals(comps, wants_assembly)
+    parts, fee = _calc_group_totals(comps, wants_assembly, assembly_type, assembly_fee_manual)
     cur.execute(
         f"SELECT COALESCE(MAX(sort_order), 0) + 1 FROM {SCHEMA}.order_build_groups WHERE order_id=%s",
         (order_id,))
@@ -202,10 +211,10 @@ def add_group(cur, order_id, order_number, label, qty, components, wants_assembl
     cur.execute(
         f"INSERT INTO {SCHEMA}.order_build_groups "
         f"(order_id, label, qty, components, parts_total, total_price, sort_order, "
-        f"wants_assembly, assembly_fee) "
-        f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        f"wants_assembly, assembly_fee, assembly_type) "
+        f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
         (order_id, (label or "Вариант")[:128], qty, json.dumps(comps), parts, parts + fee, sort_order,
-         bool(wants_assembly), fee))
+         bool(wants_assembly), fee, assembly_type or "percent"))
     group_id = cur.fetchone()[0]
     _ensure_wip_for_group(cur, order_id, group_id, label or "Вариант", order_number, comps)
     _sync_units(cur, order_id, group_id, qty)
@@ -213,9 +222,11 @@ def add_group(cur, order_id, order_number, label, qty, components, wants_assembl
     return group_id
 
 
-def update_group(cur, order_id, order_number, group_id, label=None, qty=None, components=None, wants_assembly=None):
+def update_group(cur, order_id, order_number, group_id, label=None, qty=None, components=None,
+                 wants_assembly=None, assembly_type=None, assembly_fee_manual=None):
     cur.execute(
-        f"SELECT label, qty, components, wants_assembly FROM {SCHEMA}.order_build_groups WHERE id=%s AND order_id=%s",
+        f"SELECT label, qty, components, wants_assembly, assembly_type, assembly_fee "
+        f"FROM {SCHEMA}.order_build_groups WHERE id=%s AND order_id=%s",
         (group_id, order_id))
     row = cur.fetchone()
     if not row:
@@ -224,14 +235,18 @@ def update_group(cur, order_id, order_number, group_id, label=None, qty=None, co
     new_qty = max(1, int(qty)) if qty is not None else row[1]
     new_comps = components if components is not None else _components_of(row[2])
     new_wants_assembly = bool(wants_assembly) if wants_assembly is not None else bool(row[3])
-    parts, fee = _calc_group_totals(new_comps, new_wants_assembly)
+    new_assembly_type = assembly_type if assembly_type is not None else (row[4] or "percent")
+    # Ручная сумма: берём переданную, иначе — уже сохранённую в БД (чтобы
+    # изменение qty/состава не сбрасывало вручную заданную сумму сборки).
+    new_manual_fee = assembly_fee_manual if assembly_fee_manual is not None else float(row[5] or 0)
+    parts, fee = _calc_group_totals(new_comps, new_wants_assembly, new_assembly_type, new_manual_fee)
     cur.execute(
         f"UPDATE {SCHEMA}.order_build_groups "
         f"SET label=%s, qty=%s, components=%s, parts_total=%s, total_price=%s, "
-        f"wants_assembly=%s, assembly_fee=%s, updated_at=NOW() "
+        f"wants_assembly=%s, assembly_fee=%s, assembly_type=%s, updated_at=NOW() "
         f"WHERE id=%s",
         (new_label[:128], new_qty, json.dumps(new_comps), parts, parts + fee,
-         new_wants_assembly, fee, group_id))
+         new_wants_assembly, fee, new_assembly_type, group_id))
     _ensure_wip_for_group(cur, order_id, group_id, new_label, order_number, new_comps)
     _sync_units(cur, order_id, group_id, new_qty)
     _recalc_order_total(cur, order_id)
@@ -463,6 +478,7 @@ def warranty_data(cur, order_id):
                 "pc_serial": u.get("serial_number") or "",
                 "warranty_until": u.get("warranty_until"),
                 "components": comps,
+                "assembly_fee": g["assembly_fee"] if g.get("wants_assembly") else 0,
             })
     return {
         "customer_name": o[0], "customer_phone": o[1], "customer_email": o[2],

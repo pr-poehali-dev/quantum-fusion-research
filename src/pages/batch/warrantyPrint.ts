@@ -5,6 +5,7 @@ export interface BatchWarrantyComp { slot: string; slot_label: string; name: str
 export interface BatchWarrantyPC {
   group_label: string; unit_no: number; pc_serial: string
   warranty_until: string | null; components: BatchWarrantyComp[]
+  assembly_fee?: number
 }
 export interface BatchWarranty {
   customer_name?: string; customer_phone?: string; customer_email?: string
@@ -18,6 +19,8 @@ const fmtDate = (iso: string | null) => {
   if (!iso) return new Date().toLocaleDateString("ru-RU")
   try { return new Date(iso).toLocaleDateString("ru-RU") } catch { return iso }
 }
+
+const fmtMoney = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 
 const WARRANTY_TERMS = [
   "Гарантийный срок исчисляется с даты выдачи товара. Гарантийное обслуживание осуществляется при наличии данного талона и кассового документа.",
@@ -34,6 +37,11 @@ export function buildBatchWarrantyHtml(w: BatchWarranty): string {
         <td>${esc(c.name)}</td>
         <td class="sn">${esc(c.serial) || "—"}</td>
       </tr>`).join("")
+    const assemblyRow = pc.assembly_fee ? `
+      <tr>
+        <td colspan="2">Работа по сборке и настройке ПК</td>
+        <td class="sn">${esc(fmtMoney(pc.assembly_fee))}</td>
+      </tr>` : ""
     return `
       <div class="pc">
         <div class="pc-head">
@@ -44,7 +52,7 @@ export function buildBatchWarrantyHtml(w: BatchWarranty): string {
         </div>
         <table>
           <thead><tr><th>Комплектующее</th><th>Наименование</th><th>Серийный номер</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="3" class="muted">Нет компонентов</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="3" class="muted">Нет компонентов</td></tr>`}${assemblyRow}</tbody>
         </table>
       </div>`
   }).join("")

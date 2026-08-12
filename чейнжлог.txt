@@ -3,6 +3,57 @@
 
 ---
 
+## v8.05 | 2026-08-10 | Ручное редактирование оплаты за сборку в партии + гарантийный талон
+
+### Задача
+1. В партийном заказе оплата за сборку считалась только автоматически (7%),
+   без возможности менеджеру задать сумму вручную — как это давно можно
+   сделать в обычных «Актуальных сборках» (assembly_type=manual в pc_builds).
+2. Оплата за работу не отображалась в печатном гарантийном талоне партии.
+
+### БД
+Миграция V0233: order_build_groups.assembly_type varchar(20) default 'percent'
+— 'percent' (7% от parts_total, автоматически) или 'manual' (сумма менеджера,
+не пересчитывается при изменении состава/qty).
+
+### Backend (backend/orders/batch_builds.py)
+- _calc_group_totals(components, wants_assembly, assembly_type, manual_fee):
+  при assembly_type='manual' берёт manual_fee вместо 7%-расчёта.
+- add_group()/update_group() принимают assembly_type/assembly_fee_manual.
+  update_group(): если новая ручная сумма не передана — берёт уже
+  сохранённую в БД (row[5]), чтобы правка qty/состава не сбрасывала
+  вручную заданную сумму сборки.
+- list_groups() возвращает assembly_type.
+- warranty_data(): в каждый pc (юнит) добавлено поле assembly_fee (если
+  wants_assembly=true) — источник для печатного талона.
+
+### Backend (backend/orders/index.py)
+- batch_add_group / batch_update_group пробрасывают body.assembly_type и
+  body.assembly_fee_manual в bb.add_group()/update_group().
+
+### Frontend
+- src/lib/api.ts: batchAddGroup/batchUpdateGroup принимают assembly_type,
+  assembly_fee_manual.
+- src/pages/AdminBatchOrderPage.tsx: вместо статичной подписи — плашка
+  «Оплата за работу» с редактируемым полем суммы (₽ за 1 ПК). Ручной ввод
+  переключает assembly_type в 'manual'; кнопка «Сумма задана вручную»
+  возвращает автоматический 7%-расчёт (assembly_type='percent'). copyGroup()
+  копирует assembly_type/assembly_fee вместе с остальными полями.
+- src/pages/batch/warrantyPrint.ts: BatchWarrantyPC.assembly_fee; в HTML
+  талона добавляется строка «Работа по сборке и настройке ПК» с суммой
+  (как в generate-warranty для одиночных заказов), если сборка включена.
+
+### Проверка
+tsc --noEmit / ast.parse — чисто. sync_backend — orders задеплоен (раннер
+тестов упал с посторонней ошибкой окружения "catching classes that do not
+inherit from BaseException", сама функция активна и работает — проверено
+вручную через curl). Ручной прогон на реальном заказе PB00714 (group_id=12):
+manual→5000₽ применилось и сохранилось при смене qty, percent→вернул
+автоматические 4322₽ (61750×7%), в данных для гарантии assembly_fee
+присутствует по каждому ПК. Заказ возвращён к исходному qty=1.
+
+---
+
 ## v8.04 | 2026-08-10 | Сборка включена по умолчанию для новых вариантов партии
 
 ### Проблема

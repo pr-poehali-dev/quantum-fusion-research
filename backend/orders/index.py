@@ -864,7 +864,9 @@ def handler(event: dict, context) -> dict:
                     gid = bb.add_group(cur, order_id, order_number,
                                        body.get("label"), body.get("qty", 1),
                                        body.get("components") or [],
-                                       wants_assembly=body.get("wants_assembly", False))
+                                       wants_assembly=body.get("wants_assembly", False),
+                                       assembly_type=body.get("assembly_type", "percent"),
+                                       assembly_fee_manual=body.get("assembly_fee_manual"))
                     conn.commit()
                     return {"statusCode": 200, "headers": cors,
                             "body": json.dumps({"ok": True, "group_id": gid,
@@ -873,7 +875,9 @@ def handler(event: dict, context) -> dict:
                     bb.update_group(cur, order_id, order_number, int(body["group_id"]),
                                     label=body.get("label"), qty=body.get("qty"),
                                     components=body.get("components"),
-                                    wants_assembly=body.get("wants_assembly"))
+                                    wants_assembly=body.get("wants_assembly"),
+                                    assembly_type=body.get("assembly_type"),
+                                    assembly_fee_manual=body.get("assembly_fee_manual"))
                     conn.commit()
                     return {"statusCode": 200, "headers": cors,
                             "body": json.dumps({"ok": True,

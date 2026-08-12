@@ -27,7 +27,7 @@ interface Unit { id: number; unit_no: number; serial_number: string | null; stat
 interface Group {
   id: number; label: string; qty: number; components: Comp[]
   parts_total: number; total_price: number; wip_id: number | null; stage: string | null
-  wants_assembly: boolean; assembly_fee: number
+  wants_assembly: boolean; assembly_fee: number; assembly_type: "percent" | "manual"
   slot_statuses: Record<string, string>; units: Unit[]; issued_count: number; assembled_count: number
 }
 interface Prod { id: number; name: string; price: number; category?: { slug?: string } | string }
@@ -76,7 +76,7 @@ export default function AdminBatchOrderPage() {
   }
   const copyGroup = async (g: Group) => {
     setBusy(true)
-    const res = await api.orders.batchAddGroup(orderId, { label: g.label + " (копия)", qty: g.qty, components: g.components, wants_assembly: g.wants_assembly })
+    const res = await api.orders.batchAddGroup(orderId, { label: g.label + " (копия)", qty: g.qty, components: g.components, wants_assembly: g.wants_assembly, assembly_type: g.assembly_type, assembly_fee_manual: g.assembly_type === "manual" ? g.assembly_fee : undefined })
     setBusy(false)
     if (res.groups) refresh(res.groups)
   }
@@ -88,10 +88,10 @@ export default function AdminBatchOrderPage() {
     if (res.groups) refresh(res.groups)
     await load()
   }
-  const patchGroup = async (gid: number, data: { label?: string; qty?: number; components?: Comp[]; wants_assembly?: boolean }) => {
+  const patchGroup = async (gid: number, data: { label?: string; qty?: number; components?: Comp[]; wants_assembly?: boolean; assembly_type?: "percent" | "manual"; assembly_fee_manual?: number }) => {
     const res = await api.orders.batchUpdateGroup(orderId, gid, data)
     if (res.groups) refresh(res.groups)
-    if (data.qty !== undefined || data.components || data.wants_assembly !== undefined) { const o = await api.orders.getById(orderId); setOrder(o.order || null) }
+    if (data.qty !== undefined || data.components || data.wants_assembly !== undefined || data.assembly_type !== undefined || data.assembly_fee_manual !== undefined) { const o = await api.orders.getById(orderId); setOrder(o.order || null) }
   }
   const syncAll = async () => {
     setBusy(true); setSyncMsg(null)
@@ -308,13 +308,15 @@ export default function AdminBatchOrderPage() {
 
 function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPatchUnit }: {
   group: Group; expanded: boolean; onToggle: () => void
-  onPatch: (gid: number, data: { label?: string; qty?: number; components?: Comp[]; wants_assembly?: boolean }) => void
+  onPatch: (gid: number, data: { label?: string; qty?: number; components?: Comp[]; wants_assembly?: boolean; assembly_type?: "percent" | "manual"; assembly_fee_manual?: number }) => void
   onCopy: () => void; onRemove: () => void
   onPatchUnit: (uid: number, data: { serial_number?: string; status?: string }) => void
 }) {
   const [label, setLabel] = useState(group.label)
   const [qty, setQty] = useState(group.qty)
+  const [feeInput, setFeeInput] = useState(String(group.assembly_fee))
   useEffect(() => { setLabel(group.label); setQty(group.qty) }, [group.label, group.qty])
+  useEffect(() => { setFeeInput(String(group.assembly_fee)) }, [group.assembly_fee])
 
   const comps = group.components || []
   const setComp = (slot: string, prod: Prod | null) => {
@@ -357,7 +359,31 @@ function GroupCard({ group, expanded, onToggle, onPatch, onCopy, onRemove, onPat
         <button onClick={onRemove} title="Удалить вариант" className="text-foreground/40 hover:text-red-500" style={{ cursor: "pointer" }}><Icon name="Trash2" size={16} /></button>
       </div>
       {group.wants_assembly && (
-        <p className="px-4 pb-2 -mt-2 text-xs text-primary">+ {money(group.assembly_fee)} за сборку 1 ПК (7% от стоимости железа)</p>
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 -mt-1">
+          <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Оплата за работу</span>
+          <div className="flex items-center gap-1">
+            <input type="number" min={0} value={feeInput}
+              onChange={e => setFeeInput(e.target.value)}
+              onBlur={() => {
+                const v = Math.max(0, Number(feeInput) || 0)
+                setFeeInput(String(v))
+                if (v !== group.assembly_fee || group.assembly_type !== "manual") {
+                  onPatch(group.id, { assembly_type: "manual", assembly_fee_manual: v })
+                }
+              }}
+              className="w-24 rounded-lg border border-border bg-background px-2 py-1 text-right text-xs text-foreground" />
+            <span className="text-xs text-foreground/40">₽ за 1 ПК</span>
+          </div>
+          {group.assembly_type === "manual" ? (
+            <button onClick={() => onPatch(group.id, { assembly_type: "percent" })}
+              title="Вернуть автоматический расчёт — 7% от стоимости железа"
+              className="rounded-lg border border-border px-2 py-1 text-[11px] text-foreground/50 hover:border-primary hover:text-primary" style={{ cursor: "pointer" }}>
+              <Icon name="RotateCcw" size={11} className="inline -mt-0.5 mr-1" />Сумма задана вручную
+            </button>
+          ) : (
+            <span className="text-[11px] text-foreground/40">7% от стоимости железа — автоматически</span>
+          )}
+        </div>
       )}
 
       {expanded && (

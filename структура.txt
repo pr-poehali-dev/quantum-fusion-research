@@ -747,13 +747,17 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
 - [v7.54] МАССОВАЯ СБОРКА (партия ПК): один заказ = набор групп-вариантов.
   order_type='pc_batch', номер PB00NNN. Таблицы:
   • order_build_groups (order_id, label, qty, components jsonb, parts_total,
-    total_price, wip_id, sort_order, wants_assembly, assembly_fee) —
-    строка-вариант: конфигурация + кол-во ПК.
+    total_price, wip_id, sort_order, wants_assembly, assembly_fee,
+    assembly_type) — строка-вариант: конфигурация + кол-во ПК.
     Свой wip_builds на группу (один статус слотов на весь вариант).
     [v8.02] wants_assembly/assembly_fee (V0232) — оплата за сборку варианта,
     ровно как в обычном заказе (7% от parts_total, ASSEMBLY_FEE_PERCENT в
     batch_builds.py). total_price = parts_total + assembly_fee. Раньше
     сборка вообще не считалась в партии — total_price = только компоненты.
+    [v8.05] assembly_type varchar (V0233) — 'percent' (авто 7%) / 'manual'
+    (сумма менеджера). _calc_group_totals() принимает assembly_type+manual_fee.
+    update_group() при отсутствии новой ручной суммы берёт уже сохранённую
+    в БД — правка qty/состава не сбрасывает вручную заданную сумму.
   • order_build_units (group_id, order_id, unit_no, serial_number, status
     pending/assembled/issued, warranty_until, issued_at) — отдельный ПК для
     серийников и поэтапной выдачи.
@@ -782,6 +786,13 @@ Frontend: вкладка /admin/compatibility (CompatibilityTab) справа о
   [v8.04] addGroup() создаёт новый вариант партии с wants_assembly=true по
   умолчанию (как wantAssembly в Configurator.tsx) — раньше сборка была
   выключена, и новые партии выходили без оплаты за работу.
+  [v8.05] Плашка «Оплата за работу» в карточке варианта (вместо статичной
+  подписи) — редактируемое поле суммы за 1 ПК. Ручной ввод переключает
+  assembly_type='manual' (сумма фиксируется, не пересчитывается); кнопка
+  «Сумма задана вручную» возвращает автоматический 7%-расчёт. Печатный
+  гарантийный талон партии (warrantyPrint.ts) теперь показывает строку
+  «Работа по сборке и настройке ПК» с суммой у каждого ПК — как в PDF-гарантии
+  для одиночных заказов (generate-warranty).
   [v7.59] Экспорт/импорт серийников в Excel: src/pages/batch/batchExcel.ts
   (lib xlsx / SheetJS). Экспорт .xlsx — строка на ПК (колонки ID, Вариант,
   № ПК, Серийник ПК + по колонке на комплектующую). Импорт разбирает файл,
