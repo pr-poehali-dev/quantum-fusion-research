@@ -12,7 +12,10 @@ import urllib.parse
 
 NOTIFY_PREFIX = "@BeGraphicsPC"
 
-
+# Таймауты подключения к Telegram (см. тот же комментарий в index.py):
+# 1 сек не хватало на TLS-рукопожатие в облаке, все попытки срывались на connect.
+TG_CONNECT_TIMEOUT = 5.0
+TG_READ_TIMEOUT = 10.0
 
 _tg_conn = None
 
@@ -31,14 +34,16 @@ def _tg_post(path: str, data: bytes, headers: dict):
     """
     global _tg_conn
     last_err = None
-    for _ in range(5):
+    # Попыток 3, а не 5: с TG_CONNECT_TIMEOUT=5s пять попыток съели бы ~26 сек
+    # и функция упала бы по таймауту исполнения.
+    for _ in range(3):
         fresh = False
         try:
             if _tg_conn is None:
-                c = http.client.HTTPSConnection("api.telegram.org", timeout=1.0)
+                c = http.client.HTTPSConnection("api.telegram.org", timeout=TG_CONNECT_TIMEOUT)
                 c.connect()
                 # Соединение поднято — ответ ждём спокойно, без спешки
-                c.sock.settimeout(3.0)
+                c.sock.settimeout(TG_READ_TIMEOUT)
                 _tg_conn = c
                 fresh = True
         except Exception as e:

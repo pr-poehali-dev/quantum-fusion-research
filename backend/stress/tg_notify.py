@@ -4,6 +4,8 @@
 Никогда не роняет основной поток: при ошибке логирует и возвращает статус.
 """
 import os
+import socket
+import ssl
 import http.client
 import time
 import json
@@ -13,7 +15,64 @@ import urllib.error
 
 
 
+# Таймауты подключения к Telegram: 1 сек не хватало на TLS-рукопожатие
+# в облаке — все попытки срывались на connect, уведомления не уходили.
+TG_CONNECT_TIMEOUT = 5.0
+TG_READ_TIMEOUT = 10.0
+
+# У api.telegram.org несколько дата-центров, и из облака провайдера часть из них
+# недоступна: DNS стабильно отдаёт 149.154.166.110, но TCP до него не проходит
+# (timeout), тогда как 149.154.167.220 отвечает за ~46 мс. Раньше код упирался
+# ровно в один адрес из DNS — уведомления молча не уходили. Теперь перебираем
+# известные адреса и запоминаем рабочий. TLS/SNI/Host остаются на
+# api.telegram.org, поэтому сертификат проверяется штатно.
+TG_HOST = "api.telegram.org"
+TG_FALLBACK_IPS = [
+    "149.154.167.220",
+    "149.154.166.110",
+    "149.154.175.50",
+    "91.108.56.130",
+]
+
 _tg_conn = None
+_tg_ip_ok = None  # последний IP, с которым связь реально поднялась
+
+
+def _tg_candidate_ips():
+    ips = []
+    if _tg_ip_ok:
+        ips.append(_tg_ip_ok)
+    try:
+        for i in socket.getaddrinfo(TG_HOST, 443, socket.AF_INET, socket.SOCK_STREAM):
+            ip = i[4][0]
+            if ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    for ip in TG_FALLBACK_IPS:
+        if ip not in ips:
+            ips.append(ip)
+    return ips
+
+
+def _tg_open():
+    """Поднимает TLS-соединение с Telegram, перебирая адреса до рабочего."""
+    global _tg_ip_ok
+    last_err = None
+    ctx = ssl.create_default_context()
+    for ip in _tg_candidate_ips():
+        try:
+            raw = socket.create_connection((ip, 443), timeout=TG_CONNECT_TIMEOUT)
+            tls = ctx.wrap_socket(raw, server_hostname=TG_HOST)
+            tls.settimeout(TG_READ_TIMEOUT)
+            c = http.client.HTTPSConnection(TG_HOST, 443, timeout=TG_READ_TIMEOUT)
+            c.sock = tls
+            _tg_ip_ok = ip
+            return c
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err if last_err else RuntimeError("telegram unreachable")
 
 
 def _tg_post(path: str, data: bytes, headers: dict):
@@ -30,15 +89,13 @@ def _tg_post(path: str, data: bytes, headers: dict):
     """
     global _tg_conn
     last_err = None
-    for _ in range(5):
+    # Попыток 3, а не 5: с TG_CONNECT_TIMEOUT=5s пять попыток съели бы ~26 сек
+    # и функция упала бы по таймауту исполнения.
+    for _ in range(3):
         fresh = False
         try:
             if _tg_conn is None:
-                c = http.client.HTTPSConnection("api.telegram.org", timeout=1.0)
-                c.connect()
-                # Соединение поднято — ответ ждём спокойно, без спешки
-                c.sock.settimeout(3.0)
-                _tg_conn = c
+                _tg_conn = _tg_open()
                 fresh = True
         except Exception as e:
             last_err = e

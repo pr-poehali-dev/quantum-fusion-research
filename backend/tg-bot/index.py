@@ -19,6 +19,7 @@ Webhook: Telegram шлёт POST с update. Токен — TELEGRAM_BOT_TOKEN.
 import os
 import json
 import socket
+import ssl
 import http.client
 import time
 import urllib.request
@@ -28,19 +29,24 @@ import psycopg2
 
 # В облаке у api.telegram.org резолвится ещё и IPv6-адрес, но исходящего IPv6
 # нет — попытка соединения висит до таймаута, и бот отвечает с задержкой.
-# Форсируем IPv4, иначе каждый ответ стоит лишних секунд ожидания.
+# Поэтому IPv4-адреса ставим ПЕРВЫМИ. Важно: именно сортируем, а не отбрасываем
+# IPv6 — раньше жёсткая фильтрация оставляла бота вообще без маршрута, если
+# IPv4-путь недоступен (все попытки падали в "timed out", бот молчал).
 _getaddrinfo_orig = socket.getaddrinfo
 
 
-def _getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
-    try:
-        return _getaddrinfo_orig(host, port, socket.AF_INET, type, proto, flags)
-    except socket.gaierror:
-        # Хост без IPv4 (например, база) — возвращаем как есть
-        return _getaddrinfo_orig(host, port, family, type, proto, flags)
+def _getaddrinfo_ipv4_first(host, port, family=0, type=0, proto=0, flags=0):
+    res = _getaddrinfo_orig(host, port, family, type, proto, flags)
+    return sorted(res, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
 
 
-socket.getaddrinfo = _getaddrinfo_ipv4
+socket.getaddrinfo = _getaddrinfo_ipv4_first
+
+# Таймауты подключения к Telegram. 1 сек не хватало: в облаке TLS-рукопожатие
+# нередко занимает дольше, и все 5 попыток срывались на этапе connect
+# (вызов длился ровно 5×(1.0+0.2)=6 сек и заканчивался "timed out").
+TG_CONNECT_TIMEOUT = 5.0
+TG_READ_TIMEOUT = 10.0
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 TG_API = "https://api.telegram.org/bot{token}/{method}"
@@ -61,20 +67,65 @@ def get_conn():
 
 
 _tg_conn = None
+_tg_ip_ok = None  # последний IP Telegram, с которым связь реально поднялась
+
+# У api.telegram.org несколько дата-центров. Из облака провайдера часть из них
+# недоступна: DNS стабильно отдаёт 149.154.166.110, а TCP до него не проходит
+# (timeout), при этом 149.154.167.220 отвечает за ~46 мс. Раньше бот упирался
+# ровно в один адрес из DNS и молчал. Теперь перебираем известные адреса и
+# запоминаем рабочий. TLS/SNI остаётся на api.telegram.org — сертификат валиден.
+TG_HOST = "api.telegram.org"
+TG_FALLBACK_IPS = [
+    "149.154.167.220",
+    "149.154.166.110",
+    "149.154.175.50",
+    "91.108.56.130",
+]
+
+
+def _tg_candidate_ips():
+    """Адреса Telegram в порядке предпочтения: сначала подтверждённый рабочий,
+    затем выдача DNS, затем известные запасные."""
+    ips = []
+    if _tg_ip_ok:
+        ips.append(_tg_ip_ok)
+    try:
+        for i in _getaddrinfo_orig(TG_HOST, 443, socket.AF_INET, socket.SOCK_STREAM):
+            ip = i[4][0]
+            if ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    for ip in TG_FALLBACK_IPS:
+        if ip not in ips:
+            ips.append(ip)
+    return ips
 
 
 def _tg_connect():
     """Одно keep-alive соединение с Telegram на весь запуск функции.
     Возвращает (соединение, свежее_ли_оно): для свежего повтор запроса опасен."""
-    global _tg_conn
+    global _tg_conn, _tg_ip_ok
     if _tg_conn is not None:
         return _tg_conn, False
-    c = http.client.HTTPSConnection("api.telegram.org", timeout=1.0)
-    c.connect()
-    # Канал поднят — на сам ответ даём больше времени
-    c.sock.settimeout(3.0)
-    _tg_conn = c
-    return _tg_conn, True
+    last_err = None
+    ctx = ssl.create_default_context()
+    for ip in _tg_candidate_ips():
+        try:
+            # TCP идёт на конкретный IP, а TLS-рукопожатие и заголовок Host —
+            # на api.telegram.org, поэтому сертификат проверяется штатно.
+            raw = socket.create_connection((ip, 443), timeout=TG_CONNECT_TIMEOUT)
+            tls = ctx.wrap_socket(raw, server_hostname=TG_HOST)
+            tls.settimeout(TG_READ_TIMEOUT)
+            c = http.client.HTTPSConnection(TG_HOST, 443, timeout=TG_READ_TIMEOUT)
+            c.sock = tls
+            _tg_conn = c
+            _tg_ip_ok = ip
+            return _tg_conn, True
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err if last_err else RuntimeError("telegram unreachable")
 
 
 def _tg_drop():
@@ -98,7 +149,9 @@ def tg_call(method: str, payload: dict):
     # Повторяем только заведомо недоставленное: обрыв при установке связи или
     # на переиспользованном канале. Сбой на свежем соединении уже после
     # отправки не повторяем — иначе сообщение уйдёт в чат дважды.
-    for _ in range(5):
+    # Попыток 3, а не 5: с TG_CONNECT_TIMEOUT=5s пять попыток съели бы ~26 сек
+    # и функция упала бы по таймауту исполнения, не успев ответить Telegram.
+    for _ in range(3):
         try:
             c, fresh = _tg_connect()
         except Exception as e:
@@ -947,6 +1000,67 @@ def handler(event: dict, context) -> dict:
             res = tg_call("getWebhookInfo", {})
             return {"statusCode": 200, "headers": _cors(),
                     "body": json.dumps({"ok": True, "result": res})}
+        if action == "net_diag":
+            # Диагностика сетевой связности с Telegram: отдельно DNS и отдельно
+            # TCP+TLS по каждому адресу. Нужна, чтобы отличить "нет DNS" от
+            # "нет маршрута/блокировка" — по логам это неразличимо.
+            diag = {"token_set": bool(os.environ.get("TELEGRAM_BOT_TOKEN"))}
+            try:
+                infos = _getaddrinfo_orig("api.telegram.org", 443, 0, socket.SOCK_STREAM)
+                diag["dns"] = [
+                    {"family": "IPv4" if i[0] == socket.AF_INET else "IPv6", "addr": i[4][0]}
+                    for i in infos
+                ]
+            except Exception as e:
+                diag["dns_error"] = f"{type(e).__name__}: {e}"
+                infos = []
+            probes = []
+            for i in infos:
+                fam, addr = i[0], i[4]
+                t0 = time.time()
+                s = socket.socket(fam, socket.SOCK_STREAM)
+                s.settimeout(3.0)
+                try:
+                    s.connect(addr)
+                    probes.append({"addr": addr[0], "tcp": "ok",
+                                   "ms": int((time.time() - t0) * 1000)})
+                except Exception as e:
+                    probes.append({"addr": addr[0], "tcp": f"{type(e).__name__}: {e}",
+                                   "ms": int((time.time() - t0) * 1000)})
+                finally:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+            diag["tcp_probes"] = probes
+            # Контрольные хосты: отличаем "закрыт весь исходящий трафик" от
+            # "недоступен именно Telegram", и проверяем другие IP Telegram
+            # (у api.telegram.org несколько DC: 149.154.167.220 и др.).
+            controls = []
+            for host, ip, port in (
+                ("google.com", None, 443),
+                ("functions.poehali.dev", None, 443),
+                ("telegram-dc4", "149.154.167.220", 443),
+                ("telegram-dc5", "91.108.56.130", 443),
+            ):
+                t0 = time.time()
+                try:
+                    if ip is None:
+                        ip = _getaddrinfo_orig(host, port, socket.AF_INET,
+                                               socket.SOCK_STREAM)[0][4][0]
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(3.0)
+                    s.connect((ip, port))
+                    s.close()
+                    controls.append({"host": host, "ip": ip, "tcp": "ok",
+                                     "ms": int((time.time() - t0) * 1000)})
+                except Exception as e:
+                    controls.append({"host": host, "ip": ip,
+                                     "tcp": f"{type(e).__name__}: {e}",
+                                     "ms": int((time.time() - t0) * 1000)})
+            diag["control_probes"] = controls
+            return {"statusCode": 200, "headers": _cors(),
+                    "body": json.dumps({"ok": True, "diag": diag}, ensure_ascii=False)}
         if action == "test_notify":
             # Раньше этот GET слал сообщение в рабочий чат без подтверждения.
             # Теперь тест — только из админки, с явным выбором чата (tg_test).
