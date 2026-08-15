@@ -763,6 +763,83 @@ def parse_pick(text):
 
 # ─────────────────────────── ОБРАБОТКА UPDATE ───────────────────────────
 
+# Чат, из которого разрешено заводить задачи командой «+задача».
+# Пустой список = разрешено везде.
+TASK_CHATS = {"-1002809968150"}
+
+
+def _handle_add_task(cur, chat_id, text, msg):
+    """«+задача [дата] текст» — создаёт задачу в календаре на дату.
+
+    Дата необязательна: без неё — на сегодня. Понимает 20.08, 20.08.2026,
+    «завтра». Задача попадает в утреннюю сводку календаря.
+    """
+    if TASK_CHATS and str(chat_id) not in TASK_CHATS:
+        return
+    body = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
+    if not body:
+        send(chat_id, "Как добавить задачу:\n"
+                      "<code>+задача Позвонить поставщику</code>\n"
+                      "<code>+задача завтра Забрать корпуса</code>\n"
+                      "<code>+задача 20.08 Отвезти ПК клиенту</code>",
+             reply_kb=False)
+        return
+
+    from datetime import date, timedelta
+    import re as _re
+
+    day = date.today()
+    low = body.lower()
+    if low.startswith("сегодня "):
+        body = body[8:].strip()
+    elif low.startswith("завтра "):
+        day = day + timedelta(days=1)
+        body = body[7:].strip()
+    else:
+        m = _re.match(r"^(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?\s+(.+)$", body, _re.S)
+        if m:
+            d, mo, y, rest = m.group(1), m.group(2), m.group(3), m.group(4)
+            year = day.year if not y else (int(y) + 2000 if len(y) == 2 else int(y))
+            try:
+                day = date(year, int(mo), int(d))
+                body = rest.strip()
+            except ValueError:
+                send(chat_id, "Не понял дату. Пример: <code>+задача 20.08 Текст</code>",
+                     reply_kb=False)
+                return
+
+    if not body:
+        send(chat_id, "После даты нужен текст задачи.", reply_kb=False)
+        return
+
+    # Первая строка — заголовок, остальное — описание.
+    parts = body.split("\n", 1)
+    title = parts[0].strip()[:255]
+    descr = parts[1].strip() if len(parts) > 1 else None
+    frm = msg.get("from") or {}
+    uname = frm.get("username")
+    author = f"@{uname}" if uname else (frm.get("first_name") or "")
+    if author:
+        descr = ((descr + "\n") if descr else "") + f"Добавил: {author}"
+
+    def q(v):
+        return "NULL" if v is None else "'" + str(v).replace("'", "''") + "'"
+
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.calendar_events "
+        f"(event_date, title, description, kind, status, origin_date) "
+        f"VALUES ({q(day.isoformat())}, {q(title)}, {q(descr)}, 'task', 'new', "
+        f"{q(day.isoformat())}) RETURNING id"
+    )
+    row = cur.fetchone()
+    task_id = row[0] if row else None
+    when = "сегодня" if day == date.today() else day.strftime("%d.%m.%Y")
+    base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
+    link = f"\n🔗 <a href=\"{base}/admin/calendar\">Открыть календарь</a>" if base else ""
+    send(chat_id, f"✅ Задача добавлена на <b>{when}</b>\n📋 {title}"
+                  f"{f' (#{task_id})' if task_id else ''}{link}", reply_kb=False)
+
+
 def handle_message(cur, msg):
     chat_id = msg["chat"]["id"]
     chat_type = msg["chat"].get("type", "private")
@@ -773,6 +850,15 @@ def handle_message(cur, msg):
     # Работает в любом чате, в т.ч. в группах уведомлений.
     if text.startswith("/chatid") or text.startswith("/id"):
         send(chat_id, f"ID этого чата: <code>{chat_id}</code>", reply_kb=False)
+        return
+
+    # Добавление задачи в календарь прямо из рабочего чата:
+    #   +задача Позвонить поставщику
+    #   +задача 20.08 Забрать корпуса
+    # Задача попадёт в утреннюю сводку (schedule action=morning_ping).
+    # Проверяем ДО отсечки приватных чатов — команда нужна именно в группе.
+    if text.lower().startswith(("+задача", "+task")):
+        _handle_add_task(cur, chat_id, text, msg)
         return
 
     # МАГАЗИН-БОТ РАБОТАЕТ ТОЛЬКО В ЛИЧНЫХ ЧАТАХ. В группах/каналах

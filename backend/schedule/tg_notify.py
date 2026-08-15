@@ -289,3 +289,54 @@ def notify_tasks(text: str, event_key: str = None) -> bool:
     """Задачи, календарь, задержки — в чат задач (если задан)."""
     default = os.environ.get("TELEGRAM_TASKS_CHAT_ID") or os.environ.get("TELEGRAM_MANAGER_CHAT_ID")
     return _send_routed(default, text, event_key)
+
+
+# Чаты утренней сводки календаря. Сводка нужна СРАЗУ в двух чатах: рабочий
+# «BeGraphics Новокосино» и «Задачи Новокос», поэтому обычный _send_routed
+# (один адресат) тут не подходит.
+MORNING_CHATS = ["-1002809968150", "-5146291201"]
+
+
+def notify_morning(text: str, event_key: str = "calendar_morning") -> bool:
+    """Утренняя сводка календаря — во ВСЕ чаты из MORNING_CHATS.
+
+    Если в админке для события задан явный маршрут (tg_event_routes.chat_id) —
+    он ПЕРЕОПРЕДЕЛЯЕТ список: так настройку можно поменять без правки кода.
+    Событие можно целиком выключить там же.
+    """
+    enabled, route_chat = _tg_route_of(event_key)
+    if not enabled:
+        print(f"TG_NOTIFY: событие {event_key} выключено в админке")
+        return False
+    chats = [route_chat] if route_chat else MORNING_CHATS
+    ok_any = False
+    for cid in chats:
+        if not cid:
+            continue
+        try:
+            ok = _send_raw(str(cid), text)
+        except Exception as e:
+            print(f"TG_MORNING: {cid} — {e}")
+            ok = False
+        ok_any = ok_any or ok
+    return ok_any
+
+
+def _tg_route_of(event_key: str):
+    """Настройки события из админки: (включено, чат-переопределение)."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT enabled, chat_id FROM {SCHEMA_TG}.tg_event_routes "
+                    f"WHERE event_key = '" + event_key.replace("'", "''") + "'")
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        if row:
+            return bool(row[0]), (str(row[1]) if row[1] is not None else None)
+    except Exception as e:
+        print(f"TG_ROUTE: {e}")
+    return True, None

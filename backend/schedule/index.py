@@ -165,7 +165,7 @@ def handler(event: dict, context) -> dict:
             _is_cron = bool(_cron_secret) and _cron_key == _cron_secret
             if not _is_cron and require_admin(cur, session_id, admin_key) is None:
                 return err("Нет доступа", 403)
-            from tg_notify import notify_managers, notify_tasks
+            from tg_notify import notify_managers, notify_tasks, notify_morning
 
             def fmt_resp(emp_rows):
                 """emp_rows: список (name, tag). Возвращает '@tag1, @tag2' либо имена."""
@@ -194,7 +194,7 @@ def handler(event: dict, context) -> dict:
                 lines = ["📦 <b>Забрать заказы сегодня</b>", ""]
                 for store, cnt in pickups:
                     lines.append(f"• {store} — {int(cnt)} заказ(ов)")
-                notify_managers("\n".join(lines) + _cal_link, event_key="calendar_morning")
+                notify_morning("\n".join(lines) + _cal_link)
                 sent.append("pickups")
 
             # 2) ВСЕ СОБЫТИЯ И ЗАДАЧИ КАЛЕНДАРЯ НА СЕГОДНЯ (kind='task' и 'event').
@@ -228,7 +228,7 @@ def handler(event: dict, context) -> dict:
                     if resp:
                         block += f"\nОтветственные: {resp}"
                     blocks.append(block)
-                notify_tasks("\n".join(blocks) + _cal_link, event_key="calendar_morning")
+                notify_morning("\n".join(blocks) + _cal_link)
                 sent.append("calendar")
 
             # 3) ВЫДАЧА ПК НА СЕГОДНЯ (wip_builds.issued_at)
@@ -245,7 +245,7 @@ def handler(event: dict, context) -> dict:
                 lines = ["🚀 <b>Выдача ПК сегодня</b>", ""]
                 for order_num, customer in handouts:
                     lines.append(f"• Заказ <b>#{order_num}</b>" + (f" · {customer}" if customer else ""))
-                notify_tasks("\n".join(lines) + _cal_link, event_key="calendar_morning")
+                notify_morning("\n".join(lines) + _cal_link)
                 sent.append("handouts")
 
             # 4) КОРЗИНА ЗАКУПКИ: есть железо для заказа (status=NEW) — в основной чат
@@ -263,6 +263,14 @@ def handler(event: dict, context) -> dict:
                     f"🛒 <b>В корзине закупки есть железо для заказа</b>\n"
                     f"Позиций: {basket_positions} (всего {basket_qty} шт)" + _wip_link, event_key="purchase_basket")
                 sent.append("basket")
+
+            # 5) Пустой день. Раньше при отсутствии дел не уходило НИЧЕГО, и было
+            # непонятно: дел правда нет или напоминалка сломалась. Теперь шлём
+            # явное «дел нет». Корзина закупки (basket) идёт в другой чат и на
+            # пустоту утренней сводки не влияет — учитываем только пункты 1-3.
+            if not [s for s in sent if s in ("pickups", "calendar", "handouts")]:
+                notify_morning("☀️ <b>Доброе утро!</b>\nНа сегодня задач и событий нет." + _cal_link)
+                sent.append("empty")
 
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True, "sent": sent})}
 
