@@ -6,6 +6,7 @@
 import os
 import socket
 import ssl
+import threading
 import http.client
 import time
 import json
@@ -22,17 +23,24 @@ TG_READ_TIMEOUT = 10.0
 
 # У api.telegram.org несколько дата-центров, и из облака провайдера часть из них
 # недоступна: DNS стабильно отдаёт 149.154.166.110, но TCP до него не проходит
-# (timeout), тогда как 149.154.167.220 отвечает за ~46 мс. Раньше код упирался
-# ровно в один адрес из DNS — уведомления молча не уходили. Теперь перебираем
-# известные адреса и запоминаем рабочий. TLS/SNI/Host остаются на
-# api.telegram.org, поэтому сертификат проверяется штатно.
+# (timeout), тогда как 149.154.167.220 отвечает за ~50 мс.
+#
+# ВАЖНО (v8.08): последовательный перебор адресов не годится. Лимит исполнения
+# функции бывает 5 сек (stress), и одно ожидание мёртвого адреса съедало его
+# целиком — уведомление не успевало уйти, вызов падал с 504.
+# Поэтому подключаемся ко ВСЕМ адресам ПАРАЛЛЕЛЬНО и берём первый ответивший
+# (happy eyeballs). Мёртвые адреса больше не задерживают отправку.
 TG_HOST = "api.telegram.org"
 TG_FALLBACK_IPS = [
     "149.154.167.220",
-    "149.154.166.110",
     "149.154.175.50",
+    "149.154.166.110",
     "91.108.56.130",
+    "149.154.171.5",
 ]
+# Бюджет на установку связи — заведомо меньше самого жёсткого лимита функции
+# (5 сек), чтобы осталось время на сам запрос и ответ.
+TG_DIAL_TIMEOUT = 2.5
 
 _tg_conn = None
 _tg_ip_ok = None  # последний IP, с которым связь реально поднялась
@@ -42,6 +50,9 @@ def _tg_candidate_ips():
     ips = []
     if _tg_ip_ok:
         ips.append(_tg_ip_ok)
+    for ip in TG_FALLBACK_IPS:
+        if ip not in ips:
+            ips.append(ip)
     try:
         for i in socket.getaddrinfo(TG_HOST, 443, socket.AF_INET, socket.SOCK_STREAM):
             ip = i[4][0]
@@ -49,30 +60,51 @@ def _tg_candidate_ips():
                 ips.append(ip)
     except Exception:
         pass
-    for ip in TG_FALLBACK_IPS:
-        if ip not in ips:
-            ips.append(ip)
     return ips
 
 
 def _tg_open():
-    """Поднимает TLS-соединение с Telegram, перебирая адреса до рабочего."""
+    """TLS-соединение с Telegram: все адреса пробуются ПАРАЛЛЕЛЬНО,
+    берётся первый ответивший — мёртвый DC не тормозит отправку."""
     global _tg_ip_ok
-    last_err = None
     ctx = ssl.create_default_context()
-    for ip in _tg_candidate_ips():
+    result = {}
+    lock = threading.Lock()
+    done = threading.Event()
+
+    def dial(ip):
         try:
-            raw = socket.create_connection((ip, 443), timeout=TG_CONNECT_TIMEOUT)
+            raw = socket.create_connection((ip, 443), timeout=TG_DIAL_TIMEOUT)
             tls = ctx.wrap_socket(raw, server_hostname=TG_HOST)
-            tls.settimeout(TG_READ_TIMEOUT)
-            c = http.client.HTTPSConnection(TG_HOST, 443, timeout=TG_READ_TIMEOUT)
-            c.sock = tls
-            _tg_ip_ok = ip
-            return c
         except Exception as e:
-            last_err = e
-            continue
-    raise last_err if last_err else RuntimeError("telegram unreachable")
+            with lock:
+                result.setdefault("err", e)
+            return
+        with lock:
+            if "sock" in result:
+                try:
+                    tls.close()
+                except Exception:
+                    pass
+                return
+            result["sock"] = tls
+            result["ip"] = ip
+        done.set()
+
+    for ip in _tg_candidate_ips():
+        threading.Thread(target=dial, args=(ip,), daemon=True).start()
+    done.wait(TG_DIAL_TIMEOUT + 0.5)
+    with lock:
+        sock = result.get("sock")
+        ip = result.get("ip")
+        err = result.get("err")
+    if sock is None:
+        raise err if err else RuntimeError("telegram unreachable")
+    sock.settimeout(TG_READ_TIMEOUT)
+    c = http.client.HTTPSConnection(TG_HOST, 443, timeout=TG_READ_TIMEOUT)
+    c.sock = sock
+    _tg_ip_ok = ip
+    return c
 
 
 def _tg_post(path: str, data: bytes, headers: dict):
