@@ -778,39 +778,33 @@ def _handle_add_task(cur, chat_id, text, msg):
         return
     body = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
     if not body:
-        send(chat_id, "Как добавить задачу:\n"
-                      "<code>/task Позвонить поставщику</code>\n"
-                      "<code>/task завтра Забрать корпуса</code>\n"
-                      "<code>/task 20.08 Отвезти ПК клиенту</code>\n\n"
-                      "Задача попадёт в утреннюю сводку в 10:00.",
-             reply_kb=False)
+        # Голый «/task» без текста. Telegram отправляет команду сразу по тапу
+        # в подсказке — дописать текст пользователь не успевает. Поэтому
+        # отвечаем с force_reply: у человека открывается поле ответа, он пишет
+        # задачу обычным сообщением. ВАЖНО: ответы на сообщения бота приходят
+        # ему даже при ВКЛЮЧЁННОМ режиме приватности — это и делает сценарий
+        # рабочим в группе без отключения privacy mode у @BotFather.
+        tg_call("sendMessage", {
+            "chat_id": chat_id,
+            "text": ("📝 <b>Что за задача?</b>\n"
+                     "Напишите ответом на это сообщение.\n\n"
+                     "Можно с датой в начале:\n"
+                     "<code>завтра Забрать корпуса</code>\n"
+                     "<code>20.08 Отвезти ПК клиенту</code>"),
+            "parse_mode": "HTML",
+            "reply_markup": {"force_reply": True,
+                             "input_field_placeholder": "Текст задачи"},
+        })
         return
 
-    from datetime import date, timedelta
-    import re as _re
+    from datetime import date
 
-    day = date.today()
-    low = body.lower()
-    if low.startswith("сегодня "):
-        body = body[8:].strip()
-    elif low.startswith("завтра "):
-        day = day + timedelta(days=1)
-        body = body[7:].strip()
-    else:
-        m = _re.match(r"^(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?\s+(.+)$", body, _re.S)
-        if m:
-            d, mo, y, rest = m.group(1), m.group(2), m.group(3), m.group(4)
-            year = day.year if not y else (int(y) + 2000 if len(y) == 2 else int(y))
-            try:
-                day = date(year, int(mo), int(d))
-                body = rest.strip()
-            except ValueError:
-                send(chat_id, "Не понял дату. Пример: <code>+задача 20.08 Текст</code>",
-                     reply_kb=False)
-                return
-
-    if not body:
-        send(chat_id, "После даты нужен текст задачи.", reply_kb=False)
+    # Разбор даты — общий с инлайн-режимом (_parse_task_text), чтобы подсказка
+    # в инлайне и реально созданная задача не разъезжались.
+    day, body, errmsg = _parse_task_text(body)
+    if errmsg:
+        send(chat_id, f"{errmsg}. Пример: <code>/task 20.08 Отвезти ПК клиенту</code>",
+             reply_kb=False)
         return
 
     # Первая строка — заголовок, остальное — описание.
@@ -841,6 +835,159 @@ def _handle_add_task(cur, chat_id, text, msg):
                   f"{f' (#{task_id})' if task_id else ''}{link}", reply_kb=False)
 
 
+def _parse_task_text(body):
+    """Разбирает «[дата] текст» → (дата, текст, ошибка).
+
+    Единая точка разбора для команды /task и для инлайн-режима, чтобы
+    подсказка в инлайне и реально созданная задача не разъезжались.
+    """
+    from datetime import date, timedelta
+    import re as _re
+
+    day = date.today()
+    body = (body or "").strip()
+    low = body.lower()
+    if low.startswith("сегодня "):
+        body = body[8:].strip()
+    elif low.startswith("завтра "):
+        day = day + timedelta(days=1)
+        body = body[7:].strip()
+    elif low.startswith("послезавтра "):
+        day = day + timedelta(days=2)
+        body = body[12:].strip()
+    else:
+        m = _re.match(r"^(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?\s+(.+)$", body, _re.S)
+        if m:
+            d, mo, y, rest = m.group(1), m.group(2), m.group(3), m.group(4)
+            year = day.year if not y else (int(y) + 2000 if len(y) == 2 else int(y))
+            try:
+                day = date(year, int(mo), int(d))
+                body = rest.strip()
+            except ValueError:
+                return None, None, "Неверная дата"
+    if not body:
+        return None, None, "Нужен текст задачи"
+    return day, body, None
+
+
+def handle_inline_query(cur, iq):
+    """Инлайн-режим: «@BeGraphicsPC_Bot купить корпуса» — Telegram показывает
+    карточку с разобранной датой, тап по ней создаёт задачу.
+
+    Работает из ЛЮБОГО чата и не требует отключения privacy mode.
+
+    ВАЖНО: здесь НИЧЕГО не пишем в БД. inline_query прилетает на КАЖДОЕ
+    нажатие клавиши — запись отсюда наплодила бы по задаче на букву.
+    Задача создаётся в handle_chosen_inline() (chosen_inline_result), то есть
+    только когда пользователь реально выбрал карточку.
+    """
+    from datetime import date
+
+    qid = iq.get("id")
+    q = (iq.get("query") or "").strip()
+    if not q:
+        tg_call("answerInlineQuery", {
+            "inline_query_id": qid,
+            "cache_time": 0,
+            "is_personal": True,
+            "button": {"text": "Как добавить задачу", "start_parameter": "help"},
+            "results": [{
+                "type": "article", "id": "help",
+                "title": "Напишите текст задачи",
+                "description": "например: завтра Забрать корпуса",
+                "input_message_content": {
+                    "message_text": "Чтобы добавить задачу, напишите текст после имени бота.",
+                },
+            }],
+        })
+        return
+
+    day, title, errmsg = _parse_task_text(q)
+    if errmsg:
+        tg_call("answerInlineQuery", {
+            "inline_query_id": qid, "cache_time": 0, "is_personal": True,
+            "results": [{
+                "type": "article", "id": "err",
+                "title": errmsg,
+                "description": "Пример: 20.08 Отвезти ПК клиенту",
+                "input_message_content": {"message_text": f"⚠️ {errmsg}"},
+            }],
+        })
+        return
+
+    frm = iq.get("from") or {}
+    uname = frm.get("username")
+    author = f"@{uname}" if uname else (frm.get("first_name") or "")
+    when = "сегодня" if day == date.today() else day.strftime("%d.%m.%Y")
+    # id inline-результата ограничен 64 байтами — длинный текст задачи туда не
+    # влезает. Поэтому кладём в id короткий ключ, а дату и текст сохраняем в
+    # tg_task_drafts; handle_chosen_inline достанет их по ключу.
+    import hashlib
+    key = hashlib.md5(f"{day.isoformat()}|{title}".encode()).hexdigest()[:24]
+
+    def qs(v):
+        return "'" + str(v).replace("'", "''") + "'"
+
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.tg_task_drafts (key, event_date, title) "
+        f"VALUES ({qs(key)}, {qs(day.isoformat())}, {qs(title[:255])}) "
+        f"ON CONFLICT (key) DO UPDATE SET created_at = NOW()"
+    )
+    # Черновик пишется на каждое нажатие клавиши, поэтому подчищаем старые
+    # (сутки) — иначе таблица растёт бесконечно.
+    cur.execute(f"DELETE FROM {SCHEMA}.tg_task_drafts "
+                f"WHERE created_at < NOW() - INTERVAL '1 day'")
+
+    tg_call("answerInlineQuery", {
+        "inline_query_id": qid,
+        "cache_time": 0,
+        "is_personal": True,
+        "results": [{
+            "type": "article",
+            "id": "add" + key,
+            "title": f"➕ Добавить задачу на {when}",
+            "description": title[:120],
+            "input_message_content": {
+                "message_text": (f"✅ <b>Задача добавлена на {when}</b>\n📋 {title}"
+                                 + (f"\nДобавил: {author}" if author else "")),
+                "parse_mode": "HTML",
+            },
+        }],
+    })
+
+
+def handle_chosen_inline(cur, chosen):
+    """Пользователь выбрал карточку в инлайне — только теперь создаём задачу.
+
+    id карточки: «add<ключ>», дата и текст лежат в tg_task_drafts.
+    """
+    rid = chosen.get("result_id") or ""
+    if not rid.startswith("add"):
+        return
+    key = rid[3:]
+    cur.execute(
+        f"SELECT event_date, title FROM {SCHEMA}.tg_task_drafts "
+        f"WHERE key = '" + key.replace("'", "''") + "' LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        return
+    day_iso, title = row[0].isoformat(), row[1]
+    frm = chosen.get("from") or {}
+    uname = frm.get("username")
+    author = f"@{uname}" if uname else (frm.get("first_name") or "")
+    descr = f"Добавил: {author}" if author else None
+
+    def qs(v):
+        return "NULL" if v is None else "'" + str(v).replace("'", "''") + "'"
+
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.calendar_events "
+        f"(event_date, title, description, kind, status, origin_date) "
+        f"VALUES ({qs(day_iso)}, {qs(title[:255])}, {qs(descr)}, "
+        f"'task', 'new', {qs(day_iso)})"
+    )
+
+
 def handle_message(cur, msg):
     chat_id = msg["chat"]["id"]
     chat_type = msg["chat"].get("type", "private")
@@ -869,6 +1016,14 @@ def handle_message(cur, msg):
     _cmd = _low.split()[0].split("@")[0] if _low else ""
     if _cmd in ("/task", "/задача", "/zadacha") or _low.startswith(("+задача", "+task")):
         _handle_add_task(cur, chat_id, text, msg)
+        return
+
+    # Ответ на приглашение «Что за задача?» (force_reply). Такой reply Telegram
+    # отдаёт боту даже при включённом privacy mode, поэтому в группе это
+    # основной рабочий сценарий: тап по /task → пишем текст ответом.
+    _rt = ((msg.get("reply_to_message") or {}).get("text") or "")
+    if text and "Что за задача?" in _rt:
+        _handle_add_task(cur, chat_id, "/task " + text, msg)
         return
 
     # МАГАЗИН-БОТ РАБОТАЕТ ТОЛЬКО В ЛИЧНЫХ ЧАТАХ. В группах/каналах
@@ -1125,7 +1280,10 @@ def handler(event: dict, context) -> dict:
         if action == "set_webhook":
             res = tg_call("setWebhook", {
                 "url": SELF_URL,
-                "allowed_updates": ["message", "callback_query"],
+                # inline_query/chosen_inline_result обязательны для инлайн-режима
+                # (@BeGraphicsPC_Bot текст): без них Telegram их просто не пришлёт.
+                "allowed_updates": ["message", "callback_query",
+                                    "inline_query", "chosen_inline_result"],
                 "drop_pending_updates": True,
             })
             return {"statusCode": 200, "headers": _cors(),
@@ -1259,7 +1417,11 @@ def handler(event: dict, context) -> dict:
     cur = conn.cursor()
     try:
         update = json.loads(event.get("body") or "{}")
-        if "message" in update and update["message"].get("text"):
+        if "inline_query" in update:
+            handle_inline_query(cur, update["inline_query"])
+        elif "chosen_inline_result" in update:
+            handle_chosen_inline(cur, update["chosen_inline_result"])
+        elif "message" in update and update["message"].get("text"):
             handle_message(cur, update["message"])
         elif "callback_query" in update:
             handle_callback(cur, update["callback_query"])
