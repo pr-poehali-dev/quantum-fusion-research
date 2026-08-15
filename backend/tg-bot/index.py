@@ -1038,6 +1038,17 @@ def handler(event: dict, context) -> dict:
             res = tg_call("getWebhookInfo", {})
             return {"statusCode": 200, "headers": _cors(),
                     "body": json.dumps({"ok": True, "result": res})}
+        if action == "chat_diag":
+            # Проверка КОНКРЕТНОГО чата: getChat отдаёт тип и название, если бот
+            # действительно в этом чате. Нужно, чтобы отличить "бот не добавлен"
+            # от "ID записан неверно" — по тексту "chat not found" это неразличимо.
+            cid = (params.get("chat_id") or "").strip()
+            if not cid:
+                return _ok({"error": "chat_id required"}, 400)
+            info = tg_call("getChat", {"chat_id": cid})
+            me = tg_call("getMe", {})
+            return _ok({"chat_id": cid, "getChat": info,
+                        "bot": (me or {}).get("result", {}).get("username")})
         if action == "net_diag":
             # Диагностика сетевой связности с Telegram: отдельно DNS и отдельно
             # TCP+TLS по каждому адресу. Нужна, чтобы отличить "нет DNS" от
