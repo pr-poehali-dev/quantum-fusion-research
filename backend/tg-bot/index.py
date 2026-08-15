@@ -779,9 +779,10 @@ def _handle_add_task(cur, chat_id, text, msg):
     body = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
     if not body:
         send(chat_id, "Как добавить задачу:\n"
-                      "<code>+задача Позвонить поставщику</code>\n"
-                      "<code>+задача завтра Забрать корпуса</code>\n"
-                      "<code>+задача 20.08 Отвезти ПК клиенту</code>",
+                      "<code>/task Позвонить поставщику</code>\n"
+                      "<code>/task завтра Забрать корпуса</code>\n"
+                      "<code>/task 20.08 Отвезти ПК клиенту</code>\n\n"
+                      "Задача попадёт в утреннюю сводку в 10:00.",
              reply_kb=False)
         return
 
@@ -853,11 +854,20 @@ def handle_message(cur, msg):
         return
 
     # Добавление задачи в календарь прямо из рабочего чата:
-    #   +задача Позвонить поставщику
-    #   +задача 20.08 Забрать корпуса
+    #   /task Позвонить поставщику     ← ОСНОВНОЙ способ в группах
+    #   +задача 20.08 Забрать корпуса  ← работает в личке; в группе только
+    #                                    если у @BotFather выключен privacy mode
     # Задача попадёт в утреннюю сводку (schedule action=morning_ping).
     # Проверяем ДО отсечки приватных чатов — команда нужна именно в группе.
-    if text.lower().startswith(("+задача", "+task")):
+    #
+    # ВАЖНО про группы: при включённом режиме приватности (по умолчанию у
+    # @BotFather) Telegram НЕ показывает боту обычные сообщения группы —
+    # «+задача ...» до него просто не долетает. Зато команды со слэшем
+    # доходят всегда, поэтому основной вариант — /task (и /задача).
+    # Учитываем /task@BeGraphicsPC_Bot — в группах клиент дописывает имя бота.
+    _low = text.lower()
+    _cmd = _low.split()[0].split("@")[0] if _low else ""
+    if _cmd in ("/task", "/задача", "/zadacha") or _low.startswith(("+задача", "+task")):
         _handle_add_task(cur, chat_id, text, msg)
         return
 
@@ -1133,8 +1143,19 @@ def handler(event: dict, context) -> dict:
                 return _ok({"error": "chat_id required"}, 400)
             info = tg_call("getChat", {"chat_id": cid})
             me = tg_call("getMe", {})
+            mr = (me or {}).get("result", {}) or {}
+            # can_read_all_group_messages=False (режим приватности ВКЛючён у
+            # @BotFather) означает: в группе бот видит только команды со слэшем
+            # и ответы на свои сообщения. Обычный текст «+задача ...» до него
+            # НЕ доходит — это ключевая причина «команда не работает в группе».
+            member = None
+            if mr.get("id"):
+                member = tg_call("getChatMember", {"chat_id": cid, "user_id": mr["id"]})
             return _ok({"chat_id": cid, "getChat": info,
-                        "bot": (me or {}).get("result", {}).get("username")})
+                        "bot": mr.get("username"),
+                        "privacy_mode_on": not mr.get("can_read_all_group_messages", False),
+                        "can_read_all_group_messages": mr.get("can_read_all_group_messages"),
+                        "member": (member or {}).get("result")})
         if action == "net_diag":
             # Диагностика сетевой связности с Telegram: отдельно DNS и отдельно
             # TCP+TLS по каждому адресу. Нужна, чтобы отличить "нет DNS" от
