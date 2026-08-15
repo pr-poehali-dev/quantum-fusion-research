@@ -790,7 +790,8 @@ def _handle_add_task(cur, chat_id, text, msg):
                      "Напишите ответом на это сообщение.\n\n"
                      "Можно с датой в начале:\n"
                      "<code>завтра Забрать корпуса</code>\n"
-                     "<code>20.08 Отвезти ПК клиенту</code>"),
+                     "<code>20.08 Отвезти ПК клиенту</code>\n\n"
+                     "Упомяните @тег сотрудника — назначу ответственным."),
             "parse_mode": "HTML",
             "reply_markup": {"force_reply": True,
                              "input_field_placeholder": "Текст задачи"},
@@ -820,6 +821,11 @@ def _handle_add_task(cur, chat_id, text, msg):
     def q(v):
         return "NULL" if v is None else "'" + str(v).replace("'", "''") + "'"
 
+    # Ответственные: @теги сотрудников из текста задачи (employees.telegram_tag,
+    # тот же тег, что в расписании). Сверяем без учёта регистра и лишних
+    # пробелов — в Telegram тег пишут как угодно.
+    emp_ids, emp_names = _match_employees(cur, body)
+
     cur.execute(
         f"INSERT INTO {SCHEMA}.calendar_events "
         f"(event_date, title, description, kind, status, origin_date) "
@@ -828,11 +834,36 @@ def _handle_add_task(cur, chat_id, text, msg):
     )
     row = cur.fetchone()
     task_id = row[0] if row else None
+    if task_id and emp_ids:
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.calendar_event_employees (event_id, employee_id) "
+            f"VALUES " + ", ".join(f"({int(task_id)}, {int(e)})" for e in emp_ids)
+        )
     when = "сегодня" if day == date.today() else day.strftime("%d.%m.%Y")
     base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
     link = f"\n🔗 <a href=\"{base}/admin/calendar\">Открыть календарь</a>" if base else ""
+    who = f"\n👤 Ответственные: {', '.join(emp_names)}" if emp_names else ""
     send(chat_id, f"✅ Задача добавлена на <b>{when}</b>\n📋 {title}"
-                  f"{f' (#{task_id})' if task_id else ''}{link}", reply_kb=False)
+                  f"{f' (#{task_id})' if task_id else ''}{who}{link}", reply_kb=False)
+
+
+def _match_employees(cur, text):
+    """@теги из текста → (id сотрудников, их имена).
+
+    Тег берём из employees.telegram_tag — тот же, что в расписании.
+    Сравнение регистронезависимое: в чате тег пишут как придётся.
+    """
+    import re as _re
+    tags = {t.lower() for t in _re.findall(r"@([A-Za-z0-9_]{3,64})", text or "")}
+    if not tags:
+        return [], []
+    in_list = ", ".join("'" + t.replace("'", "''") + "'" for t in tags)
+    cur.execute(
+        f"SELECT id, name FROM {SCHEMA}.employees "
+        f"WHERE LOWER(TRIM(COALESCE(telegram_tag, ''))) IN ({in_list})"
+    )
+    rows = cur.fetchall() or []
+    return [r[0] for r in rows], [r[1] for r in rows]
 
 
 def _parse_task_text(body):
