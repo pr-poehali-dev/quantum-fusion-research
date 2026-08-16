@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import NotificationBell from "@/components/NotificationBell"
 import Footer from "@/components/Footer"
+import YandexMap from "@/components/YandexMap"
 import { useAuth } from "@/store/auth"
 
 interface Office {
@@ -11,6 +12,8 @@ interface Office {
   subtitle: string
   icon: string
   address: string
+  /** Координаты "широта,долгота" для точной метки на карте. */
+  coords?: string
   mapsUrl: string
   phone: string
   phoneTel: string
@@ -25,7 +28,9 @@ const OFFICES: Office[] = [
     subtitle: "Сборка и продажа ПК и комплектующих",
     icon: "Cpu",
     address: "г. Москва, Новокосино",
-    mapsUrl: "https://yandex.ru/maps/-/CTA~v8Lr",
+    // Координаты взяты из фирменной ссылки Яндекс.Карт (карточка организации).
+    coords: "55.740471,37.859300",
+    mapsUrl: "https://yandex.ru/maps/org/begraphics/125515077401/",
     phone: "+7 (910) 307-04-99",
     phoneTel: "+79103070499",
     telegram: "@BeGraphicsPC",
@@ -37,7 +42,8 @@ const OFFICES: Office[] = [
     subtitle: "Ремонт и обслуживание",
     icon: "Wrench",
     address: "г. Москва, Беляево",
-    mapsUrl: "https://yandex.ru/maps/-/CTApvRnd",
+    coords: "55.645473,37.525418",
+    mapsUrl: "https://yandex.ru/maps/org/begraphics/76615498407/",
     phone: "+7 (960) 029-69-98",
     phoneTel: "+79600296998",
     telegram: "@BeGraphicsCard",
@@ -103,10 +109,10 @@ export default function Contacts() {
               </div>
 
               <div className="space-y-3 text-sm">
-                <a href={o.mapsUrl} target="_blank" rel="noreferrer" className="flex items-start gap-3 hover:text-primary transition-colors">
+                <div className="flex items-start gap-3">
                   <Icon name="MapPin" size={18} className="mt-0.5 shrink-0 text-primary" />
-                  <span>{o.address} — открыть на Яндекс.Картах</span>
-                </a>
+                  <span>{o.address}</span>
+                </div>
                 <a href={`tel:${o.phoneTel}`} className="flex items-center gap-3 hover:text-primary transition-colors">
                   <Icon name="Phone" size={18} className="shrink-0 text-primary" />
                   {o.phone}
@@ -119,6 +125,12 @@ export default function Contacts() {
                   <Icon name="Clock" size={18} className="mt-0.5 shrink-0 text-primary" />
                   <span>{o.hours}</span>
                 </div>
+              </div>
+
+              {/* Карта — снизу карточки, растягивается на остаток высоты */}
+              <div className="mt-5">
+                <p className="mb-2 text-sm font-medium text-foreground/70">Как добраться</p>
+                <YandexMap address={o.address} coords={o.coords} mapsUrl={o.mapsUrl} height={240} />
               </div>
             </div>
           ))}
