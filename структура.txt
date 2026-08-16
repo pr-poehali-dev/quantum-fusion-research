@@ -882,10 +882,17 @@ backend/{orders,quiz,warehouse}/tg_notify.py → notify_managers(text).
   и на это не влияет).
 - [v8.09] Задачу можно завести из чата командой «+задача» — см. раздел
   Telegram-бота ниже.
-- ⚠️ Платформа без cron: вызывать в 11:00 внешним планировщиком (cron-job.org / curl):
-  GET/POST schedule?action=morning_ping&ak=begraphics2024
-  ИЛИ штатный триггер: Ядро → Функции → schedule → Настройки, cron `0 7 * * *`
-  (UTC) = 10:00 МСК, вызов ?action=morning_ping&cron_key=<CRON_SECRET>.
+- ⚠️ Платформа без cron: [v8.12] БОЕВОЙ способ — ВНЕШНИЙ планировщик
+  (cron-job.org), ежедневно 10:00 Europe/Moscow (= 7:00 UTC), GET:
+    {schedule_url}?action=morning_ping&cron_key=<CRON_SECRET>
+  cron_key сверяется с секретом CRON_SECRET; оба значения .strip()-аются,
+  т.к. при вставке часто цепляется пробел/перевод строки.
+  При отказе в лог пишется «morning_ping 403: secret_set=… secret_len=…
+  key_len=…» — по длинам сразу видно, что не так, без раскрытия секрета.
+  ⚠️ Частая ошибка: в CRON_SECRET кладут ВЕСЬ URL вместо самого токена
+  (видно как secret_len ~105 при key_len 48).
+  ⚠️ Защиты от дублей НЕТ: каждый вызов = ещё одна сводка в оба чата.
+  Ставить строго раз в сутки, не использовать интервальные мониторы.
 - Frontend: кнопка «Отправить сводку сейчас» в ScheduleTab (ручной запуск пинга,
   POST action=morning_ping, показывает что отправлено). На своём сервере — crontab
   (см. ЗАПУСК-НА-СЕРВЕРЕ.md, раздел 9).
