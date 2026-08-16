@@ -160,10 +160,18 @@ def handler(event: dict, context) -> dict:
         # Доступ по admin-паролю панели (ak) ИЛИ по сессии админа.
         if action == "morning_ping":
             # Доступ: admin (пароль/сессия) ИЛИ секретный CRON-токен (?cron_key=).
-            _cron_key = params.get("cron_key") or ""
-            _cron_secret = os.environ.get("CRON_SECRET") or ""
+            # .strip() обязателен: при вставке значения в секрет/крон-сервис
+            # часто цепляется пробел или перевод строки — сравнение падало,
+            # и запуск отдавал 403 при визуально верном ключе.
+            _cron_key = (params.get("cron_key") or "").strip()
+            _cron_secret = (os.environ.get("CRON_SECRET") or "").strip()
             _is_cron = bool(_cron_secret) and _cron_key == _cron_secret
             if not _is_cron and require_admin(cur, session_id, admin_key) is None:
+                # Диагностика в лог БЕЗ раскрытия значений: видно только,
+                # задан ли секрет и совпали ли длины — этого хватает, чтобы
+                # отличить «секрет пустой» от «ключ другой/с пробелом».
+                print(f"morning_ping 403: secret_set={bool(_cron_secret)} "
+                      f"secret_len={len(_cron_secret)} key_len={len(_cron_key)}")
                 return err("Нет доступа", 403)
             from tg_notify import notify_managers, notify_tasks, notify_morning
 
