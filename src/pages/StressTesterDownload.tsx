@@ -203,10 +203,11 @@ export default function StressTesterDownload() {
       {/* ── Отчёт: слева скриншот, справа текст ── */}
       <section className="mx-auto max-w-6xl px-6 py-14">
         <div className="grid items-center gap-10 lg:grid-cols-2">
-          {/* ФОТО 2 — скриншот отчёта. Заменить: public/stresstester/report.png */}
+          {/* ФОТО 2 — реальный отчёт программы: вердикт, конфигурация ПК, итоги */}
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl lg:order-1">
-            <img src="/stresstester/report.png" alt="Отчёт стресс-теста с графиками"
-              className="w-full" width={1200} height={800} loading="lazy" />
+            <img src="https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/0d7ce192-1a95-4853-9d77-2c6780517402.png"
+              alt="Отчёт стресс-теста: вердикт «Всё в порядке», конфигурация ПК и итоги тестов"
+              className="w-full" width={696} height={599} loading="lazy" />
           </div>
           <div className="lg:order-2">
             <h2 className="mb-4 text-2xl font-light sm:text-3xl">Понятный отчёт вместо цифр</h2>
