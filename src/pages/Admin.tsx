@@ -19,6 +19,7 @@ const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
 const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
 const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
 const StressTestsTab = lazy(() => import("@/components/admin/StressTestsTab"))
+const StressReleasesTab = lazy(() => import("@/components/admin/StressReleasesTab"))
 const CompanySettings = lazy(() => import("@/components/admin/CompanySettings"))
 const TelegramBotTab = lazy(() => import("@/components/admin/TelegramBotTab"))
 const AdminCatalogTab = lazy(() => import("@/components/admin/AdminCatalogTab").then(m => ({ default: m.AdminCatalogTab })))
@@ -182,6 +183,7 @@ export default function Admin() {
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
+    { key: "stress_releases", label: "Версии тестера", icon: "PackageOpen" },
   ]
   // Группа 4 — Финансы и настройки
   const financeTabs = [
@@ -401,6 +403,9 @@ export default function Admin() {
 
         {/* STRESS — результаты стресс-тестов от desktop-приложения */}
         {tab === "stress" && <StressTestsTab />}
+
+        {/* STRESS RELEASES — версии EXE для скачивания клиентами */}
+        {tab === "stress_releases" && <StressReleasesTab />}
         </Suspense>
         </ErrorBoundary>
       </div>

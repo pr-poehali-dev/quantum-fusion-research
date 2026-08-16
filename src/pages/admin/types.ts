@@ -171,4 +171,4 @@ export interface WipBuild {
   updated_at?: string
 }
 
-export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "sn_archive" | "compatibility" | "users" | "schedule" | "calendar" | "finance" | "analytics" | "faq" | "promos" | "cables" | "rma" | "quiz_requests" | "price_monitor" | "stress" | "company_settings" | "telegram_bot"
+export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "sn_archive" | "compatibility" | "users" | "schedule" | "calendar" | "finance" | "analytics" | "faq" | "promos" | "cables" | "rma" | "quiz_requests" | "price_monitor" | "stress" | "company_settings" | "telegram_bot" | "stress_releases"

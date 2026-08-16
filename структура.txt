@@ -1410,3 +1410,21 @@ JPEG; итеративное сжатие до MAX_UPLOAD_BASE64=4МБ (сниж
 side, до 5 попыток); таймаут fetch 30с; явные тексты ошибок (413/сеть/сервер)
 в UI под кнопкой; загрузка пачками по 2 файла с счётчиком «N/M» вместо общего
 крутящегося индикатора.
+[v8.14] РАЗДАЧА СТРЕСС-ТЕСТЕРА (EXE до 5 ГБ) — backend/stress-releases
+URL: https://functions.poehali.dev/f575fff5-64cd-4482-b0b8-3d68c05ffdaa
+⚠️ АРХИТЕКТУРА: файл НИКОГДА не проходит через cloud function — лимит тела
+запроса, таймаут и base64 (+33%) делают это невозможным. Схема:
+  1) админка: POST action=upload_url → presigned PUT-ссылка в S3 (6 часов);
+  2) БРАУЗЕР шлёт файл прямо в бакет по этой ссылке (XMLHttpRequest, чтобы
+     был progress; fetch события прогресса не даёт);
+  3) POST action=create — сохраняем карточку версии (file_url = CDN).
+Клиент скачивает с CDN напрямую. НЕ переделывать на приём файла телом.
+- Таблица stress_app_releases (V0236). s3_key хранится, чтобы delete
+  физически удалял файл из бакета вместе с карточкой.
+- GET: публично только is_published=TRUE, с X-Admin-Key — включая черновики.
+  action=count_download публичный; create/update/delete/upload_url — admin.
+- Фронт: вкладка админки «Версии тестера» (StressReleasesTab, группа
+  extraTabs) — загрузка с прогрессом/скоростью/отменой, публикация,
+  удаление. Публичная страница /stresstester (StressTesterDownload):
+  свежая версия крупно + «Другие версии (N)» свёрнуты. Доступ свободный.
+- fmtSize/fmtDate живут в StressReleasesTab и переиспользуются страницей.

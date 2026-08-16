@@ -63,6 +63,7 @@ const UserBuild = lazyWithReload(() => import("./pages/UserBuild"));
 const B2B = lazyWithReload(() => import("./pages/B2B"));
 const Partners = lazyWithReload(() => import("./pages/Partners"));
 const PartnersStress = lazyWithReload(() => import("./pages/PartnersStress"));
+const StressTesterDownload = lazyWithReload(() => import("./pages/StressTesterDownload"));
 const VerifyReport = lazyWithReload(() => import("./pages/VerifyReport"));
 const Articles = lazyWithReload(() => import("./pages/Articles"));
 const HomeStonks = lazyWithReload(() => import("./pages/HomeStonks"));
@@ -143,6 +144,8 @@ const App = () => (
               <Route path="/b2b" element={<B2B />} />
               <Route path="/partners" element={<Partners />} />
               <Route path="/partners/stresstester" element={<PartnersStress />} />
+              {/* Публичная страница скачивания стресс-тестера (EXE) */}
+              <Route path="/stresstester" element={<StressTesterDownload />} />
               {/* Публичная проверка отчёта по QR-коду из PDF */}
               <Route path="/v/:code" element={<VerifyReport />} />
               {/* Старый кириллический путь — редирект на латиницу */}

@@ -27,6 +27,7 @@ const URLS = {
   faq: "https://functions.poehali.dev/b058cfaf-eb48-4710-90b0-f38899b0b16a",
   promos: "https://functions.poehali.dev/b70b011e-6249-4d99-8b90-f0f695e62cae",
   tgBot: "https://functions.poehali.dev/6cf7e69d-a5f1-45db-b94e-43f37dd16961",
+  stressReleases: "https://functions.poehali.dev/f575fff5-64cd-4482-b0b8-3d68c05ffdaa",
 }
 
 function authHeaders(session?: string | null) {
@@ -457,6 +458,23 @@ export const api = {
       fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "set_default", id, ak: adminKey }) }).then(r => r.json()),
     remove: (id: number, adminKey: string) =>
       fetch(URLS.companySettings, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "delete", id, ak: adminKey }) }).then(r => r.json()),
+  },
+  // Версии стресс-тестера (EXE до 5 ГБ). Файл НЕ проходит через функцию:
+  // getUploadUrl() даёт временную ссылку, браузер льёт файл прямо в хранилище,
+  // затем create() сохраняет карточку версии.
+  stressReleases: {
+    list: (adminKey?: string | null) =>
+      fetch(URLS.stressReleases, { headers: adminKey ? { "X-Admin-Key": adminKey } : {} }).then(r => r.json()),
+    getUploadUrl: (fileName: string, adminKey: string) =>
+      fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "upload_url", file_name: fileName, ak: adminKey }) }).then(r => r.json()),
+    create: (data: Record<string, unknown>, adminKey: string) =>
+      fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "create", ...data, ak: adminKey }) }).then(r => r.json()),
+    update: (data: Record<string, unknown>, adminKey: string) =>
+      fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "update", ...data, ak: adminKey }) }).then(r => r.json()),
+    remove: (id: number, adminKey: string) =>
+      fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "delete", id, ak: adminKey }) }).then(r => r.json()),
+    countDownload: (id: number) =>
+      fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "count_download", id }) }).then(r => r.json()).catch(() => null),
   },
   finance: {
     getSummary: () => fetch(`${URLS.finance}?action=summary`).then(r => r.json()),

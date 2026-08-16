@@ -1,0 +1,51 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Public list of releases",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"releases": []},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Upload url requires admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "upload_url", "file_name": "app.exe"},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create requires admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create", "version": "1.0", "file_url": "http://x/a.exe"},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Delete requires admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "delete", "id": 1},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Download counter is public",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "count_download", "id": 999999},
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
