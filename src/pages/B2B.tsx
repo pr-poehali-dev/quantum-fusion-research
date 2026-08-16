@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import { useAuth } from "@/store/auth"
 
 const B2B_URL = "https://functions.poehali.dev/f9a06f74-cd3c-4433-ae1b-52c4f76d1dec"
@@ -150,6 +151,7 @@ export default function B2B() {
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
           <div className="flex items-center gap-2">
+            <StressTesterLink />
             <ThemeSwitcher />
             {hasPrices && !companyB2B && (
               <button onClick={logoutPrices} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>

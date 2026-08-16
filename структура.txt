@@ -1482,3 +1482,11 @@ pc_builds(client_user_id), user_builds, user_sessions, telegram_link_codes.
   организации (yandex.ru/maps/org/begraphics/…), а не короткие /maps/-/…,
   которые со временем протухают.
 - Компонент общий: можно вставлять на любую страницу (доставка, о нас).
+
+[v8.18] КНОПКА «Скачать StressTester» В ШАПКЕ
+src/components/StressTesterLink.tsx — ссылка на /stresstester, стоит
+СЛЕВА от <ThemeSwitcher /> во всех публичных шапках (SiteHeader, Index,
+Builds, Shop, Service, Contacts, CommunityBuilds, CablePage, B2B, Profile).
+Текст скрыт до lg (остаётся иконка Activity) — иначе шапка переполняется
+на мобильных. Новую публичную страницу заводишь — вставь <StressTesterLink />
+перед <ThemeSwitcher />.

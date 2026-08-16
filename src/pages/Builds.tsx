@@ -5,6 +5,7 @@ import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import NotificationBell from "@/components/NotificationBell"
 import { CartToast } from "@/components/cart-toast"
 import CatalogTabs from "@/components/CatalogTabs"
@@ -290,6 +291,7 @@ export default function Builds() {
           </button>
 
           <div className="flex items-center gap-2">
+            <StressTesterLink />
             <ThemeSwitcher />
             <NotificationBell />
             {isAuthed() ? (

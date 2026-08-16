@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import NotificationBell from "@/components/NotificationBell"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/store/auth"
@@ -85,6 +86,7 @@ export default function Service() {
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
           <div className="flex items-center gap-2">
+            <StressTesterLink />
             <ThemeSwitcher />
             <NotificationBell />
             {isAuthed() ? (

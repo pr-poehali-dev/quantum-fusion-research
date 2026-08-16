@@ -3,6 +3,19 @@
 
 ---
 
+## v8.18 | 2026-08-16 | Кнопка «Скачать StressTester» в шапке сайта
+
+- НОВЫЙ src/components/StressTesterLink.tsx — кнопка-ссылка на
+  /stresstester. Ставится СЛЕВА от <ThemeSwitcher /> (просьба заказчика).
+  На экранах уже lg текст скрывается, остаётся иконка Activity — иначе
+  шапка переполняется на телефоне.
+- Добавлена в 10 публичных шапок: SiteHeader (общая) + Index, Builds,
+  Shop, Service, Contacts, CommunityBuilds, CablePage, B2B, Profile.
+- НЕ добавляли: админка, ЛК партнёра, конфигуратор и сама страница
+  /stresstester (там кнопка скачивания уже есть в hero и в своей шапке).
+
+---
+
 ## v8.17 | 2026-08-16 | Яндекс.Карты на странице контактов
 
 ### Новый компонент src/components/YandexMap.tsx

@@ -5,6 +5,7 @@ import { useCart } from "@/store/cart"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import NotificationBell from "@/components/NotificationBell"
 import CatalogTabs from "@/components/CatalogTabs"
 
@@ -96,6 +97,7 @@ export default function CommunityBuilds() {
             <span className="font-semibold text-lg text-foreground">BeGraphics</span>
           </button>
           <div className="flex items-center gap-2">
+            <StressTesterLink />
             <ThemeSwitcher />
             <NotificationBell />
             {isAuthed() ? (

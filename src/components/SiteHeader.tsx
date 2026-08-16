@@ -3,6 +3,7 @@ import Icon from "@/components/ui/icon"
 import { useCart } from "@/store/cart"
 import { useAuth } from "@/store/auth"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import NotificationBell from "@/components/NotificationBell"
 
 /** Базовая шапка сайта: логотип, тема, уведомления, профиль, корзина.
@@ -20,6 +21,7 @@ export default function SiteHeader() {
           <span className="font-semibold text-lg text-foreground">BeGraphics</span>
         </button>
         <div className="flex items-center gap-2">
+          <StressTesterLink />
           <ThemeSwitcher />
           <NotificationBell />
           {isAuthed() ? (

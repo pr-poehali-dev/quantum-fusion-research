@@ -4,6 +4,7 @@ import { useAuth } from "@/store/auth"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import NotificationBell from "@/components/NotificationBell"
 import RichTextEditor from "@/components/ui/rich-text-editor"
 import AvatarCropModal from "@/components/ui/avatar-crop-modal"
@@ -250,6 +251,7 @@ export default function Profile() {
             <button className="text-sm font-medium text-primary">Профиль</button>
           </nav>
           <div className="flex items-center gap-2">
+            <StressTesterLink />
             <ThemeSwitcher />
             <NotificationBell />
             <button onClick={handleLogout} className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>

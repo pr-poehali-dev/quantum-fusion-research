@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom"
 import Icon from "@/components/ui/icon"
 import { CableConfigurator } from "@/components/cable-configurator"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import StressTesterLink from "@/components/StressTesterLink"
 import NotificationBell from "@/components/NotificationBell"
 import { useCart } from "@/store/cart"
 
@@ -21,7 +22,8 @@ export default function CablePage() {
           <span className="text-sm">Конфигуратор</span>
         </button>
         <div className="flex items-center gap-3">
-          <ThemeSwitcher />
+          <StressTesterLink />
+            <ThemeSwitcher />
           <NotificationBell />
           <button
             onClick={() => navigate("/cart")}
