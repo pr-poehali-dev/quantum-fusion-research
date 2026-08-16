@@ -122,9 +122,10 @@ export default function StressTesterDownload() {
             )}
           </div>
 
-          {/* ФОТО 1 — скриншот окна программы. Заменить: public/stresstester/app.png */}
+          {/* ФОТО 1 — сборка на стенде (AMD Ryzen), которую прогоняем стресс-тестом */}
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-            <img src="/stresstester/app.png" alt="Окно программы стресс-теста"
+            <img src="https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/3475919d-6b88-451a-8a17-e6e8bfb5793c.jpg"
+              alt="Сборка на базе AMD Ryzen на тестовом стенде BeGraphics"
               className="w-full" width={1200} height={800} loading="eager" />
           </div>
         </div>
