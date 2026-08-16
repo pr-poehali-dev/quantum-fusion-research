@@ -10,7 +10,9 @@
       "name": "Admin login wrong password",
       "method": "POST",
       "path": "/?action=admin_login",
-      "body": {"ak": "definitely-wrong-password"},
+      "body": {
+        "ak": "definitely-wrong-password"
+      },
       "expectedStatus": 200
     },
     {
@@ -29,13 +31,33 @@
       "name": "Company save without key forbidden",
       "method": "POST",
       "path": "/?action=admin_company_save",
-      "body": {"ak": "wrong", "name": "__test__"},
+      "body": {
+        "ak": "wrong",
+        "name": "__test__"
+      },
       "expectedStatus": 403
     },
     {
       "name": "Company delete without key forbidden",
       "method": "DELETE",
       "path": "/?action=admin_company_delete&id=1&ak=wrong",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Admin user builds without key forbidden",
+      "method": "GET",
+      "path": "/?action=admin_user_builds&ak=wrong",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Admin user build update without key forbidden",
+      "method": "POST",
+      "path": "/?action=admin_user_build_update",
+      "body": {
+        "ak": "wrong",
+        "build_id": 1,
+        "op": "delete"
+      },
       "expectedStatus": 403
     }
   ]

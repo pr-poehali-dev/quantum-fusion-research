@@ -1428,3 +1428,29 @@ URL: https://functions.poehali.dev/f575fff5-64cd-4482-b0b8-3d68c05ffdaa
   удаление. Публичная страница /stresstester (StressTesterDownload):
   свежая версия крупно + «Другие версии (N)» свёрнуты. Доступ свободный.
 - fmtSize/fmtDate живут в StressReleasesTab и переиспользуются страницей.
+
+[v8.15] УДАЛЕНИЕ ПОЛЬЗОВАТЕЛЯ (backend/auth, admin_user_update op=delete)
+⚠️ На users ссылаются 8 таблиц, ВСЕ с NO ACTION (CASCADE нет ни на одной):
+orders, warehouse_movements, warehouse_inventories, finance_transactions,
+pc_builds(client_user_id), user_builds, user_sessions, telegram_link_codes.
+Простой DELETE FROM users ВСЕГДА падает, если у юзера есть хоть один заказ.
+Порядок (менять только осознанно):
+  1) ОБЕЗЛИЧИТЬ (SET user_id=NULL) — orders, warehouse_movements,
+     warehouse_inventories, finance_transactions, pc_builds.client_user_id.
+     Это история компании, удалять её вместе с аккаунтом НЕЛЬЗЯ.
+  2) УДАЛИТЬ — user_sessions, user_builds, telegram_link_codes
+     (в telegram_link_codes user_id NOT NULL, обнулить нельзя).
+  3) DELETE FROM users + проверка rowcount → 404 если не найден.
+Фронт AdminUsersTab показывает res.error алертом (молчаливый провал был
+причиной жалобы «пользователь не удаляется»).
+
+[v8.15] СБОРКИ КЛИЕНТОВ В АДМИНКЕ — вкладка «Сборки клиентов» (UserBuildsTab)
+- backend/auth: admin_user_builds (GET, ak) — до 200 сборок, поиск q по
+  названию/username/email, фильтр user_id. LEFT JOIN users — сборки
+  удалённых авторов остаются видимыми как «— удалён —».
+- backend/auth: admin_user_build_update (POST, ak) — op set_public / rename /
+  delete; rowcount=0 → 404.
+- UI: поиск, фильтр «только опубликованные», раскрытие состава,
+  публикация/снятие с витрины «Сборки сообщества», переименование, удаление,
+  переход на /user-build/{share_token}.
+- api.auth.adminGetUserBuilds / adminUpdateUserBuild.

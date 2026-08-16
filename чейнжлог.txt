@@ -3,6 +3,43 @@
 
 ---
 
+## v8.15 | 2026-08-16 | Починка удаления пользователя + управление сборками клиентов
+
+### БАГ: пользователь «не удалялся» (жалоба из чата)
+Причина: на users ссылаются 8 таблиц, ВСЕ с NO ACTION (без CASCADE):
+orders, warehouse_movements, warehouse_inventories, finance_transactions,
+pc_builds(client_user_id), user_builds, user_sessions, telegram_link_codes.
+Старый код удалял только user_sessions → DELETE FROM users падал на первой
+же ссылке (заказ/движение склада/проводка). Ошибка не возвращалась в UI,
+поэтому выглядело как «нажал — ничего не произошло».
+
+Решение (backend/auth, op=delete) — РАЗНОЕ обращение с данными:
+- рабочие данные компании НЕ удаляем, а ОБЕЗЛИЧИВАЕМ (user_id=NULL):
+  orders, warehouse_movements, warehouse_inventories, finance_transactions,
+  pc_builds.client_user_id. История заказов и финансов обязана уцелеть.
+- личное пользователя удаляем: user_sessions, user_builds,
+  telegram_link_codes (там user_id NOT NULL — обнулить нельзя).
+- проверяем cur.rowcount → 404 «Пользователь не найден», если никого не снёс.
+- фронт (AdminUsersTab): adminUserOp теперь ПОКАЗЫВАЕТ res.error через alert,
+  раньше ошибка молча терялась. Текст подтверждения уточнён: предупреждаем,
+  что заказы/склад/финансы останутся в истории без привязки к клиенту.
+
+### Управление сборками клиентов (задача из чата)
+Витрина «Сборки сообщества» наполняется пользователями — админу нужен
+контроль (снять спам с публикации, переименовать, удалить).
+- backend/auth: action=admin_user_builds (GET, admin) — список до 200 с
+  поиском по названию/автору/почте, фильтр user_id; LEFT JOIN users, чтобы
+  сборки удалённых авторов не пропадали («— удалён —»).
+  action=admin_user_build_update (POST, admin): set_public / rename / delete,
+  cur.rowcount → 404 если сборки нет.
+- НОВАЯ вкладка админки «Сборки клиентов» (UserBuildsTab, группа quickTabs):
+  поиск, фильтр «только опубликованные», раскрытие состава по клику,
+  публикация/снятие, переименование, удаление, ссылка на /user-build/{token}.
+- api.auth.adminGetUserBuilds / adminUpdateUserBuild.
+- tests.json auth: +2 теста на 403 без ключа. 8/8 ok.
+
+---
+
 ## v8.14 | 2026-08-16 | Раздача стресс-тестера (EXE до 5 ГБ) клиентам с сайта
 
 ### Ключевое архитектурное решение

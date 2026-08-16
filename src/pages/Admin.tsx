@@ -20,6 +20,7 @@ const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
 const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
 const StressTestsTab = lazy(() => import("@/components/admin/StressTestsTab"))
 const StressReleasesTab = lazy(() => import("@/components/admin/StressReleasesTab"))
+const UserBuildsTab = lazy(() => import("@/components/admin/UserBuildsTab"))
 const CompanySettings = lazy(() => import("@/components/admin/CompanySettings"))
 const TelegramBotTab = lazy(() => import("@/components/admin/TelegramBotTab"))
 const AdminCatalogTab = lazy(() => import("@/components/admin/AdminCatalogTab").then(m => ({ default: m.AdminCatalogTab })))
@@ -199,6 +200,7 @@ export default function Admin() {
     { key: "products", label: "Товары", icon: "Package" },
     { key: "compatibility", label: "Совместимость", icon: "Puzzle" },
     { key: "users", label: "Пользователи", icon: "Users" },
+    { key: "user_builds", label: "Сборки клиентов", icon: "Wrench" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
   ]
 
@@ -391,6 +393,9 @@ export default function Admin() {
         {tab === "users" && (
           <AdminUsersTab adminUsers={adminUsers} loading={loading} setAdminUsers={setAdminUsers} />
         )}
+
+        {/* USER BUILDS — конфигурации, собранные клиентами */}
+        {tab === "user_builds" && <UserBuildsTab />}
 
         {/* RMA */}
         {tab === "rma" && <RmaTab />}

@@ -254,6 +254,11 @@ export const api = {
     adminLogin: (adminKey: string) => fetch(`${URLS.auth}?action=admin_login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ak: adminKey }) }).then(r => r.json()),
     adminGetUsers: (adminKey: string, search?: string) => fetch(`${URLS.auth}?action=admin_users&ak=${encodeURIComponent(adminKey)}${search ? `&search=${encodeURIComponent(search)}` : ""}`).then(r => r.json()),
     adminUpdateUser: (data: unknown, adminKey: string) => fetch(`${URLS.auth}?action=admin_user_update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(data as object), ak: adminKey }) }).then(r => r.json()),
+    // Сборки пользователей (витрина «Сборки сообщества») под управлением админа
+    adminGetUserBuilds: (adminKey: string, q?: string, userId?: number) =>
+      fetch(`${URLS.auth}?action=admin_user_builds&ak=${encodeURIComponent(adminKey)}${q ? `&q=${encodeURIComponent(q)}` : ""}${userId ? `&user_id=${userId}` : ""}`).then(r => r.json()),
+    adminUpdateUserBuild: (data: Record<string, unknown>, adminKey: string) =>
+      fetch(`${URLS.auth}?action=admin_user_build_update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...data, ak: adminKey }) }).then(r => r.json()),
     adminGetCompanies: (adminKey: string) => fetch(`${URLS.auth}?action=admin_companies&ak=${encodeURIComponent(adminKey)}`).then(r => r.json()),
     adminSaveCompany: (data: unknown, adminKey: string) => fetch(`${URLS.auth}?action=admin_company_save`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(data as object), ak: adminKey }) }).then(r => r.json()),
     adminDeleteCompany: (id: number, adminKey: string) => fetch(`${URLS.auth}?action=admin_company_delete&id=${id}&ak=${encodeURIComponent(adminKey)}`, { method: "DELETE" }).then(r => r.json()),

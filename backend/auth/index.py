@@ -511,6 +511,74 @@ def handler(event: dict, context) -> dict:
                 users.append({"id": r[0], "email": r[1] or "", "username": r[2], "user_tag": r[3] or "", "avatar_url": r[4] or "", "role": r[5] or "user", "is_premium": r[6] or False, "status": r[7] or "active", "warning_count": r[8] or 0, "is_muted": r[9] or False, "created_at": r[10].isoformat() if r[10] else None, "partner_company_id": r[11], "partner_company_name": r[12] or ""})
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"users": users})}
 
+        # ── ADMIN: сборки пользователей (user_builds) ──
+        # Витрина «Сборки сообщества» наполняется пользователями, поэтому
+        # админу нужен доступ: снять с публикации спам, переименовать, удалить.
+
+        elif action == "admin_user_builds" and method == "GET":
+            admin_key = params.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            q = (params.get("q") or "").strip()
+            only_user = params.get("user_id")
+            conds = []
+            if q:
+                like = esc(f"%{q}%")
+                conds.append(f"(b.name ILIKE {like} OR u.username ILIKE {like} OR u.email ILIKE {like})")
+            if only_user:
+                conds.append(f"b.user_id = {int(only_user)}")
+            where = ("WHERE " + " AND ".join(conds)) if conds else ""
+            cur.execute(
+                f"SELECT b.id, b.user_id, b.name, b.components, b.parts_total, b.assembly_fee, "
+                f"b.total_price, b.share_token, b.is_public, b.created_at, b.short_code, "
+                f"u.username, u.email, u.user_tag "
+                f"FROM {SCHEMA}.user_builds b LEFT JOIN {SCHEMA}.users u ON b.user_id = u.id "
+                f"{where} ORDER BY b.created_at DESC LIMIT 200"
+            )
+            out = []
+            for r in cur.fetchall():
+                b = fmt_build(r)
+                b["short_code"] = r[10] or ""
+                # Автор мог быть удалён — тогда сборка остаётся «ничьей».
+                b["username"] = r[11] or "— удалён —"
+                b["email"] = r[12] or ""
+                b["author_tag"] = r[13] or ""
+                out.append(b)
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"builds": out})}
+
+        elif action == "admin_user_build_update" and method == "POST":
+            body_pre = json.loads(event.get("body") or "{}")
+            admin_key = body_pre.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
+            if admin_key != os.environ.get("ADMIN_KEY", "begraphics2024"):
+                return {"statusCode": 403, "headers": cors, "body": json.dumps({"error": "Нет доступа"})}
+            build_id = int(body_pre.get("build_id") or 0)
+            if not build_id:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Нет build_id"})}
+            op = body_pre.get("op")
+            if op == "set_public":
+                val = "TRUE" if body_pre.get("value") else "FALSE"
+                cur.execute(
+                    f"UPDATE {SCHEMA}.user_builds SET is_public={val}, updated_at=NOW() "
+                    f"WHERE id={build_id}"
+                )
+            elif op == "rename":
+                name = (body_pre.get("name") or "").strip()
+                if not name:
+                    return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Пустое название"})}
+                cur.execute(
+                    f"UPDATE {SCHEMA}.user_builds SET name={esc(name)}, updated_at=NOW() "
+                    f"WHERE id={build_id}"
+                )
+            elif op == "delete":
+                cur.execute(f"DELETE FROM {SCHEMA}.user_builds WHERE id={build_id}")
+            else:
+                return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "Неизвестная операция"})}
+            affected = cur.rowcount
+            conn.commit()
+            if not affected:
+                return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Сборка не найдена"})}
+            return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
+
         elif action == "admin_user_update" and method == "POST":
             body_pre = json.loads(event.get("body") or "{}")
             admin_key = body_pre.get("ak") or headers.get("X-Admin-Key") or headers.get("x-admin-key")
@@ -538,8 +606,34 @@ def handler(event: dict, context) -> dict:
                 cid_sql = str(int(cid)) if cid not in (None, "", 0, "0") else "NULL"
                 cur.execute(f"UPDATE {SCHEMA}.users SET partner_company_id={cid_sql} WHERE id={target_id}")
             elif op == "delete":
-                cur.execute(f"DELETE FROM {SCHEMA}.user_sessions WHERE user_id={target_id}")
+                # На users ссылаются 8 таблиц, все со стандартным NO ACTION.
+                # Раньше DELETE молча падал на первой же ссылке (заказ, движение
+                # склада, проводка), и пользователь «не удалялся».
+                # Правило: рабочие данные НЕ трём (заказы, финансы, склад —
+                # это история компании), а обезличиваем, обнуляя ссылку.
+                # Личное пользователя (сессии, его сборки, коды привязки TG)
+                # удаляем физически.
+                for tbl, col in (
+                    ("orders", "user_id"),
+                    ("warehouse_movements", "user_id"),
+                    ("warehouse_inventories", "user_id"),
+                    ("finance_transactions", "user_id"),
+                    ("pc_builds", "client_user_id"),
+                ):
+                    cur.execute(
+                        f"UPDATE {SCHEMA}.{tbl} SET {col}=NULL WHERE {col}={target_id}"
+                    )
+                # telegram_link_codes.user_id NOT NULL — обнулить нельзя, чистим.
+                for tbl in ("user_sessions", "user_builds", "telegram_link_codes"):
+                    cur.execute(f"DELETE FROM {SCHEMA}.{tbl} WHERE user_id={target_id}")
                 cur.execute(f"DELETE FROM {SCHEMA}.users WHERE id={target_id}")
+                deleted = cur.rowcount
+                conn.commit()
+                if not deleted:
+                    return {"statusCode": 404, "headers": cors,
+                            "body": json.dumps({"error": "Пользователь не найден"})}
+                return {"statusCode": 200, "headers": cors,
+                        "body": json.dumps({"ok": True, "deleted": True})}
             conn.commit()
             return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
 

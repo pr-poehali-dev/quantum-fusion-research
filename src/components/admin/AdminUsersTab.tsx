@@ -25,7 +25,11 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
 
   const adminUserOp = async (userId: number, op: string, extra?: Record<string, unknown>) => {
     setUserActionLoading(userId)
-    await api.auth.adminUpdateUser({ user_id: userId, op, ...extra }, getAdminKey())
+    // Ошибку показываем явно: раньше неудачное удаление проходило молча,
+    // и выглядело как «нажал — ничего не произошло».
+    const res = await api.auth.adminUpdateUser({ user_id: userId, op, ...extra }, getAdminKey())
+      .catch(() => ({ error: "Нет связи с сервером" }))
+    if (res?.error) alert(res.error)
     const d = await api.auth.adminGetUsers(getAdminKey(), userSearch)
     setAdminUsers(d.users || [])
     setUserActionLoading(null)
@@ -151,7 +155,7 @@ export function AdminUsersTab({ adminUsers, loading, setAdminUsers }: Props) {
                         style={{ cursor: "pointer" }} title={u.status === "blocked" ? "Разблокировать" : "Заблокировать"}>
                         <Icon name={u.status === "blocked" ? "Unlock" : "Ban"} size={12} />
                       </button>
-                      <button onClick={() => { if (confirm(`Удалить аккаунт ${u.username}? Это действие необратимо!`)) adminUserOp(u.id, "delete") }}
+                      <button onClick={() => { if (confirm(`Удалить аккаунт ${u.username}?\n\nЗаказы, движения склада и финансовые проводки сохранятся в истории, но станут без привязки к клиенту. Отменить нельзя.`)) adminUserOp(u.id, "delete") }}
                         className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors"
                         style={{ cursor: "pointer" }} title="Удалить аккаунт">
                         <Icon name="Trash2" size={12} />
