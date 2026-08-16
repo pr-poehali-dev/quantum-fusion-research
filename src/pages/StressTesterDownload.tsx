@@ -7,6 +7,24 @@ import Footer from "@/components/Footer"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { Release, fmtSize, fmtDate } from "@/components/admin/StressReleasesTab"
 
+// Куда клиент присылает отчёт на разбор.
+const HELP_TG = "https://t.me/BeGraphicsPC"
+
+// Профили названы так же, как в самой программе.
+const PROFILES = [
+  { name: "Экспресс, 30 минут", who: "Быстро убедиться, что с ПК всё в порядке", icon: "Zap" },
+  { name: "Основной, 50 минут", who: "Проверка процессора, памяти и видеокарты", icon: "Gauge" },
+  { name: "Только видеокарта, 2 часа", who: "Вылеты и артефакты в играх", icon: "Monitor" },
+  { name: "Ночной, 12 часов", who: "Редкие сбои, которые ловятся не сразу", icon: "Moon" },
+]
+
+const STEPS = [
+  { n: 1, title: "Скачайте и запустите", text: "Установка не нужна — программа работает сразу после запуска." },
+  { n: 2, title: "Выберите профиль", text: "От быстрой получасовой проверки до ночного прогона — под вашу задачу." },
+  { n: 3, title: "Дождитесь результата", text: "Компьютер отработает под полной нагрузкой, вы увидите вердикт и отчёт." },
+  { n: 4, title: "Пришлите отчёт нам", text: "Если тест нашёл проблему — разберём отчёт и подскажем, что делать." },
+]
+
 export default function StressTesterDownload() {
   const navigate = useNavigate()
   const [releases, setReleases] = useState<Release[]>([])
@@ -20,49 +38,244 @@ export default function StressTesterDownload() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Скачивание считаем «в фоне» — счётчик не должен задерживать переход к файлу.
+  // Счётчик не должен задерживать переход к файлу — шлём его «в фоне».
   const download = (r: Release) => {
     api.stressReleases.countDownload(r.id)
-    setReleases(rs => rs.map(x => x.id === r.id
-      ? { ...x, download_count: x.download_count + 1 } : x))
+    setReleases(rs => rs.map(x => x.id === r.id ? { ...x, download_count: x.download_count + 1 } : x))
     window.location.href = r.file_url
   }
 
   const latest = releases[0]
   const older = releases.slice(1)
 
+  const scrollToVersions = () => {
+    document.getElementById("versions")?.scrollIntoView({ behavior: "smooth" })
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Seo
-        title="Стресс-тест ПК — скачать программу"
-        description="Бесплатная программа для стресс-теста компьютера от BeGraphics: проверка стабильности процессора, видеокарты и памяти под нагрузкой."
+        title="Стресс-тест ПК — проверить стабильность компьютера"
+        description="Бесплатная программа для проверки стабильности компьютера: процессор, память и видеокарта под полной нагрузкой. Покажет, стабилен ли ваш ПК, а с отчётом помогут специалисты BeGraphics."
         path="/stresstester"
       />
 
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <button onClick={() => navigate("/")} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">B</div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-lg font-bold">B</div>
             <span className="text-lg font-semibold">BeGraphics</span>
           </button>
-          <ThemeSwitcher />
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            {latest && (
+              <button onClick={() => download(latest)} style={{ cursor: "pointer" }}
+                className="hidden items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:flex">
+                <Icon name="Download" size={15} />Скачать
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-6 py-12">
-        <div className="mb-10 text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <Icon name="Activity" size={32} />
+      {/* ── Первый экран: слева текст, справа скриншот программы ── */}
+      <section className="mx-auto max-w-6xl px-6 pb-14 pt-12 sm:pt-16">
+        <div className="grid items-center gap-10 lg:grid-cols-2">
+          <div>
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              <Icon name="Gift" size={13} />Бесплатно, без регистрации
+            </span>
+            <h1 className="mb-4 text-3xl font-light leading-tight sm:text-5xl">
+              Ваш компьютер <span className="font-semibold text-primary">стабилен</span>?
+              <br />Проверьте за 30 минут
+            </h1>
+            <p className="mb-6 text-base text-foreground/60 sm:text-lg">
+              Игра вылетает, синий экран, зависания без причины — почти всегда виновато железо
+              под нагрузкой. Запустите тест: программа доведёт процессор, память и видеокарту
+              до предела и покажет честный ответ — стабильно или нет.
+            </p>
+
+            {loading ? (
+              <p className="text-sm text-foreground/40">Загрузка…</p>
+            ) : latest ? (
+              <>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button onClick={() => download(latest)} style={{ cursor: "pointer" }}
+                    className="flex items-center justify-center gap-2.5 rounded-xl bg-primary px-7 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <Icon name="Download" size={20} />
+                    Скачать бесплатно
+                  </button>
+                  <button onClick={scrollToVersions} style={{ cursor: "pointer" }}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-border px-6 py-4 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors">
+                    Все версии
+                  </button>
+                </div>
+                <p className="mt-3 text-xs text-foreground/40">
+                  Версия {latest.version} · {fmtSize(latest.file_size)} · Windows ·
+                  скачали {latest.download_count} раз
+                </p>
+              </>
+            ) : (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <p className="text-sm text-foreground/60">Программа скоро появится здесь</p>
+              </div>
+            )}
           </div>
-          <h1 className="mb-3 text-3xl font-light sm:text-4xl">Стресс-тест компьютера</h1>
-          <p className="mx-auto max-w-xl text-foreground/60">
-            Программа проверяет стабильность процессора, видеокарты и памяти под полной нагрузкой
-            и показывает температуры. Скачивайте и запускайте — установка не требуется.
-          </p>
+
+          {/* ФОТО 1 — скриншот окна программы. Заменить: public/stresstester/app.png */}
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+            <img src="/stresstester/app.png" alt="Окно программы стресс-теста"
+              className="w-full" width={1200} height={800} loading="eager" />
+          </div>
         </div>
+      </section>
+
+      {/* ── Зачем это нужно ── */}
+      <section className="border-y border-border bg-card/40">
+        <div className="mx-auto max-w-6xl px-6 py-14">
+          <h2 className="mb-3 text-2xl font-light sm:text-3xl">Когда стоит проверить компьютер</h2>
+          <p className="mb-8 max-w-2xl text-foreground/60">
+            Нестабильность почти никогда не приходит с предупреждением. Обычно это выглядит так:
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: "MonitorX", t: "Вылеты из игр", d: "Игра закрывается сама или выкидывает на рабочий стол" },
+              { icon: "AlertTriangle", t: "Синий экран", d: "Компьютер перезагружается на ровном месте" },
+              { icon: "Snowflake", t: "Зависания", d: "Картинка замирает, помогает только кнопка питания" },
+              { icon: "ShoppingCart", t: "Новая покупка", d: "Собрали ПК или взяли с рук — надо убедиться, что всё исправно" },
+            ].map(c => (
+              <div key={c.t} className="rounded-xl border border-border bg-background p-5">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon name={c.icon} size={19} />
+                </div>
+                <h3 className="mb-1.5 font-medium">{c.t}</h3>
+                <p className="text-sm text-foreground/50">{c.d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Как это работает ── */}
+      <section className="mx-auto max-w-6xl px-6 py-14">
+        <h2 className="mb-3 text-2xl font-light sm:text-3xl">Как это работает</h2>
+        <p className="mb-8 max-w-2xl text-foreground/60">
+          Разбираться в тестах не нужно — достаточно выбрать профиль и нажать «Старт».
+        </p>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {STEPS.map(s => (
+            <div key={s.n} className="relative rounded-xl border border-border bg-card p-5">
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                {s.n}
+              </span>
+              <h3 className="mb-1.5 font-medium">{s.title}</h3>
+              <p className="text-sm text-foreground/50">{s.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Профили ── */}
+      <section className="border-y border-border bg-card/40">
+        <div className="mx-auto max-w-6xl px-6 py-14">
+          <h2 className="mb-3 text-2xl font-light sm:text-3xl">Выберите профиль под свою задачу</h2>
+          <p className="mb-8 max-w-2xl text-foreground/60">
+            Чем дольше прогон, тем больше шансов поймать редкий сбой. Для первой проверки
+            хватит получаса.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {PROFILES.map(p => (
+              <div key={p.name} className="flex items-start gap-4 rounded-xl border border-border bg-background p-5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon name={p.icon} size={19} />
+                </div>
+                <div>
+                  <h3 className="mb-1 font-medium">{p.name}</h3>
+                  <p className="text-sm text-foreground/50">{p.who}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Отчёт: слева скриншот, справа текст ── */}
+      <section className="mx-auto max-w-6xl px-6 py-14">
+        <div className="grid items-center gap-10 lg:grid-cols-2">
+          {/* ФОТО 2 — скриншот отчёта. Заменить: public/stresstester/report.png */}
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl lg:order-1">
+            <img src="/stresstester/report.png" alt="Отчёт стресс-теста с графиками"
+              className="w-full" width={1200} height={800} loading="lazy" />
+          </div>
+          <div className="lg:order-2">
+            <h2 className="mb-4 text-2xl font-light sm:text-3xl">Понятный отчёт вместо цифр</h2>
+            <p className="mb-6 text-foreground/60">
+              В конце вы получаете вердикт простым языком и подробный отчёт: как менялись
+              температуры, была ли просадка частот, на каком тесте что-то пошло не так.
+            </p>
+            <div className="space-y-3">
+              {[
+                "Стабилен компьютер или нет — коротким ответом",
+                "Температуры процессора и видеокарты на всём прогоне",
+                "Момент и причина сбоя, если он случился",
+                "Файл отчёта, который можно переслать специалисту",
+              ].map(t => (
+                <div key={t} className="flex items-start gap-2.5">
+                  <Icon name="Check" size={17} className="mt-0.5 shrink-0 text-primary" />
+                  <span className="text-sm text-foreground/70">{t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Помощь с результатом ── */}
+      <section className="border-y border-border bg-card/40">
+        <div className="mx-auto max-w-6xl px-6 py-14">
+          <div className="grid items-center gap-10 lg:grid-cols-2">
+            <div>
+              <h2 className="mb-4 text-2xl font-light sm:text-3xl">
+                Тест нашёл проблему? Дальше — наша работа
+              </h2>
+              <p className="mb-4 text-foreground/60">
+                Отчёт показывает, <em>что</em> сбоит, но не говорит, <em>почему</em>. Причина
+                может быть в перегреве, настройках памяти, нехватке питания или бракованной
+                детали — и лечится это по-разному.
+              </p>
+              <p className="mb-6 text-foreground/60">
+                Пришлите нам отчёт — посмотрим и скажем, в чём дело и что с этим делать.
+                Разбор бесплатный, мы собираем и обслуживаем компьютеры каждый день
+                и такие отчёты читаем постоянно.
+              </p>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a href={HELP_TG} target="_blank" rel="noreferrer"
+                  className="flex items-center justify-center gap-2.5 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                  <Icon name="Send" size={17} />
+                  Отправить отчёт на разбор
+                </a>
+                <button onClick={() => navigate("/contacts")} style={{ cursor: "pointer" }}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-border px-6 py-3.5 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors">
+                  Контакты и адреса
+                </button>
+              </div>
+            </div>
+
+            {/* ФОТО 3 — мастерская/сборки. Заменить: public/stresstester/shop.png */}
+            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+              <img src="/stresstester/shop.png" alt="Мастерская BeGraphics"
+                className="w-full" width={1200} height={900} loading="lazy" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Версии ── */}
+      <section id="versions" className="mx-auto max-w-3xl px-6 py-14">
+        <h2 className="mb-6 text-2xl font-light sm:text-3xl">Скачать программу</h2>
 
         {loading ? (
-          <p className="text-center text-foreground/40">Загрузка…</p>
+          <p className="text-foreground/40">Загрузка…</p>
         ) : !latest ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center">
             <Icon name="PackageOpen" size={28} className="mx-auto mb-3 text-foreground/30" />
@@ -70,7 +283,6 @@ export default function StressTesterDownload() {
           </div>
         ) : (
           <>
-            {/* Свежая версия */}
             <div className="rounded-2xl border border-primary/30 bg-card p-6 shadow-lg sm:p-8">
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
@@ -79,24 +291,16 @@ export default function StressTesterDownload() {
                 <span className="text-sm text-foreground/50">от {fmtDate(latest.created_at)}</span>
               </div>
 
-              <h2 className="mb-1 text-2xl font-semibold">Версия {latest.version}</h2>
+              <h3 className="mb-1 text-2xl font-semibold">Версия {latest.version}</h3>
               <p className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground/50">
-                <span className="flex items-center gap-1.5">
-                  <Icon name="HardDrive" size={14} />{fmtSize(latest.file_size)}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Icon name="Download" size={14} />{latest.download_count} скачиваний
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Icon name="Monitor" size={14} />Windows
-                </span>
+                <span className="flex items-center gap-1.5"><Icon name="HardDrive" size={14} />{fmtSize(latest.file_size)}</span>
+                <span className="flex items-center gap-1.5"><Icon name="Download" size={14} />{latest.download_count} скачиваний</span>
+                <span className="flex items-center gap-1.5"><Icon name="Monitor" size={14} />Windows</span>
               </p>
 
               {latest.changelog && (
                 <div className="mb-6 rounded-xl border border-border bg-background/50 p-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">
-                    Что нового
-                  </p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">Что нового</p>
                   <p className="whitespace-pre-line text-sm text-foreground/70">{latest.changelog}</p>
                 </div>
               )}
@@ -111,7 +315,6 @@ export default function StressTesterDownload() {
               </p>
             </div>
 
-            {/* Прошлые версии */}
             {older.length > 0 && (
               <div className="mt-6">
                 <button onClick={() => setShowArchive(v => !v)} style={{ cursor: "pointer" }}
@@ -147,7 +350,7 @@ export default function StressTesterDownload() {
             )}
           </>
         )}
-      </div>
+      </section>
 
       <Footer />
     </div>
