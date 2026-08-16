@@ -179,7 +179,17 @@ def handler(event, context):
                 return ok({"ok": True, "found": False})
             return ok({"ok": True, **data})
 
+        # Cron-проверка просроченных отбивок: доступ по CRON_SECRET либо админу.
+        if action == "check_stale_heartbeats":
+            cron_key = (params.get("cron_key") or "").strip()
+            cron_secret = (os.environ.get("CRON_SECRET") or "").strip()
+            is_cron = bool(cron_secret) and cron_key == cron_secret
+            if not is_cron and not is_admin(cur, headers, params, body):
+                return err("forbidden", 403)
+            return ok(check_stale_heartbeats(cur, conn))
+
         if action in ("ingest", "profiles_pull", "verify_token", "notify",
+                      "heartbeat",
                       "partner_branding", "partner_branding_assets",
                       "partner_branding_zip"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
@@ -204,6 +214,8 @@ def handler(event, context):
                 return profiles_pull(cur)
             if action == "notify" and method == "POST":
                 return notify(body, cur, conn, partner_cid)
+            if action == "heartbeat" and method == "POST":
+                return heartbeat(cur, conn, body, partner_cid)
             if action in ("partner_branding", "partner_branding_assets",
                           "partner_branding_zip") and method == "GET":
                 # Синхронизация брендинга при онлайн-входе StressRunner.
@@ -399,6 +411,29 @@ def _build_notify_text(body):
             f"📋 Профиль: {profile}\n"
             f"❌ Тест: <b>{test_name}</b>\n"
             f"   код выхода: {code_s}, длительность: {dur_s}{link}"
+        )
+    if event == "heartbeat_stale":
+        # Прогон ещё идёт, но отбивка не пришла вовремя — вероятно, ПК завис,
+        # ушёл в перезагрузку или пропала сеть. Просим проверить машину.
+        idx = body.get("current_test_index") or 0
+        total = body.get("planned_total") or 0
+        test_name = _esc(body.get("current_test_name"))
+        missed = body.get("missed_minutes") or 0
+        order = body.get("order_number")
+        company = body.get("company_name")
+        head = (
+            f"🚨 <b>Нет отбивки от StressRunner</b>\n"
+            f"💻 ПК: <b>{machine}</b> — проверьте компьютер\n"
+            f"📋 Профиль: {profile}\n"
+        )
+        if company:
+            head += f"🏢 Компания: {_esc(company)}\n"
+        if order:
+            head += f"🧾 Заказ: {_esc(order)}\n"
+        return (
+            head
+            + f"⏱ Просрочка: ~{int(missed)} мин (ожидали heartbeat)\n"
+            + f"▶️ Последний тест: <b>{test_name}</b> ({idx}/{total})" + link
         )
     if event == "run_finished":
         passed = body.get("passed", 0)
@@ -596,12 +631,138 @@ def notify_config_route(cur, conn, action, method, params, body, company_id):
     return err(f"unknown action: {action}")
 
 
+def heartbeat(cur, conn, body, company_id=None):
+    """Почасовая отбивка длительного прогона (EXE → сайт).
+
+    Хранит «живой» прогон в stress_run_live: какой тест идёт, сколько
+    осталось, когда ждать следующую отбивку. Если отбивка не придёт к
+    next_heartbeat_at + grace_sec — cron пришлёт предупреждение в Telegram.
+
+    run_active=false — прогон закончился, строку удаляем.
+    """
+    run_uid = (body.get("run_uid") or "").strip()
+    if not run_uid:
+        return err("run_uid required", 400)
+
+    # Финальная отбивка при остановке/отмене — просто снимаем прогон с контроля.
+    if body.get("run_active") is False:
+        cur.execute(f"DELETE FROM {SCHEMA}.stress_run_live WHERE run_uid = {esc(run_uid)}")
+        conn.commit()
+        return ok({"ok": True, "run_uid": run_uid, "finished": True})
+
+    if not body.get("heartbeat_at") or not body.get("next_heartbeat_at"):
+        return err("heartbeat_at / next_heartbeat_at required", 400)
+
+    failed_tests = body.get("failed_tests") or []
+    failed_json = json.dumps(failed_tests, ensure_ascii=False)
+    payload_json = json.dumps(body, ensure_ascii=False)
+    company_sql = str(int(company_id)) if company_id else "NULL"
+
+    # UPSERT по run_uid. Новая отбивка = прогон жив, поэтому флаг алерта
+    # сбрасываем: при следующей просрочке предупреждение уйдёт заново.
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.stress_run_live ("
+        f"run_uid, machine_name, profile_name, company_name, order_number, "
+        f"started_at, heartbeat_at, next_heartbeat_at, heartbeat_interval_sec, grace_sec, "
+        f"current_test_index, current_test_name, planned_total, completed_count, "
+        f"failed_count, has_errors, failed_tests, remaining_sec, current_test_remaining_sec, "
+        f"stale_alert_sent, stale_alert_at, payload, partner_company_id, updated_at) VALUES ("
+        f"{esc(run_uid)}, {esc(body.get('machine', ''))}, {esc(body.get('profile', ''))}, "
+        f"{esc(body.get('company_name', ''))}, {esc(body.get('order_number', ''))}, "
+        f"{ts(body.get('started_at'))}, {ts(body.get('heartbeat_at'))}, "
+        f"{ts(body.get('next_heartbeat_at'))}, "
+        f"{int(num(body.get('heartbeat_interval_sec'), 3600))}, "
+        f"{int(num(body.get('grace_sec'), 900))}, "
+        f"{int(num(body.get('current_test_index')))}, {esc(body.get('current_test_name', ''))}, "
+        f"{int(num(body.get('planned_total')))}, {int(num(body.get('completed_count')))}, "
+        f"{int(num(body.get('failed_count')))}, "
+        f"{'TRUE' if body.get('has_errors') else 'FALSE'}, "
+        f"{esc(failed_json)}::jsonb, {int(num(body.get('remaining_sec')))}, "
+        f"{int(num(body.get('current_test_remaining_sec')))}, "
+        f"FALSE, NULL, {esc(payload_json)}::jsonb, {company_sql}, NOW()) "
+        f"ON CONFLICT (run_uid) DO UPDATE SET "
+        f"machine_name=EXCLUDED.machine_name, profile_name=EXCLUDED.profile_name, "
+        f"company_name=EXCLUDED.company_name, order_number=EXCLUDED.order_number, "
+        f"started_at=EXCLUDED.started_at, heartbeat_at=EXCLUDED.heartbeat_at, "
+        f"next_heartbeat_at=EXCLUDED.next_heartbeat_at, "
+        f"heartbeat_interval_sec=EXCLUDED.heartbeat_interval_sec, "
+        f"grace_sec=EXCLUDED.grace_sec, current_test_index=EXCLUDED.current_test_index, "
+        f"current_test_name=EXCLUDED.current_test_name, planned_total=EXCLUDED.planned_total, "
+        f"completed_count=EXCLUDED.completed_count, failed_count=EXCLUDED.failed_count, "
+        f"has_errors=EXCLUDED.has_errors, failed_tests=EXCLUDED.failed_tests, "
+        f"remaining_sec=EXCLUDED.remaining_sec, "
+        f"current_test_remaining_sec=EXCLUDED.current_test_remaining_sec, "
+        f"stale_alert_sent=FALSE, stale_alert_at=NULL, payload=EXCLUDED.payload, "
+        f"partner_company_id=EXCLUDED.partner_company_id, updated_at=NOW()"
+    )
+    conn.commit()
+
+    # Побочный эффект по спецификации: заодно проверяем остальные прогоны.
+    # Ошибка проверки не должна ломать приём отбивки.
+    try:
+        check_stale_heartbeats(cur, conn)
+    except Exception as e:
+        print(f"[HEARTBEAT] stale check failed: {e}")
+
+    return ok({"ok": True, "run_uid": run_uid})
+
+
+def check_stale_heartbeats(cur, conn):
+    """Ищет прогоны без отбивки и шлёт предупреждение в Telegram.
+
+    Просрочен, если NOW() > next_heartbeat_at + grace_sec И алерт ещё не слали.
+    grace_sec берём из записи (его прислал EXE), а не хардкодим.
+    """
+    cur.execute(
+        f"SELECT run_uid, machine_name, profile_name, company_name, order_number, "
+        f"current_test_index, current_test_name, planned_total, failed_count, has_errors, "
+        f"EXTRACT(EPOCH FROM (NOW() - (next_heartbeat_at + (grace_sec || ' seconds')::interval))) "
+        f"FROM {SCHEMA}.stress_run_live "
+        f"WHERE stale_alert_sent = FALSE AND next_heartbeat_at IS NOT NULL "
+        f"AND NOW() > next_heartbeat_at + (grace_sec || ' seconds')::interval"
+    )
+    rows = cur.fetchall()
+    alerted = []
+    for r in rows:
+        run_uid = r[0]
+        # missed_minutes считаем от момента, когда отбивку ждали (с учётом grace).
+        missed_min = int(max(0, (r[10] or 0)) // 60)
+        payload = {
+            "event": "heartbeat_stale",
+            "machine": r[1], "profile": r[2],
+            "company_name": r[3], "order_number": r[4],
+            "current_test_index": r[5], "current_test_name": r[6],
+            "planned_total": r[7], "failed_count": r[8],
+            "has_errors": bool(r[9]), "missed_minutes": missed_min,
+        }
+        text = _build_notify_text(payload)
+        if text:
+            send_stress(text)
+        # Флаг ставим в любом случае, иначе при недоступном Telegram
+        # cron будет долбить одно и то же сообщение каждые 5 минут.
+        cur.execute(
+            f"UPDATE {SCHEMA}.stress_run_live SET stale_alert_sent = TRUE, "
+            f"stale_alert_at = NOW() WHERE run_uid = {esc(run_uid)}"
+        )
+        alerted.append(run_uid)
+    if alerted:
+        conn.commit()
+    return {"ok": True, "alerted": alerted, "count": len(alerted)}
+
+
 def ingest(cur, conn, body, company_id=None):
     run_uid = (body.get("run_uid") or uuid.uuid4().hex).strip()
+
+    # Прогон доехал до сайта — снимаем его с heartbeat-контроля, иначе
+    # cron решит, что отбивка просрочена, и пришлёт ложную тревогу.
+    # Делаем это и для duplicate ingest (спецификация, §4).
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_run_live WHERE run_uid = {esc(run_uid)}")
+
     # идемпотентность: один и тот же run_uid не плодит дубли
     cur.execute(f"SELECT id FROM {SCHEMA}.stress_runs WHERE run_uid = {esc(run_uid)}")
     existing = cur.fetchone()
     if existing:
+        conn.commit()
         return ok({"ok": True, "run_id": existing[0], "duplicate": True})
 
     results = body.get("results") or []

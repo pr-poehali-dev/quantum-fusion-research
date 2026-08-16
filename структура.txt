@@ -1490,3 +1490,24 @@ Builds, Shop, Service, Contacts, CommunityBuilds, CablePage, B2B, Profile).
 Текст скрыт до lg (остаётся иконка Activity) — иначе шапка переполняется
 на мобильных. Новую публичную страницу заводишь — вставь <StressTesterLink />
 перед <ThemeSwitcher />.
+
+[v8.19] HEARTBEAT ДЛИТЕЛЬНЫХ ПРОГОНОВ (backend/stress + stress_run_live)
+Спека: SITE_HEARTBEAT.md. EXE раз в час шлёт отбивку по длинным профилям,
+сайт хранит «живой» прогон и предупреждает, если отбивка просрочена.
+Таблица stress_run_live (V0237; в спеке номер V0183 — у нас был занят).
+Имена полей менять НЕЛЬЗЯ — их шлёт EXE.
+- action=heartbeat (POST, X-Stress-Token): UPSERT по run_uid.
+  Новая отбивка сбрасывает stale_alert_sent → алерт может уйти повторно.
+  run_active=false → строку удаляем (прогон остановлен).
+  После приёма сразу дёргается проверка просрочек (try/except — приём
+  отбивки не должен падать из-за проверки).
+- action=check_stale_heartbeats (GET, cron_key=CRON_SECRET или админ):
+  просрочка = NOW() > next_heartbeat_at + grace_sec.
+  ⚠️ grace_sec БРАТЬ ИЗ ЗАПИСИ (контракт EXE), не хардкодить 15 минут.
+  ⚠️ stale_alert_sent ставится даже при ошибке Telegram — иначе cron
+  зациклится на одном сообщении каждые 5 минут.
+- ingest удаляет run_uid из stress_run_live (в т.ч. duplicate) — иначе
+  после доставки прогона придёт ложная тревога.
+- Шаблон сообщения heartbeat_stale — в _build_notify_text.
+- ⚠️ Нужен внешний cron каждые 5–10 мин (у платформы своего нет):
+  {stress_url}?action=check_stale_heartbeats&cron_key=<CRON_SECRET>

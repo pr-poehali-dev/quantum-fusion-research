@@ -146,6 +146,23 @@
         ]
       },
       "expectedStatus": 403
+    },
+    {
+      "name": "Heartbeat without token forbidden",
+      "method": "POST",
+      "path": "/?action=heartbeat",
+      "body": {
+        "run_uid": "__t__",
+        "heartbeat_at": "2026-08-16T10:00:00Z",
+        "next_heartbeat_at": "2026-08-16T11:00:00Z"
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Stale check without cron key forbidden",
+      "method": "GET",
+      "path": "/?action=check_stale_heartbeats&cron_key=wrong",
+      "expectedStatus": 403
     }
   ]
 }
