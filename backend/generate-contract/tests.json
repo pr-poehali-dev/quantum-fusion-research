@@ -20,6 +20,22 @@
       "expectedStatus": 200,
       "expectedBody": {"pdf_b64": "string"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Contract with manual overrides",
+      "method": "GET",
+      "path": "/?order_id=360&prepay=5000&delivery_days=14&cust_name=%D0%98%D0%B2%D0%B0%D0%BD%D0%BE%D0%B2%20%D0%98.%D0%98.&cust_phone=%2B79990001122&passport=1234%20567890",
+      "expectedStatus": 200,
+      "expectedBody": {"pdf_b64": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Broken prepay falls back to order value",
+      "method": "GET",
+      "path": "/?order_id=360&prepay=abc&delivery_days=xyz",
+      "expectedStatus": 200,
+      "expectedBody": {"pdf_b64": "string"},
+      "bodyMatcher": "partial"
     }
   ]
 }

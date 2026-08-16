@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { WipBuild } from "@/pages/admin/types"
-import { EMPTY_WIP, WIP_STAGES, WIP_COMPONENTS, DELIVERY_OPTIONS } from "@/pages/admin/constants"
+import { EMPTY_WIP, WIP_STAGES, DELIVERY_OPTIONS } from "@/pages/admin/constants"
 
 // Пошаговый мастер создания новой сборки в процессе (в стиле /quiz).
 // Заменяет режим «Новая сборка» прежней модалки во вкладке «Сборки в процессе».
@@ -30,7 +30,10 @@ export default function AdminNewWipPage() {
     api.marketing.getSources(true).then(d => setLeadSources(d.sources || d || [])).catch(() => {})
   }, [])
 
-  const totalSteps = 3
+  // Шага «Комплектующие» здесь НЕТ намеренно: железо заводится позже, в самой
+  // сборке (WIP), а не в опроснике создания — иначе менеджер вбивает названия
+  // дважды. Шага два: основное + сроки/комментарий.
+  const totalSteps = 2
   const progress = Math.round(((step + 1) / totalSteps) * 100)
 
   // Источник обязателен, только если сборка НЕ в свободную продажу (как в модалке)
@@ -165,24 +168,6 @@ export default function AdminNewWipPage() {
           )}
 
           {step === 1 && (
-            <>
-              <h2 className="text-2xl font-extrabold sm:text-3xl">Комплектующие</h2>
-              <p className="mt-2 text-sm text-foreground/50">Названия можно вписать сейчас или позже — всё необязательно.</p>
-              <div className="mt-7 grid gap-4 sm:grid-cols-2">
-                {WIP_COMPONENTS.map(c => (
-                  <div key={c.key}>
-                    <label className={labelCls}>{c.label}</label>
-                    <input
-                      value={(form[c.key as keyof WipBuild] as string) || ""}
-                      onChange={e => set(c.key as keyof WipBuild, e.target.value as WipBuild[keyof WipBuild])}
-                      className={inputCls} style={{ cursor: "text" }} />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {step === 2 && (
             <>
               <h2 className="text-2xl font-extrabold sm:text-3xl">Сроки и комментарий</h2>
               <div className="mt-7 space-y-4">

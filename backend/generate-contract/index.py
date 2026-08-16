@@ -324,6 +324,9 @@ def build_contract(d, order, company):
     d.text("Покупатель:", font="djB", size=9.5)
     d.text(cust_name)
     d.text(cust_phone)
+    # Паспортные данные — опционально, печатаем только если заполнили в диалоге.
+    if order.get("passport"):
+        d.text(f"Паспорт: {order['passport']}")
     d.space(3)
     d.text("Стороны согласны с условиями данного договора и не имеют вопросов:")
     d.space(6)
@@ -481,9 +484,12 @@ def build_spec(d, order, company):
     d.y -= t_rh
     d.space(8)
 
+    # Проценты берём фактические (order['prepay_pct']), а не зашитые 30/70 —
+    # предоплату можно задать вручную в диалоге печати.
+    _pp = order.get("prepay_pct", 30)
     d.text(f"Срок поставки: {company['delivery_days']} дней.")
-    d.text(f"Предоплата (30%): {fmt_money2(order['prepay'])} руб.")
-    d.text(f"Остаток (70%): {fmt_money2(order['remaining'])} руб.")
+    d.text(f"Предоплата ({_pp}%): {fmt_money2(order['prepay'])} руб.")
+    d.text(f"Остаток ({100 - _pp}%): {fmt_money2(order['remaining'])} руб.")
     d.text("Стороны согласны с условиями, не имеют претензий к выполненной работе. Товар поставлен полностью, "
            "в соответствии с характеристиками.")
     d.space(14)
@@ -526,6 +532,19 @@ def handler(event: dict, context) -> dict:
     params = event.get("queryStringParameters") or {}
     order_id = params.get("order_id")
     entity_id = params.get("entity_id")
+
+    # Ручные переопределения из диалога печати (все опциональны).
+    # Пустая строка = «не переопределять», берём значение из заказа/юрлица.
+    def _p(key):
+        v = (params.get(key) or "").strip()
+        return v or None
+
+    ov_prepay = _p("prepay")            # сумма предоплаты, руб
+    ov_delivery = _p("delivery_days")   # срок поставки, дней
+    ov_name = _p("cust_name")           # ФИО покупателя
+    ov_phone = _p("cust_phone")         # телефон покупателя
+    ov_passport = _p("passport")        # паспортные данные (опционально)
+
     if not order_id:
         return {"statusCode": 400, "headers": cors, "body": json.dumps({"error": "order_id required"})}
 
@@ -571,15 +590,35 @@ def handler(event: dict, context) -> dict:
     total_val = float(total) if total else calc_total
     pct_val = float(pct) if pct is not None else 30.0
     prepay_val = float(prepay) if prepay is not None else round(total_val * pct_val / 100, 2)
+    # Предоплату из диалога печати ставим поверх сохранённой в заказе.
+    if ov_prepay is not None:
+        try:
+            prepay_val = float(str(ov_prepay).replace(",", ".").replace(" ", ""))
+        except ValueError:
+            pass
+    prepay_val = max(0.0, min(prepay_val, total_val))
     remaining_val = round(total_val - prepay_val, 2)
+    # Процент считаем от фактической предоплаты — иначе в тексте договора
+    # «Предоплата (30%)» разойдётся с реальной суммой.
+    prepay_pct = round(prepay_val / total_val * 100) if total_val else 0
 
     company = load_company(cur, entity_id)
     cur.close(); conn.close()
 
+    if ov_delivery is not None:
+        try:
+            company["delivery_days"] = int(float(ov_delivery))
+        except ValueError:
+            pass
+
     order = {
-        "id": int(order_id), "name": cust_name or "—", "phone": cust_phone or "",
+        "id": int(order_id),
+        "name": ov_name or cust_name or "—",
+        "phone": ov_phone or cust_phone or "",
+        "passport": ov_passport or "",
         "doc_date": datetime.now(), "spec_rows": spec_rows, "total": total_val,
         "prepay": prepay_val, "remaining": remaining_val,
+        "prepay_pct": prepay_pct,
     }
 
     d = Doc()

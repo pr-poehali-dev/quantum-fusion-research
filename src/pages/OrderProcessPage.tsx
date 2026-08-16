@@ -4,6 +4,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
+import ContractDialog, { contractQuery, ContractParams } from "@/components/admin/ContractDialog"
 import { useUiScale } from "@/store/uiScale"
 
 const ORDERS_URL = "https://functions.poehali.dev/92fb1cdd-4b87-4bcb-8154-75a499dd1745"
@@ -127,7 +128,7 @@ export default function OrderProcessPage() {
   const [warrantyLoading, setWarrantyLoading] = useState(false)
   // Договор поставки — выбор юрлица
   const [contractLoading, setContractLoading] = useState(false)
-  const [contractEntities, setContractEntities] = useState<{ id: number; title: string; is_default: boolean }[] | null>(null)
+  const [contractOpen, setContractOpen] = useState(false)
   // Редактирование данных клиента (имя/телефон)
   const [editCustomer, setEditCustomer] = useState(false)
   const [custName, setCustName] = useState("")
@@ -186,27 +187,18 @@ export default function OrderProcessPage() {
     link.download = res.filename || `warranty_${id}.pdf`
     link.click()
   }
-  // Скачать договор для конкретного юрлица (или дефолтного)
-  const downloadContract = async (entityId?: number) => {
-    setContractEntities(null)
+  // Печать договора с параметрами из диалога (юрлицо, предоплата, срок, ФИО…)
+  const printContract = async (p: ContractParams) => {
     setContractLoading(true)
-    const qs = entityId ? `&entity_id=${entityId}` : ""
-    const res = await fetch(`${CONTRACT_URL}?order_id=${id}${qs}`).then(r => r.json()).catch(() => null)
+    const res = await fetch(`${CONTRACT_URL}?order_id=${id}${contractQuery(p)}`)
+      .then(r => r.json()).catch(() => null)
     setContractLoading(false)
     if (!res?.pdf_b64) { alert("Не удалось создать договор"); return }
+    setContractOpen(false)
     const link = document.createElement("a")
     link.href = `data:application/pdf;base64,${res.pdf_b64}`
     link.download = res.filename || `contract_${id}.pdf`
     link.click()
-  }
-  // Клик «Договор поставки»: если юрлиц несколько — спросить какое
-  const openContract = async () => {
-    setContractLoading(true)
-    const d = await api.companySettings.list().catch(() => null)
-    setContractLoading(false)
-    const list = d?.entities || []
-    if (list.length <= 1) downloadContract(list[0]?.id)
-    else setContractEntities(list)
   }
 
   // Редактирование данных клиента
@@ -414,7 +406,7 @@ export default function OrderProcessPage() {
             Гарантийка
           </button>
           <button
-            onClick={openContract}
+            onClick={() => setContractOpen(true)}
             disabled={contractLoading}
             style={{ cursor: "pointer" }}
             className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary transition-colors disabled:opacity-50"
@@ -1094,36 +1086,16 @@ export default function OrderProcessPage() {
         </div>
       </div>
 
-      {/* Модалка выбора юрлица для договора поставки */}
-      {contractEntities && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={e => { if (e.target === e.currentTarget) setContractEntities(null) }}>
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
-                <Icon name="FileSignature" size={20} className="text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Выберите юрлицо</h3>
-                <p className="text-xs text-foreground/50">Реквизиты для договора поставки</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {contractEntities.map(e => (
-                <button key={e.id} onClick={() => downloadContract(e.id)} style={{ cursor: "pointer" }}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm hover:border-primary hover:bg-primary/5 transition-colors">
-                  <span className="font-medium">{e.title}</span>
-                  {e.is_default && <Icon name="Star" size={14} className="text-yellow-500 shrink-0" />}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setContractEntities(null)} style={{ cursor: "pointer" }}
-              className="mt-4 w-full rounded-lg border border-border py-2 text-sm text-foreground/60 hover:text-foreground transition-colors">
-              Отмена
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Диалог печати договора поставки */}
+      <ContractDialog
+        open={contractOpen}
+        onClose={() => setContractOpen(false)}
+        onPrint={printContract}
+        loading={contractLoading}
+        defaultName={order?.customer_name}
+        defaultPhone={order?.customer_phone}
+        defaultPrepay={order?.prepayment_amount ?? (total ? total * 0.3 : null)}
+      />
 
       {/* Модалка выдачи / списания */}
       {showWriteoff && order && (

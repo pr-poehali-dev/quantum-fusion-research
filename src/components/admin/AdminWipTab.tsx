@@ -8,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar"
 import PrepaymentEditor from "@/components/admin/PrepaymentEditor"
 import PrepaymentConfirmModal from "@/components/admin/PrepaymentConfirmModal"
 import { WipMarginModal } from "@/components/admin/WipEditModal"
+import ContractDialog, { contractQuery, ContractParams } from "@/components/admin/ContractDialog"
 import { SCHEDULE_URL, authH, withAk, Employee } from "@/components/admin/schedule.types"
 import {
   WipBuild, PCBuild, Product, Category, ConfigComponent, AdminTab,
@@ -100,6 +101,11 @@ export function AdminWipTab({
   // Если заказа ещё нет — создаём его (на согласовании без резервов), затем PDF.
   const CONTRACT_URL = "https://functions.poehali.dev/7db163ee-2c8f-43e0-af32-d7c98db8f5e4"
   const [contractWipId, setContractWipId] = useState<number | null>(null)
+  // Какая сборка сейчас в диалоге договора (null = диалог закрыт).
+  const [contractWip, setContractWip] = useState<WipBuild | null>(null)
+
+  // Клик «Договор поставки» в списке: убеждаемся, что заказ существует
+  // (на этапе согласования его может ещё не быть), и открываем диалог.
   const openWipContract = async (w: WipBuild) => {
     setContractWipId(w.id!)
     try {
@@ -114,15 +120,27 @@ export function AdminWipTab({
         }
       }
       if (!orderId) { alert("Не удалось подготовить заказ для договора"); return }
-      const res = await fetch(`${CONTRACT_URL}?order_id=${orderId}`).then(r => r.json()).catch(() => null)
-      if (!res?.pdf_b64) { alert("Не удалось создать договор"); return }
-      const link = document.createElement("a")
-      link.href = `data:application/pdf;base64,${res.pdf_b64}`
-      link.download = res.filename || `contract_${orderId}.pdf`
-      document.body.appendChild(link); link.click(); link.remove()
+      setContractWip({ ...w, order_id: orderId })
     } finally {
       setContractWipId(null)
     }
+  }
+
+  // Печать договора по параметрам из диалога.
+  const [contractPrinting, setContractPrinting] = useState(false)
+  const printWipContract = async (p: ContractParams) => {
+    const orderId = contractWip?.order_id
+    if (!orderId) return
+    setContractPrinting(true)
+    const res = await fetch(`${CONTRACT_URL}?order_id=${orderId}${contractQuery(p)}`)
+      .then(r => r.json()).catch(() => null)
+    setContractPrinting(false)
+    if (!res?.pdf_b64) { alert("Не удалось создать договор"); return }
+    setContractWip(null)
+    const link = document.createElement("a")
+    link.href = `data:application/pdf;base64,${res.pdf_b64}`
+    link.download = res.filename || `contract_${orderId}.pdf`
+    document.body.appendChild(link); link.click(); link.remove()
   }
 
   // Модалка подтверждения предоплаты при переходе «Согласование → Заказ»
@@ -1349,6 +1367,18 @@ export function AdminWipTab({
           </div>
         </div>
       )}
+
+      {/* Диалог печати договора поставки (юрлицо, предоплата, срок, ФИО…) */}
+      <ContractDialog
+        open={!!contractWip}
+        onClose={() => setContractWip(null)}
+        onPrint={printWipContract}
+        loading={contractPrinting}
+        defaultName={contractWip?.customer_name}
+        defaultPhone={contractWip?.customer_phone}
+        defaultPrepay={contractWip?.prepayment_amount
+          ?? (contractWip?.total ? contractWip.total * 0.3 : null)}
+      />
 
       {prepayModal && (
         <PrepaymentConfirmModal
