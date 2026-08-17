@@ -475,6 +475,15 @@ def notify(body, cur=None, conn=None, company_id=None):
             print(f"[PARTNER_NOTIFY] notify exception: {e}")
 
     text = _build_notify_text(body)
+    if text is not None and cur is not None and \
+            not np.claim_admin_send(cur, body.get("event", ""), text):
+        # Такое же сообщение уже ушло (десктоп послал и ingest, и notify).
+        if conn is not None:
+            conn.commit()
+        return ok({"ok": True, "skipped": "duplicate",
+                   **({"partner": partner_res} if partner_res is not None else {})})
+    if cur is not None and conn is not None:
+        conn.commit()
     if text is None:
         # Событие вне общего шаблона (например run_started) — не ошибка,
         # если оно ушло партнёру.
@@ -844,16 +853,21 @@ def ingest(cur, conn, body, company_id=None):
             # По каждому упавшему тесту — отдельное «test_failed»
             for r in results:
                 if not r.get("success"):
-                    send_stress(_build_notify_text({
+                    t = _build_notify_text({
                         "event": "test_failed", "machine": machine, "profile": profile,
                         "test_name": r.get("test_name"), "exit_code": r.get("exit_code"),
                         "duration_sec": r.get("duration_sec"),
-                    }))
+                    })
+                    if t and np.claim_admin_send(cur, "test_failed", t):
+                        send_stress(t)
             # Итог прогона
-            notify_result = send_stress(_build_notify_text({
+            fin_text = _build_notify_text({
                 "event": "run_finished", "machine": machine, "profile": profile,
                 "passed": passed, "total": len(results),
-            }))
+            })
+            if fin_text and np.claim_admin_send(cur, "run_finished", fin_text):
+                notify_result = send_stress(fin_text)
+            conn.commit()
             if notify_result and not notify_result.get("ok"):
                 print(f"[INGEST_NOTIFY] run_id={run_id} telegram error: {notify_result.get('error')}")
         except Exception as e:

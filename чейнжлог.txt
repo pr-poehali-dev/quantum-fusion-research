@@ -8975,3 +8975,31 @@ warehouse_reserves (рос только qty_reserved → рассинхрон).
 ### Технические детали
 - Логика cancel_order перенесена из backend/wip-builds/ (не деплоится) в backend/builds/index.py
 - wip-builds функция не деплоится: runtime определяется как nodejs22 вместо python311
+---
+
+## v8.20 | 2026-08-17 | Дубли Telegram-уведомлений стресс-тестов
+
+Партнёр получал сообщение «Прогон завершён» ровно два раза: десктоп шлёт
+итог и через action=ingest (notify:true), и отдельным action=notify.
+На сервере защиты от повтора не было — оба вызова честно слали текст.
+
+### БД
+- V0238 stress_notify_sent — журнал отправленных уведомлений
+  (chat_id, dedup_hash = sha256 текста, event, sent_at),
+  UNIQUE (chat_id, dedup_hash).
+
+### backend/stress/notify_prefs.py
+- _claim_send() — «занимает» право на отправку: INSERT ... ON CONFLICT DO
+  NOTHING RETURNING id внутри SAVEPOINT. Записи старше 10 минут удаляются,
+  поэтому одинаковый текст по новому прогону снова пройдёт.
+- claim_admin_send() — то же для общего админского чата (chat_id='__admin__').
+- notify_company() — перед send_stress проверяет claim; дубль пропускает и
+  отдаёт в результатах {skipped:"duplicate"} (в Telegram ничего не уходит).
+- Сбой дедупликации не блокирует отправку (fail-open).
+
+### backend/stress/index.py
+- ingest(): test_failed и run_finished в админский чат — через claim.
+- notify(): перед отправкой в админский чат — claim; при дубле возвращает
+  {ok:true, skipped:"duplicate"}.
+
+Изменений в десктопной программе не требуется — можно слать оба вызова.

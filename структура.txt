@@ -1511,3 +1511,16 @@ Builds, Shop, Service, Contacts, CommunityBuilds, CablePage, B2B, Profile).
 - Шаблон сообщения heartbeat_stale — в _build_notify_text.
 - ⚠️ Нужен внешний cron каждые 5–10 мин (у платформы своего нет):
   {stress_url}?action=check_stale_heartbeats&cron_key=<CRON_SECRET>
+
+[v8.20] Защита от дублей Telegram-уведомлений стресс-тестов.
+БД: V0238 stress_notify_sent (chat_id, dedup_hash, event, sent_at;
+UNIQUE (chat_id, dedup_hash)) — журнал уже отправленных сообщений.
+Причина: десктоп шлёт итог прогона двумя путями (action=ingest с notify:true
+и отдельный action=notify) — партнёр получал одно и то же сообщение дважды.
+backend/stress/notify_prefs.py — _claim_send() (SAVEPOINT + INSERT ON CONFLICT
+DO NOTHING, окно DEDUP_WINDOW_MIN=10 мин), claim_admin_send() для общего
+админского чата; notify_company() перед send_stress занимает право отправки,
+дубль отдаёт {skipped:"duplicate"}.
+backend/stress/index.py — ingest() и notify() тоже проходят через claim перед
+отправкой в админский чат; notify() при дубле возвращает skipped:"duplicate".
+Если таблица недоступна — сообщение всё равно уйдёт (fail-open).

@@ -10,6 +10,7 @@
 на общий админский чат (STRESS_TG_CHAT_ID), который работает как раньше.
 """
 import os
+import hashlib
 import html as html_mod
 
 from tg_notify import send_stress
@@ -237,6 +238,46 @@ def _want(chat_val, company_val):
     return bool(company_val) if chat_val is None else bool(chat_val)
 
 
+DEDUP_WINDOW_MIN = 10
+
+
+def _claim_send(cur, chat_id, event, text):
+    """Занять право на отправку сообщения (защита от дублей).
+
+    Десктоп шлёт итог прогона двумя путями (ingest + notify), поэтому один
+    и тот же текст может прийти дважды. Пишем отпечаток в журнал: если такая
+    же запись за последние DEDUP_WINDOW_MIN минут уже есть — отправку не
+    повторяем. Через окно повтор снова разрешён (это уже новый прогон).
+    """
+    h = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    try:
+        cur.execute("SAVEPOINT sp_notify_dedup")
+        cur.execute(
+            f"DELETE FROM {SCHEMA}.stress_notify_sent "
+            f"WHERE chat_id=%s AND dedup_hash=%s "
+            f"AND sent_at < NOW() - INTERVAL '{DEDUP_WINDOW_MIN} minutes'",
+            (str(chat_id), h))
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_notify_sent (chat_id, dedup_hash, event) "
+            f"VALUES (%s, %s, %s) ON CONFLICT (chat_id, dedup_hash) DO NOTHING "
+            f"RETURNING id", (str(chat_id), h, str(event)[:40]))
+        claimed = cur.fetchone() is not None
+        cur.execute("RELEASE SAVEPOINT sp_notify_dedup")
+        return claimed
+    except Exception as e:
+        try:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_notify_dedup")
+        except Exception:
+            pass
+        print(f"STRESS_NOTIFY: дедупликация недоступна ({e}) — шлём как есть")
+        return True
+
+
+def claim_admin_send(cur, event, text):
+    """То же для общего админского чата (у него нет записи в stress_notify_chats)."""
+    return _claim_send(cur, "__admin__", event, text)
+
+
 def notify_company(cur, company_id, event, data):
     """Разослать событие во все подходящие чаты компании.
 
@@ -274,6 +315,11 @@ def notify_company(cur, company_id, event, data):
         tpl = (ch.get(tpl_key) or "").strip() or st.get(tpl_key) or ""
         text = render(event, tpl, data)
         if not text:
+            continue
+        # Один и тот же текст в один чат за короткое окно — не дублируем.
+        if not _claim_send(cur, ch["chat_id"], event, text):
+            result["results"].append({"chat_id": ch["chat_id"], "ok": True,
+                                      "skipped": "duplicate"})
             continue
         res = send_stress(text, chat_id=ch["chat_id"])
         try:
