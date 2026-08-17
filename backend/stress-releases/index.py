@@ -46,6 +46,26 @@ def s3():
     )
 
 
+def ensure_cors():
+    """Разрешить браузеру грузить файлы в хранилище напрямую.
+
+    Без этого правила браузер обрывает загрузку на старте («Загрузка
+    прервалась») — запрос из вкладки к другому домену блокируется.
+    Ставим правило перед каждой выдачей ссылки: операция дешёвая и
+    защищает от сброса настроек хранилища.
+    """
+    try:
+        s3().put_bucket_cors(Bucket="files", CORSConfiguration={"CORSRules": [{
+            "AllowedHeaders": ["*"],
+            "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
+            "AllowedOrigins": ["*"],
+            "ExposeHeaders": ["ETag"],
+            "MaxAgeSeconds": 3600,
+        }]})
+    except Exception as e:
+        print(f"[RELEASES] не удалось выставить CORS: {e}")
+
+
 def cdn_url(key):
     return f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
 
@@ -120,6 +140,7 @@ def handler(event: dict, context) -> dict:
 
         # Шаг 1: выдать ссылку для прямой загрузки файла в хранилище.
         if action == "upload_url":
+            ensure_cors()
             name = (body.get("file_name") or "stress-tester.exe").strip()
             # Оставляем только безопасные символы, иначе ключ объекта может сломаться.
             safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:120] or "app.exe"
@@ -131,6 +152,17 @@ def handler(event: dict, context) -> dict:
                 ExpiresIn=6 * 60 * 60,  # 6 часов: 5 ГБ на медленном канале грузятся долго
             )
             return resp(200, {"upload_url": url, "s3_key": key, "file_url": cdn_url(key)})
+
+        # Проверка: файл реально долетел в хранилище (и какого он размера).
+        if action == "check_upload":
+            key = (body.get("s3_key") or "").strip()
+            if not key:
+                return resp(400, {"error": "Нет ключа файла"})
+            try:
+                head = s3().head_object(Bucket="files", Key=key)
+                return resp(200, {"ok": True, "size": int(head.get("ContentLength") or 0)})
+            except Exception as e:
+                return resp(200, {"ok": False, "error": str(e)[:200]})
 
         # Шаг 2: файл уже в хранилище — сохраняем карточку версии.
         if action == "create":

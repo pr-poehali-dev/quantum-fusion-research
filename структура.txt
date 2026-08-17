@@ -1524,3 +1524,21 @@ DO NOTHING, окно DEDUP_WINDOW_MIN=10 мин), claim_admin_send() для об
 backend/stress/index.py — ingest() и notify() тоже проходят через claim перед
 отправкой в админский чат; notify() при дубле возвращает skipped:"duplicate".
 Если таблица недоступна — сообщение всё равно уйдёт (fail-open).
+
+[v8.21] Починена загрузка EXE-версий стресс-тестера в админке.
+Причина «Загрузка прервалась»: у S3-бакета files не было CORS-правил, поэтому
+браузер блокировал прямой PUT по presigned-ссылке (fetch/XHR падал сразу,
+до передачи байтов). Проверено: PUT с сервера — 200, из браузера — Failed to
+fetch; presigned POST и multipart upload хранилищем не поддерживаются (405).
+backend/stress-releases/index.py:
+- ensure_cors() — put_bucket_cors (AllowedOrigins ["*"], методы GET/PUT/POST/
+  HEAD, ExposeHeaders ETag), вызывается при каждом action=upload_url, чтобы
+  правило не пропало при сбросе настроек бакета;
+- action=check_upload (admin) — head_object по s3_key, отдаёт {ok,size}.
+src/lib/api.ts — stressReleases.checkUpload(s3Key, adminKey).
+src/components/admin/StressReleasesTab.tsx — до 3 попыток PUT с паузой 1,5 с,
+после неудачи сверка через check_upload (файл мог долететь при обрыве),
+отдельные тексты ошибок для 403 (протухшая ссылка) и обрыва связи;
+кнопка «Отменить» больше не показывает ошибку.
+Лимит тела cloud-функции ~4 МБ (5 МБ → 503), поэтому EXE через функцию не
+проксируется — только прямой PUT в бакет.

@@ -71,7 +71,8 @@ export default function StressReleasesTab() {
 
     // Шаг 2 — льём файл напрямую в хранилище, мимо наших функций.
     // XMLHttpRequest (а не fetch) — ради события progress.
-    const ok = await new Promise<boolean>(resolve => {
+    // Обрыв связи на больших файлах — обычное дело, поэтому до 3 попыток.
+    const putOnce = () => new Promise<{ ok: boolean; aborted: boolean; status: number }>(resolve => {
       const xhr = new XMLHttpRequest()
       xhrRef.current = xhr
       const started = Date.now()
@@ -83,13 +84,40 @@ export default function StressReleasesTab() {
         const sec = (Date.now() - started) / 1000
         if (sec > 1) setSpeed(`${(e.loaded / 1024 ** 2 / sec).toFixed(1)} МБ/с`)
       }
-      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
-      xhr.onerror = () => resolve(false)
-      xhr.onabort = () => resolve(false)
+      xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, aborted: false, status: xhr.status })
+      xhr.onerror = () => resolve({ ok: false, aborted: false, status: 0 })
+      xhr.onabort = () => resolve({ ok: false, aborted: true, status: 0 })
       xhr.send(file)
     })
+
+    let ok = false
+    let lastStatus = 0
+    for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
+      if (attempt > 1) {
+        setError(`Связь оборвалась — повторяем попытку ${attempt} из 3…`)
+        setProgress(0); setSpeed("")
+        await new Promise(r => setTimeout(r, 1500))
+      }
+      const r = await putOnce()
+      lastStatus = r.status
+      if (r.aborted) { xhrRef.current = null; setProgress(null); setError(""); return }
+      ok = r.ok
+    }
     xhrRef.current = null
-    if (!ok) { setError("Загрузка прервалась. Попробуйте ещё раз"); setProgress(null); return }
+    setError("")
+
+    // Иногда браузер рвёт соединение, хотя файл уже принят — уточняем у сервера.
+    if (!ok) {
+      const chk = await api.stressReleases.checkUpload(u.s3_key, ak).catch(() => null)
+      if (chk?.ok && Number(chk.size) === file.size) ok = true
+    }
+    if (!ok) {
+      setError(lastStatus === 403
+        ? "Хранилище отклонило файл — ссылка устарела. Нажмите «Загрузить версию» ещё раз"
+        : "Не удалось загрузить файл: связь прервалась 3 раза. Проверьте интернет и попробуйте снова")
+      setProgress(null)
+      return
+    }
 
     // Шаг 3 — сохраняем карточку версии.
     const res = await api.stressReleases.create({
