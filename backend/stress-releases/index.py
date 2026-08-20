@@ -66,6 +66,68 @@ def ensure_cors():
         print(f"[RELEASES] не удалось выставить CORS: {e}")
 
 
+YADISK_API = "https://cloud-api.yandex.net/v1/disk/public/resources"
+
+
+def resolve_yadisk(link: str) -> dict:
+    """Публичная ссылка Яндекс.Диска → прямая ссылка на скачивание.
+
+    Возвращает {ok, file_url, file_name, file_size} либо {ok: False, error}.
+    Обычная ссылка вида disk.yandex.ru/d/xxx открывает страницу, а не файл,
+    поэтому спрашиваем у Яндекса настоящий адрес. Ссылка «живая» ограниченное
+    время, но её можно получать заново — при скачивании делаем это на лету.
+    """
+    import urllib.parse
+    import urllib.request
+    import urllib.error
+
+    if not link.startswith("http"):
+        return {"ok": False, "error": "Ссылка должна начинаться с https://"}
+
+    if "yandex" not in link:
+        # Не Яндекс.Диск — считаем, что это уже прямая ссылка на файл.
+        name = urllib.parse.urlparse(link).path.rsplit("/", 1)[-1] or "stress-tester.exe"
+        size = 0
+        try:
+            req = urllib.request.Request(link, method="HEAD")
+            req.add_header("User-Agent", "Mozilla/5.0")
+            with urllib.request.urlopen(req, timeout=10) as r:
+                size = int(r.headers.get("Content-Length") or 0)
+        except Exception:
+            pass
+        return {"ok": True, "file_url": link, "file_name": name, "file_size": size,
+                "direct": True}
+
+    try:
+        meta_url = f"{YADISK_API}?public_key={urllib.parse.quote(link, safe='')}"
+        with urllib.request.urlopen(meta_url, timeout=10) as r:
+            meta = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"ok": False, "error": "Яндекс.Диск не нашёл файл по этой ссылке. "
+                                          "Убедитесь, что доступ открыт «по ссылке»"}
+        return {"ok": False, "error": f"Яндекс.Диск ответил ошибкой {e.code}"}
+    except Exception as e:
+        return {"ok": False, "error": f"Не удалось проверить ссылку: {str(e)[:120]}"}
+
+    if meta.get("type") == "dir":
+        return {"ok": False, "error": "Это ссылка на папку. Нужна ссылка на сам файл"}
+
+    try:
+        dl_url = f"{YADISK_API}/download?public_key={urllib.parse.quote(link, safe='')}"
+        with urllib.request.urlopen(dl_url, timeout=10) as r:
+            href = json.loads(r.read().decode("utf-8")).get("href") or ""
+    except Exception as e:
+        return {"ok": False, "error": f"Не удалось получить файл: {str(e)[:120]}"}
+
+    if not href:
+        return {"ok": False, "error": "Яндекс.Диск не отдал ссылку на файл"}
+
+    return {"ok": True, "file_url": href, "public_link": link,
+            "file_name": meta.get("name") or "stress-tester.exe",
+            "file_size": int(meta.get("size") or 0)}
+
+
 def cdn_url(key):
     return f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
 
@@ -124,15 +186,28 @@ def handler(event: dict, context) -> dict:
 
         action = body.get("action") or ""
 
-        # ── Публичное: засчитать скачивание ───────────────────────────────
+        # ── Публичное: засчитать скачивание и выдать актуальную ссылку ────
+        # Прямая ссылка Яндекс.Диска живёт недолго, поэтому для таких версий
+        # берём свежую прямо перед скачиванием.
         if action == "count_download":
             rid = int(body.get("id") or 0)
+            fresh = ""
             if rid:
                 cur.execute(
-                    f"UPDATE {TABLE} SET download_count = download_count + 1 WHERE id = {rid}"
+                    f"UPDATE {TABLE} SET download_count = download_count + 1 "
+                    f"WHERE id = {rid} RETURNING source_link, file_url"
                 )
+                row = cur.fetchone()
                 conn.commit()
-            return resp(200, {"ok": True})
+                if row and row[0]:
+                    info = resolve_yadisk(row[0])
+                    if info.get("ok"):
+                        fresh = info.get("file_url") or ""
+                        if fresh and fresh != row[1]:
+                            cur.execute(f"UPDATE {TABLE} SET file_url = {esc(fresh)} "
+                                        f"WHERE id = {rid}")
+                            conn.commit()
+            return resp(200, {"ok": True, "file_url": fresh})
 
         # ── Дальше только админ ───────────────────────────────────────────
         if not is_admin:
@@ -153,6 +228,18 @@ def handler(event: dict, context) -> dict:
             )
             return resp(200, {"upload_url": url, "s3_key": key, "file_url": cdn_url(key)})
 
+        # Публичная ссылка Яндекс.Диска → прямая ссылка на файл + имя и размер.
+        # Хранилище проекта не принимает загрузку из браузера, поэтому большие
+        # EXE выкладываются на Яндекс.Диск, а сайт раздаёт их по ссылке.
+        if action == "resolve_link":
+            src = (body.get("link") or "").strip()
+            if not src:
+                return resp(400, {"error": "Вставьте ссылку на файл"})
+            info = resolve_yadisk(src)
+            if not info.get("ok"):
+                return resp(200, info)
+            return resp(200, info)
+
         # Проверка: файл реально долетел в хранилище (и какого он размера).
         if action == "check_upload":
             key = (body.get("s3_key") or "").strip()
@@ -172,11 +259,12 @@ def handler(event: dict, context) -> dict:
                 return resp(400, {"error": "Нужны версия и файл"})
             cur.execute(
                 f"INSERT INTO {TABLE} (version, changelog, file_url, file_name, "
-                f"file_size, s3_key, is_published) VALUES ("
+                f"file_size, s3_key, is_published, source_link) VALUES ("
                 f"{esc(version)}, {esc(body.get('changelog') or '')}, {esc(file_url)}, "
                 f"{esc(body.get('file_name') or '')}, {int(body.get('file_size') or 0)}, "
                 f"{esc(body.get('s3_key') or '')}, "
-                f"{'TRUE' if body.get('is_published', True) else 'FALSE'}) RETURNING id"
+                f"{'TRUE' if body.get('is_published', True) else 'FALSE'}, "
+                f"{esc(body.get('source_link') or '')}) RETURNING id"
             )
             new_id = cur.fetchone()[0]
             conn.commit()

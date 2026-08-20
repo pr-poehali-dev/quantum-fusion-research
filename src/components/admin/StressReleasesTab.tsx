@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
@@ -35,14 +35,14 @@ export default function StressReleasesTab() {
 
   const [version, setVersion] = useState("")
   const [changelog, setChangelog] = useState("")
-  const [file, setFile] = useState<File | null>(null)
+  const [link, setLink] = useState("")
   const [publish, setPublish] = useState(true)
 
-  // Прогресс важен: 5 ГБ грузятся минутами, без него кажется, что всё зависло.
-  const [progress, setProgress] = useState<number | null>(null)
-  const [speed, setSpeed] = useState("")
+  // Файл лежит на Яндекс.Диске: наше хранилище не принимает загрузку
+  // из браузера, а EXE весит слишком много для отправки через сервер.
+  const [busy, setBusy] = useState(false)
+  const [found, setFound] = useState<{ name: string; size: number } | null>(null)
   const [error, setError] = useState("")
-  const xhrRef = useRef<XMLHttpRequest | null>(null)
 
   const load = () => {
     api.stressReleases.list(getAdminKey())
@@ -53,92 +53,45 @@ export default function StressReleasesTab() {
   useEffect(load, [])
 
   const reset = () => {
-    setVersion(""); setChangelog(""); setFile(null)
-    setProgress(null); setSpeed(""); setError("")
+    setVersion(""); setChangelog(""); setLink("")
+    setFound(null); setBusy(false); setError("")
   }
 
-  const upload = async () => {
+  // Проверяем ссылку заранее: сразу видно имя и размер файла.
+  const check = async () => {
+    const ak = getAdminKey()
+    if (!ak) { setError("Нет доступа администратора"); return null }
+    if (!link.trim()) { setError("Вставьте ссылку на файл"); return null }
+    setBusy(true); setError(""); setFound(null)
+    const r = await api.stressReleases.resolveLink(link.trim(), ak).catch(() => null)
+    setBusy(false)
+    if (!r?.ok) { setError(r?.error || "Не удалось открыть ссылку"); return null }
+    setFound({ name: r.file_name, size: Number(r.file_size || 0) })
+    return r
+  }
+
+  const publishRelease = async () => {
     const ak = getAdminKey()
     if (!ak) { setError("Нет доступа администратора"); return }
     if (!version.trim()) { setError("Укажите номер версии"); return }
-    if (!file) { setError("Выберите файл"); return }
-    setError("")
-    setProgress(0)
+    const r = await check()
+    if (!r) return
 
-    // Шаг 1 — просим у сервера временную ссылку на прямую загрузку.
-    const u = await api.stressReleases.getUploadUrl(file.name, ak).catch(() => null)
-    if (!u?.upload_url) { setError("Не удалось начать загрузку"); setProgress(null); return }
-
-    // Шаг 2 — льём файл напрямую в хранилище, мимо наших функций.
-    // XMLHttpRequest (а не fetch) — ради события progress.
-    // Обрыв связи на больших файлах — обычное дело, поэтому до 3 попыток.
-    const putOnce = () => new Promise<{ ok: boolean; aborted: boolean; status: number }>(resolve => {
-      const xhr = new XMLHttpRequest()
-      xhrRef.current = xhr
-      const started = Date.now()
-      xhr.open("PUT", u.upload_url)
-      xhr.setRequestHeader("Content-Type", "application/octet-stream")
-      xhr.upload.onprogress = e => {
-        if (!e.lengthComputable) return
-        setProgress(Math.round((e.loaded / e.total) * 100))
-        const sec = (Date.now() - started) / 1000
-        if (sec > 1) setSpeed(`${(e.loaded / 1024 ** 2 / sec).toFixed(1)} МБ/с`)
-      }
-      xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, aborted: false, status: xhr.status })
-      xhr.onerror = () => resolve({ ok: false, aborted: false, status: 0 })
-      xhr.onabort = () => resolve({ ok: false, aborted: true, status: 0 })
-      xhr.send(file)
-    })
-
-    let ok = false
-    let lastStatus = 0
-    for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
-      if (attempt > 1) {
-        setError(`Связь оборвалась — повторяем попытку ${attempt} из 3…`)
-        setProgress(0); setSpeed("")
-        await new Promise(r => setTimeout(r, 1500))
-      }
-      const r = await putOnce()
-      lastStatus = r.status
-      if (r.aborted) { xhrRef.current = null; setProgress(null); setError(""); return }
-      ok = r.ok
-    }
-    xhrRef.current = null
-    setError("")
-
-    // Иногда браузер рвёт соединение, хотя файл уже принят — уточняем у сервера.
-    if (!ok) {
-      const chk = await api.stressReleases.checkUpload(u.s3_key, ak).catch(() => null)
-      if (chk?.ok && Number(chk.size) === file.size) ok = true
-    }
-    if (!ok) {
-      setError(lastStatus === 403
-        ? "Хранилище отклонило файл — ссылка устарела. Нажмите «Загрузить версию» ещё раз"
-        : "Не удалось загрузить файл: связь прервалась 3 раза. Проверьте интернет и попробуйте снова")
-      setProgress(null)
-      return
-    }
-
-    // Шаг 3 — сохраняем карточку версии.
+    setBusy(true)
     const res = await api.stressReleases.create({
       version: version.trim(),
       changelog: changelog.trim(),
-      file_url: u.file_url,
-      s3_key: u.s3_key,
-      file_name: file.name,
-      file_size: file.size,
+      file_url: r.file_url,
+      source_link: r.public_link || "",
+      file_name: r.file_name,
+      file_size: Number(r.file_size || 0),
       is_published: publish,
     }, ak).catch(() => null)
+    setBusy(false)
 
-    if (!res?.ok) { setError("Файл загрузился, но версия не сохранилась"); setProgress(null); return }
+    if (!res?.ok) { setError("Не удалось сохранить версию"); return }
     reset()
     load()
-  }
-
-  const cancelUpload = () => {
-    xhrRef.current?.abort()
-    xhrRef.current = null
-    setProgress(null); setSpeed("")
   }
 
   const togglePublish = async (r: Release) => {
@@ -157,72 +110,66 @@ export default function StressReleasesTab() {
   }
 
   const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-  const uploading = progress !== null
 
   return (
     <div className="max-w-3xl">
       <h2 className="mb-1 text-xl font-light text-foreground">Стресс-тестер — версии</h2>
       <p className="mb-6 text-sm text-foreground/50">
-        Загруженная версия появляется на странице /stresstester, откуда её скачивают клиенты.
+        Опубликованная версия появляется на странице /stresstester, откуда её скачивают клиенты.
       </p>
 
-      {/* Форма загрузки новой версии */}
+      {/* Форма новой версии: файл берётся с Яндекс.Диска по ссылке */}
       <div className="mb-8 rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-4 font-medium">Новая версия</h3>
+        <h3 className="mb-1 font-medium">Новая версия</h3>
+        <p className="mb-4 text-xs text-foreground/50">
+          Загрузите файл программы на Яндекс.Диск, откройте к нему доступ по ссылке
+          и вставьте её сюда — сайт сам заберёт имя, размер и настроит скачивание.
+        </p>
 
-        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        <div className="mb-3 grid gap-3 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs text-foreground/60">Номер версии *</label>
-            <input value={version} onChange={e => setVersion(e.target.value)} disabled={uploading}
+            <input value={version} onChange={e => setVersion(e.target.value)} disabled={busy}
               placeholder="1.4.2" className={inputCls} />
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-foreground/60">Файл программы *</label>
-            <input type="file" accept=".exe,.zip,.msi" disabled={uploading}
-              onChange={e => setFile(e.target.files?.[0] || null)}
-              className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-xs file:text-primary" />
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs text-foreground/60">Ссылка на файл *</label>
+            <input value={link} onChange={e => { setLink(e.target.value); setFound(null) }} disabled={busy}
+              placeholder="https://disk.yandex.ru/d/..." className={inputCls} />
           </div>
         </div>
 
-        {file && (
-          <p className="mb-3 text-xs text-foreground/50">
-            {file.name} — {fmtSize(file.size)}
+        <button onClick={check} disabled={busy || !link.trim()} style={{ cursor: "pointer" }}
+          className="mb-3 flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40">
+          <Icon name={busy ? "Loader2" : "Link"} size={13} className={busy ? "animate-spin" : ""} />
+          Проверить ссылку
+        </button>
+
+        {found && (
+          <p className="mb-3 flex items-center gap-1.5 text-xs text-green-400">
+            <Icon name="Check" size={13} />
+            Файл найден: {found.name}{found.size ? ` — ${fmtSize(found.size)}` : ""}
           </p>
         )}
 
         <div className="mb-3">
           <label className="mb-1 block text-xs text-foreground/60">Что нового</label>
-          <textarea value={changelog} onChange={e => setChangelog(e.target.value)} rows={4} disabled={uploading}
+          <textarea value={changelog} onChange={e => setChangelog(e.target.value)} rows={4} disabled={busy}
             placeholder="Каждое изменение с новой строки" className={`${inputCls} resize-none`} />
         </div>
 
         <label className="mb-4 flex items-center gap-2 text-sm text-foreground/70" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={publish} onChange={e => setPublish(e.target.checked)}
-            disabled={uploading} className="rounded" />
+            disabled={busy} className="rounded" />
           Сразу опубликовать на сайте
         </label>
 
-        {uploading && (
-          <div className="mb-4">
-            <div className="mb-1 flex justify-between text-xs text-foreground/60">
-              <span>Загрузка… {progress}%{speed ? ` · ${speed}` : ""}</span>
-              <button onClick={cancelUpload} className="text-red-400 hover:underline" style={{ cursor: "pointer" }}>
-                Отменить
-              </button>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            <p className="mt-1.5 text-xs text-foreground/40">Не закрывайте вкладку до конца загрузки</p>
-          </div>
-        )}
-
         {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
-        <button onClick={upload} disabled={uploading} style={{ cursor: "pointer" }}
+        <button onClick={publishRelease} disabled={busy} style={{ cursor: "pointer" }}
           className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
-          <Icon name={uploading ? "Loader2" : "Upload"} size={15} className={uploading ? "animate-spin" : ""} />
-          {uploading ? "Загружаем…" : "Загрузить версию"}
+          <Icon name={busy ? "Loader2" : "Plus"} size={15} className={busy ? "animate-spin" : ""} />
+          {busy ? "Сохраняем…" : "Добавить версию"}
         </button>
       </div>
 

@@ -39,6 +39,14 @@
       "bodyMatcher": "partial"
     },
     {
+      "name": "Resolve link requires admin",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "resolve_link", "link": "https://disk.yandex.ru/d/xxx"},
+      "expectedStatus": 403,
+      "bodyMatcher": "partial"
+    },
+    {
       "name": "Download counter is public",
       "method": "POST",
       "path": "/",

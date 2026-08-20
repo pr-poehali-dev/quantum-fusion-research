@@ -1542,3 +1542,24 @@ src/components/admin/StressReleasesTab.tsx — до 3 попыток PUT с па
 кнопка «Отменить» больше не показывает ошибку.
 Лимит тела cloud-функции ~4 МБ (5 МБ → 503), поэтому EXE через функцию не
 проксируется — только прямой PUT в бакет.
+
+[v8.22] Версии стресс-тестера — раздача файла с Яндекс.Диска.
+Прямая загрузка EXE в бакет из браузера невозможна (проверено: PUT с сервера
+200, из браузера Failed to fetch; presigned POST 401; multipart 405;
+storage.yandexcloud.net — SignatureDoesNotMatch; тело функции лимит ~4 МБ).
+Решение: файл лежит на Яндекс.Диске, сайт хранит ссылку и раздаёт.
+БД: V0239 stress_app_releases +source_link (публичная ссылка Я.Диска).
+backend/stress-releases/index.py:
+- resolve_yadisk(link) — cloud-api.yandex.net/v1/disk/public/resources
+  (+/download): отдаёт {ok, file_url, file_name, file_size, public_link};
+  не-яндексовая ссылка считается прямой (размер берём HEAD-запросом);
+  понятные ошибки для папки и закрытого доступа;
+- action=resolve_link (admin) — проверка ссылки перед сохранением;
+- action=create принимает source_link;
+- action=count_download теперь ещё и возвращает свежий file_url (прямая
+  ссылка Я.Диска протухает) и обновляет его в БД.
+Фронт: src/lib/api.ts — stressReleases.resolveLink();
+StressReleasesTab — вместо загрузки файла поле «Ссылка на файл» + кнопка
+«Проверить ссылку» (показывает имя и размер) + «Добавить версию»;
+StressTesterDownload — перед переходом берёт свежую ссылку (таймаут 2,5 с,
+иначе идёт по сохранённой).
