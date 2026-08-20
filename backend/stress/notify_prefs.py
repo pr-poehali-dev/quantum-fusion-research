@@ -238,20 +238,37 @@ def _want(chat_val, company_val):
     return bool(company_val) if chat_val is None else bool(chat_val)
 
 
-DEDUP_WINDOW_MIN = 10
+DEDUP_WINDOW_MIN = 5
 
 
-def _claim_send(cur, chat_id, event, text):
-    """Занять право на отправку сообщения (защита от дублей).
+def dedup_key(event, data):
+    """Ключ события для защиты от дублей.
 
-    Десктоп шлёт итог прогона двумя путями (ingest + notify), поэтому один
-    и тот же текст может прийти дважды. Пишем отпечаток в журнал: если такая
-    же запись за последние DEDUP_WINDOW_MIN минут уже есть — отправку не
-    повторяем. Через окно повтор снова разрешён (это уже новый прогон).
+    Считаем по СУТИ события (ПК + профиль + итог), а не по тексту: десктоп
+    шлёт итог двумя путями (ingest и notify), и тексты у них могут чуть
+    отличаться (например, число ошибок берётся из разных полей). По сути же
+    это одно событие.
     """
-    h = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    total = int(data.get("total") or 0)
+    passed = int(data.get("passed") or 0)
+    parts = [str(event), str(data.get("machine") or ""),
+             str(data.get("profile") or ""), str(data.get("test_name") or "")]
+    if event == "run_finished":
+        parts.append(f"{passed}/{total}")
+    if event == "test_failed":
+        parts.append(str(data.get("exit_code")))
+    return "|".join(parts)[:300]
+
+
+def _claim_send(cur, chat_id, event, key):
+    """Занять право на отправку события (защита от дублей).
+
+    Если такое же событие в этот чат уже уходило за последние
+    DEDUP_WINDOW_MIN минут — повтор не отправляем. Через окно повтор снова
+    разрешён (это уже новый прогон).
+    """
+    h = hashlib.sha256(key.encode("utf-8")).hexdigest()
     try:
-        cur.execute("SAVEPOINT sp_notify_dedup")
         cur.execute(
             f"DELETE FROM {SCHEMA}.stress_notify_sent "
             f"WHERE chat_id=%s AND dedup_hash=%s "
@@ -262,20 +279,27 @@ def _claim_send(cur, chat_id, event, text):
             f"VALUES (%s, %s, %s) ON CONFLICT (chat_id, dedup_hash) DO NOTHING "
             f"RETURNING id", (str(chat_id), h, str(event)[:40]))
         claimed = cur.fetchone() is not None
-        cur.execute("RELEASE SAVEPOINT sp_notify_dedup")
+        # КРИТИЧНО: фиксируем метку сразу. Второй запрос (ingest и notify —
+        # это разные вызовы функции, каждый со своим соединением) приходит
+        # через секунду; без немедленного commit он не увидит метку и пришлёт
+        # сообщение повторно.
+        try:
+            cur.connection.commit()
+        except Exception:
+            pass
         return claimed
     except Exception as e:
         try:
-            cur.execute("ROLLBACK TO SAVEPOINT sp_notify_dedup")
+            cur.connection.rollback()
         except Exception:
             pass
         print(f"STRESS_NOTIFY: дедупликация недоступна ({e}) — шлём как есть")
         return True
 
 
-def claim_admin_send(cur, event, text):
+def claim_admin_send(cur, event, data):
     """То же для общего админского чата (у него нет записи в stress_notify_chats)."""
-    return _claim_send(cur, "__admin__", event, text)
+    return _claim_send(cur, "__admin__", event, dedup_key(event, data))
 
 
 def notify_company(cur, company_id, event, data):
@@ -316,8 +340,8 @@ def notify_company(cur, company_id, event, data):
         text = render(event, tpl, data)
         if not text:
             continue
-        # Один и тот же текст в один чат за короткое окно — не дублируем.
-        if not _claim_send(cur, ch["chat_id"], event, text):
+        # Одно и то же событие в один чат за короткое окно — не дублируем.
+        if not _claim_send(cur, ch["chat_id"], event, dedup_key(event, data)):
             result["results"].append({"chat_id": ch["chat_id"], "ok": True,
                                       "skipped": "duplicate"})
             continue

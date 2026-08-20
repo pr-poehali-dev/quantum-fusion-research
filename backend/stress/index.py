@@ -475,8 +475,12 @@ def notify(body, cur=None, conn=None, company_id=None):
             print(f"[PARTNER_NOTIFY] notify exception: {e}")
 
     text = _build_notify_text(body)
-    if text is not None and cur is not None and \
-            not np.claim_admin_send(cur, body.get("event", ""), text):
+    if text is not None and cur is not None and not np.claim_admin_send(
+            cur, body.get("event", ""), {
+                "machine": body.get("machine"), "profile": body.get("profile"),
+                "test_name": body.get("test_name"), "exit_code": body.get("exit_code"),
+                "passed": body.get("passed"), "total": body.get("total"),
+            }):
         # Такое же сообщение уже ушло (десктоп послал и ingest, и notify).
         if conn is not None:
             conn.commit()
@@ -858,14 +862,19 @@ def ingest(cur, conn, body, company_id=None):
                         "test_name": r.get("test_name"), "exit_code": r.get("exit_code"),
                         "duration_sec": r.get("duration_sec"),
                     })
-                    if t and np.claim_admin_send(cur, "test_failed", t):
+                    if t and np.claim_admin_send(cur, "test_failed", {
+                            "machine": machine, "profile": profile,
+                            "test_name": r.get("test_name"),
+                            "exit_code": r.get("exit_code")}):
                         send_stress(t)
             # Итог прогона
             fin_text = _build_notify_text({
                 "event": "run_finished", "machine": machine, "profile": profile,
                 "passed": passed, "total": len(results),
             })
-            if fin_text and np.claim_admin_send(cur, "run_finished", fin_text):
+            if fin_text and np.claim_admin_send(cur, "run_finished", {
+                    "machine": machine, "profile": profile,
+                    "passed": passed, "total": len(results)}):
                 notify_result = send_stress(fin_text)
             conn.commit()
             if notify_result and not notify_result.get("ok"):
