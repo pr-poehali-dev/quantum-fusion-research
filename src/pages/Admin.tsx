@@ -178,13 +178,17 @@ export default function Admin() {
     { key: "sn_archive", label: "Архив SN", icon: "ScanBarcode" },
     { key: "rma", label: "Гарантия (RMA)", icon: "ShieldAlert" },
   ]
-  // Группа 3 — Прочее
+  // Группа 3 — Операции
   const extraTabs = [
     { key: "schedule", label: "Расписание", icon: "CalendarDays" },
     { key: "calendar", label: "Календарь", icon: "CalendarCheck" },
     { key: "price_monitor", label: "Цены", icon: "TrendingUp" },
+  ]
+  // Группа 6 — Обвязка (сервисные инструменты)
+  const toolsTabs = [
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
     { key: "stress_releases", label: "Версии тестера", icon: "PackageOpen" },
+    { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
   ]
   // Группа 4 — Финансы и настройки
   const financeTabs = [
@@ -193,7 +197,6 @@ export default function Admin() {
     { key: "faq", label: "Вопросы (FAQ)", icon: "MessagesSquare" },
     { key: "promos", label: "Промокоды", icon: "BadgePercent" },
     { key: "company_settings", label: "Реквизиты", icon: "Building2" },
-    { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
   ]
   // Группа 4 — Быстрый доступ
   const quickTabs = [
@@ -211,8 +214,9 @@ export default function Admin() {
     { title: "Операции", items: extraTabs },
     { title: "Финансы и настройки", items: financeTabs },
     { title: "Сайт", items: quickTabs },
+    { title: "Обвязка", items: toolsTabs },
   ]
-  const allTabs = [...topTabs, ...bottomTabs, ...extraTabs, ...financeTabs, ...quickTabs]
+  const allTabs = [...topTabs, ...bottomTabs, ...extraTabs, ...financeTabs, ...quickTabs, ...toolsTabs]
   // Стабильная ссылка для AdminTabsNav (иначе реконсиляция раскладки на каждый рендер)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const allTabsMemo = useMemo(() => allTabs, [])

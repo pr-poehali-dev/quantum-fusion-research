@@ -20,17 +20,18 @@ export const ROW_ICON_OPTIONS = [
   "Lock", "Shield", "Eye", "Search", "Filter", "Bolt", "Gem", "Crown",
 ]
 
-const LAYOUT_VERSION = "v1"
+const LAYOUT_VERSION = "v2"
 const storageKey = () => `admin_tabs_layout_${LAYOUT_VERSION}__${getAdminKey() || "default"}`
 
-// Дефолтная раскладка (совпадает с историческими группами админки)
+// Дефолтная раскладка админки
 function defaultLayout(allTabs: TabMeta[]): Layout {
   const groups: [string, string, string[]][] = [
     ["Сборки", "Monitor", ["builds", "cables", "wip_builds", "tags"]],
     ["Заявки и склад", "Warehouse", ["quiz_requests", "orders", "warehouse", "sn_archive", "rma"]],
-    ["Операции", "CalendarDays", ["schedule", "calendar", "price_monitor", "stress"]],
-    ["Финансы и настройки", "Wallet", ["finance", "analytics", "faq", "company_settings"]],
-    ["Сайт", "Globe", ["products", "compatibility", "users", "articles"]],
+    ["Операции", "CalendarDays", ["schedule", "calendar", "price_monitor"]],
+    ["Финансы и настройки", "Wallet", ["finance", "analytics", "faq", "company_settings", "promos"]],
+    ["Сайт", "Globe", ["products", "compatibility", "users", "user_builds", "articles"]],
+    ["Обвязка", "LayoutGrid", ["stress", "stress_releases", "telegram_bot"]],
   ]
   const known = new Set(allTabs.map(t => t.key))
   const rows: Row[] = groups.map((g, i) => ({
