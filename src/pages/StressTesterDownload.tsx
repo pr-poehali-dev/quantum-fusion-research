@@ -38,15 +38,12 @@ export default function StressTesterDownload() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Ссылка Яндекс.Диска живёт недолго, поэтому спрашиваем у сервера свежую;
-  // если он не ответил за секунду — уходим по сохранённой, чтобы не ждать.
-  const download = async (r: Release) => {
+  // Файл лежит на Яндекс.Диске: открываем его страницу в новой вкладке,
+  // чтобы наш сайт не закрывался, пока идёт скачивание.
+  const download = (r: Release) => {
     setReleases(rs => rs.map(x => x.id === r.id ? { ...x, download_count: x.download_count + 1 } : x))
-    const res = await Promise.race([
-      api.stressReleases.countDownload(r.id),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 2500)),
-    ]).catch(() => null)
-    window.location.href = res?.file_url || r.file_url
+    api.stressReleases.countDownload(r.id)
+    window.open(r.file_url, "_blank", "noopener,noreferrer")
   }
 
   const latest = releases[0]

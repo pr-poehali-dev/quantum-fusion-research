@@ -1603,3 +1603,14 @@ src/components/admin/AdminTabsNav.tsx — LAYOUT_VERSION v1 → v2 (сброс
 src/pages/Admin.tsx — группа toolsTabs («Обвязка»), Telegram-бот перенесён из
 financeTabs, stress/stress_releases убраны из extraTabs; menuGroups и allTabs
 синхронизированы (мобильное меню = раскладка десктопа).
+
+[v8.25] Скачивание версий: публичная страница Я.Диска вместо прямой ссылки.
+Прямая ссылка downloader.disk.yandex.ru одноразовая и привязана к тому, кто
+её запросил (наш сервер) — у клиента открывалась с ERR_INVALID_RESPONSE.
+БД: V0240 — file_url переписан на source_link у сохранённых версий.
+backend/stress-releases/index.py: resolve_yadisk() отдаёт file_url = публичная
+ссылка (одноразовая теперь в поле direct_url, в БД не пишется);
+action=count_download возвращает source_link (или file_url), без запроса
+к API Яндекса — быстрее и не «сжигает» ссылку.
+src/pages/StressTesterDownload.tsx — download() открывает ссылку в новой
+вкладке (window.open, noopener), счётчик шлётся фоном.

@@ -123,7 +123,9 @@ def resolve_yadisk(link: str) -> dict:
     if not href:
         return {"ok": False, "error": "Яндекс.Диск не отдал ссылку на файл"}
 
-    return {"ok": True, "file_url": href, "public_link": link,
+    # href — одноразовая ссылка, привязанная к запросившему; клиенту отдаём
+    # публичную страницу файла (там кнопка «Скачать» работает у всех).
+    return {"ok": True, "file_url": link, "direct_url": href, "public_link": link,
             "file_name": meta.get("name") or "stress-tester.exe",
             "file_size": int(meta.get("size") or 0)}
 
@@ -186,12 +188,13 @@ def handler(event: dict, context) -> dict:
 
         action = body.get("action") or ""
 
-        # ── Публичное: засчитать скачивание и выдать актуальную ссылку ────
-        # Прямая ссылка Яндекс.Диска живёт недолго, поэтому для таких версий
-        # берём свежую прямо перед скачиванием.
+        # ── Публичное: засчитать скачивание и выдать ссылку для перехода ──
+        # Прямую ссылку Яндекс.Диска отдавать клиенту нельзя: она одноразовая
+        # и привязана к тому, кто её запросил (сервер), поэтому в браузере
+        # клиента открывается с ошибкой. Отправляем на страницу файла.
         if action == "count_download":
             rid = int(body.get("id") or 0)
-            fresh = ""
+            target = ""
             if rid:
                 cur.execute(
                     f"UPDATE {TABLE} SET download_count = download_count + 1 "
@@ -199,15 +202,9 @@ def handler(event: dict, context) -> dict:
                 )
                 row = cur.fetchone()
                 conn.commit()
-                if row and row[0]:
-                    info = resolve_yadisk(row[0])
-                    if info.get("ok"):
-                        fresh = info.get("file_url") or ""
-                        if fresh and fresh != row[1]:
-                            cur.execute(f"UPDATE {TABLE} SET file_url = {esc(fresh)} "
-                                        f"WHERE id = {rid}")
-                            conn.commit()
-            return resp(200, {"ok": True, "file_url": fresh})
+                if row:
+                    target = row[0] or row[1] or ""
+            return resp(200, {"ok": True, "file_url": target})
 
         # ── Дальше только админ ───────────────────────────────────────────
         if not is_admin:
