@@ -1563,3 +1563,30 @@ StressReleasesTab — вместо загрузки файла поле «Ссы
 «Проверить ссылку» (показывает имя и размер) + «Добавить версию»;
 StressTesterDownload — перед переходом берёт свежую ссылку (таймаут 2,5 с,
 иначе идёт по сохранённой).
+
+[v8.23] Новый формат Telegram-уведомлений стресс-тестов (NOTIFY_TELEGRAM_FORMAT.md).
+Спека лежит в корне: NOTIFY_TELEGRAM_FORMAT.md — держать в актуальном виде.
+Структура сообщения: {headline от EXE, жирным} → 🖥 Стенд / 📦 Заказ (если есть)
+/ 📋 Профиль → блок «Тесты:» со смайлами статусов → 📝 примечание →
+хвост события → 🔗 ссылка.
+backend/stress/index.py:
+- _TEST_STATUS_EMOJI (ok ✅, error/problem/crash 💥, warning ⚠️, skipped ⏭,
+  pending ⏳, running ▶️);
+- _notify_headline(body, fallback) — заголовок из поля headline (EXE),
+  fallback для старых клиентов;
+- _format_notify_core(body) — стенд/заказ/профиль/тесты/примечание;
+- _gpu_block(issues) — «🌡 GPU — обслуживание»;
+- notify_parts(body) → (headline, tail) — общая для админского и партнёрских
+  чатов, чтобы отчёт был одинаковый;
+- _build_notify_text(body) = headline + core + tail + ссылка;
+- _tests_from_results(results) — список тестов, если EXE прислал только ingest;
+- события: test_stand_started, test_failed, gpu_maintenance_required,
+  run_finished, upload_failed, run_interrupted, heartbeat_stale, run_started.
+backend/stress/notify_prefs.py:
+- EVENT_ALIASES — новые события сводятся к трём настраиваемым партнёром
+  (test_stand_started→run_started; gpu_maintenance_required/upload_failed/
+  run_interrupted→run_finished; heartbeat_stale→test_failed);
+- новые подстановки шаблона: {заголовок} {заказ} {тесты} {примечание} {хвост}
+  (старые {пк}{профиль}{тест}{код}... сохранены);
+- DEFAULT_TPL для всех трёх событий приведён к новому формату;
+- TEST_STATUS_EMOJI/_tests_block — тот же список тестов, что и в админском.

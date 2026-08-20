@@ -386,68 +386,189 @@ def handler(event, context):
         conn.close()
 
 
-def _build_notify_text(body):
-    """Собирает текст Telegram-сообщения о событии стресс-теста (все поля
-    экранированы для parse_mode=HTML). Возвращает str или None (неизвестное событие)."""
-    event = body.get("event", "")
-    machine = _esc(body.get("machine"))
-    profile = _esc(body.get("profile"))
-    # Ссылка на админку стресс-тестов. Боевой домен по умолчанию — begraphics.ru
-    # (preview-адрес в уведомлениях не нужен). Можно переопределить секретом SITE_BASE_URL.
+# Смайлы статусов тестов в списке (спека NOTIFY_TELEGRAM_FORMAT.md).
+_TEST_STATUS_EMOJI = {
+    "ok": "✅",
+    "error": "💥",
+    "problem": "💥",      # legacy-алиас error
+    "crash": "💥",
+    "warning": "⚠️",
+    "skipped": "⏭",
+    "pending": "⏳",
+    "running": "▶️",
+}
+
+
+def _site_base():
+    """Боевой домен для ссылок в уведомлениях (preview-адрес не нужен)."""
     site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
     if not site or "poehali.dev" in site:
         site = "https://begraphics.ru"
-    link = f"\n🔗 {site}/admin/stress"
+    return site
 
-    if event == "test_failed":
-        test_name = _esc(body.get("test_name"))
+
+def _notify_headline(body, fallback):
+    """Заголовок сообщения. Его формирует StressRunner и кладёт в headline;
+    старые версии программы поля не шлют — тогда берём запасной текст."""
+    headline = (body.get("headline") or "").strip()
+    return f"<b>{_esc(headline)}</b>" if headline else fallback
+
+
+def _format_notify_core(body):
+    """Общая часть любого уведомления: стенд, заказ, профиль, список тестов,
+    примечание. Возвращает готовый кусок HTML-текста."""
+    parts = []
+    stand = body.get("stand_name") or body.get("machine")
+    parts.append(f"🖥 Стенд: <b>{_esc(stand)}</b>")
+    order = (body.get("order_number") or "").strip() if body.get("order_number") else ""
+    if order:
+        parts.append(f"📦 Заказ: {_esc(order)}")
+    profile = body.get("profile_name") or body.get("profile")
+    parts.append(f"📋 Профиль: {_esc(profile)}")
+
+    tests = body.get("tests") or []
+    if tests:
+        lines = ["", "Тесты:"]
+        for t in tests:
+            emoji = _TEST_STATUS_EMOJI.get(str(t.get("status") or "").lower(), "•")
+            line = f"{emoji} {_esc(t.get('name'))}"
+            detail = (t.get("detail") or "").strip() if t.get("detail") else ""
+            if detail:
+                line += f" — {_esc(detail)}"
+            lines.append(line)
+        parts.append("\n".join(lines))
+
+    note = (body.get("note") or "").strip() if body.get("note") else ""
+    if note:
+        parts.append(f"\n📝 {_esc(note)}")
+    return "\n".join(parts)
+
+
+def _gpu_block(issues):
+    """Блок «GPU — обслуживание» со списком человекочитаемых проблем."""
+    issues = [i for i in (issues or []) if str(i).strip()]
+    if not issues:
+        return ""
+    lines = ["", "🌡 GPU — обслуживание:"]
+    lines += [f"• {_esc(i)}" for i in issues]
+    return "\n".join(lines)
+
+
+def _tests_from_results(results):
+    """Список тестов прогона для блока «Тесты:» (когда программа его не прислала)."""
+    out = []
+    for r in results or []:
+        detail = (r.get("score_text") or "").strip()
+        if not r.get("success") and r.get("exit_code") is not None:
+            detail = f"код {r.get('exit_code')}"
+        out.append({"name": r.get("test_name"),
+                    "status": "ok" if r.get("success") else "error",
+                    "detail": detail[:120]})
+    return out
+
+
+def notify_parts(body):
+    """Заголовок и хвост конкретного события.
+
+    Вынесено отдельно, чтобы партнёрские чаты получали такой же отчёт,
+    как и админский. Возвращает (headline, tail) либо None для неизвестного
+    события. Формат — NOTIFY_TELEGRAM_FORMAT.md.
+    """
+    event = body.get("event", "")
+
+    passed = int(body.get("passed") or 0)
+    total = int(body.get("total") or 0)
+    tail = ""
+
+    if event == "test_stand_started":
+        headline = _notify_headline(body, "▶️ <b>Старт прогона</b>")
+        gpu = (body.get("gpu") or "").strip() if body.get("gpu") else ""
+        if gpu:
+            tail = f"\n\n🎮 GPU: {_esc(gpu)}"
+
+    elif event == "test_failed":
+        test_name = body.get("test_name")
+        headline = _notify_headline(body, f"💥 <b>Упал тест: {_esc(test_name)}</b>")
+        tail = f"\n\n❌ {_esc(test_name)}"
+        detail = (body.get("error_detail") or "").strip() if body.get("error_detail") else ""
         exit_code = body.get("exit_code")
-        code_s = "—" if exit_code is None else _esc(exit_code)
         dur = body.get("duration_sec")
-        dur_s = f"{float(dur):.0f} сек" if dur is not None else "—"
-        return (
-            f"🔴 <b>Ошибка стресс-теста</b>\n"
-            f"💻 ПК: <b>{machine}</b>\n"
-            f"📋 Профиль: {profile}\n"
-            f"❌ Тест: <b>{test_name}</b>\n"
-            f"   код выхода: {code_s}, длительность: {dur_s}{link}"
-        )
-    if event == "heartbeat_stale":
-        # Прогон ещё идёт, но отбивка не пришла вовремя — вероятно, ПК завис,
-        # ушёл в перезагрузку или пропала сеть. Просим проверить машину.
-        idx = body.get("current_test_index") or 0
-        total = body.get("planned_total") or 0
-        test_name = _esc(body.get("current_test_name"))
-        missed = body.get("missed_minutes") or 0
-        order = body.get("order_number")
-        company = body.get("company_name")
-        head = (
-            f"🚨 <b>Нет отбивки от StressRunner</b>\n"
-            f"💻 ПК: <b>{machine}</b> — проверьте компьютер\n"
-            f"📋 Профиль: {profile}\n"
-        )
-        if company:
-            head += f"🏢 Компания: {_esc(company)}\n"
-        if order:
-            head += f"🧾 Заказ: {_esc(order)}\n"
-        return (
-            head
-            + f"⏱ Просрочка: ~{int(missed)} мин (ожидали heartbeat)\n"
-            + f"▶️ Последний тест: <b>{test_name}</b> ({idx}/{total})" + link
-        )
-    if event == "run_finished":
-        passed = body.get("passed", 0)
-        total = body.get("total", 0)
+        extra = []
+        if exit_code is not None:
+            extra.append(f"код {_esc(exit_code)}")
+        if dur is not None:
+            try:
+                extra.append(f"{float(dur):.0f} сек")
+            except (TypeError, ValueError):
+                pass
+        if extra:
+            tail += f"\n   {', '.join(extra)}"
+        if detail:
+            tail += f"\n   {_esc(detail)}"
+
+    elif event == "gpu_maintenance_required":
+        headline = _notify_headline(body, "⚠️ <b>Проблема с температурой GPU</b>")
+        tail = "\n" + _gpu_block(body.get("issues"))
+
+    elif event == "run_finished":
         failed = total - passed
-        status_emoji = "✅" if failed == 0 else "⚠️"
-        return (
-            f"{status_emoji} <b>Прогон завершён</b>\n"
-            f"💻 ПК: <b>{machine}</b>\n"
-            f"📋 Профиль: {profile}\n"
-            f"📊 Итог: <b>{passed}/{total}</b> успешно"
-            + (f", ошибок: {failed}" if failed else "") + link
-        )
-    return None
+        fb = "✅ <b>Прогон завершён — всё в порядке</b>" if failed == 0 \
+            else "⚠️ <b>Прогон завершён с ошибками</b>"
+        headline = _notify_headline(body, fb)
+        tail = f"\n\n📊 Итог: <b>{passed}/{total}</b> успешно"
+        if failed > 0:
+            tail += f", ошибок: {failed}"
+        if body.get("gpu_maintenance"):
+            tail += "\n" + _gpu_block(body.get("gpu_issues"))
+
+    elif event == "upload_failed":
+        headline = _notify_headline(body, "⚠️ <b>Отчёт не загружен на сайт</b>")
+        tail = (f"\n\n📊 Прогон: <b>{passed}/{total}</b> успешно"
+                f"\nДанные сохранены локально на ПК.")
+
+    elif event == "run_interrupted":
+        interrupted = body.get("interrupted_test")
+        headline = _notify_headline(
+            body, f"💥 <b>Перезагрузка ПК — прерван: {_esc(interrupted)}</b>")
+        tail = f"\n\n⚡ Прервано на: <b>{_esc(interrupted)}</b>"
+        planned = int(body.get("planned_total") or 0)
+        done = int(body.get("completed") or 0)
+        if planned:
+            tail += f"\n📊 Пройдено: {done}/{planned}"
+
+    elif event == "heartbeat_stale":
+        headline = _notify_headline(body, "💥 <b>Нет отбивки — проверьте ПК</b>")
+        missed = int(body.get("missed_minutes") or 0)
+        idx = body.get("current_test_index") or 0
+        planned = body.get("planned_total") or 0
+        tail = f"\n\n⏱ Просрочка: ~{missed} мин (ожидали отбивку)"
+        if body.get("current_test_name"):
+            tail += (f"\n▶️ Последний тест: <b>{_esc(body.get('current_test_name'))}</b>"
+                     f" ({idx}/{planned})")
+        company = body.get("company_name")
+        if company:
+            tail += f"\n🏢 Компания: {_esc(company)}"
+
+    elif event == "run_started":
+        # Legacy-событие старых версий программы.
+        headline = _notify_headline(body, "▶️ <b>Прогон запущен</b>")
+
+    else:
+        return None
+
+    return headline, tail
+
+
+def _build_notify_text(body):
+    """Полный текст сообщения: заголовок, общий блок, хвост события, ссылка.
+    Возвращает str или None (неизвестное событие)."""
+    parts = notify_parts(body)
+    if parts is None:
+        return None
+    headline, tail = parts
+    core = _format_notify_core(body)
+    link = f"\n\n🔗 {_site_base()}/admin/stress"
+    return f"{headline}\n\n{core}{tail}{link}"
 
 
 def notify(body, cur=None, conn=None, company_id=None):
@@ -460,8 +581,15 @@ def notify(body, cur=None, conn=None, company_id=None):
     partner_res = None
     if cur is not None and company_id:
         try:
+            parts = notify_parts(body) or ("", "")
             partner_res = np.notify_company(cur, company_id, body.get("event", ""), {
-                "machine": body.get("machine"), "profile": body.get("profile"),
+                "machine": body.get("stand_name") or body.get("machine"),
+                "profile": body.get("profile_name") or body.get("profile"),
+                "order_number": body.get("order_number"),
+                "note": body.get("note"),
+                "tests": body.get("tests"),
+                "headline": body.get("headline"),
+                "tail": parts[1],
                 "test_name": body.get("test_name"), "exit_code": body.get("exit_code"),
                 "duration_sec": body.get("duration_sec"),
                 "passed": body.get("passed"), "total": body.get("total"),
@@ -867,9 +995,11 @@ def ingest(cur, conn, body, company_id=None):
                             "test_name": r.get("test_name"),
                             "exit_code": r.get("exit_code")}):
                         send_stress(t)
-            # Итог прогона
+            # Итог прогона — со списком тестов, как в спеке формата.
             fin_text = _build_notify_text({
                 "event": "run_finished", "machine": machine, "profile": profile,
+                "order_number": body.get("order_number"), "note": body.get("note"),
+                "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),
             })
             if fin_text and np.claim_admin_send(cur, "run_finished", {
@@ -896,11 +1026,18 @@ def ingest(cur, conn, body, company_id=None):
                         "exit_code": r.get("exit_code"),
                         "duration_sec": r.get("duration_sec"),
                     })
-            np.notify_company(cur, company_id, "run_finished", {
+            fin_body = {
+                "event": "run_finished",
                 "machine": body.get("machine_name"),
                 "profile": body.get("profile_name"),
+                "order_number": body.get("order_number"),
+                "note": body.get("note"),
+                "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),
-            })
+            }
+            fin_parts = notify_parts(fin_body) or ("", "")
+            np.notify_company(cur, company_id, "run_finished",
+                              {**fin_body, "tail": fin_parts[1]})
             conn.commit()
         except Exception as e:
             conn.rollback()

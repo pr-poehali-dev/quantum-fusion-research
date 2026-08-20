@@ -19,30 +19,41 @@ SCHEMA = "t_p72635010_quantum_fusion_resea"
 
 EVENTS = ("run_started", "test_failed", "run_finished")
 
+# События новой программы сводим к трём, по которым партнёр настраивает
+# рассылку (спека NOTIFY_TELEGRAM_FORMAT.md).
+EVENT_ALIASES = {
+    "test_stand_started": "run_started",
+    "gpu_maintenance_required": "run_finished",
+    "upload_failed": "run_finished",
+    "run_interrupted": "run_finished",
+    "heartbeat_stale": "test_failed",
+}
+
 # Стандартные шаблоны (используются, если партнёр не задал свой).
 DEFAULT_TPL = {
     "run_started": (
-        "▶️ <b>Прогон запущен</b>\n"
-        "💻 ПК: <b>{пк}</b>\n"
-        "📋 Профиль: {профиль}{ссылка}"
+        "{заголовок}\n"
+        "\n"
+        "🖥 Стенд: <b>{пк}</b>{заказ}\n"
+        "📋 Профиль: {профиль}{тесты}{примечание}{хвост}{ссылка}"
     ),
     "test_failed": (
-        "🔴 <b>Ошибка стресс-теста</b>\n"
-        "💻 ПК: <b>{пк}</b>\n"
-        "📋 Профиль: {профиль}\n"
-        "❌ Тест: <b>{тест}</b>\n"
-        "   код выхода: {код}, длительность: {длительность}{ссылка}"
+        "{заголовок}\n"
+        "\n"
+        "🖥 Стенд: <b>{пк}</b>{заказ}\n"
+        "📋 Профиль: {профиль}{тесты}{примечание}{хвост}{ссылка}"
     ),
     "run_finished": (
-        "{статус} <b>Прогон завершён</b>\n"
-        "💻 ПК: <b>{пк}</b>\n"
-        "📋 Профиль: {профиль}\n"
-        "📊 Итог: <b>{успешно}/{всего}</b> успешно, ошибок: {ошибок}{ссылка}"
+        "{заголовок}\n"
+        "\n"
+        "🖥 Стенд: <b>{пк}</b>{заказ}\n"
+        "📋 Профиль: {профиль}{тесты}{примечание}{хвост}{ссылка}"
     ),
 }
 
 # Подстановки, доступные партнёру в шаблоне (показываем их же в интерфейсе).
-PLACEHOLDERS = ["{пк}", "{профиль}", "{тест}", "{код}", "{длительность}",
+PLACEHOLDERS = ["{заголовок}", "{пк}", "{заказ}", "{профиль}", "{тесты}",
+                "{примечание}", "{хвост}", "{тест}", "{код}", "{длительность}",
                 "{успешно}", "{всего}", "{ошибок}", "{статус}", "{ссылка}"]
 
 
@@ -54,7 +65,7 @@ def _site_link() -> str:
     site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
     if not site or "poehali.dev" in site:
         site = "https://begraphics.ru"
-    return f"\n🔗 {site}/partners/stresstester"
+    return f"\n\n🔗 {site}/partners/stresstester"
 
 
 def default_settings() -> dict:
@@ -200,6 +211,28 @@ def delete_chat(cur, company_id, rec_id):
     return True
 
 
+TEST_STATUS_EMOJI = {
+    "ok": "✅", "error": "💥", "problem": "💥", "crash": "💥",
+    "warning": "⚠️", "skipped": "⏭", "pending": "⏳", "running": "▶️",
+}
+
+
+def _tests_block(tests):
+    """Список тестов профиля со смайлами статусов."""
+    tests = tests or []
+    if not tests:
+        return ""
+    lines = ["", "", "Тесты:"]
+    for t in tests:
+        emoji = TEST_STATUS_EMOJI.get(str(t.get("status") or "").lower(), "•")
+        line = f"{emoji} {_esc(t.get('name'))}"
+        detail = (t.get("detail") or "").strip() if t.get("detail") else ""
+        if detail:
+            line += f" — {_esc(detail)}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _vars_for(event, data):
     """Значения подстановок шаблона (все экранированы под parse_mode=HTML)."""
     total = int(data.get("total") or 0)
@@ -207,9 +240,25 @@ def _vars_for(event, data):
     failed = data.get("failed")
     failed = int(failed) if failed is not None else max(total - passed, 0)
     dur = data.get("duration_sec")
+
+    order = (data.get("order_number") or "").strip() if data.get("order_number") else ""
+    note = (data.get("note") or "").strip() if data.get("note") else ""
+    headline = (data.get("headline") or "").strip()
+    if not headline:
+        headline = {
+            "run_started": "▶️ Прогон запущен",
+            "test_failed": f"💥 Упал тест: {data.get('test_name') or '—'}",
+        }.get(event, "✅ Прогон завершён — всё в порядке" if failed == 0
+              else "⚠️ Прогон завершён с ошибками")
+
     return {
+        "заголовок": f"<b>{_esc(headline)}</b>",
         "пк": _esc(data.get("machine")),
+        "заказ": f"\n📦 Заказ: {_esc(order)}" if order else "",
         "профиль": _esc(data.get("profile")),
+        "тесты": _tests_block(data.get("tests")),
+        "примечание": f"\n\n📝 {_esc(note)}" if note else "",
+        "хвост": data.get("tail") or "",
         "тест": _esc(data.get("test_name")),
         "код": "—" if data.get("exit_code") is None else _esc(data.get("exit_code")),
         "длительность": f"{float(dur):.0f} сек" if dur is not None else "—",
@@ -308,7 +357,12 @@ def notify_company(cur, company_id, event, data):
     Возвращает {sent, failed, results:[...]}. Никогда не роняет основной поток.
     """
     result = {"sent": 0, "failed": 0, "results": []}
-    if not company_id or event not in EVENTS:
+    if not company_id:
+        return result
+    # Новые события программы раскладываем на три, которыми управляет партнёр.
+    raw_event = event
+    event = EVENT_ALIASES.get(event, event)
+    if event not in EVENTS:
         return result
     try:
         st = get_settings(cur, company_id)
@@ -341,7 +395,7 @@ def notify_company(cur, company_id, event, data):
         if not text:
             continue
         # Одно и то же событие в один чат за короткое окно — не дублируем.
-        if not _claim_send(cur, ch["chat_id"], event, dedup_key(event, data)):
+        if not _claim_send(cur, ch["chat_id"], event, dedup_key(raw_event, data)):
             result["results"].append({"chat_id": ch["chat_id"], "ok": True,
                                       "skipped": "duplicate"})
             continue
