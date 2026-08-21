@@ -42,6 +42,7 @@ interface Profile {
   is_active: boolean
   sort_order: number
   is_public?: boolean       // виден гостю приложения (без пароля)
+  public_level?: "none" | "lite" | "full" // кому доступен: никому / Lite+полная / только полная
   company_id?: number | null // владелец: партнёрская компания, null = наш
   owner_tag?: string         // готовая подпись владельца с сервера
 }
@@ -57,7 +58,7 @@ const emptyTest = (): TestItem => ({
 })
 const emptyProfile = (): Profile => ({
   name: "", note: "", tests: [emptyTest()], is_active: true, sort_order: 0,
-  is_public: false, company_id: null,
+  is_public: false, public_level: "none", company_id: null,
 })
 
 // Пресет теста, как он лежит в БД (конструктор готовых тестов).
@@ -332,16 +333,26 @@ export default function StressProfilesTab() {
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition-colors ${edit.company_id ? "border-border opacity-50" : "border-border text-foreground/70"}`}
-              style={{ cursor: edit.company_id ? "not-allowed" : "pointer" }}>
-              <input type="checkbox" className="mt-0.5" disabled={!!edit.company_id}
-                checked={!!edit.is_public}
-                onChange={e => setEdit({ ...edit, is_public: e.target.checked })} />
-              <span>
-                Публичный для гостей
-                <span className="mt-0.5 block text-xs text-foreground/40">
-                  Виден в приложении без пароля. Профили компаний публичными не бывают.
-                </span>
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Доступ для гостей</span>
+              <select
+                value={edit.company_id ? "none" : (edit.public_level || "none")}
+                disabled={!!edit.company_id}
+                onChange={e => setEdit({
+                  ...edit,
+                  public_level: e.target.value as Profile["public_level"],
+                  is_public: e.target.value !== "none",
+                })}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-50"
+                style={{ cursor: edit.company_id ? "not-allowed" : "pointer" }}>
+                <option value="none">Не показывать гостям</option>
+                <option value="lite">Публичный Lite (есть в любой сборке)</option>
+                <option value="full">Публичный полный (только полная сборка)</option>
+              </select>
+              <span className="mt-1 block text-xs text-foreground/40">
+                {edit.company_id
+                  ? "Профили компаний гостям не показываются."
+                  : "В Lite-сборке часть тестов не установлена — такие профили помечайте «полный»."}
               </span>
             </label>
           </div>
@@ -589,8 +600,9 @@ export default function StressProfilesTab() {
       </div>
 
       <p className="mb-4 text-xs text-foreground/40">
-        Стенд с паролем скачивает все активные профили. Гость без пароля
-        получает только те, что помечены «Публичный для гостей».
+        Стенд с паролем скачивает все активные профили. Гость без пароля —
+        только помеченные публичными. Lite-сборка получает лишь профили
+        уровня «Lite»: в ней установлены не все тесты.
       </p>
 
       {loading ? (
@@ -610,8 +622,10 @@ export default function StressProfilesTab() {
                   {!p.is_active && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground/40">выключен</span>}
                   {p.company_id ? (
                     <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{p.owner_tag || "компания"}</span>
-                  ) : p.is_public ? (
-                    <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-500">гостевой</span>
+                  ) : p.public_level === "lite" ? (
+                    <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-500">гостевой Lite</span>
+                  ) : p.public_level === "full" || p.is_public ? (
+                    <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-500">гостевой полный</span>
                   ) : (
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground/40">наш</span>
                   )}

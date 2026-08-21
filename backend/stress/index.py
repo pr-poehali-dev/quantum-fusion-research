@@ -197,7 +197,8 @@ def handler(event, context):
             is_global = bool(token) and token == os.environ.get("STRESS_INGEST_TOKEN")
             partner_cid = None if is_global else company_by_ingest_token(cur, token)
             return profiles_pull(cur, params.get("scope"), partner_cid,
-                                 has_token=bool(is_global or partner_cid))
+                                 has_token=bool(is_global or partner_cid),
+                                 build=params.get("build") or params.get("edition"))
 
         if action in ("ingest", "verify_token", "notify",
                       "heartbeat", "sensor_feedback", "profiles_push",
@@ -1510,16 +1511,24 @@ def _row_to_profile(r):
         "is_active": r[4], "sort_order": r[5],
     }
     if len(r) > 6:
-        out["is_public"] = bool(r[6])
+        level = (r[9] if len(r) > 9 else None) or ("full" if r[6] else "none")
+        out["is_public"] = level != "none"
+        out["public_level"] = level
         out["company_id"] = r[7]
-        # Тег принадлежности: название компании либо «Публичный».
-        out["owner_tag"] = (r[8] or "") if len(r) > 8 and r[8] else (
-            "Публичный" if r[6] else "Общий")
+        # Тег принадлежности: название компании либо уровень доступа.
+        if len(r) > 8 and r[8]:
+            out["owner_tag"] = r[8]
+        elif level == "lite":
+            out["owner_tag"] = "Публичный Lite"
+        elif level == "full":
+            out["owner_tag"] = "Публичный"
+        else:
+            out["owner_tag"] = "Общий"
     return out
 
 
 _PROF_COLS = ("p.id, p.name, p.note, p.tests, p.is_active, p.sort_order, "
-              "p.is_public, p.company_id, c.name")
+              "p.is_public, p.company_id, c.name, p.public_level")
 _PROF_FROM = (f"FROM {{schema}}.stress_profiles p "
               f"LEFT JOIN {{schema}}.partner_companies c ON c.id = p.company_id")
 
@@ -1536,7 +1545,21 @@ def profiles_list(cur, company_filter=None):
     return ok({"profiles": [_row_to_profile(r) for r in cur.fetchall()]})
 
 
-def profiles_pull(cur, scope="auto", company_id=None, has_token=False):
+def _public_level(body):
+    """Уровень публичности из тела запроса: none | lite | full.
+    Понимает и старое булево поле is_public (true → full)."""
+    lvl = str(body.get("public_level") or "").strip().lower()
+    if lvl in ("lite", "light"):
+        return "lite"
+    if lvl in ("full", "public"):
+        return "full"
+    if lvl == "none":
+        return "none"
+    return "full" if body.get("is_public") else "none"
+
+
+def profiles_pull(cur, scope="auto", company_id=None, has_token=False,
+                  build="full"):
     """Выдача профилей в StressRunner.
 
     guest  — только помеченные «для гостей» (пароль не нужен);
@@ -1544,6 +1567,9 @@ def profiles_pull(cur, scope="auto", company_id=None, has_token=False):
     auto   — full при верном токене, иначе guest.
     Партнёрский токен дополнительно ограничивает выдачу его профилями
     плюс нашими общими (без владельца).
+
+    build — сборка программы: "lite" получает только профили уровня lite
+    (в облегчённой версии часть тестов не установлена), "full" — оба уровня.
     """
     scope = (scope or "auto").lower()
     if scope in ("auto", ""):
@@ -1558,10 +1584,16 @@ def profiles_pull(cur, scope="auto", company_id=None, has_token=False):
     if scope == "full" and not has_token:
         return err("forbidden", 403)
 
+    build = "lite" if str(build or "").lower() in ("lite", "light") else "full"
+
     where = ["p.is_active = TRUE"]
     if scope == "guest":
-        where.append("p.is_public = TRUE")
+        levels = "('lite')" if build == "lite" else "('lite', 'full')"
+        where.append(f"p.public_level IN {levels}")
         where.append("p.company_id IS NULL")
+    elif build == "lite":
+        # Полный каталог, но профили с недоступными в Lite тестами не шлём.
+        where.append("p.public_level <> 'full'")
     elif company_id:
         # Партнёру — его профили и общие, чужие не показываем.
         where.append(f"(p.company_id IS NULL OR p.company_id = {int(company_id)})")
@@ -1575,8 +1607,9 @@ def profiles_pull(cur, scope="auto", company_id=None, has_token=False):
         p = _row_to_profile(r)
         profiles.append({"name": p["name"], "note": p["note"], "tests": p["tests"],
                          "is_public": p.get("is_public", False),
+                         "public_level": p.get("public_level", "none"),
                          "owner_tag": p.get("owner_tag", "")})
-    return ok({"profiles": profiles, "count": len(profiles),
+    return ok({"profiles": profiles, "count": len(profiles), "build": build,
                "audience": "authenticated" if scope == "full" else "guest"})
 
 
@@ -1601,7 +1634,8 @@ def profiles_push(cur, conn, body, company_id=None):
         note = str(it.get("note") or "")[:2000]
         tests_json = json.dumps(it.get("tests") or [], ensure_ascii=False)
         is_active = "FALSE" if it.get("is_active") is False else "TRUE"
-        is_public = "TRUE" if it.get("is_public") else "FALSE"
+        level = _public_level(it)
+        is_public = "TRUE" if level != "none" else "FALSE"
         sort_order = int(it.get("sort_order") or i)
 
         cur.execute(
@@ -1619,9 +1653,10 @@ def profiles_push(cur, conn, body, company_id=None):
         else:
             cur.execute(
                 f"INSERT INTO {SCHEMA}.stress_profiles "
-                f"(name, note, tests, is_active, is_public, sort_order, company_id) "
+                f"(name, note, tests, is_active, is_public, public_level, "
+                f"sort_order, company_id) "
                 f"VALUES ({esc(name)}, {esc(note)}, {esc(tests_json)}::jsonb, "
-                f"{is_active}, {is_public}, {sort_order}, {owner})"
+                f"{is_active}, {is_public}, {esc(level)}, {sort_order}, {owner})"
             )
             added += 1
     conn.commit()
@@ -1635,7 +1670,8 @@ def profile_save(cur, conn, body, company_id=None, force_company=False):
     note = str(body.get("note") or "")[:2000]
     tests = body.get("tests") or []
     is_active = body.get("is_active", True)
-    is_public = bool(body.get("is_public"))
+    level = _public_level(body)
+    is_public = level != "none"
     sort_order = int(body.get("sort_order") or 0)
     tests_json = json.dumps(tests, ensure_ascii=False)
 
@@ -1652,17 +1688,19 @@ def profile_save(cur, conn, body, company_id=None, force_company=False):
         cur.execute(
             f"UPDATE {SCHEMA}.stress_profiles SET name = {esc(name)}, note = {esc(note)}, "
             f"tests = {esc(tests_json)}::jsonb, is_active = {'TRUE' if is_active else 'FALSE'}, "
-            f"is_public = {'TRUE' if is_public else 'FALSE'}, company_id = {owner}, "
+            f"is_public = {'TRUE' if is_public else 'FALSE'}, "
+            f"public_level = {esc(level)}, company_id = {owner}, "
             f"sort_order = {sort_order}, updated_at = NOW() "
             f"WHERE id = {int(pid)}{scope_sql} RETURNING id"
         )
     else:
         cur.execute(
             f"INSERT INTO {SCHEMA}.stress_profiles "
-            f"(name, note, tests, is_active, is_public, sort_order, company_id) VALUES "
+            f"(name, note, tests, is_active, is_public, public_level, "
+            f"sort_order, company_id) VALUES "
             f"({esc(name)}, {esc(note)}, {esc(tests_json)}::jsonb, "
             f"{'TRUE' if is_active else 'FALSE'}, {'TRUE' if is_public else 'FALSE'}, "
-            f"{sort_order}, {owner}) RETURNING id"
+            f"{esc(level)}, {sort_order}, {owner}) RETURNING id"
         )
     row = cur.fetchone()
     if not row:

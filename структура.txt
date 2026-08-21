@@ -1724,3 +1724,29 @@ StressTester_Setup_<версия>.exe.
 src/lib/api.ts — api.stressReleases.fixFileNames(adminKey).
 src/components/admin/StressReleasesTab.tsx — кнопка «Исправить имена
 файлов» над списком версий.
+
+[v8.31] Имя файла при скачивании + уровни публичности профилей.
+backend/stress-releases/index.py:
+  хранилище отбрасывает Content-Disposition из подписанной ссылки, поэтому
+  браузер брал имя из конца адреса («uuid.exe»). Решение — «говорящий» путь:
+  ensure_named_key(key, nice_name) копирует объект в
+  stress_app/<uuid>/<Имя_файла.exe> и удаляет исходный; nice_file_name()
+  собирает имя из file_name либо из версии; key_from_url() достаёт ключ из
+  старого CDN-адреса. Переименование выполняется при создании версии
+  (action=create), разово через action=fix_file_names и автоматически при
+  первом скачивании старой записи (count_download обновляет s3_key/file_url/
+  file_name). Дубли ensure_named_key/fix_file_names убраны.
+БД: V0244 — stress_profiles.public_level TEXT DEFAULT 'none'
+  (none | lite | full); ранее публичные профили переведены в 'full';
+  частичный индекс idx_stress_profiles_public_level.
+backend/stress/index.py:
+  _public_level(body) — разбор поля public_level (понимает старое is_public);
+  profiles_pull(..., build) — параметр ?build=lite|full (алиас ?edition):
+    guest+lite → только public_level='lite'; guest+full → 'lite' и 'full';
+    полный каталог при build=lite исключает профили уровня 'full'
+    (их тесты в Lite-сборке не установлены). В ответе появилось поле build.
+  profile_save / profiles_push пишут public_level; _row_to_profile отдаёт
+    public_level и owner_tag («Публичный Lite» / «Публичный» / «Общий»).
+src/components/admin/StressProfilesTab.tsx — вместо галочки выпадающий
+  список «Доступ для гостей»: не показывать / Публичный Lite / Публичный
+  полный; в списке теги «гостевой Lite» и «гостевой полный».

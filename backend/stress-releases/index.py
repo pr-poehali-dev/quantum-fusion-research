@@ -157,6 +157,9 @@ def nice_file_name(name, version):
     return f"StressTester_Setup_{ver}{ext}"
 
 
+_LAST_RENAME_ERROR = {"msg": ""}
+
+
 def ensure_named_key(key, nice_name):
     """Переложить файл так, чтобы адрес заканчивался понятным именем.
 
@@ -169,8 +172,14 @@ def ensure_named_key(key, nice_name):
         return key
     new_key = f"stress_app/{uuid.uuid4().hex}/{nice_name}"
     cli = s3()
-    cli.copy_object(Bucket="files", Key=new_key,
-                    CopySource={"Bucket": "files", "Key": key})
+    try:
+        cli.copy_object(Bucket="files", Key=new_key,
+                        CopySource={"Bucket": "files", "Key": key})
+    except Exception as e:
+        # Файл останется под прежним адресом — скачивание не ломаем.
+        print(f"[RELEASES] переименование не удалось: {e}")
+        _LAST_RENAME_ERROR["msg"] = str(e)[:300]
+        return key
     try:
         cli.delete_object(Bucket="files", Key=key)
     except Exception as e:
@@ -191,6 +200,9 @@ def download_url(s3_key, file_name):
     заранее переложен под понятным именем (ensure_named_key).
     """
     name = (file_name or "stress-tester.exe").replace('"', "")
+    # Имя берётся из адреса объекта (см. ensure_named_key): подсказку
+    # Content-Disposition хранилище отбрасывает. Оставляем её на случай,
+    # если поведение изменится, но полагаться на неё нельзя.
     return s3().generate_presigned_url(
         "get_object",
         Params={
@@ -229,6 +241,8 @@ def handler(event: dict, context) -> dict:
 
     Файл до 5 ГБ грузится браузером НАПРЯМУЮ в S3 по presigned-ссылке —
     через функцию он не проходит (лимиты размера и времени выполнения).
+    Скачивание идёт по временной ссылке; путь объекта заканчивается
+    настоящим именем файла, иначе браузер сохраняет его как «uuid.exe».
     """
     method = event.get("httpMethod", "GET")
     if method == "OPTIONS":
@@ -280,13 +294,28 @@ def handler(event: dict, context) -> dict:
                 if row:
                     key = row[2] or key_from_url(row[1])
                     if key:
-                        # Наше хранилище: временная ссылка с нормальным именем.
-                        target = download_url(key, nice_file_name(row[3], row[4]))
+                        # Наше хранилище: временная ссылка. Файлы, залитые до
+                        # появления «говорящих» путей, перекладываем на лету —
+                        # иначе браузер сохранит их под техническим именем.
+                        nice = nice_file_name(row[3], row[4])
+                        new_key = ensure_named_key(key, nice)
+                        if new_key != key:
+                            cur.execute(
+                                f"UPDATE {TABLE} SET s3_key = {esc(new_key)}, "
+                                f"file_url = {esc(cdn_url(new_key))}, "
+                                f"file_name = {esc(nice)} WHERE id = {rid}"
+                            )
+                            conn.commit()
+                            key = new_key
+                        target = download_url(key, nice)
                     else:
                         target = row[0] or row[1] or ""
             if not target:
                 return resp(404, {"ok": False, "error": "Версия недоступна"})
-            return resp(200, {"ok": True, "file_url": target})
+            out = {"ok": True, "file_url": target}
+            if is_admin and _LAST_RENAME_ERROR["msg"]:
+                out["rename_error"] = _LAST_RENAME_ERROR["msg"]
+            return resp(200, out)
 
         # Самопроверка: умеет ли хранилище копировать объект и отдавать
         # заданное имя файла. Работает на крошечном временном объекте и
@@ -422,8 +451,15 @@ def handler(event: dict, context) -> dict:
         if action == "create":
             version = (body.get("version") or "").strip()
             file_url = (body.get("file_url") or "").strip()
-            if not version or not file_url:
+            s3_key = (body.get("s3_key") or "").strip()
+            file_name = (body.get("file_name") or "").strip()
+            if not version or not (file_url or s3_key):
                 return resp(400, {"error": "Нужны версия и файл"})
+            if s3_key:
+                # Кладём файл по адресу с настоящим именем — иначе браузер
+                # сохранит его под техническим набором символов.
+                s3_key = ensure_named_key(s3_key, file_name)
+                file_url = cdn_url(s3_key)
             # Ссылка на наш бакет → работаем с ним как с локальным файлом:
             # тогда сможем выдавать временную ссылку с нормальным именем.
             s3_key = (body.get("s3_key") or "").strip() or key_from_url(file_url)
