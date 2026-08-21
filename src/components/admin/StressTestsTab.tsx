@@ -5,6 +5,7 @@ import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
 import StressBrandingTab from "@/components/admin/StressBrandingTab"
+import StressSensorFeedbackTab from "@/components/admin/StressSensorFeedbackTab"
 import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
 import { openRunReport, type ReportRun } from "@/components/admin/stress/folderReport"
 import { testTitle } from "@/components/admin/stress/scoreFormat"
@@ -88,7 +89,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
   const [allCompanies, setAllCompanies] = useState(false)
   // Авторизация запросов к stress: партнёр — по сессии, админ — по adminKey
   const auth = isPartner ? { session } : { allCompanies }
-  const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics" | "branding">("runs")
+  const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics" | "branding" | "sensors">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
@@ -228,11 +229,17 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
               style={{ cursor: "pointer" }}>
               <Icon name="BadgeCheck" size={15} /> Брендинг и уведомления
             </button>
+            <button onClick={() => setView("sensors")}
+              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "sensors" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="Radio" size={15} /> Датчики
+            </button>
           </>
         )}
       </div>
 
-      {view === "branding" ? <StressBrandingTab adminKey={adminKey} />
+      {view === "sensors" ? <StressSensorFeedbackTab adminKey={adminKey} />
+       : view === "branding" ? <StressBrandingTab adminKey={adminKey} />
        : view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} />
        : view === "profiles" ? <StressProfilesTab />
        : view === "folders" ? (

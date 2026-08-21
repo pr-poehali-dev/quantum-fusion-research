@@ -163,6 +163,22 @@
       "method": "GET",
       "path": "/?action=check_stale_heartbeats&cron_key=wrong",
       "expectedStatus": 403
+    },
+    {
+      "name": "Sensor feedback upload without token forbidden",
+      "method": "POST",
+      "path": "/?action=sensor_feedback",
+      "body": {
+        "stand_name": "__sttest__",
+        "file_name": "__sttest__.zip"
+      },
+      "expectedStatus": 403
+    },
+    {
+      "name": "Sensor feedback list without admin forbidden",
+      "method": "GET",
+      "path": "/?action=sensor_feedback_list",
+      "expectedStatus": 403
     }
   ]
 }

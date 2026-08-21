@@ -9,6 +9,7 @@ from botocore.client import Config
 from tg_notify import send_stress
 import notify_prefs as np
 import brand_pack as bp
+import sensor_feedback as sf
 
 
 def _esc(v) -> str:
@@ -16,6 +17,7 @@ def _esc(v) -> str:
     return html_mod.escape("—" if v is None or v == "" else str(v), quote=False)
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
+sf.TABLE = f"{SCHEMA}.stress_sensor_feedback"
 
 cors = {
     "Access-Control-Allow-Origin": "*",
@@ -189,7 +191,7 @@ def handler(event, context):
             return ok(check_stale_heartbeats(cur, conn))
 
         if action in ("ingest", "profiles_pull", "verify_token", "notify",
-                      "heartbeat",
+                      "heartbeat", "sensor_feedback",
                       "partner_branding", "partner_branding_assets",
                       "partner_branding_zip"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
@@ -216,6 +218,8 @@ def handler(event, context):
                 return notify(body, cur, conn, partner_cid)
             if action == "heartbeat" and method == "POST":
                 return heartbeat(cur, conn, body, partner_cid)
+            if action == "sensor_feedback" and method == "POST":
+                return sf.receive(cur, conn, body, partner_cid, esc, ok, err, _s3)
             if action in ("partner_branding", "partner_branding_assets",
                           "partner_branding_zip") and method == "GET":
                 # Синхронизация брендинга при онлайн-входе StressRunner.
@@ -369,6 +373,15 @@ def handler(event, context):
         if action == "metric_prefs_save" and method in ("POST", "PUT"):
             return metric_prefs_save(cur, conn, body)
 
+        # Отчёты о нехватке датчиков со стендов (только админ)
+        if action == "sensor_feedback_list" and method == "GET":
+            return sf.list_items(cur, ok)
+        if action == "sensor_feedback_resolve" and method in ("POST", "PUT"):
+            return sf.set_resolved(cur, conn, int(body.get("id") or 0),
+                                   bool(body.get("resolved")), ok, err)
+        if action == "sensor_feedback_delete" and method == "DELETE":
+            return sf.delete_item(cur, conn, int(params.get("id") or 0), ok, err)
+
         # Пресеты тестов (конструктор готовых тестов)
         if action == "presets_list" and method == "GET":
             return presets_list(cur)
@@ -505,6 +518,21 @@ def notify_parts(body):
             tail += f"\n   {', '.join(extra)}"
         if detail:
             tail += f"\n   {_esc(detail)}"
+
+    elif event == "sensors_missing":
+        headline = _notify_headline(body, "📡 <b>Не хватает датчиков — тестовый стенд</b>")
+        ok_n = int(body.get("slots_ok") or 0)
+        miss = int(body.get("slots_missing") or 0)
+        tail = (f"\n\nСлоты: <b>{ok_n}</b> ок · <b>{miss}</b> без данных"
+                f"\nHWiNFO SM: {'активна' if body.get('hwinfo_active') else 'нет'}")
+        labels = [str(x).strip() for x in (body.get("missing_labels") or []) if str(x).strip()]
+        if labels:
+            tail += "\n" + "\n".join(f"• {_esc(x)}" for x in labels[:15])
+            if len(labels) > 15:
+                tail += f"\n• …ещё {len(labels) - 15}"
+        fname = (body.get("feedback_file_name") or "").strip()
+        if fname:
+            tail += f"\n\n📦 {_esc(fname)}"
 
     elif event == "gpu_maintenance_required":
         headline = _notify_headline(body, "⚠️ <b>Проблема с температурой GPU</b>")

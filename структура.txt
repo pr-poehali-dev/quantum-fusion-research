@@ -1614,3 +1614,25 @@ action=count_download возвращает source_link (или file_url), без
 к API Яндекса — быстрее и не «сжигает» ссылку.
 src/pages/StressTesterDownload.tsx — download() открывает ссылку в новой
 вкладке (window.open, noopener), счётчик шлётся фоном.
+
+[v8.26] Sensor feedback — отчёты о нехватке датчиков с тестовых стендов.
+БД: V0241 — таблица stress_sensor_feedback (стенд, заказ, профиль, версия,
+hwinfo_active, slots_ok/missing/na, missing_labels jsonb, note, файл в S3,
+company_id, is_resolved, exported_at).
+backend/stress/sensor_feedback.py — новый модуль: receive() (приём ZIP в
+base64, лимит 9 МБ, файл в S3 stress_sensor_feedback/, запись в БД),
+list_items(), set_resolved(), delete_item().
+backend/stress/index.py:
+  POST ?action=sensor_feedback — приём от EXE по ingest-токену (общий или
+    партнёрский), ответ {ok, id, url}; >9 МБ → 413 payload_too_large;
+  GET  ?action=sensor_feedback_list — список для админки (только админ);
+  POST ?action=sensor_feedback_resolve {id, resolved};
+  DELETE ?action=sensor_feedback_delete&id=;
+  notify_parts(): событие sensors_missing («📡 Не хватает датчиков») —
+    слоты ок/без данных, статус HWiNFO SM, до 15 названий датчиков, имя ZIP.
+    Уходит только в наш админский чат (в EVENT_ALIASES не добавлено).
+src/lib/api.ts — api.stress.sensorFeedbackList/Resolve/Delete.
+src/components/admin/StressSensorFeedbackTab.tsx — список обращений:
+  стенд/заказ/дата, счётчики слотов, метка «HWiNFO выкл.», раскрытие с
+  названиями недостающих датчиков, скачивание ZIP, «разобрано», удаление.
+src/components/admin/StressTestsTab.tsx — раздел «Датчики» (view=sensors).

@@ -452,6 +452,13 @@ export const api = {
       fetch(`${URLS.stress}?action=brand_revoke${stressQ(adminKey, auth)}`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "brand_revoke" }) }).then(r => r.json()),
     verifyReport: (code: string) =>
       fetch(`${URLS.stress}?action=verify&code=${encodeURIComponent(code)}`).then(r => r.json()),
+
+    sensorFeedbackList: (adminKey: string) =>
+      fetch(`${URLS.stress}?action=sensor_feedback_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    sensorFeedbackResolve: (id: number, resolved: boolean, adminKey: string) =>
+      fetch(`${URLS.stress}?action=sensor_feedback_resolve`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "sensor_feedback_resolve", id, resolved }) }).then(r => r.json()),
+    sensorFeedbackDelete: (id: number, adminKey: string) =>
+      fetch(`${URLS.stress}?action=sensor_feedback_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
   },
   companySettings: {
     list: () => fetch(URLS.companySettings).then(r => r.json()),
