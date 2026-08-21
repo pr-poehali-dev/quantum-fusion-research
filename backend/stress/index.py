@@ -334,6 +334,9 @@ def handler(event, context):
         partner_allowed = {
             "list", "get", "folders_list", "folder_save", "folder_delete",
             "runs_assign_folder", "folder_report", "delete_run", "delete_runs",
+            # Переименование стенда в своём прогоне (правку ограничивает
+            # rename_run по partner_company_id — чужое не тронуть).
+            "rename_run", "folder_reorder", "live_runs",
             # Настройки Telegram-уведомлений своей компании
             "notify_config", "notify_settings_save", "notify_chat_save",
             "notify_chat_delete", "notify_chat_test",
@@ -640,7 +643,11 @@ def _build_notify_text(body):
         core = _format_notify_core(dict(body, tests=None))
     else:
         core = _format_notify_core(body)
-    link = f"\n\n🔗 {_site_base()}/admin/stress"
+    # Ссылка: если известен публичный код отчёта — даём прямую ссылку на него
+    # (её можно сразу отправить клиенту), иначе общий список прогонов.
+    code = str(body.get("public_code") or "").strip()
+    link = (f"\n\n🔗 Отчёт: {_site_base()}/tests/{code}" if code
+            else f"\n\n🔗 {_site_base()}/admin/stress")
     return f"{headline}\n\n{core}{tail}{link}"
 
 
@@ -656,6 +663,7 @@ def notify(body, cur=None, conn=None, company_id=None):
         try:
             parts = notify_parts(body) or ("", "")
             partner_res = np.notify_company(cur, company_id, body.get("event", ""), {
+                "run_uid": body.get("run_uid"),
                 "machine": body.get("stand_name") or body.get("machine"),
                 "profile": body.get("profile_name") or body.get("profile"),
                 "order_number": body.get("order_number"),
@@ -675,9 +683,18 @@ def notify(body, cur=None, conn=None, company_id=None):
                 conn.rollback()
             print(f"[PARTNER_NOTIFY] notify exception: {e}")
 
+    # Общий админский чат — только про НАШИ прогоны. Чужие события уходят
+    # исключительно в чаты компании-владельца (см. notify_company выше).
+    if cur is not None and company_id and company_id != own_company_id(cur):
+        if conn is not None:
+            conn.commit()
+        return ok({"ok": True, "skipped": "partner_only",
+                   **({"partner": partner_res} if partner_res is not None else {})})
+
     text = _build_notify_text(body)
     if text is not None and cur is not None and not np.claim_admin_send(
             cur, body.get("event", ""), {
+                "run_uid": body.get("run_uid"),
                 "machine": body.get("machine"), "profile": body.get("profile"),
                 "test_name": body.get("test_name"), "exit_code": body.get("exit_code"),
                 "passed": body.get("passed"), "total": body.get("total"),
@@ -1040,6 +1057,7 @@ def ingest(cur, conn, body, company_id=None):
     # собирает её сам и шлёт вместе с прогоном. Формат см. в шапке отчёта.
     hardware = body.get("hardware")
     hardware_sql = f"{esc(json.dumps(hardware, ensure_ascii=False))}::jsonb" if hardware else "NULL"
+    public_code = gen_public_code(cur)
     cur.execute(
         f"INSERT INTO {SCHEMA}.stress_runs "
         f"(run_uid, profile_name, machine_name, os_info, note, started_at, finished_at, "
@@ -1049,7 +1067,7 @@ def ingest(cur, conn, body, company_id=None):
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
         f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}, "
-        f"{esc(gen_public_code(cur))}) RETURNING id"
+        f"{esc(public_code)}) RETURNING id"
     )
     run_id = cur.fetchone()[0]
 
@@ -1104,7 +1122,12 @@ def ingest(cur, conn, body, company_id=None):
     # (notify:true в теле ingest). Тогда отдельный вызов action=notify не нужен.
     # Сбой Telegram НЕ роняет приём результата (всё уже сохранено и закоммичено).
     notify_result = None
-    if body.get("notify"):
+    # Общий админский чат (STRESS_TG_CHAT_ID) — ТОЛЬКО про наши прогоны.
+    # Раньше туда падало вообще всё, включая прогоны партнёров: получался
+    # «общий логгер», из-за которого одно событие светилось и у нас, и в
+    # чате партнёра. Чужие прогоны теперь уходят только в чаты их компании.
+    is_ours = not company_id or company_id == own_company_id(cur)
+    if body.get("notify") and is_ours:
         try:
             machine = body.get("machine_name") or "—"
             profile = body.get("profile_name") or "—"
@@ -1115,11 +1138,13 @@ def ingest(cur, conn, body, company_id=None):
             # Итог прогона — со списком тестов, как в спеке формата.
             fin_text = _build_notify_text({
                 "event": "run_finished", "machine": machine, "profile": profile,
+                "public_code": public_code,
                 "order_number": body.get("order_number"), "note": body.get("note"),
                 "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),
             })
             if fin_text and np.claim_admin_send(cur, "run_finished", {
+                    "run_uid": run_uid,
                     "machine": machine, "profile": profile,
                     "passed": passed, "total": len(results)}):
                 notify_result = send_stress(fin_text)
@@ -1138,6 +1163,8 @@ def ingest(cur, conn, body, company_id=None):
             # итог, иначе партнёр получал по два сообщения на один сбой.
             fin_body = {
                 "event": "run_finished",
+                "run_uid": run_uid,
+                "public_code": public_code,
                 "machine": body.get("machine_name"),
                 "profile": body.get("profile_name"),
                 "order_number": body.get("order_number"),
@@ -1287,13 +1314,18 @@ def rename_run(cur, conn, body, owner_cid=None):
     if not run_id:
         return err("id required")
     name = (body.get("machine_name") or "").strip()[:200]
+    if not name:
+        return err("machine_name required", 400)
     own = f" AND partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
     cur.execute(
-        f"UPDATE {SCHEMA}.stress_runs SET machine_name = {esc(name)} WHERE id = {run_id}{own}"
+        f"UPDATE {SCHEMA}.stress_runs SET machine_name = {esc(name)} "
+        f"WHERE id = {run_id}{own} RETURNING id"
     )
-    conn.commit()
-    if not cur.rowcount:
+    updated = cur.fetchone()
+    if not updated:
+        conn.rollback()
         return err("not found", 404)
+    conn.commit()
     return ok({"ok": True, "id": run_id, "machine_name": name})
 
 

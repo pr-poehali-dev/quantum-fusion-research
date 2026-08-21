@@ -61,11 +61,23 @@ def _esc(v) -> str:
     return html_mod.escape("—" if v is None or v == "" else str(v), quote=False)
 
 
-def _site_link() -> str:
+def _site_base() -> str:
     site = os.environ.get("SITE_BASE_URL", "").rstrip("/")
     if not site or "poehali.dev" in site:
         site = "https://begraphics.ru"
-    return f"\n\n🔗 {site}/partners/stresstester"
+    return site
+
+
+def _site_link(public_code: str = "") -> str:
+    """Ссылка в конце сообщения.
+
+    Если известен публичный код отчёта — даём прямую ссылку на сам отчёт:
+    её можно сразу переслать клиенту. Иначе — вход в кабинет, как раньше.
+    """
+    code = str(public_code or "").strip()
+    if code:
+        return f"\n\n🔗 Отчёт: {_site_base()}/tests/{code}"
+    return f"\n\n🔗 {_site_base()}/partners/stresstester"
 
 
 def default_settings() -> dict:
@@ -266,7 +278,8 @@ def _vars_for(event, data):
         "всего": str(total),
         "ошибок": str(failed),
         "статус": "✅" if failed == 0 else "⚠️",
-        "ссылка": _site_link(),
+        "ссылка": _site_link(data.get("public_code")),
+        "отчёт": _site_link(data.get("public_code")),
     }
 
 
@@ -293,11 +306,21 @@ DEDUP_WINDOW_MIN = 5
 def dedup_key(event, data):
     """Ключ события для защиты от дублей.
 
-    Считаем по СУТИ события (ПК + профиль + итог), а не по тексту: десктоп
-    шлёт итог двумя путями (ingest и notify), и тексты у них могут чуть
-    отличаться (например, число ошибок берётся из разных полей). По сути же
-    это одно событие.
+    ГЛАВНОЕ — run_uid. Десктоп шлёт итог двумя путями (ingest и notify), и в
+    них по-разному подписан стенд: в одном «приёмка-левый-стенд», в другом
+    «Заказ 5167». Раньше ключ считался по имени стенда — тексты не совпадали,
+    дедуп не срабатывал, и партнёр получал два одинаковых сообщения. run_uid
+    у обоих путей один и тот же, поэтому теперь он и есть ключ.
+
+    Если run_uid не пришёл (старая версия программы) — падаем на прежний
+    расчёт по сути события.
     """
+    run_uid = str(data.get("run_uid") or "").strip()
+    if run_uid:
+        parts = [str(event), run_uid, str(data.get("test_name") or "")]
+        if event == "test_failed":
+            parts.append(str(data.get("exit_code")))
+        return "|".join(parts)[:300]
     total = int(data.get("total") or 0)
     passed = int(data.get("passed") or 0)
     parts = [str(event), str(data.get("machine") or ""),
