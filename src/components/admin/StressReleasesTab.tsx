@@ -204,9 +204,29 @@ export default function StressReleasesTab() {
 
   const [editEdition, setEditEdition] = useState<"full" | "lite">("full")
 
+  // Замена файла установки у уже добавленной версии: новая ссылка на
+  // Яндекс.Диск. Пустое поле — файл остаётся прежним.
+  const [editLink, setEditLink] = useState("")
+  const [editFile, setEditFile] = useState<{ name: string; size: number } | null>(null)
+  const [editLinkBusy, setEditLinkBusy] = useState(false)
+  const [editLinkErr, setEditLinkErr] = useState("")
+  const [editResolved, setEditResolved] = useState<Record<string, unknown> | null>(null)
+
+  const checkEditLink = async () => {
+    const ak = getAdminKey()
+    if (!ak || !editLink.trim()) return
+    setEditLinkBusy(true); setEditLinkErr(""); setEditFile(null); setEditResolved(null)
+    const r = await api.stressReleases.resolveLink(editLink.trim(), ak).catch(() => null)
+    setEditLinkBusy(false)
+    if (!r?.ok) { setEditLinkErr(r?.error || "Не удалось открыть ссылку"); return }
+    setEditFile({ name: r.file_name, size: Number(r.file_size || 0) })
+    setEditResolved(r)
+  }
+
   const startEdit = (r: Release) => {
     setEditId(r.id); setEditVersion(cleanVersion(r.version))
     setEditChangelog(r.changelog || ""); setEditEdition(editionOf(r))
+    setEditLink(""); setEditFile(null); setEditLinkErr(""); setEditResolved(null)
   }
 
   const saveEdit = async () => {
@@ -214,10 +234,23 @@ export default function StressReleasesTab() {
     if (!ak || editId === null) return
     const version = cleanVersion(editVersion)
     if (!version) { setError("Укажите номер версии"); return }
+    // Ссылку могли вставить, но не нажать «Проверить» — разберём её сами.
+    let file = editResolved
+    if (!file && editLink.trim()) {
+      setEditBusy(true)
+      file = await api.stressReleases.resolveLink(editLink.trim(), ak).catch(() => null)
+      setEditBusy(false)
+      if (!file?.ok) { setEditLinkErr("Не удалось открыть ссылку"); return }
+    }
+
     setEditBusy(true)
-    const res = await api.stressReleases.update(
-      { id: editId, version, edition: editEdition, changelog: editChangelog.trim() },
-      ak).catch(() => null)
+    const res = await api.stressReleases.update({
+      id: editId, version, edition: editEdition, changelog: editChangelog.trim(),
+      ...(file ? {
+        file_url: file.file_url, source_link: file.public_link || "",
+        file_name: file.file_name, file_size: Number(file.file_size || 0),
+      } : {}),
+    }, ak).catch(() => null)
     setEditBusy(false)
     if (!res?.ok) { setError("Не удалось сохранить"); return }
     setEditId(null)
@@ -459,6 +492,36 @@ export default function StressReleasesTab() {
                               <option value="lite">Lite</option>
                             </select>
                           </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-foreground/60">
+                            Файл установки
+                          </label>
+                          <p className="mb-1 truncate text-[11px] text-foreground/40"
+                            title={r.file_name}>
+                            Сейчас: {r.file_name || "—"} · {fmtSize(r.file_size)}
+                          </p>
+                          <div className="flex gap-2">
+                            <input value={editLink} onChange={e => setEditLink(e.target.value)}
+                              disabled={editBusy} className={inputCls}
+                              placeholder="Ссылка на Яндекс.Диск — чтобы заменить файл" />
+                            <button onClick={checkEditLink}
+                              disabled={editBusy || editLinkBusy || !editLink.trim()}
+                              style={{ cursor: "pointer" }} title="Проверить ссылку"
+                              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors disabled:opacity-40">
+                              <Icon name={editLinkBusy ? "Loader2" : "Link"} size={13}
+                                className={editLinkBusy ? "animate-spin" : ""} />
+                              Проверить
+                            </button>
+                          </div>
+                          {editFile && (
+                            <p className="mt-1 text-[11px] text-green-400">
+                              Новый файл: {editFile.name} · {fmtSize(editFile.size)}
+                            </p>
+                          )}
+                          {editLinkErr && (
+                            <p className="mt-1 text-[11px] text-red-400">{editLinkErr}</p>
+                          )}
                         </div>
                         <div>
                           <label className="mb-1 block text-xs text-foreground/60">Что нового</label>

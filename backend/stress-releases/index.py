@@ -534,6 +534,34 @@ def handler(event: dict, context) -> dict:
                             sets.append(f"file_name = {esc(nice)}")
                         except Exception as e:
                             print(f"[RELEASES] переименование при правке: {e}")
+            # Замена файла установки: пришла новая ссылка или файл из
+            # хранилища. Счётчик скачиваний и id версии сохраняем — меняется
+            # только сам дистрибутив.
+            new_url = (body.get("file_url") or "").strip()
+            new_key = (body.get("s3_key") or "").strip()
+            if new_url or new_key:
+                cur.execute(f"SELECT version, edition FROM {TABLE} WHERE id = {rid}")
+                cr = cur.fetchone()
+                ver = clean_version(body.get("version") or (cr[0] if cr else ""))
+                edi = str(body.get("edition") or (cr[1] if cr else "full")).lower()
+                if edi not in ("full", "lite"):
+                    edi = "full"
+                key = new_key or key_from_url(new_url)
+                nice = nice_file_name(body.get("file_name") or "", ver, edi)
+                if key:
+                    try:
+                        key = ensure_named_key(key, nice)
+                        new_url = cdn_url(key)
+                    except Exception as e:
+                        print(f"[RELEASES] замена файла: {e}")
+                sets = [x for x in sets
+                        if not x.startswith(("s3_key =", "file_url =", "file_name ="))]
+                sets.append(f"s3_key = {esc(key)}")
+                sets.append(f"file_url = {esc(new_url)}")
+                sets.append(f"file_name = {esc(nice)}")
+                sets.append(f"file_size = {int(body.get('file_size') or 0)}")
+                sets.append(f"source_link = {esc(body.get('source_link') or '')}")
+
             if "edition" in body and str(body["edition"]).lower() in ("full", "lite"):
                 sets.append(f"edition = {esc(str(body['edition']).lower())}")
             if "changelog" in body:
