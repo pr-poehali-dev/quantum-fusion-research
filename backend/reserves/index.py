@@ -330,6 +330,98 @@ def _run_selftest(cur):
                    "actual": {"state": st, "res_pos": rpos, "res_neg": rneg, "active": ractive,
                               "basket": _basket_qty(cur, gid)}})
 
+    # ── ПЕРЕСЧЁТ: висящий резерв перевешивается на другую партию, а не в закупку ──
+    # Баг «теряем ещё одну позицию»: товар есть в группе двумя партиями, резерв
+    # висит на партии, где товар кончился. Раньше пересчёт делал его дефицитом,
+    # заказ уходил в закупку, а свободную единицу с соседней партии резервировали
+    # заново — списывали две штуки вместо одной.
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price) "
+        f"VALUES (%s, 0, 0, 0, 0) RETURNING id", (gid,)
+    )
+    sup_empty = cur.fetchone()[0]
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price) "
+        f"VALUES (%s, 1, 0, 0, 0) RETURNING id", (gid,)
+    )
+    sup_full = cur.fetchone()[0]
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestH__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_h = cur.fetchone()[0]
+    # Резерв висит на ПУСТОЙ партии — имитация рассинхрона после перемещения
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.warehouse_reserves (order_id, group_id, supply_id, slot, qty, type, status) "
+        f"VALUES (%s, %s, %s, 'test', 1, 'POSITIVE', 'ACTIVE')",
+        (oid_h, gid, sup_empty),
+    )
+    core.recalc_reserves_global(cur, group_id=gid)
+    core.recalc_reserves_global(cur, group_id=gid)   # повтор: результат тот же
+    st = _group_state(cur, gid)
+    cur.execute(
+        f"SELECT supply_id, type, status FROM {SCHEMA}.warehouse_reserves WHERE order_id=%s",
+        (oid_h,),
+    )
+    rrows = cur.fetchall()
+    # Ожидаем: резерв переехал на партию с товаром, остался POSITIVE,
+    # на полке 0 свободных (1 шт. удержана), дефицита и закупки нет.
+    ok = (st["reserved"] == 1 and st["negative"] == 0 and st["on_hand"] == 0
+          and _basket_qty(cur, gid) == 0
+          and len(rrows) == 1 and rrows[0][0] == sup_full
+          and rrows[0][1] == "POSITIVE" and rrows[0][2] == "ACTIVE")
+    report.append({"case": "recalc: hanging reserve rebinds to other supply (not lost to purchase)",
+                   "passed": ok,
+                   "actual": {"state": st, "basket": _basket_qty(cur, gid),
+                              "reserves": [list(r) for r in rrows],
+                              "sup_full": sup_full, "sup_empty": sup_empty}})
+
+    # ── ПЕРЕСЧЁТ: если товара в группе реально нет — резерв идёт в дефицит ──
+    pid, gid = mk_product(0)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.warehouse_supplies (group_id, qty, qty_reserved, qty_negative, cost_price) "
+        f"VALUES (%s, 0, 0, 0, 0) RETURNING id", (gid,)
+    )
+    sup_e2 = cur.fetchone()[0]
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestI__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_i = cur.fetchone()[0]
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.warehouse_reserves (order_id, group_id, supply_id, slot, qty, type, status) "
+        f"VALUES (%s, %s, %s, 'test', 1, 'POSITIVE', 'ACTIVE')",
+        (oid_i, gid, sup_e2),
+    )
+    core.recalc_reserves_global(cur, group_id=gid)
+    st = _group_state(cur, gid)
+    cur.execute(
+        f"SELECT type, status FROM {SCHEMA}.warehouse_reserves WHERE order_id=%s", (oid_i,)
+    )
+    r2 = cur.fetchall()
+    ok = (st["reserved"] == 0 and st["negative"] == 1
+          and len(r2) == 1 and r2[0][0] == "NEGATIVE" and r2[0][1] == "ACTIVE")
+    report.append({"case": "recalc: no stock in group -> reserve becomes shortage", "passed": ok,
+                   "actual": {"state": st, "reserves": [list(r) for r in r2]}})
+
+    # ── ПЕРЕСЧЁТ идемпотентен: здоровые данные не должны меняться ──
+    pid, gid = mk_product(5)
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.orders (customer_name, customer_phone, order_type, items, total, status, created_at, updated_at) "
+        f"VALUES ('__selftestJ__','0','parts','[]'::jsonb,0,'new',NOW(),NOW()) RETURNING id"
+    )
+    oid_j = cur.fetchone()[0]
+    core.handle_reserve_and_purchase(cur, oid_j, [{"product_id": pid, "qty": 2, "slot": "test"}])
+    before = _group_state(cur, gid)
+    core.recalc_reserves_global(cur, group_id=gid)
+    core.recalc_reserves_global(cur, group_id=gid)
+    after = _group_state(cur, gid)
+    ok = (before == after and after["reserved"] == 2 and after["on_hand"] == 3
+          and after["negative"] == 0)
+    report.append({"case": "recalc: healthy data unchanged (idempotent)", "passed": ok,
+                   "actual": {"before": before, "after": after}})
+
     # ── ИНВАРИАНТ ЦЕЛОСТНОСТИ: sum(ACTIVE POSITIVE) == sum(qty_reserved) по тест-группам ──
     cur.execute(
         f"SELECT g.id, "

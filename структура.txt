@@ -1983,3 +1983,21 @@ src/pages/OrderProcessPage.tsx — редактор PrepaymentEditor в шапк
   для parts-заказа поле предоплаты больше не предзаполняется 30%.
 src/components/admin/PrepaymentConfirmModal.tsx — в режиме full строка
   «остаток» показывается только при недоплате (называется «Недоплата»).
+
+[v8.52] Исправлена потеря позиции при проверке резервов.
+backend/reserves/warehouse_core.py — новая функция recalc_reserves_global(cur,
+  group_id=None): вся логика «Пересчитать резервы» переехала в общее ядро.
+  Ключевое: пересчёт идёт ПО ГРУППЕ товара, а не по каждой партии отдельно.
+  Висящий POSITIVE-резерв сначала перепривязывается к другой партии той же
+  группы со свободным остатком (rebound) и только при реальной нехватке в
+  группе переводится в NEGATIVE (дефицит + корзина закупки).
+backend/warehouse/index.py — action=recalc_reserves теперь тонкая обёртка над
+  wc.recalc_reserves_global(); собственная копия логики удалена.
+backend/warehouse/warehouse_core.py — добавлена та же recalc_reserves_global.
+backend/orders/index.py — writeoff_order списывает qty_reserved строго с тех
+  партий, где лежит ACTIVE POSITIVE-резерв ИМЕННО этого заказа (раньше брал
+  любые партии товара с qty_reserved>0 и мог съесть чужой резерв). Фолбэк на
+  старую схему, если резервов заказа нет (старые заказы).
+backend/reserves/index.py — селф-тест дополнен 3 сценариями пересчёта:
+  rebind на другую партию, отсутствие товара -> дефицит, идемпотентность.
+  Всего 18 сценариев.

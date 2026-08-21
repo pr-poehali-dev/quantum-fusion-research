@@ -1829,20 +1829,44 @@ def handler(event: dict, context) -> dict:
                     if not pid or item_status == "returned":
                         continue
                     sale_price = float(it.get("final_price") or it.get("price", 0))
-                    # Товар уже в резерве (qty вычтен при резерве), списываем из qty_reserved
+                    # Товар уже в резерве (qty вычтен при резерве), списываем из
+                    # qty_reserved. ВАЖНО: списываем ровно с тех партий, где лежит
+                    # резерв ЭТОГО заказа. Раньше брали любые партии товара с
+                    # qty_reserved > 0 — можно было съесть чужой резерв, а свой
+                    # оставить висеть; пересчёт потом снимал его и резервировал
+                    # заново, забирая ещё одну штуку с полки.
                     cur.execute(
-                        f"SELECT s.id, s.qty_reserved, s.cost_price, g.id as gid "
+                        f"SELECT s.id, "
+                        f"       LEAST(s.qty_reserved, COALESCE(SUM(r.qty), 0))::int, "
+                        f"       s.cost_price, g.id as gid "
                         f"FROM {schema}.warehouse_supplies s "
                         f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
-                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
-                        (int(pid),)
+                        f"JOIN {schema}.warehouse_reserves r ON r.supply_id = s.id "
+                        f"     AND r.order_id = %s AND r.status = 'ACTIVE' AND r.type = 'POSITIVE' "
+                        f"WHERE g.product_id = %s AND s.qty_reserved > 0 "
+                        f"GROUP BY s.id, s.qty_reserved, s.cost_price, g.id "
+                        f"ORDER BY s.id ASC",
+                        (order_id, int(pid))
                     )
                     supplies = cur.fetchall()
+                    if not supplies:
+                        # Резервов заказа нет (старые заказы / ручные правки) —
+                        # работаем по старой схеме, с любых партий этого товара.
+                        cur.execute(
+                            f"SELECT s.id, s.qty_reserved, s.cost_price, g.id as gid "
+                            f"FROM {schema}.warehouse_supplies s "
+                            f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                            f"WHERE g.product_id = %s AND s.qty_reserved > 0 ORDER BY s.id ASC",
+                            (int(pid),)
+                        )
+                        supplies = cur.fetchall()
                     left = qty
                     for sid, s_reserved, s_cost, gid in supplies:
                         if left <= 0:
                             break
-                        write = min(left, s_reserved)
+                        write = min(left, int(s_reserved or 0))
+                        if write <= 0:
+                            continue
                         margin = round((sale_price - float(s_cost)) * write, 2)
                         cur.execute(
                             f"UPDATE {schema}.warehouse_supplies "
