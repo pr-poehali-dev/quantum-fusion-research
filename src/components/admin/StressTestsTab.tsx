@@ -217,7 +217,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
         <button onClick={() => setView("profiles")}
           className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "profiles" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
           style={{ cursor: "pointer" }}>
-          <Icon name="ListChecks" size={15} /> {isPartner ? "Мои тесты" : "Профили тестов"}
+          <Icon name="ListChecks" size={15} /> {isPartner ? "Мои профили" : "Профили тестов"}
         </button>
         {!isPartner && (
           <>

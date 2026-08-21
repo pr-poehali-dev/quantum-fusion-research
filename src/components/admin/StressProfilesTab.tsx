@@ -632,7 +632,7 @@ export default function StressProfilesTab({ isPartner = false, session }: Stress
     <div className="max-w-3xl">
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">
-          {isPartner ? "Мои тесты" : "Профили тестов"}
+          {isPartner ? "Мои профили" : "Профили тестов"}
         </h2>
         <div className="flex items-center gap-2">
           {!isPartner && (
