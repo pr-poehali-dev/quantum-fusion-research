@@ -1,9 +1,15 @@
+import { useState } from "react"
 import Icon from "@/components/ui/icon"
 import { shortScore, statsLine } from "@/components/admin/stress/scoreFormat"
 
 // Карточка отчёта о прогоне для публичных страниц: витрина «последний тест»
 // и страница /tests/<код>. Показывает то же, что отчёт программы, но без
 // датчиков и файлов — это данные владельца ПК.
+
+export interface PublicShot {
+  name: string
+  url: string
+}
 
 export interface PublicRunResult {
   test_name: string
@@ -12,6 +18,7 @@ export interface PublicRunResult {
   timed_out: boolean
   success: boolean
   score_text?: string
+  shots?: PublicShot[]      // скриншоты теста, показываются при раскрытии
 }
 
 export interface PublicHardware {
@@ -43,6 +50,50 @@ export function fmtRunDate(s: string | null): string {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   })
+}
+
+// Строка теста: по клику раскрывается и показывает скриншоты прогона.
+function TestRow({ test }: { test: PublicRunResult }) {
+  const [open, setOpen] = useState(false)
+  const shots = test.shots || []
+  const score = shortScore(test.score_text)
+  const canOpen = shots.length > 0
+
+  return (
+    <div className={`overflow-hidden rounded-xl border ${test.success ? "border-border" : "border-red-500/30 bg-red-500/5"}`}>
+      <div
+        onClick={canOpen ? () => setOpen(v => !v) : undefined}
+        className={`flex flex-wrap items-center gap-2 p-3 ${canOpen ? "transition-colors hover:bg-foreground/5" : ""}`}
+        style={{ cursor: canOpen ? "pointer" : "default" }}>
+        <Icon name={test.success ? "Check" : "X"} size={15}
+          className={test.success ? "text-green-400" : "text-red-400"} />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={test.test_name}>
+          {test.test_name}{score ? ` — ${score}` : ""}
+        </span>
+        <span className="text-xs text-foreground/40">
+          {statsLine(test.exit_code, test.timed_out, test.duration_sec)}
+        </span>
+        {canOpen && (
+          <span className="flex items-center gap-1 text-xs text-foreground/40">
+            <Icon name="Image" size={12} />{shots.length}
+            <Icon name={open ? "ChevronUp" : "ChevronDown"} size={14} />
+          </span>
+        )}
+      </div>
+
+      {open && (
+        <div className="space-y-2 border-t border-border p-3">
+          {shots.map((sh, i) => (
+            <a key={i} href={sh.url} target="_blank" rel="noopener noreferrer"
+              className="block overflow-hidden rounded-lg border border-border"
+              title="Открыть скриншот в полном размере">
+              <img src={sh.url} alt={sh.name} loading="lazy" className="w-full" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function PublicRunCard({ run }: { run: PublicRun }) {
@@ -130,22 +181,9 @@ export default function PublicRunCard({ run }: { run: PublicRun }) {
         <p className="text-xs font-semibold uppercase tracking-wide text-foreground/40">
           Стресс-тесты
         </p>
-        {run.results.map((t, i) => {
-          const score = shortScore(t.score_text)
-          return (
-            <div key={i}
-              className={`flex flex-wrap items-center gap-2 rounded-xl border p-3 ${t.success ? "border-border" : "border-red-500/30 bg-red-500/5"}`}>
-              <Icon name={t.success ? "Check" : "X"} size={15}
-                className={t.success ? "text-green-400" : "text-red-400"} />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={t.test_name}>
-                {t.test_name}{score ? ` — ${score}` : ""}
-              </span>
-              <span className="text-xs text-foreground/40">
-                {statsLine(t.exit_code, t.timed_out, t.duration_sec)}
-              </span>
-            </div>
-          )
-        })}
+        {run.results.map((t, i) => (
+          <TestRow key={i} test={t} />
+        ))}
       </div>
     </div>
   )

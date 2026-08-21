@@ -1661,15 +1661,38 @@ def public_report(cur, code):
         "company_name": "" if r[10] else (r[9] or ""),
     }
     cur.execute(
-        f"SELECT test_name, exit_code, duration_sec, timed_out, success, score_text "
+        f"SELECT id, test_name, exit_code, duration_sec, timed_out, success, score_text "
         f"FROM {SCHEMA}.stress_results WHERE run_id = {int(r[0])} "
         f"ORDER BY sort_order, id"
     )
-    run["results"] = [{
-        "test_name": x[0] or "", "exit_code": x[1],
-        "duration_sec": float(x[2]) if x[2] is not None else 0,
-        "timed_out": x[3], "success": x[4], "score_text": x[5] or "",
+    results = [{
+        "id": x[0], "test_name": x[1] or "", "exit_code": x[2],
+        "duration_sec": float(x[3]) if x[3] is not None else 0,
+        "timed_out": x[4], "success": x[5], "score_text": x[6] or "",
+        "shots": [],
     } for x in cur.fetchall()]
+
+    # Скриншоты тестов: их и показываем при раскрытии теста. Текстовые логи
+    # наружу не отдаём — там бывают пути и имена машин.
+    if results:
+        ids = ",".join(str(x["id"]) for x in results)
+        cur.execute(
+            f"SELECT result_id, file_name, file_url FROM {SCHEMA}.stress_files "
+            f"WHERE result_id IN ({ids}) ORDER BY id"
+        )
+        by_res = {}
+        for fr in cur.fetchall():
+            # Только картинки: текстовые логи наружу не отдаём — в них
+            # попадают пути и имена машин.
+            if not str(fr[1] or "").lower().endswith(
+                    (".jpg", ".jpeg", ".png", ".webp")):
+                continue
+            by_res.setdefault(fr[0], []).append({"name": fr[1], "url": fr[2]})
+        for x in results:
+            x["shots"] = by_res.get(x["id"], [])
+            x.pop("id", None)
+
+    run["results"] = results
     return ok({"ok": True, "found": True, "run": run})
 
 
