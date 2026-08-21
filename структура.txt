@@ -2101,3 +2101,16 @@ backend/stress/notify_prefs.py
     быть затёрт алертом);
   • _slot_keys(): срезает префикс «Заказ N · » из имени стенда, иначе события
     одного прогона расходились по разным слотам.
+
+[v8.59] Стресс-тестер: номер заказа — отдельное поле прогона.
+db_migrations/V0250 — stress_runs += order_number TEXT (+ индекс). Миграция
+восстанавливает номера из старых названий и чистит machine_name/profile_name
+от префикса «Заказ N · ».
+backend/stress/index.py
+  • ingest(): order_number из _clean_run_labels() сохраняется в БД;
+  • list_runs / get_run / folder_report отдают order_number (и public_code
+    в папке — раньше терялся).
+src/components/admin/StressTestsTab.tsx
+  • Run.order_number; номер показан в строке списка и в шапке карточки.
+Публичный отчёт /tests/<код> номер заказа НЕ отдаёт — как и имя стенда,
+это внутренние данные (у партнёров там имена клиентов).

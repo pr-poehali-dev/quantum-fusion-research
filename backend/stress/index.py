@@ -1130,10 +1130,11 @@ def ingest(cur, conn, body, company_id=None):
     public_code = gen_public_code(cur)
     cur.execute(
         f"INSERT INTO {SCHEMA}.stress_runs "
-        f"(run_uid, profile_name, machine_name, os_info, note, started_at, finished_at, "
+        f"(run_uid, profile_name, machine_name, order_number, os_info, note, "
+        f"started_at, finished_at, "
         f"total_tests, passed_tests, failed_tests, status, partner_company_id, hardware, "
         f"public_code) VALUES "
-        f"({esc(run_uid)}, {esc(profile_name)}, {esc(machine_name)}, "
+        f"({esc(run_uid)}, {esc(profile_name)}, {esc(machine_name)}, {esc(order_number)}, "
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
         f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}, "
@@ -1294,7 +1295,7 @@ def list_runs(cur, company_filter=None):
         f"r.started_at, r.finished_at, r.total_tests, r.passed_tests, r.failed_tests, "
         f"r.status, r.created_at, r.folder_id, r.partner_company_id, r.folder_sort, "
         f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE), r.hardware, "
-        f"COALESCE(r.public_code, '') "
+        f"COALESCE(r.public_code, ''), COALESCE(r.order_number, '') "
         f"FROM {SCHEMA}.stress_runs r "
         f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
         f"{where_sql} ORDER BY r.created_at DESC LIMIT 500"
@@ -1310,6 +1311,8 @@ def list_runs(cur, company_filter=None):
         "hardware": r[18] or None,
         # Код публичной ссылки на отчёт: /tests/<код>
         "public_code": r[19] or "",
+        # Номер заказа — отдельным полем (раньше клеился к имени стенда)
+        "order_number": r[20] or "",
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
@@ -1492,7 +1495,7 @@ def folder_report(cur, fid, owner_cid=None):
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
         f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware, "
-        f"COALESCE(sr.public_code, '') "
+        f"COALESCE(sr.public_code, ''), COALESCE(sr.order_number, '') "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.folder_sort, sr.created_at DESC"
@@ -1506,6 +1509,8 @@ def folder_report(cur, fid, owner_cid=None):
             "status": r[11], "created_at": r[12], "partner_logo_url": r[13] or "",
             "partner_link": _first_link(r[14]), "partner_links": _all_links(r[14]),
             "hardware": r[18] or None,
+            "public_code": r[19] or "",
+            "order_number": r[20] or "",
             "metrics": [], "results": [],
         })
     if runs:
@@ -1567,7 +1572,7 @@ def get_run(cur, run_id, owner_cid=None, conn=None):
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
         f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware, "
-        f"COALESCE(sr.public_code, '') "
+        f"COALESCE(sr.public_code, ''), COALESCE(sr.order_number, '') "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.id = {run_id}{own}"
@@ -1587,6 +1592,8 @@ def get_run(cur, run_id, owner_cid=None, conn=None):
         "hardware": r[18] or None,
         # Код публичной ссылки на отчёт: /tests/<код>
         "public_code": r[19] or "",
+        # Номер заказа — отдельным полем (раньше клеился к имени стенда)
+        "order_number": r[20] or "",
     }
     # Прогоны, загруженные до появления публичных ссылок, кода не имеют —
     # выдаём его при первом открытии, чтобы кнопка «ссылка клиенту» была везде.

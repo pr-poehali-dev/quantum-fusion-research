@@ -44,6 +44,7 @@ interface Run {
   status: string
   created_at: string
   public_code?: string      // код публичной ссылки на отчёт: /tests/<код>
+  order_number?: string     // номер заказа (отдельно от имени стенда)
   folder_id?: number | null
   folder_sort?: number
   results?: ResultRow[]
@@ -369,6 +370,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   )}
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/40">
                     <Icon name="Clock" size={11} /> {fmtDate(r.created_at)}
+                    {r.order_number && <><span>·</span><span className="shrink-0 font-medium text-foreground/60">Заказ {r.order_number}</span></>}
                     {r.profile_name && <><span>·</span><span className="truncate">{r.profile_name}</span></>}
                     {r.folder_id && <><span>·</span><Icon name="Folder" size={10} /><span className="truncate">{folders.find(f => f.id === r.folder_id)?.name || "папка"}</span></>}
                   </div>
@@ -413,6 +415,11 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   </div>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
+                  {selected.order_number && (
+                    <span className="font-medium text-foreground/70">
+                      <Icon name="Package" size={12} className="mr-1 inline" />Заказ {selected.order_number}
+                    </span>
+                  )}
                   {selected.profile_name && <span><Icon name="ListChecks" size={12} className="mr-1 inline" />{selected.profile_name}</span>}
                   {selected.os_info && <span><Icon name="Cpu" size={12} className="mr-1 inline" />{selected.os_info}</span>}
                   <span><Icon name="Calendar" size={12} className="mr-1 inline" />{fmtDate(selected.started_at)} → {fmtDate(selected.finished_at)}</span>
