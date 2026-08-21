@@ -1750,3 +1750,9 @@ backend/stress/index.py:
 src/components/admin/StressProfilesTab.tsx — вместо галочки выпадающий
   список «Доступ для гостей»: не показывать / Публичный Lite / Публичный
   полный; в списке теги «гостевой Lite» и «гостевой полный».
+
+[v8.32] Правка версии тестера прямо в списке.
+src/components/admin/StressReleasesTab.tsx — у каждой версии кнопка
+  «карандаш» (левее «скрыть» и «удалить»): раскрывает форму с полями
+  «Версия» и «Что нового», сохранение через api.stressReleases.update
+  (action=update уже умеет менять version и changelog).

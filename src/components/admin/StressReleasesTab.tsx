@@ -152,6 +152,31 @@ export default function StressReleasesTab() {
     await api.stressReleases.update({ id: r.id, is_published: !r.is_published }, ak).catch(() => {})
   }
 
+  // Правка уже добавленной версии: номер и описание «что нового».
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editVersion, setEditVersion] = useState("")
+  const [editChangelog, setEditChangelog] = useState("")
+  const [editBusy, setEditBusy] = useState(false)
+
+  const startEdit = (r: Release) => {
+    setEditId(r.id); setEditVersion(r.version); setEditChangelog(r.changelog || "")
+  }
+
+  const saveEdit = async () => {
+    const ak = getAdminKey()
+    if (!ak || editId === null) return
+    const version = editVersion.trim()
+    if (!version) { setError("Укажите номер версии"); return }
+    setEditBusy(true)
+    const res = await api.stressReleases.update(
+      { id: editId, version, changelog: editChangelog.trim() }, ak).catch(() => null)
+    setEditBusy(false)
+    if (!res?.ok) { setError("Не удалось сохранить"); return }
+    setReleases(rs => rs.map(x => x.id === editId
+      ? { ...x, version, changelog: editChangelog.trim() } : x))
+    setEditId(null)
+  }
+
   const remove = async (r: Release) => {
     const ak = getAdminKey()
     if (!ak) return
@@ -296,6 +321,11 @@ export default function StressReleasesTab() {
                   <Icon name="Download" size={11} />{r.download_count}
                 </span>
                 <div className="ml-auto flex gap-1.5">
+                  <button onClick={() => startEdit(r)} title="Изменить версию и описание"
+                    style={{ cursor: "pointer" }}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
+                    <Icon name="Pencil" size={13} />
+                  </button>
                   <button onClick={() => togglePublish(r)} title={r.is_published ? "Скрыть с сайта" : "Опубликовать"}
                     style={{ cursor: "pointer" }}
                     className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
@@ -307,9 +337,34 @@ export default function StressReleasesTab() {
                   </button>
                 </div>
               </div>
-              {r.changelog && (
+              {editId === r.id ? (
+                <div className="mt-3 space-y-2 rounded-lg border border-border bg-background p-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-foreground/60">Версия</label>
+                    <input value={editVersion} onChange={e => setEditVersion(e.target.value)}
+                      disabled={editBusy} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-foreground/60">Что нового</label>
+                    <textarea value={editChangelog} onChange={e => setEditChangelog(e.target.value)}
+                      rows={4} disabled={editBusy} placeholder="Каждое изменение с новой строки"
+                      className={`${inputCls} resize-none`} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} disabled={editBusy} style={{ cursor: "pointer" }}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+                      <Icon name={editBusy ? "Loader2" : "Check"} size={13} className={editBusy ? "animate-spin" : ""} />
+                      {editBusy ? "Сохраняем…" : "Сохранить"}
+                    </button>
+                    <button onClick={() => setEditId(null)} disabled={editBusy} style={{ cursor: "pointer" }}
+                      className="rounded-lg border border-border px-4 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors">
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              ) : r.changelog ? (
                 <p className="mt-2 whitespace-pre-line text-xs text-foreground/60">{r.changelog}</p>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
