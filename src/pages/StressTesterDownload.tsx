@@ -5,7 +5,7 @@ import Icon from "@/components/ui/icon"
 import Seo from "@/components/Seo"
 import Footer from "@/components/Footer"
 import { ThemeSwitcher } from "@/components/theme-switcher"
-import { Release, fmtSize, fmtDate } from "@/components/admin/StressReleasesTab"
+import { Release, fmtSize, fmtDate, groupReleases, editionOf } from "@/components/admin/StressReleasesTab"
 
 // Куда клиент присылает отчёт на разбор.
 const HELP_TG = "https://t.me/BeGraphicsPC"
@@ -52,8 +52,13 @@ export default function StressTesterDownload() {
     window.open(url, "_blank", "noopener,noreferrer")
   }
 
-  const latest = releases[0]
-  const older = releases.slice(1)
+  // Полная и Lite — одна версия: показываем их вместе, одной карточкой.
+  const groups = groupReleases(releases)
+  const latestGroup = groups[0]
+  const olderGroups = groups.slice(1)
+  const pickMain = (items: Release[]) =>
+    items.find(x => editionOf(x) === "full") || items[0]
+  const latest = latestGroup ? pickMain(latestGroup.items) : undefined
 
   const scrollToVersions = () => {
     document.getElementById("versions")?.scrollIntoView({ behavior: "smooth" })
@@ -300,56 +305,81 @@ export default function StressTesterDownload() {
                 <span className="text-sm text-foreground/50">от {fmtDate(latest.created_at)}</span>
               </div>
 
-              <h3 className="mb-1 text-2xl font-semibold">Версия {latest.version}</h3>
+              <h3 className="mb-1 text-2xl font-semibold">Версия {latestGroup!.version}</h3>
               <p className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground/50">
-                <span className="flex items-center gap-1.5"><Icon name="HardDrive" size={14} />{fmtSize(latest.file_size)}</span>
-                <span className="flex items-center gap-1.5"><Icon name="Download" size={14} />{latest.download_count} скачиваний</span>
+                <span className="flex items-center gap-1.5"><Icon name="Download" size={14} />
+                  {latestGroup!.items.reduce((n, x) => n + x.download_count, 0)} скачиваний</span>
                 <span className="flex items-center gap-1.5"><Icon name="Monitor" size={14} />Windows</span>
               </p>
 
-              {latest.changelog && (
+              {latestGroup!.items.find(x => x.changelog) && (
                 <div className="mb-6 rounded-xl border border-border bg-background/50 p-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/40">Что нового</p>
-                  <p className="whitespace-pre-line text-sm text-foreground/70">{latest.changelog}</p>
+                  <p className="whitespace-pre-line text-sm text-foreground/70">
+                    {latestGroup!.items.find(x => x.changelog)!.changelog}
+                  </p>
                 </div>
               )}
 
-              <button onClick={() => download(latest)} style={{ cursor: "pointer" }}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
-                <Icon name="Download" size={20} />
-                Скачать ({fmtSize(latest.file_size)})
-              </button>
+              <div className="space-y-2">
+                {latestGroup!.items.map((r, i) => (
+                  <button key={r.id} onClick={() => download(r)} disabled={busyId === r.id}
+                    style={{ cursor: "pointer" }}
+                    className={`flex w-full items-center justify-center gap-2.5 rounded-xl py-4 text-base font-semibold transition-colors disabled:opacity-70 ${i === 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border text-foreground/80 hover:border-primary hover:text-foreground"}`}>
+                    <Icon name="Download" size={i === 0 ? 20 : 17} />
+                    {busyId === r.id ? "Готовим файл…" : (
+                      latestGroup!.items.length > 1
+                        ? `${editionOf(r) === "lite" ? "Облегчённая версия" : "Полная версия"} (${fmtSize(r.file_size)})`
+                        : `Скачать (${fmtSize(r.file_size)})`
+                    )}
+                  </button>
+                ))}
+              </div>
               <p className="mt-3 text-center text-xs text-foreground/40">
-                Файл большой — на медленном интернете загрузка займёт время
+                {latestGroup!.items.length > 1
+                  ? "Облегчённая версия весит меньше: часть тестов в ней недоступна"
+                  : "Файл большой — на медленном интернете загрузка займёт время"}
               </p>
             </div>
 
-            {older.length > 0 && (
+            {olderGroups.length > 0 && (
               <div className="mt-6">
                 <button onClick={() => setShowArchive(v => !v)} style={{ cursor: "pointer" }}
                   className="flex items-center gap-2 text-sm text-foreground/50 hover:text-foreground transition-colors">
                   <Icon name={showArchive ? "ChevronUp" : "ChevronDown"} size={15} />
-                  Другие версии ({older.length})
+                  Другие версии ({olderGroups.length})
                 </button>
 
                 {showArchive && (
                   <div className="mt-3 space-y-2">
-                    {older.map(r => (
-                      <div key={r.id} className="rounded-xl border border-border bg-card p-4">
+                    {olderGroups.map(g => (
+                      <div key={g.version} className="rounded-xl border border-border bg-card p-4">
                         <div className="flex flex-wrap items-center gap-3">
-                          <span className="font-medium">Версия {r.version}</span>
-                          <span className="text-xs text-foreground/40">{fmtDate(r.created_at)}</span>
-                          <span className="text-xs text-foreground/40">{fmtSize(r.file_size)}</span>
+                          <span className="font-medium">Версия {g.version}</span>
+                          <span className="text-xs text-foreground/40">{fmtDate(g.items[0].created_at)}</span>
                           <span className="flex items-center gap-1 text-xs text-foreground/40">
-                            <Icon name="Download" size={11} />{r.download_count}
+                            <Icon name="Download" size={11} />
+                            {g.items.reduce((n, x) => n + x.download_count, 0)}
                           </span>
-                          <button onClick={() => download(r)} disabled={busyId === r.id} style={{ cursor: "pointer" }}
-                            className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-60">
-                            <Icon name="Download" size={12} />{busyId === r.id ? "Готовим…" : "Скачать"}
-                          </button>
                         </div>
-                        {r.changelog && (
-                          <p className="mt-2 whitespace-pre-line text-xs text-foreground/50">{r.changelog}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {g.items.map(r => (
+                            <button key={r.id} onClick={() => download(r)} disabled={busyId === r.id}
+                              style={{ cursor: "pointer" }}
+                              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-60">
+                              <Icon name="Download" size={12} />
+                              {busyId === r.id ? "Готовим…" : (
+                                g.items.length > 1
+                                  ? `${editionOf(r) === "lite" ? "Lite" : "Полная"} · ${fmtSize(r.file_size)}`
+                                  : `Скачать · ${fmtSize(r.file_size)}`
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        {g.items.find(x => x.changelog) && (
+                          <p className="mt-2 whitespace-pre-line text-xs text-foreground/50">
+                            {g.items.find(x => x.changelog)!.changelog}
+                          </p>
                         )}
                       </div>
                     ))}

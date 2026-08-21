@@ -142,7 +142,7 @@ def key_from_url(url):
     return url.split(marker, 1)[1].split("?", 1)[0]
 
 
-def nice_file_name(name, version):
+def nice_file_name(name, version, edition="full"):
     """Имя для сохранения на диск клиента.
 
     Файлы в хранилище часто лежат под техническим именем-идентификатором
@@ -153,8 +153,28 @@ def nice_file_name(name, version):
     ext = ("." + base.rsplit(".", 1)[-1].lower()) if "." in base else ".exe"
     if base and not _UUID_NAME.match(base):
         return base
-    ver = re.sub(r"[^0-9A-Za-z._-]", "_", (version or "").strip().lstrip("vV")) or "latest"
-    return f"StressTester_Setup_{ver}{ext}"
+    ver = re.sub(r"[^0-9A-Za-z._-]", "_", clean_version(version)) or "latest"
+    suffix = "_Lite" if edition == "lite" else ""
+    return f"StressTester_Setup_{ver}{suffix}{ext}"
+
+
+def detect_edition(*hints):
+    """Сборка по названию: 'lite' если где-то встретилось Lite/Light."""
+    for h in hints:
+        if h and re.search(r"(?i)\b(lite|light)\b|_lite|-lite", str(h)):
+            return "lite"
+    return "full"
+
+
+def clean_version(raw):
+    """Голый номер версии: без «v», без слов Lite/Full.
+
+    Полная и облегчённая сборки — одна версия программы, поэтому сверка
+    идёт именно по этому номеру.
+    """
+    v = re.sub(r"(?i)(lite|light|full)", " ", str(raw or ""))
+    v = re.sub(r"^[vV][\s._-]*", "", v.strip())
+    return v.strip(" -_.") or str(raw or "").strip()
 
 
 _LAST_RENAME_ERROR = {"msg": ""}
@@ -224,6 +244,8 @@ def row_to_dict(r, admin=False):
         "file_name": r[4] or "", "file_size": int(r[5] or 0),
         "download_count": int(r[7] or 0), "created_at": r[8],
         "storage": "local" if s3_key else "external",
+        # full | lite — сборка одной и той же версии программы.
+        "edition": (r[10] if len(r) > 10 else None) or "full",
     }
     if admin:
         d["s3_key"] = s3_key
@@ -233,7 +255,7 @@ def row_to_dict(r, admin=False):
 
 
 COLS = ("id, version, changelog, file_url, file_name, file_size, "
-        "is_published, download_count, created_at, s3_key")
+        "is_published, download_count, created_at, s3_key, edition")
 
 
 def handler(event: dict, context) -> dict:
@@ -287,7 +309,7 @@ def handler(event: dict, context) -> dict:
                 cur.execute(
                     f"UPDATE {TABLE} SET download_count = download_count + 1 "
                     f"WHERE id = {rid} AND is_published = TRUE "
-                    f"RETURNING source_link, file_url, s3_key, file_name, version"
+                    f"RETURNING source_link, file_url, s3_key, file_name, version, edition"
                 )
                 row = cur.fetchone()
                 conn.commit()
@@ -297,7 +319,7 @@ def handler(event: dict, context) -> dict:
                         # Наше хранилище: временная ссылка. Файлы, залитые до
                         # появления «говорящих» путей, перекладываем на лету —
                         # иначе браузер сохранит их под техническим именем.
-                        nice = nice_file_name(row[3], row[4])
+                        nice = nice_file_name(row[3], row[4], row[5] or "full")
                         new_key = ensure_named_key(key, nice)
                         if new_key != key:
                             cur.execute(
@@ -370,13 +392,14 @@ def handler(event: dict, context) -> dict:
         # Разовая починка: перекладывает файлы версий под понятные имена,
         # если они лежат в хранилище под техническим идентификатором.
         if action == "fix_file_names":
-            cur.execute(f"SELECT id, version, file_name, file_url, s3_key FROM {TABLE}")
+            cur.execute(f"SELECT id, version, file_name, file_url, s3_key, edition "
+                        f"FROM {TABLE}")
             fixed = []
-            for rid, ver, fname, furl, skey in cur.fetchall():
+            for rid, ver, fname, furl, skey, edi in cur.fetchall():
                 key = (skey or "") or key_from_url(furl or "")
                 if not key:
                     continue
-                nice = nice_file_name(fname, ver)
+                nice = nice_file_name(fname, ver, edi or "full")
                 if key.rsplit("/", 1)[-1] == nice:
                     continue
                 try:
@@ -452,29 +475,33 @@ def handler(event: dict, context) -> dict:
             version = (body.get("version") or "").strip()
             file_url = (body.get("file_url") or "").strip()
             s3_key = (body.get("s3_key") or "").strip()
-            file_name = (body.get("file_name") or "").strip()
+            file_name_raw = (body.get("file_name") or "").strip()
             if not version or not (file_url or s3_key):
                 return resp(400, {"error": "Нужны версия и файл"})
-            if s3_key:
-                # Кладём файл по адресу с настоящим именем — иначе браузер
-                # сохранит его под техническим набором символов.
-                s3_key = ensure_named_key(s3_key, file_name)
-                file_url = cdn_url(s3_key)
+
+            # Полная и Lite — одна версия программы, отличается только сборка.
+            # Определяем её по названию файла/версии, номер версии чистим.
+            edition = (body.get("edition") or "").strip().lower()
+            if edition not in ("full", "lite"):
+                edition = detect_edition(file_name_raw, version, body.get("source_link"))
+            version = clean_version(version)
+
             # Ссылка на наш бакет → работаем с ним как с локальным файлом:
             # тогда сможем выдавать временную ссылку с нормальным именем.
-            s3_key = (body.get("s3_key") or "").strip() or key_from_url(file_url)
-            file_name = nice_file_name(body.get("file_name"), version)
+            s3_key = s3_key or key_from_url(file_url)
+            file_name = nice_file_name(file_name_raw, version, edition)
             if s3_key:
                 try:
                     s3_key = ensure_named_key(s3_key, file_name)
                     file_url = cdn_url(s3_key)
                 except Exception as e:
                     print(f"[RELEASES] переименование не удалось: {e}")
+
             cur.execute(
-                f"INSERT INTO {TABLE} (version, changelog, file_url, file_name, "
+                f"INSERT INTO {TABLE} (version, edition, changelog, file_url, file_name, "
                 f"file_size, s3_key, is_published, source_link) VALUES ("
-                f"{esc(version)}, {esc(body.get('changelog') or '')}, {esc(file_url)}, "
-                f"{esc(file_name)}, {int(body.get('file_size') or 0)}, "
+                f"{esc(version)}, {esc(edition)}, {esc(body.get('changelog') or '')}, "
+                f"{esc(file_url)}, {esc(file_name)}, {int(body.get('file_size') or 0)}, "
                 f"{esc(s3_key)}, "
                 f"{'TRUE' if body.get('is_published', True) else 'FALSE'}, "
                 f"{esc(body.get('source_link') or '')}) RETURNING id"
@@ -489,7 +516,26 @@ def handler(event: dict, context) -> dict:
                 return resp(400, {"error": "Нет id"})
             sets = []
             if "version" in body:
-                sets.append(f"version = {esc(body['version'])}")
+                # Номер версии храним «голым» — по нему сверяются сборки.
+                new_ver = clean_version(body["version"])
+                sets.append(f"version = {esc(new_ver)}")
+                # Файл переименовываем следом, чтобы имя совпадало с версией.
+                cur.execute(f"SELECT file_name, file_url, s3_key, edition "
+                            f"FROM {TABLE} WHERE id = {rid}")
+                cur_row = cur.fetchone()
+                if cur_row:
+                    key = (cur_row[2] or "") or key_from_url(cur_row[1] or "")
+                    nice = nice_file_name("", new_ver, cur_row[3] or "full")
+                    if key and key.rsplit("/", 1)[-1] != nice:
+                        try:
+                            new_key = ensure_named_key(key, nice)
+                            sets.append(f"s3_key = {esc(new_key)}")
+                            sets.append(f"file_url = {esc(cdn_url(new_key))}")
+                            sets.append(f"file_name = {esc(nice)}")
+                        except Exception as e:
+                            print(f"[RELEASES] переименование при правке: {e}")
+            if "edition" in body and str(body["edition"]).lower() in ("full", "lite"):
+                sets.append(f"edition = {esc(str(body['edition']).lower())}")
             if "changelog" in body:
                 sets.append(f"changelog = {esc(body['changelog'])}")
             if "is_published" in body:

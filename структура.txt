@@ -1756,3 +1756,25 @@ src/components/admin/StressReleasesTab.tsx — у каждой версии кн
   «карандаш» (левее «скрыть» и «удалить»): раскрывает форму с полями
   «Версия» и «Что нового», сохранение через api.stressReleases.update
   (action=update уже умеет менять version и changelog).
+
+[v8.33] Версия тестера = одна запись с двумя сборками (полная + Lite).
+БД: V0245 — stress_app_releases.edition TEXT DEFAULT 'full' (full|lite);
+  старые записи размечены по слову Lite в версии/имени файла, номер версии
+  очищен от «v» и слов Lite/Full; индекс по version.
+backend/stress-releases/index.py:
+  detect_edition(*hints) — сборка по названию файла/версии/ссылке;
+  clean_version(raw) — «голый» номер версии, по нему идёт сверка сборок;
+  nice_file_name(name, version, edition) — добавляет суффикс _Lite;
+  create — сам определяет edition (можно передать явно), чистит версию,
+    пишет edition; убран задвоенный блок переименования;
+  update — принимает version (чистится) и edition, при смене версии
+    ПЕРЕИМЕНОВЫВАЕТ файл в хранилище под новое имя;
+  count_download / fix_file_names учитывают edition при сборке имени;
+  в списке (COLS/row_to_dict) появилось поле edition.
+src/components/admin/StressReleasesTab.tsx — экспортируются cleanVersion(),
+  editionOf(), groupReleases(); список версий перестроен: карточка версии,
+  внутри строки сборок (Полная / Lite) со своими кнопками правки, скрытия
+  и удаления. В форме правки добавлен выбор сборки и правка номера версии.
+src/pages/StressTesterDownload.tsx — версии сгруппированы: у актуальной
+  карточки кнопки «Полная версия» и «Облегчённая версия», в архиве —
+  версия с кнопками по сборкам; счётчик скачиваний суммируется.

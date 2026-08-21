@@ -13,6 +13,35 @@ export interface Release {
   download_count: number
   created_at: string
   is_published?: boolean
+  edition?: "full" | "lite"   // сборка: полная или облегчённая
+}
+
+// Полная и Lite — одна версия программы, поэтому сверяем по её номеру.
+export function cleanVersion(v: string): string {
+  return (v || "")
+    .replace(/lite|light|full/gi, " ")
+    .replace(/^[vV][\s._-]*/, "")
+    .replace(/[\s._-]+$/, "")
+    .trim() || (v || "").trim()
+}
+
+export function editionOf(r: Release): "full" | "lite" {
+  if (r.edition) return r.edition
+  return /lite|light/i.test(`${r.version} ${r.file_name}`) ? "lite" : "full"
+}
+
+// Собираем записи в группы по номеру версии: в одной карточке обе сборки.
+export function groupReleases(list: Release[]) {
+  const map = new Map<string, { version: string; items: Release[] }>()
+  for (const r of list) {
+    const key = cleanVersion(r.version)
+    if (!map.has(key)) map.set(key, { version: key, items: [] })
+    map.get(key)!.items.push(r)
+  }
+  return Array.from(map.values()).map(g => ({
+    ...g,
+    items: g.items.sort((a, b) => editionOf(a) === "full" ? -1 : editionOf(b) === "full" ? 1 : 0),
+  }))
 }
 
 export function fmtSize(bytes: number): string {
@@ -158,23 +187,27 @@ export default function StressReleasesTab() {
   const [editChangelog, setEditChangelog] = useState("")
   const [editBusy, setEditBusy] = useState(false)
 
+  const [editEdition, setEditEdition] = useState<"full" | "lite">("full")
+
   const startEdit = (r: Release) => {
-    setEditId(r.id); setEditVersion(r.version); setEditChangelog(r.changelog || "")
+    setEditId(r.id); setEditVersion(cleanVersion(r.version))
+    setEditChangelog(r.changelog || ""); setEditEdition(editionOf(r))
   }
 
   const saveEdit = async () => {
     const ak = getAdminKey()
     if (!ak || editId === null) return
-    const version = editVersion.trim()
+    const version = cleanVersion(editVersion)
     if (!version) { setError("Укажите номер версии"); return }
     setEditBusy(true)
     const res = await api.stressReleases.update(
-      { id: editId, version, changelog: editChangelog.trim() }, ak).catch(() => null)
+      { id: editId, version, edition: editEdition, changelog: editChangelog.trim() },
+      ak).catch(() => null)
     setEditBusy(false)
     if (!res?.ok) { setError("Не удалось сохранить"); return }
-    setReleases(rs => rs.map(x => x.id === editId
-      ? { ...x, version, changelog: editChangelog.trim() } : x))
     setEditId(null)
+    // Имя файла на сервере тоже меняется — перечитываем список.
+    load()
   }
 
   const remove = async (r: Release) => {
@@ -292,7 +325,7 @@ export default function StressReleasesTab() {
 
       {/* Список версий */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h3 className="font-medium">Загруженные версии ({releases.length})</h3>
+        <h3 className="font-medium">Загруженные версии ({groupReleases(releases).length})</h3>
         <button onClick={fixNames} disabled={fixing} style={{ cursor: "pointer" }}
           className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40"
           title="Переименовать файлы в хранилище, чтобы клиент скачивал их под понятным именем">
@@ -305,66 +338,105 @@ export default function StressReleasesTab() {
       ) : releases.length === 0 ? (
         <p className="text-sm text-foreground/40">Пока ни одной версии</p>
       ) : (
-        <div className="space-y-2">
-          {releases.map(r => (
-            <div key={r.id} className="rounded-xl border border-border bg-card p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold">v{r.version}</span>
-                {r.is_published ? (
+        <div className="space-y-3">
+          {groupReleases(releases).map(g => (
+            <div key={g.version} className="rounded-xl border border-border bg-card p-4">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-base font-semibold">v{g.version}</span>
+                {g.items.some(x => x.is_published) ? (
                   <span className="rounded-full bg-green-400/10 px-2 py-0.5 text-xs text-green-400">На сайте</span>
                 ) : (
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/40">Черновик</span>
                 )}
-                <span className="text-xs text-foreground/40">{fmtDate(r.created_at)}</span>
-                <span className="text-xs text-foreground/40">{fmtSize(r.file_size)}</span>
+                <span className="text-xs text-foreground/40">{fmtDate(g.items[0].created_at)}</span>
                 <span className="flex items-center gap-1 text-xs text-foreground/40">
-                  <Icon name="Download" size={11} />{r.download_count}
+                  <Icon name="Download" size={11} />
+                  {g.items.reduce((n, x) => n + x.download_count, 0)}
                 </span>
-                <div className="ml-auto flex gap-1.5">
-                  <button onClick={() => startEdit(r)} title="Изменить версию и описание"
-                    style={{ cursor: "pointer" }}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
-                    <Icon name="Pencil" size={13} />
-                  </button>
-                  <button onClick={() => togglePublish(r)} title={r.is_published ? "Скрыть с сайта" : "Опубликовать"}
-                    style={{ cursor: "pointer" }}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
-                    <Icon name={r.is_published ? "EyeOff" : "Eye"} size={13} />
-                  </button>
-                  <button onClick={() => remove(r)} title="Удалить версию и файл" style={{ cursor: "pointer" }}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/30 hover:border-red-400 hover:text-red-400 transition-colors">
-                    <Icon name="Trash2" size={13} />
-                  </button>
-                </div>
               </div>
-              {editId === r.id ? (
-                <div className="mt-3 space-y-2 rounded-lg border border-border bg-background p-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-foreground/60">Версия</label>
-                    <input value={editVersion} onChange={e => setEditVersion(e.target.value)}
-                      disabled={editBusy} className={inputCls} />
+
+              {/* Сборки этой версии: полная и облегчённая */}
+              <div className="space-y-1.5">
+                {g.items.map(r => (
+                  <div key={r.id}>
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${editionOf(r) === "lite" ? "bg-sky-500/10 text-sky-500" : "bg-primary/10 text-primary"}`}>
+                        {editionOf(r) === "lite" ? "Lite" : "Полная"}
+                      </span>
+                      <span className="min-w-0 truncate text-xs text-foreground/60" title={r.file_name}>
+                        {r.file_name || "—"}
+                      </span>
+                      <span className="text-xs text-foreground/40">{fmtSize(r.file_size)}</span>
+                      <span className="flex items-center gap-1 text-xs text-foreground/40">
+                        <Icon name="Download" size={11} />{r.download_count}
+                      </span>
+                      {!r.is_published && (
+                        <span className="text-[10px] text-foreground/40">скрыта</span>
+                      )}
+                      <div className="ml-auto flex gap-1.5">
+                        <button onClick={() => startEdit(r)} title="Изменить версию, сборку и описание"
+                          style={{ cursor: "pointer" }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
+                          <Icon name="Pencil" size={13} />
+                        </button>
+                        <button onClick={() => togglePublish(r)} title={r.is_published ? "Скрыть с сайта" : "Опубликовать"}
+                          style={{ cursor: "pointer" }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/50 hover:border-primary hover:text-foreground transition-colors">
+                          <Icon name={r.is_published ? "EyeOff" : "Eye"} size={13} />
+                        </button>
+                        <button onClick={() => remove(r)} title="Удалить сборку и файл" style={{ cursor: "pointer" }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground/30 hover:border-red-400 hover:text-red-400 transition-colors">
+                          <Icon name="Trash2" size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {editId === r.id && (
+                      <div className="mt-2 space-y-2 rounded-lg border border-border bg-background p-3">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs text-foreground/60">Номер версии</label>
+                            <input value={editVersion} onChange={e => setEditVersion(e.target.value)}
+                              disabled={editBusy} placeholder="1.0.7.0" className={inputCls} />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs text-foreground/60">Сборка</label>
+                            <select value={editEdition} disabled={editBusy}
+                              onChange={e => setEditEdition(e.target.value as "full" | "lite")}
+                              className={inputCls} style={{ cursor: "pointer" }}>
+                              <option value="full">Полная</option>
+                              <option value="lite">Lite</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-foreground/60">Что нового</label>
+                          <textarea value={editChangelog} onChange={e => setEditChangelog(e.target.value)}
+                            rows={4} disabled={editBusy} placeholder="Каждое изменение с новой строки"
+                            className={`${inputCls} resize-none`} />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={saveEdit} disabled={editBusy} style={{ cursor: "pointer" }}
+                            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+                            <Icon name={editBusy ? "Loader2" : "Check"} size={13} className={editBusy ? "animate-spin" : ""} />
+                            {editBusy ? "Сохраняем…" : "Сохранить"}
+                          </button>
+                          <button onClick={() => setEditId(null)} disabled={editBusy} style={{ cursor: "pointer" }}
+                            className="rounded-lg border border-border px-4 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors">
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-foreground/60">Что нового</label>
-                    <textarea value={editChangelog} onChange={e => setEditChangelog(e.target.value)}
-                      rows={4} disabled={editBusy} placeholder="Каждое изменение с новой строки"
-                      className={`${inputCls} resize-none`} />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={saveEdit} disabled={editBusy} style={{ cursor: "pointer" }}
-                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
-                      <Icon name={editBusy ? "Loader2" : "Check"} size={13} className={editBusy ? "animate-spin" : ""} />
-                      {editBusy ? "Сохраняем…" : "Сохранить"}
-                    </button>
-                    <button onClick={() => setEditId(null)} disabled={editBusy} style={{ cursor: "pointer" }}
-                      className="rounded-lg border border-border px-4 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors">
-                      Отмена
-                    </button>
-                  </div>
-                </div>
-              ) : r.changelog ? (
-                <p className="mt-2 whitespace-pre-line text-xs text-foreground/60">{r.changelog}</p>
-              ) : null}
+                ))}
+              </div>
+
+              {g.items.find(x => x.changelog)?.changelog && (
+                <p className="mt-2 whitespace-pre-line text-xs text-foreground/60">
+                  {g.items.find(x => x.changelog)!.changelog}
+                </p>
+              )}
             </div>
           ))}
         </div>
