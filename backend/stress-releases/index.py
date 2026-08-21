@@ -200,10 +200,14 @@ def ensure_named_key(key, nice_name):
         print(f"[RELEASES] переименование не удалось: {e}")
         _LAST_RENAME_ERROR["msg"] = str(e)[:300]
         return key
-    try:
-        cli.delete_object(Bucket="files", Key=key)
-    except Exception as e:
-        print(f"[RELEASES] не удалось удалить исходный файл {key}: {e}")
+    # Исходник удаляем ТОЛЬКО если это наша же служебная копия в
+    # stress_app/. Файл, который человек сам загрузил в хранилище, трогать
+    # нельзя — иначе он «пропадает» из Ядра сразу после сохранения версии.
+    if key.startswith("stress_app/"):
+        try:
+            cli.delete_object(Bucket="files", Key=key)
+        except Exception as e:
+            print(f"[RELEASES] не удалось удалить служебную копию {key}: {e}")
     return new_key
 
 
