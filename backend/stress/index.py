@@ -1693,6 +1693,20 @@ def public_report(cur, code):
             x.pop("id", None)
 
     run["results"] = results
+
+    # Датчики (min/сред/max) — как в отчёте программы. Это агрегаты, без
+    # привязки к железу конкретного человека, поэтому показывать можно.
+    cur.execute(
+        f"SELECT key, label, unit, min_val, max_val, avg_val, samples "
+        f"FROM {SCHEMA}.stress_metrics WHERE run_id = {int(r[0])} ORDER BY id"
+    )
+    run["metrics"] = [{
+        "key": m[0], "label": m[1], "unit": m[2],
+        "min": float(m[3]) if m[3] is not None else None,
+        "max": float(m[4]) if m[4] is not None else None,
+        "avg": float(m[5]) if m[5] is not None else None,
+        "samples": m[6],
+    } for m in cur.fetchall()]
     return ok({"ok": True, "found": True, "run": run})
 
 

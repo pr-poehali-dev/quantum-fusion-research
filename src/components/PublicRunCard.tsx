@@ -1,6 +1,7 @@
 import { useState } from "react"
 import Icon from "@/components/ui/icon"
 import { shortScore, statsLine } from "@/components/admin/stress/scoreFormat"
+import { CATEGORIES, categoryOf } from "@/components/admin/metricUtils"
 
 // Карточка отчёта о прогоне для публичных страниц: витрина «последний тест»
 // и страница /tests/<код>. Показывает то же, что отчёт программы, но без
@@ -29,6 +30,16 @@ export interface PublicHardware {
   disks?: string[]
 }
 
+export interface PublicMetric {
+  key: string
+  label: string
+  unit: string
+  min: number | null
+  max: number | null
+  avg: number | null
+  samples: number
+}
+
 export interface PublicRun {
   profile_name: string
   started_at: string | null
@@ -40,6 +51,7 @@ export interface PublicRun {
   company_name?: string
   hardware?: PublicHardware | null
   results: PublicRunResult[]
+  metrics?: PublicMetric[]     // датчики: min / сред / max за прогон
 }
 
 export function fmtRunDate(s: string | null): string {
@@ -89,6 +101,58 @@ function TestRow({ test }: { test: PublicRunResult }) {
               title="Открыть скриншот в полном размере">
               <img src={sh.url} alt={sh.name} loading="lazy" className="w-full" />
             </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Датчики прогона: min / сред / max с фильтром по категориям — как в админке.
+function Sensors({ metrics }: { metrics: PublicMetric[] }) {
+  const [cat, setCat] = useState("all")
+  if (metrics.length === 0) return null
+
+  const items = metrics
+    .map(m => ({ m, category: categoryOf(m.key) }))
+    .filter(x => cat === "all" || x.category === cat)
+
+  return (
+    <div className="px-5 pt-4 sm:px-6">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/40">
+          <Icon name="Activity" size={13} />Датчики (min / сред / max)
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {[{ id: "all", label: "Все" }, ...CATEGORIES].map(c => (
+            <button key={c.id} onClick={() => setCat(c.id)} style={{ cursor: "pointer" }}
+              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${cat === c.id ? "bg-primary text-primary-foreground" : "border border-border text-foreground/60 hover:text-foreground"}`}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-foreground/40">
+          Нет датчиков в этой категории.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {items.map((x, i) => (
+            <div key={i} className="rounded-xl border border-border bg-background/50 p-3">
+              <div className="truncate text-[11px] text-foreground/40" title={x.m.label}>{x.m.label}</div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-xl font-bold">{x.m.max ?? "—"}</span>
+                <span className="text-xs text-foreground/40">{x.m.unit}</span>
+                <span className="ml-1 rounded bg-red-500/15 px-1 py-0.5 text-[9px] text-red-400">max</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/50">
+                <span>мин {x.m.min ?? "—"}</span>
+                <span>·</span>
+                <span>сред {x.m.avg ?? "—"}</span>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -175,6 +239,9 @@ export default function PublicRunCard({ run }: { run: PublicRun }) {
           </div>
         ))}
       </div>
+
+      {/* Датчики за прогон */}
+      <Sensors metrics={run.metrics || []} />
 
       {/* Список тестов */}
       <div className="space-y-2 px-5 py-5 sm:px-6">
