@@ -46,6 +46,7 @@ export default function AdminBatchOrderPage() {
   const [groups, setGroups] = useState<Group[]>([])
   const [order, setOrder] = useState<{
     display_number?: string; customer_name?: string; total?: number; status?: string
+    order_type?: string
     prepayment_percent?: number; prepayment_amount?: number; prepayment_confirmed?: boolean
     remaining_amount?: number; remaining_paid?: boolean
   } | null>(null)
@@ -53,7 +54,10 @@ export default function AdminBatchOrderPage() {
   const [busy, setBusy] = useState(false)
   const [syncMsg, setSyncMsg] = useState<{ reserved: number; need: number } | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
-  const [payModal, setPayModal] = useState<null | "prepayment" | "remaining">(null)
+  const [payModal, setPayModal] = useState<null | "prepayment" | "remaining" | "full">(null)
+  // Партия ПК собирается под клиента — предоплата уместна. Заказ
+  // комплектующих оплачивается целиком при выдаче.
+  const isBuildBatch = order?.order_type !== "parts"
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -118,7 +122,10 @@ export default function AdminBatchOrderPage() {
     setBusy(true)
     const res = await api.orders.batchWriteoff(orderId)
     setBusy(false)
-    if (res.error === "remaining_unpaid") { setPayModal("remaining"); return }
+    if (res.error === "remaining_unpaid") {
+      setPayModal(isBuildBatch || order?.prepayment_confirmed ? "remaining" : "full")
+      return
+    }
     if (res.error) { alert(res.message || res.error); return }
     await load()
   }
@@ -235,25 +242,39 @@ export default function AdminBatchOrderPage() {
       {groups.length > 0 && (
         <div className="mb-4 rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-[240px] flex-1">
-              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-foreground/40">Предоплата</p>
-              <PrepaymentEditor total={order?.total || 0}
-                percent={order?.prepayment_percent} amount={order?.prepayment_amount}
-                onSave={savePrepayment} />
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {order?.prepayment_confirmed ? (
-                  <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата принята</span>
-                ) : (
-                  <button onClick={() => setPayModal("prepayment")}
-                    className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20" style={{ cursor: "pointer" }}>
-                    Принять предоплату
-                  </button>
-                )}
+            {/* Партия ПК собирается под клиента — предоплата тут уместна.
+                Заказы комплектующих оплачиваются целиком при выдаче. */}
+            {isBuildBatch ? (
+              <div className="min-w-[240px] flex-1">
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-foreground/40">Предоплата</p>
+                <PrepaymentEditor total={order?.total || 0}
+                  percent={order?.prepayment_percent} amount={order?.prepayment_amount}
+                  onSave={savePrepayment} />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {order?.prepayment_confirmed ? (
+                    <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата принята</span>
+                  ) : (
+                    <button onClick={() => setPayModal("prepayment")}
+                      className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20" style={{ cursor: "pointer" }}>
+                      Принять предоплату
+                    </button>
+                  )}
+                  {order?.remaining_paid && (
+                    <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Остаток оплачен</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="min-w-[240px] flex-1">
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-foreground/40">Оплата</p>
+                <p className="text-sm text-foreground/60">
+                  Полная оплата при выдаче: <span className="font-semibold text-foreground">{(order?.total || 0).toLocaleString("ru-RU")} ₽</span>
+                </p>
                 {order?.remaining_paid && (
-                  <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Остаток оплачен</span>
+                  <span className="mt-2 inline-block rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Оплачен</span>
                 )}
               </div>
-            </div>
+            )}
             <div className="flex flex-col items-stretch gap-2">
               <button onClick={printWarranty}
                 className="flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground/70 hover:border-primary hover:text-foreground" style={{ cursor: "pointer" }}>
@@ -277,10 +298,12 @@ export default function AdminBatchOrderPage() {
       {payModal && (
         <PrepaymentConfirmModal orderId={orderId} total={order?.total || 0}
           mode={payModal}
-          defaultAmount={payModal === "remaining" ? (order?.remaining_amount ?? undefined) : (order?.prepayment_amount ?? undefined)}
+          defaultAmount={payModal === "full" ? (order?.total || 0)
+            : payModal === "remaining" ? (order?.remaining_amount ?? undefined)
+            : (order?.prepayment_amount ?? undefined)}
           onClose={() => setPayModal(null)}
           onConfirmed={async () => {
-            const wasRemaining = payModal === "remaining"
+            const wasRemaining = payModal === "remaining" || payModal === "full"
             setPayModal(null)
             await load()
             if (wasRemaining) await doWriteoff()

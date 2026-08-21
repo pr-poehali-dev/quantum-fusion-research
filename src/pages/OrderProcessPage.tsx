@@ -358,6 +358,8 @@ export default function OrderProcessPage() {
   )
 
   const total = order.items.reduce((s, it) => it.item_status === "returned" ? s : s + (it.final_price ?? it.price) * it.quantity, 0)
+  // Заказ комплектующих: предоплаты нет, оплата целиком при выдаче.
+  const isParts = order.order_type !== "pc_build"
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -414,7 +416,15 @@ export default function OrderProcessPage() {
             <Icon name={contractLoading ? "Loader" : "FileSignature"} size={15} className={contractLoading ? "animate-spin" : ""} />
             Договор поставки
           </button>
-          {order.status !== "done" && order.status !== "cancelled" && !order.prepayment_confirmed && (
+          {/* Заказ комплектующих: предоплаты нет — деньги берём целиком при
+              выдаче. Для сборок ПК предоплата осталась (см. раздел сборок). */}
+          {order.status !== "done" && order.status !== "cancelled" && isParts && order.prepayment_confirmed && (
+            <span className="flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-xs font-medium text-green-400">
+              <Icon name="CheckCircle2" size={14} />
+              Внесено {fmt(order.prepayment_amount ?? 0)}
+            </span>
+          )}
+          {order.status !== "done" && order.status !== "cancelled" && !isParts && !order.prepayment_confirmed && (
             <button
               onClick={() => setShowPrepay(true)}
               style={{ cursor: "pointer" }}
@@ -424,7 +434,7 @@ export default function OrderProcessPage() {
               Внести предоплату
             </button>
           )}
-          {order.status !== "done" && order.status !== "cancelled" && order.prepayment_confirmed && !order.remaining_paid && (
+          {order.status !== "done" && order.status !== "cancelled" && !isParts && order.prepayment_confirmed && !order.remaining_paid && (
             <span className="flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-xs font-medium text-green-400">
               <Icon name="CheckCircle2" size={14} />
               Предоплата {fmt(order.prepayment_amount ?? 0)}
@@ -1167,8 +1177,8 @@ export default function OrderProcessPage() {
         <PrepaymentConfirmModal
           orderId={order.id}
           total={total}
-          mode="remaining"
-          defaultAmount={Math.max(0, total - (order.prepayment_amount ?? 0))}
+          mode={isParts && !order.prepayment_confirmed ? "full" : "remaining"}
+          defaultAmount={Math.max(0, total - (order.prepayment_confirmed ? (order.prepayment_amount ?? 0) : 0))}
           onClose={() => setShowRemaining(false)}
           onConfirmed={() => { setShowRemaining(false); load().then(() => setShowWriteoff(true)) }}
         />

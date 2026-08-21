@@ -273,13 +273,19 @@ export function AdminOrdersTab({ tab, orders, loading, setOrders, setTab }: Prop
                           <Icon name="Link2" size={11} />Привязать заявку
                         </button>
                       )}
-                      {/* Предоплата неактуальна для сборок из свободной продажи (catalog) */}
-                      {order.status !== "cancelled" && !order.is_stock_sale && (
+                      {/* Предоплата — только у сборок ПК: заказ комплектующих
+                          оплачивается целиком при выдаче. Для сборок из
+                          свободной продажи (catalog) метка тоже не нужна. */}
+                      {order.status !== "cancelled" && !order.is_stock_sale
+                        && order.order_type === "pc_build" && (
                         order.prepayment_confirmed ? (
                           <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Предоплата внесена</span>
                         ) : (
                           <span className="rounded-full bg-yellow-400/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">Предоплата не внесена</span>
                         )
+                      )}
+                      {order.status === "done" && order.order_type !== "pc_build" && (
+                        <span className="rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400">Оплачен</span>
                       )}
                     </div>
                     <p className="font-semibold text-foreground">{order.customer_name}</p>

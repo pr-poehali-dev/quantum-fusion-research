@@ -727,8 +727,13 @@ def create_order(cur, chat_id, name, phone, username):
     cur.execute(f"UPDATE {SCHEMA}.orders SET display_number=%s WHERE id=%s",
                 (display_number, order_id))
 
-    # Резерв НЕ ставим при создании заказа из бота — только после подтверждения
-    # предоплаты менеджером (finance: confirm_prepayment -> reserve_parts_order).
+    # Заказ комплектующих оплачивается целиком при выдаче, предоплаты нет —
+    # резервируем товар сразу, чтобы его не продали второй раз.
+    try:
+        import warehouse_core as wc
+        wc.reserve_parts_order(cur, order_id)
+    except Exception as _re:
+        print(f"TG_BOT reserve {order_id}: {_re}")
 
     try:
         from tg_notify import notify_managers

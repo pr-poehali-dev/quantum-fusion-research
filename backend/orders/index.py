@@ -166,12 +166,20 @@ def handler(event: dict, context) -> dict:
 
     def fmt_order(row, disp=None, for_sale=None, is_stock_sale=None, quiz_request_id=None):
         total = float(row[6])
-        # Предоплата (опц. поля в конце выборки одиночного заказа)
-        pct = float(row[13]) if len(row) > 13 and row[13] is not None else 30.0
+        # Предоплата — только для сборок ПК. Заказ комплектующих оплачивается
+        # целиком при выдаче, поэтому «аванса по умолчанию» у него нет.
+        is_build = row[4] == "pc_build"
+        default_pct = 30.0 if is_build else 0.0
+        pct = float(row[13]) if len(row) > 13 and row[13] is not None else default_pct
+        if not is_build and (len(row) <= 15 or not row[15]):
+            # Предоплату не вносили — считать её процентом от суммы нельзя.
+            pct = 0.0
         if len(row) > 14 and row[14] is not None:
             prepay = float(row[14])
         else:
             prepay = round(total * pct / 100, 2)
+        if not is_build and (len(row) <= 15 or not row[15]):
+            prepay = 0.0
         # Фолбэк номера: учитываем тип заказа (сборка → PC, партия → PB, иначе HW),
         # чтобы заказы без сохранённого display_number не превращались в HW.
         _prefix = "PC" if row[4] == "pc_build" else ("PB" if row[4] == "pc_batch" else "HW")
@@ -352,10 +360,17 @@ def handler(event: dict, context) -> dict:
 
             print(f"ORDER {order_id}: type={order_type}, items={json.dumps(items)}")
 
-            # ── РЕЗЕРВ НЕ СТАВИТСЯ ПРИ СОЗДАНИИ ────────────────────────────────
-            # parts-заказы резервируются только ПОСЛЕ подтверждения предоплаты
-            # (finance: action=confirm_prepayment -> wc.reserve_parts_order).
+            # ── РЕЗЕРВ ────────────────────────────────────────────────────────
+            # Заказ комплектующих оплачивается ЦЕЛИКОМ при выдаче, предоплаты
+            # нет — поэтому товар резервируем сразу, иначе его успеют продать.
             # pc_build: резерв создаётся при смене этапа wip_builds на "Заказ".
+            if order_type == "parts":
+                try:
+                    import warehouse_core as wc
+                    wc.reserve_parts_order(cur, order_id)
+                    conn.commit()
+                except Exception as _re:
+                    print(f"ORDER {order_id} reserve: {_re}")
 
             def is_catalog_id(v):
                 try:
@@ -1793,13 +1808,18 @@ def handler(event: dict, context) -> dict:
                             break
 
             elif action == "writeoff_order":
-                # Перед выдачей остаток по заказу должен быть оплачен.
-                cur.execute(f"SELECT remaining_paid, status FROM {schema}.orders WHERE id=%s", (order_id,))
+                # Выдаём только за деньги: у комплектующих это полная сумма
+                # (предоплаты нет), у сборок — остаток после аванса.
+                cur.execute(f"SELECT remaining_paid, status, order_type "
+                            f"FROM {schema}.orders WHERE id=%s", (order_id,))
                 wo_pay = cur.fetchone()
                 if wo_pay and wo_pay[1] != "done" and not bool(wo_pay[0]):
+                    is_build = wo_pay[2] == "pc_build"
                     return {"statusCode": 400, "headers": cors, "body": json.dumps(
                         {"error": "remaining_unpaid",
-                         "message": "Перед выдачей нужно принять оплату остатка по заказу."})}
+                         "message": ("Перед выдачей нужно принять оплату остатка по заказу."
+                                     if is_build else
+                                     "Перед выдачей нужно принять оплату заказа.")})}
                 # Списать все зарезервированные товары заказа и перевести статус в done
                 wrote_off = []
                 for it in items:

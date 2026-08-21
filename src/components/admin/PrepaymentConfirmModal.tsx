@@ -10,8 +10,9 @@ interface Props {
   orderId: number
   total: number
   defaultAmount?: number
-  /** 'prepayment' (по умолчанию) или 'remaining' — оплата остатка перед выдачей */
-  mode?: "prepayment" | "remaining"
+  /** 'prepayment' — аванс, 'remaining' — остаток перед выдачей,
+   *  'full' — полная оплата при выдаче (заказы комплектующих: аванса нет) */
+  mode?: "prepayment" | "remaining" | "full"
   onClose: () => void
   /** Вызывается после успешного подтверждения. */
   onConfirmed: (amount: number, remaining: number) => void
@@ -20,8 +21,9 @@ interface Props {
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU") + " ₽"
 
 export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, mode = "prepayment", onClose, onConfirmed }: Props) {
-  const isRemaining = mode === "remaining"
-  const init = defaultAmount ?? (isRemaining ? total : Math.round(total * 0.3))
+  const isFull = mode === "full"
+  const isRemaining = mode === "remaining" || isFull
+  const init = isFull ? total : (defaultAmount ?? (isRemaining ? total : Math.round(total * 0.3)))
   const [amount, setAmount] = useState(String(init))
   // процент предоплаты (для режима prepayment). По умолчанию 30%.
   const initPct = total > 0 ? Math.round((init / total) * 100) : 30
@@ -77,10 +79,13 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
     onConfirmed(amt, remaining)
   }
 
-  const title = isRemaining ? "Оплата остатка" : "Подтвердите предоплату"
-  const hint = isRemaining
-    ? "Перед выдачей примите оплату остатка по заказу и укажите счёт зачисления."
-    : "Перед переводом в «Заказ» укажите сумму предоплаты и счёт зачисления."
+  const title = isFull ? "Оплата заказа"
+    : isRemaining ? "Оплата остатка" : "Подтвердите предоплату"
+  const hint = isFull
+    ? "Заказ оплачивается полностью при выдаче. Укажите счёт зачисления."
+    : isRemaining
+      ? "Перед выдачей примите оплату остатка по заказу и укажите счёт зачисления."
+      : "Перед переводом в «Заказ» укажите сумму предоплаты и счёт зачисления."
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -120,7 +125,11 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
             </div>
           </>
         )}
-        <p className="mb-4 text-xs text-foreground/40">{isRemaining ? "Остаток после оплаты" : "Остаток к доплате"}: {fmt(remaining)}</p>
+        {(!isFull || remaining > 0) && (
+          <p className="mb-4 text-xs text-foreground/40">
+            {isRemaining ? "Остаток после оплаты" : "Остаток к доплате"}: {fmt(remaining)}
+          </p>
+        )}
 
         <label className="mb-1 block text-xs text-foreground/50">Счёт зачисления</label>
         <div className="mb-3 flex flex-wrap gap-2">
@@ -149,7 +158,8 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Отмена</Button>
           <Button onClick={confirm} disabled={!canSave || saving}>
-            {saving ? "Сохранение…" : isRemaining ? "Принять оплату" : "Подтвердить и в «Заказ»"}
+            {saving ? "Сохранение…" : isFull ? "Принять оплату и выдать"
+              : isRemaining ? "Принять оплату" : "Подтвердить и в «Заказ»"}
           </Button>
         </div>
       </div>

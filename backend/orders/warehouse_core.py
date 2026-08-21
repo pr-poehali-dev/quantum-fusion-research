@@ -315,7 +315,7 @@ def recalc_build_order(cur, order_id):
 
 def reserve_parts_order(cur, order_id):
     """Идемпотентно зарезервировать товары parts-заказа по его items.
-    Вызывается после подтверждения предоплаты. Если активные резервы уже есть —
+    Вызывается при создании заказа. Если активные резервы уже есть —
     ничего не делает. Возвращает список результатов (или [])."""
     if not order_id:
         return []
@@ -363,22 +363,8 @@ def recalc_order_reserves(cur, order_id, lines):
 def recalc_parts_order(cur, order_id):
     """Пересчитать резервы parts-заказа по актуальному orders.items.
     Вызывать после ЛЮБОГО изменения состава (add/change_qty/restore/replace).
-    Резервирует только если у заказа уже была подтверждена предоплата ИЛИ уже
-    есть активные резервы — иначе резерв ставится позже (confirm_prepayment)."""
-    cur.execute(
-        f"SELECT prepayment_confirmed, "
-        f"(SELECT COUNT(*) FROM {SCHEMA}.warehouse_reserves "
-        f" WHERE order_id = o.id AND status = 'ACTIVE') "
-        f"FROM {SCHEMA}.orders o WHERE o.id = %s",
-        (order_id,),
-    )
-    row = cur.fetchone()
-    if not row:
-        return []
-    prepaid, active_cnt = bool(row[0]), int(row[1] or 0)
-    if not prepaid and active_cnt == 0:
-        # Резерв ещё не должен стоять (предоплата не подтверждена) — не трогаем.
-        return []
+    Заказы комплектующих оплачиваются целиком при выдаче, предоплаты нет —
+    поэтому резерв стоит с момента создания заказа и пересчитывается всегда."""
     lines = parts_order_lines(cur, order_id)
     return recalc_order_reserves(cur, order_id, lines)
 
