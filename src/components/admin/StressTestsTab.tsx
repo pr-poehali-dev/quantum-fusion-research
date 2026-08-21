@@ -355,7 +355,11 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">{r.machine_name || r.profile_name || `Прогон #${r.id}`}</span>
+                    {/* Заголовок — номер заказа: по нему прогон и ищут.
+                        Нет заказа (внутренний прогон) — показываем стенд. */}
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {r.order_number ? `Заказ ${r.order_number}` : (r.machine_name || r.profile_name || `Прогон #${r.id}`)}
+                    </span>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>
                       {r.passed_tests}/{r.total_tests}
                     </span>
@@ -370,7 +374,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   )}
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-foreground/40">
                     <Icon name="Clock" size={11} /> {fmtDate(r.created_at)}
-                    {r.order_number && <><span>·</span><span className="shrink-0 font-medium text-foreground/60">Заказ {r.order_number}</span></>}
+                    {r.order_number && r.machine_name && <><span>·</span><span className="truncate font-medium text-foreground/60">{r.machine_name}</span></>}
                     {r.profile_name && <><span>·</span><span className="truncate">{r.profile_name}</span></>}
                     {r.folder_id && <><span>·</span><Icon name="Folder" size={10} /><span className="truncate">{folders.find(f => f.id === r.folder_id)?.name || "папка"}</span></>}
                   </div>
@@ -405,8 +409,10 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-foreground">{selected.machine_name || `Прогон #${selected.id}`}</h3>
-                    <button onClick={startRename} title="Переименовать комп" className="rounded p-1 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="Pencil" size={13} /></button>
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {selected.order_number ? `Заказ ${selected.order_number}` : (selected.machine_name || `Прогон #${selected.id}`)}
+                    </h3>
+                    <button onClick={startRename} title="Переименовать стенд" className="rounded p-1 text-foreground/40 hover:text-foreground" style={{ cursor: "pointer" }}><Icon name="Pencil" size={13} /></button>
                     {!isPartner && selected.partner_company_id && !selected.company_is_own && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-400">
                         <Icon name="Building2" size={10} /> {selected.company_name || "партнёр"}
@@ -415,9 +421,9 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   </div>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
-                  {selected.order_number && (
+                  {selected.order_number && selected.machine_name && (
                     <span className="font-medium text-foreground/70">
-                      <Icon name="Package" size={12} className="mr-1 inline" />Заказ {selected.order_number}
+                      <Icon name="Monitor" size={12} className="mr-1 inline" />{selected.machine_name}
                     </span>
                   )}
                   {selected.profile_name && <span><Icon name="ListChecks" size={12} className="mr-1 inline" />{selected.profile_name}</span>}
