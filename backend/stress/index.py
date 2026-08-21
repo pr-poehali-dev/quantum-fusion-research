@@ -497,6 +497,52 @@ def _format_notify_core(body):
     return "\n".join(parts)
 
 
+# Пороги обслуживания GPU — те же, что в программе (см. NOTIFY_TELEGRAM_FORMAT).
+GPU_HOTSPOT_MAX = 100.0     # Hot Spot ≥ 100 °C — алярм
+GPU_MEM_TEMP_MAX = 90.0     # память видеокарты > 90 °C
+GPU_HOTSPOT_DELTA_MAX = 17.0  # разница Hot Spot и ядра
+
+
+def _gpu_issues_from_metrics(metrics):
+    """Предупреждения GPU, посчитанные по датчикам прогона.
+
+    Подстраховка: программа присылает готовый список не всегда (старая версия,
+    прогон прерван, отдельный алерт не дошёл). Датчики есть почти всегда,
+    поэтому перегрев считаем и сами — иначе предупреждение просто теряется.
+    """
+    peak = {}
+    for m in (metrics or []):
+        key = str(m.get("key") or "").split("::")[0].strip().lower()
+        try:
+            mx = float(m.get("max") if m.get("max") is not None else m.get("max_val"))
+        except (TypeError, ValueError):
+            continue
+        if key and (key not in peak or mx > peak[key]):
+            peak[key] = mx
+
+    issues, codes = [], []
+    hotspot = peak.get("gpu_hotspot")
+    core = peak.get("gpu_temp")
+    mem = peak.get("gpu_mem_temp")
+
+    if hotspot is not None and hotspot >= GPU_HOTSPOT_MAX:
+        issues.append(f"Hot Spot превысил {GPU_HOTSPOT_MAX:.0f} °C "
+                      f"(макс. {hotspot:.1f} °C). Алярм.")
+        codes.append("gpu_hotspot_high")
+    if mem is not None and mem >= GPU_MEM_TEMP_MAX:
+        issues.append(f"Память видеокарты нагрелась до {mem:.1f} °C "
+                      f"(порог {GPU_MEM_TEMP_MAX:.0f} °C).")
+        codes.append("gpu_mem_temp_high")
+    if hotspot is not None and core is not None:
+        delta = hotspot - core
+        if delta > GPU_HOTSPOT_DELTA_MAX:
+            issues.append(f"Разница Hot Spot и ядра {delta:.1f} °C "
+                          f"(норма до {GPU_HOTSPOT_DELTA_MAX:.0f} °C) — "
+                          f"похоже на высохшую термопасту.")
+            codes.append("gpu_hotspot_delta_high")
+    return issues, codes
+
+
 def _gpu_issue_list(body):
     """Человекочитаемые предупреждения GPU из тела запроса.
 
@@ -1156,6 +1202,12 @@ def ingest(cur, conn, body, company_id=None):
     # прогона, и в отчёте, а не только в Telegram.
     gpu_issues = _gpu_issue_list(body)
     gpu_codes = [str(c) for c in (body.get("gpu_issue_codes") or []) if str(c).strip()]
+    if not gpu_issues:
+        # Программа список не прислала — считаем сами по датчикам прогона,
+        # иначе перегрев (Hot Spot ≥ 100 °C, память ≥ 90 °C) просто теряется.
+        gpu_issues, auto_codes = _gpu_issues_from_metrics(body.get("metrics"))
+        if gpu_issues and not gpu_codes:
+            gpu_codes = auto_codes
     gpu_maint = bool(body.get("gpu_maintenance")) or bool(gpu_issues)
     gpu_issues_sql = (f"{esc(json.dumps(gpu_issues, ensure_ascii=False))}::jsonb"
                       if gpu_issues else "NULL")

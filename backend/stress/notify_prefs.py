@@ -392,18 +392,31 @@ def _h(key):
     return hashlib.sha256(str(key).encode("utf-8")).hexdigest()
 
 
-def _find_slot(cur, chat_id, keys):
-    """Найти живой слот сообщения по любому из ключей."""
+def _find_slot(cur, chat_id, keys, run_uid):
+    """Найти живой слот сообщения ЭТОГО прогона по любому из ключей.
+
+    Ключи «заказ» и «стенд» специально широкие — они нужны событиям, которые
+    приходят без номера прогона. Но если номер известен, слот ОБЯЗАН быть от
+    того же прогона: иначе следующий прогон на том же стенде попадёт в чужой
+    слот, и его уведомление будет принято за повтор (так и терялись сообщения
+    по заказам 5198 / 5205 / 5207 / 5209).
+    """
     if not keys:
         return None
     hs = [_h(k) for k in keys]
     ph = ",".join(["%s"] * len(hs))
+    own = ""
+    params = [str(chat_id)] + hs
+    if run_uid:
+        # Слот либо нашего прогона, либо ещё «ничей» (событие без run_uid).
+        own = " AND (run_uid = %s OR run_uid = '')"
+        params.append(str(run_uid))
     cur.execute(
         f"SELECT slot_uid, message_id, rank FROM {SCHEMA}.stress_notify_merge "
-        f"WHERE chat_id=%s AND slot_key IN ({ph}) "
+        f"WHERE chat_id=%s AND slot_key IN ({ph}){own} "
         f"AND sent_at > NOW() - INTERVAL '{MERGE_WINDOW_MIN} minutes' "
         f"ORDER BY rank DESC, sent_at DESC LIMIT 1",
-        tuple([str(chat_id)] + hs))
+        tuple(params))
     return cur.fetchone()
 
 
@@ -417,15 +430,18 @@ def _claim_merged(cur, chat_id, raw_event, data):
     """
     rank = FINAL_RANK.get(raw_event, 0)
     keys = _slot_keys(data)
+    run_uid = str(data.get("run_uid") or "").strip()
     if not rank or not keys:
         return "send", None, None
     try:
         cur.execute(
             f"DELETE FROM {SCHEMA}.stress_notify_merge "
             f"WHERE sent_at < NOW() - INTERVAL '{MERGE_WINDOW_MIN} minutes'")
-        row = _find_slot(cur, chat_id, keys)
+        row = _find_slot(cur, chat_id, keys, run_uid)
         if row is None:
-            slot_uid = _h("|".join(keys))[:32]
+            # Свой слот на прогон: с номером прогона, а при его отсутствии —
+            # по ключам события (склейка внутри окна всё равно сработает).
+            slot_uid = _h(run_uid or "|".join(keys))[:32]
             cur.connection.commit()
             return "send", None, slot_uid
         slot_uid, message_id, prev_rank = row[0], row[1], int(row[2] or 0)
@@ -458,6 +474,7 @@ def _remember_message(cur, chat_id, slot_uid, raw_event, message_id, data):
     """
     rank = FINAL_RANK.get(raw_event, 0)
     keys = _slot_keys(data)
+    run_uid = str(data.get("run_uid") or "").strip()
     if not rank or not keys or not slot_uid:
         return
     mid = int(message_id) if message_id else None
@@ -465,12 +482,14 @@ def _remember_message(cur, chat_id, slot_uid, raw_event, message_id, data):
         for k in keys:
             cur.execute(
                 f"INSERT INTO {SCHEMA}.stress_notify_merge "
-                f"(chat_id, slot_key, slot_uid, message_id, rank, event) "
-                f"VALUES (%s, %s, %s, %s, %s, %s) "
+                f"(chat_id, slot_key, slot_uid, run_uid, message_id, rank, event) "
+                f"VALUES (%s, %s, %s, %s, %s, %s, %s) "
                 f"ON CONFLICT (chat_id, slot_key) DO UPDATE SET "
-                f"slot_uid=EXCLUDED.slot_uid, message_id=EXCLUDED.message_id, "
+                f"slot_uid=EXCLUDED.slot_uid, run_uid=EXCLUDED.run_uid, "
+                f"message_id=EXCLUDED.message_id, "
                 f"rank=EXCLUDED.rank, event=EXCLUDED.event, sent_at=NOW()",
-                (str(chat_id), _h(k), slot_uid, mid, rank, str(raw_event)[:40]))
+                (str(chat_id), _h(k), slot_uid, run_uid, mid, rank,
+                 str(raw_event)[:40]))
         # Все алиасы этого же слота тоже подтягиваем к новому состоянию.
         cur.execute(
             f"UPDATE {SCHEMA}.stress_notify_merge SET message_id=%s, rank=%s, "

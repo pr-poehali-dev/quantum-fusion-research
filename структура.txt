@@ -2136,3 +2136,23 @@ src/components/admin/StressTestsTab.tsx — блок под сводкой + о�
 src/components/PublicRunCard.tsx — блок в публичном отчёте /tests/<код>.
 src/components/admin/stress/folderReport.ts — блок «Требуется обслуживание GPU»
   в PDF (стиль .gpu-warn), ReportRun += gpu_maintenance/gpu_issues.
+
+[v8.62] Фикс: терялись уведомления и предупреждения GPU.
+ПРИЧИНА 1 (нет уведомления по заказам 5198/5205/5207/5209): слот склейки жил
+час и находился по широким ключам (order|/stand|) БЕЗ привязки к прогону —
+следующий прогон на том же стенде попадал в чужой слот, его run_finished
+считался повтором (rank == prev_rank) и молча не отправлялся.
+  • db_migrations/V0252 — stress_notify_merge += run_uid TEXT; старые слоты
+    помечены протухшими (sent_at в прошлое), чтобы не глушить новые прогоны;
+  • notify_prefs._find_slot(cur, chat_id, keys, run_uid) — слот берётся только
+    свой (run_uid совпал) либо «ничей» (run_uid='');
+  • slot_uid считается от run_uid, а не от набора ключей;
+  • _remember_message() пишет run_uid в слот.
+ПРИЧИНА 2 (gpu_maintenance=false при явном перегреве): программа не всегда
+шлёт gpu_issues/gpu_maintenance.
+  • НОВОЕ backend/stress/index.py::_gpu_issues_from_metrics(metrics) — считает
+    предупреждения по датчикам прогона: GPU_HOTSPOT_MAX=100, GPU_MEM_TEMP_MAX=90,
+    GPU_HOTSPOT_DELTA_MAX=17 (ключи gpu_hotspot / gpu_temp / gpu_mem_temp,
+    суффиксы ::gpuN отбрасываются);
+  • ingest(): если список от программы пуст — считаем сами;
+  • db_migrations/V0253 — backfill предупреждений по датчикам для старых прогонов.
