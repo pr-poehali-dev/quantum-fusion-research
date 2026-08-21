@@ -347,72 +347,111 @@ FINAL_RANK = {
 }
 
 
-def _merge_slot_key(run_uid):
-    """Ключ «одного сообщения про этот прогон» (общий для всех его событий)."""
-    return f"run|{run_uid}"
+def _slot_keys(data):
+    """Все идентификаторы, по которым события ОДНОГО прогона можно связать.
+
+    Программа шлёт события разными путями и не в каждом есть run_uid: в алерте
+    о перегреве GPU его нет, зато есть номер заказа и имя стенда. Поэтому слот
+    ищем по нескольким ключам сразу — совпал любой, значит это тот же прогон.
+    Ключи специально «широкие»: заказ уникален для прогона, имя стенда —
+    рабочая подстраховка внутри окна склейки.
+    """
+    keys = []
+    run_uid = str(data.get("run_uid") or "").strip()
+    order = str(data.get("order_number") or "").strip()
+    machine = str(data.get("machine") or "").strip()
+    if run_uid:
+        keys.append(f"uid|{run_uid}")
+    if order:
+        keys.append(f"order|{order}")
+    if machine:
+        keys.append(f"stand|{machine.lower()}")
+    return keys
 
 
-def _claim_merged(cur, chat_id, raw_event, run_uid):
+def _h(key):
+    return hashlib.sha256(str(key).encode("utf-8")).hexdigest()
+
+
+def _find_slot(cur, chat_id, keys):
+    """Найти живой слот сообщения по любому из ключей."""
+    if not keys:
+        return None
+    hs = [_h(k) for k in keys]
+    ph = ",".join(["%s"] * len(hs))
+    cur.execute(
+        f"SELECT slot_uid, message_id, rank FROM {SCHEMA}.stress_notify_merge "
+        f"WHERE chat_id=%s AND slot_key IN ({ph}) "
+        f"AND sent_at > NOW() - INTERVAL '{MERGE_WINDOW_MIN} minutes' "
+        f"ORDER BY rank DESC, sent_at DESC LIMIT 1",
+        tuple([str(chat_id)] + hs))
+    return cur.fetchone()
+
+
+def _claim_merged(cur, chat_id, raw_event, data):
     """Занять слот финального сообщения прогона.
 
-    Возвращает (действие, message_id):
-      ("send", None)     — сообщения ещё не было, шлём обычным;
-      ("edit", 12345)    — сообщение уже есть, ДОПОЛНЯЕМ его новым текстом;
-      ("skip", None)     — уже отправлено что-то более полное, молчим.
+    Возвращает (действие, message_id, slot_uid):
+      ("send", None, uid)   — сообщения ещё не было, шлём обычным;
+      ("edit", 123, uid)    — сообщение уже есть, ДОПОЛНЯЕМ его новым текстом;
+      ("skip", None, None)  — уже отправлено что-то не менее полное, молчим.
     """
     rank = FINAL_RANK.get(raw_event, 0)
-    if not run_uid or not rank:
-        return "send", None
-    h = hashlib.sha256(_merge_slot_key(run_uid).encode("utf-8")).hexdigest()
+    keys = _slot_keys(data)
+    if not rank or not keys:
+        return "send", None, None
     try:
         cur.execute(
-            f"DELETE FROM {SCHEMA}.stress_notify_sent "
-            f"WHERE chat_id=%s AND dedup_hash=%s "
-            f"AND sent_at < NOW() - INTERVAL '{MERGE_WINDOW_MIN} minutes'",
-            (str(chat_id), h))
-        cur.execute(
-            f"INSERT INTO {SCHEMA}.stress_notify_sent "
-            f"(chat_id, dedup_hash, event, rank) VALUES (%s, %s, %s, %s) "
-            f"ON CONFLICT (chat_id, dedup_hash) DO NOTHING RETURNING id",
-            (str(chat_id), h, str(raw_event)[:40], rank))
-        if cur.fetchone() is not None:
+            f"DELETE FROM {SCHEMA}.stress_notify_merge "
+            f"WHERE sent_at < NOW() - INTERVAL '{MERGE_WINDOW_MIN} minutes'")
+        row = _find_slot(cur, chat_id, keys)
+        if row is None:
+            slot_uid = _h("|".join(keys))[:32]
             cur.connection.commit()
-            return "send", None
-        cur.execute(
-            f"SELECT message_id, rank FROM {SCHEMA}.stress_notify_sent "
-            f"WHERE chat_id=%s AND dedup_hash=%s", (str(chat_id), h))
-        row = cur.fetchone()
+            return "send", None, slot_uid
+        slot_uid, message_id, prev_rank = row[0], row[1], int(row[2] or 0)
         cur.connection.commit()
-        if not row:
-            return "send", None
-        message_id, prev_rank = row[0], int(row[1] or 0)
         if rank <= prev_rank:
-            return "skip", None
+            return "skip", None, None
         if not message_id:
-            # Первое сообщение ещё не долетело (или ушло без id) — шлём обычным.
-            return "send", None
-        return "edit", message_id
+            # Первое сообщение ещё не долетело — шлём обычным, слот тот же.
+            return "send", None, slot_uid
+        return "edit", message_id, slot_uid
     except Exception as e:
         try:
             cur.connection.rollback()
         except Exception:
             pass
         print(f"STRESS_NOTIFY: объединение недоступно ({e}) — шлём как есть")
-        return "send", None
+        return "send", None, None
 
 
-def _remember_message(cur, chat_id, run_uid, raw_event, message_id):
-    """Запомнить id отправленного сообщения и вес события."""
+def _remember_message(cur, chat_id, slot_uid, raw_event, message_id, data):
+    """Запомнить сообщение под ВСЕМИ ключами прогона.
+
+    Ключей несколько, потому что следующее событие может прийти без run_uid —
+    тогда слот найдётся по номеру заказа или имени стенда.
+    """
     rank = FINAL_RANK.get(raw_event, 0)
-    if not run_uid or not rank:
+    keys = _slot_keys(data)
+    if not rank or not keys or not slot_uid:
         return
-    h = hashlib.sha256(_merge_slot_key(run_uid).encode("utf-8")).hexdigest()
+    mid = int(message_id) if message_id else None
     try:
+        for k in keys:
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.stress_notify_merge "
+                f"(chat_id, slot_key, slot_uid, message_id, rank, event) "
+                f"VALUES (%s, %s, %s, %s, %s, %s) "
+                f"ON CONFLICT (chat_id, slot_key) DO UPDATE SET "
+                f"slot_uid=EXCLUDED.slot_uid, message_id=EXCLUDED.message_id, "
+                f"rank=EXCLUDED.rank, event=EXCLUDED.event, sent_at=NOW()",
+                (str(chat_id), _h(k), slot_uid, mid, rank, str(raw_event)[:40]))
+        # Все алиасы этого же слота тоже подтягиваем к новому состоянию.
         cur.execute(
-            f"UPDATE {SCHEMA}.stress_notify_sent SET message_id=%s, rank=%s, "
-            f"event=%s, sent_at=NOW() WHERE chat_id=%s AND dedup_hash=%s",
-            (int(message_id) if message_id else None, rank,
-             str(raw_event)[:40], str(chat_id), h))
+            f"UPDATE {SCHEMA}.stress_notify_merge SET message_id=%s, rank=%s, "
+            f"event=%s, sent_at=NOW() WHERE chat_id=%s AND slot_uid=%s",
+            (mid, rank, str(raw_event)[:40], str(chat_id), slot_uid))
         cur.connection.commit()
     except Exception as e:
         try:
@@ -464,27 +503,27 @@ def claim_admin_send(cur, event, data):
     return _claim_send(cur, "__admin__", event, dedup_key(event, data))
 
 
-def send_admin_merged(cur, raw_event, run_uid, text):
+def send_admin_merged(cur, raw_event, data, text):
     """Отправка в общий админский чат с объединением событий прогона.
 
     Алерт (перегрев / перезагрузка / отчёт не загружен) и следующий за ним
     итог — это одно и то же сообщение на разных стадиях. Второе не шлём,
     а дописываем в первое.
     """
-    run_uid = str(run_uid or "").strip()
-    mode, message_id = _claim_merged(cur, "__admin__", raw_event, run_uid)
+    mode, message_id, slot_uid = _claim_merged(cur, "__admin__", raw_event, data)
     if mode == "skip":
         return {"ok": True, "skipped": "merged"}
     if mode == "edit":
         chat = os.environ.get("STRESS_TG_CHAT_ID")
         res = edit_stress(text, chat, message_id)
         if res.get("ok"):
-            _remember_message(cur, "__admin__", run_uid, raw_event, message_id)
+            _remember_message(cur, "__admin__", slot_uid, raw_event,
+                              message_id, data)
             return res
     res = send_stress(text)
     if res.get("ok"):
-        _remember_message(cur, "__admin__", run_uid, raw_event,
-                          res.get("message_id"))
+        _remember_message(cur, "__admin__", slot_uid, raw_event,
+                          res.get("message_id"), data)
     return res
 
 
@@ -540,8 +579,7 @@ def notify_company(cur, company_id, event, data):
         # Финальные события одного прогона (алерт → итог) сводим в ОДНО
         # сообщение: каждое следующее содержит всё из предыдущего, поэтому
         # вместо второго сообщения переписываем первое.
-        run_uid = str(data.get("run_uid") or "").strip()
-        mode, message_id = _claim_merged(cur, ch["chat_id"], raw_event, run_uid)
+        mode, message_id, slot_uid = _claim_merged(cur, ch["chat_id"], raw_event, data)
         if mode == "skip":
             result["results"].append({"chat_id": ch["chat_id"], "ok": True,
                                       "skipped": "merged"})
@@ -549,18 +587,19 @@ def notify_company(cur, company_id, event, data):
         if mode == "edit":
             res = edit_stress(text, ch["chat_id"], message_id)
             if res.get("ok"):
-                _remember_message(cur, ch["chat_id"], run_uid, raw_event, message_id)
+                _remember_message(cur, ch["chat_id"], slot_uid, raw_event,
+                                  message_id, data)
             else:
                 # Правка не прошла (сообщение удалили и т.п.) — шлём обычным.
                 res = send_stress(text, chat_id=ch["chat_id"])
                 if res.get("ok"):
-                    _remember_message(cur, ch["chat_id"], run_uid, raw_event,
-                                      res.get("message_id"))
+                    _remember_message(cur, ch["chat_id"], slot_uid, raw_event,
+                                      res.get("message_id"), data)
         else:
             res = send_stress(text, chat_id=ch["chat_id"])
             if res.get("ok"):
-                _remember_message(cur, ch["chat_id"], run_uid, raw_event,
-                                  res.get("message_id"))
+                _remember_message(cur, ch["chat_id"], slot_uid, raw_event,
+                                  res.get("message_id"), data)
         try:
             if res.get("ok"):
                 cur.execute(

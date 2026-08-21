@@ -713,8 +713,11 @@ def notify(body, cur=None, conn=None, company_id=None):
             return ok({"ok": True, "partner": partner_res})
         return err("unknown event")
     if cur is not None:
-        res = np.send_admin_merged(cur, body.get("event", ""),
-                                   body.get("run_uid"), text)
+        res = np.send_admin_merged(cur, body.get("event", ""), {
+            "run_uid": body.get("run_uid"),
+            "order_number": body.get("order_number"),
+            "machine": body.get("stand_name") or body.get("machine"),
+        }, text)
     else:
         res = send_stress(text)
     out = {"ok": bool(res.get("ok"))}
@@ -1036,8 +1039,57 @@ def check_stale_heartbeats(cur, conn):
     return {"ok": True, "alerted": alerted, "count": len(alerted)}
 
 
+def _clean_run_labels(body):
+    """Привести к порядку подписи прогона в ingest.
+
+    Программа при отправке отчёта подставляет номер заказа туда, где ему не
+    место: стенд приезжает как «Заказ 5222» вместо «стенд-35м», а профиль —
+    как «Заказ 5222 · F+S+V (short)». Из-за этого один и тот же прогон в
+    уведомлениях назывался по-разному. Заказ везём отдельным полем, а из
+    названий его вычищаем.
+
+    Возвращает (стенд, профиль, номер заказа).
+    """
+    machine = str(body.get("machine_name") or "").strip()
+    profile = str(body.get("profile_name") or "").strip()
+    order = str(body.get("order_number") or "").strip()
+
+    # «Заказ 5222 · F+S+V (short)» → «F+S+V (short)»
+    m = re.match(r"^\s*(?:заказ|order)\s*[№#]?\s*([\w-]+)\s*(?:·|\||-|—|:)\s*(.+)$",
+                 profile, re.IGNORECASE)
+    if m:
+        order = order or m.group(1)
+        profile = m.group(2).strip()
+
+    # Стенд назван просто «Заказ 5222» — это не имя стенда, а номер заказа.
+    m = re.match(r"^\s*(?:заказ|order)\s*[№#]?\s*([\w-]+)\s*$", machine,
+                 re.IGNORECASE)
+    if m:
+        order = order or m.group(1)
+        # Настоящее имя стенда программа шлёт в stand_name / live-отбивке.
+        machine = (str(body.get("stand_name") or "").strip()
+                   or str(body.get("live_machine") or "").strip()
+                   or machine)
+
+    return machine, profile, order
+
+
 def ingest(cur, conn, body, company_id=None):
     run_uid = (body.get("run_uid") or uuid.uuid4().hex).strip()
+
+    # Пока прогон шёл, он отбивался с НАСТОЯЩИМ именем стенда («стенд-35м»).
+    # В отчёте программа подменяет его на «Заказ 5222», поэтому забираем
+    # правильное имя из живой отбивки, пока строка ещё не удалена.
+    live_machine = ""
+    try:
+        cur.execute(
+            f"SELECT machine_name FROM {SCHEMA}.stress_run_live "
+            f"WHERE run_uid = {esc(run_uid)}")
+        r = cur.fetchone()
+        if r and r[0]:
+            live_machine = str(r[0]).strip()
+    except Exception as e:
+        print(f"[INGEST] live machine lookup: {e}")
 
     # Прогон доехал до сайта — снимаем его с heartbeat-контроля, иначе
     # cron решит, что отбивка просрочена, и пришлёт ложную тревогу.
@@ -1056,6 +1108,11 @@ def ingest(cur, conn, body, company_id=None):
     failed = len(results) - passed
     status = body.get("status") or ("completed" if failed == 0 else "partial")
 
+    # Приводим подписи к порядку: стенд — это стенд, заказ — отдельно,
+    # профиль — без приклеенного номера заказа.
+    machine_name, profile_name, order_number = _clean_run_labels(
+        dict(body, live_machine=live_machine))
+
     company_sql = str(int(company_id)) if company_id else "NULL"
     # Конфигурация ПК (процессор/мат.плата/ОЗУ/видеокарта/диски) — десктоп
     # собирает её сам и шлёт вместе с прогоном. Формат см. в шапке отчёта.
@@ -1067,7 +1124,7 @@ def ingest(cur, conn, body, company_id=None):
         f"(run_uid, profile_name, machine_name, os_info, note, started_at, finished_at, "
         f"total_tests, passed_tests, failed_tests, status, partner_company_id, hardware, "
         f"public_code) VALUES "
-        f"({esc(run_uid)}, {esc(body.get('profile_name', ''))}, {esc(body.get('machine_name', ''))}, "
+        f"({esc(run_uid)}, {esc(profile_name)}, {esc(machine_name)}, "
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
         f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}, "
@@ -1133,8 +1190,8 @@ def ingest(cur, conn, body, company_id=None):
     is_ours = not company_id or company_id == own_company_id(cur)
     if body.get("notify") and is_ours:
         try:
-            machine = body.get("machine_name") or "—"
-            profile = body.get("profile_name") or "—"
+            machine = machine_name or "—"
+            profile = profile_name or "—"
             # Отдельные «test_failed» здесь НЕ шлём: прогон уже закончился,
             # и итоговое сообщение содержит полный список тестов с ошибками.
             # Ранний алерт по упавшему шагу шлёт сама программа — но только
@@ -1143,7 +1200,7 @@ def ingest(cur, conn, body, company_id=None):
             fin_text = _build_notify_text({
                 "event": "run_finished", "machine": machine, "profile": profile,
                 "public_code": public_code,
-                "order_number": body.get("order_number"), "note": body.get("note"),
+                "order_number": order_number, "note": body.get("note"),
                 "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),
             })
@@ -1153,8 +1210,9 @@ def ingest(cur, conn, body, company_id=None):
                     "passed": passed, "total": len(results)}):
                 # Если по этому прогону уже уходил алерт (перегрев GPU,
                 # перезагрузка ПК) — дописываем итог в него, а не шлём второе.
-                notify_result = np.send_admin_merged(
-                    cur, "run_finished", run_uid, fin_text)
+                notify_result = np.send_admin_merged(cur, "run_finished", {
+                    "run_uid": run_uid, "order_number": order_number,
+                    "machine": machine}, fin_text)
             conn.commit()
             if notify_result and not notify_result.get("ok"):
                 print(f"[INGEST_NOTIFY] run_id={run_id} telegram error: {notify_result.get('error')}")
@@ -1172,9 +1230,9 @@ def ingest(cur, conn, body, company_id=None):
                 "event": "run_finished",
                 "run_uid": run_uid,
                 "public_code": public_code,
-                "machine": body.get("machine_name"),
-                "profile": body.get("profile_name"),
-                "order_number": body.get("order_number"),
+                "machine": machine_name,
+                "profile": profile_name,
+                "order_number": order_number,
                 "note": body.get("note"),
                 "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),

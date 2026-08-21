@@ -2061,3 +2061,27 @@ backend/stress/notify_prefs.py
 backend/stress/index.py
   • notify() и ingest() шлют в админский чат через np.send_admin_merged().
 db_migrations/V0248 — stress_notify_sent += message_id BIGINT, rank SMALLINT.
+
+[v8.57] ReceiptScanModal разбит на части + фикс уведомлений стресс-тестера.
+src/components/admin/ReceiptScanModal.tsx — теперь только сборка (≈100 строк).
+src/components/admin/receipt-scan/
+  • types.ts — типы, fileToCompressedDataUrl, BATCH_STATUS, levelColor, normMatched;
+  • useReceiptScan.ts — ВСЯ логика (загрузка, опрос воркера, batch-очередь,
+    черновики, ручной матч, приёмка партий, счётчики);
+  • ReceiptUploadStage.tsx — шаг 1 (загрузка + настройка воркера);
+  • ReceiptBatchStage.tsx — шаг 2 (+ ReceiptScanningStage);
+  • ReceiptReviewStage.tsx — шаг 3 (сверка позиций).
+backend/stress/index.py
+  • НОВОЕ _clean_run_labels(body) — чистит подписи прогона: «Заказ 5222» в поле
+    стенда и «Заказ 5222 · F+S+V» в профиле разбираются на стенд/профиль/заказ;
+  • ingest() до удаления stress_run_live забирает НАСТОЯЩЕЕ имя стенда
+    (live_machine) — программа в отчёте подменяет его номером заказа;
+  • нормализованные значения идут и в БД, и во все уведомления;
+  • send_admin_merged() принимает dict-идентификаторы вместо run_uid.
+backend/stress/notify_prefs.py
+  • склейка переведена на слоты с НЕСКОЛЬКИМИ ключами: _slot_keys() строит
+    uid|/order|/stand| — событие без run_uid (алерт GPU) теперь находит слот;
+  • _find_slot / _claim_merged / _remember_message работают с таблицей
+    stress_notify_merge (алиасы одного слота обновляются вместе).
+db_migrations/V0249 — таблица stress_notify_merge (chat_id, slot_key, slot_uid,
+message_id, rank, sent_at).
