@@ -38,12 +38,18 @@ export default function StressTesterDownload() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Файл лежит на Яндекс.Диске: открываем его страницу в новой вкладке,
-  // чтобы наш сайт не закрывался, пока идёт скачивание.
-  const download = (r: Release) => {
+  // Ссылку на файл выдаёт сервер в момент скачивания: для нашего хранилища
+  // она временная и подставляет нормальное имя файла, для Яндекс.Диска —
+  // страница файла. Открываем в новой вкладке, чтобы сайт не закрывался.
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const download = async (r: Release) => {
+    setBusyId(r.id)
+    const res = await api.stressReleases.countDownload(r.id).catch(() => null)
+    setBusyId(null)
+    const url = res?.file_url || r.file_url
+    if (!url) { alert("Версия сейчас недоступна, попробуйте позже"); return }
     setReleases(rs => rs.map(x => x.id === r.id ? { ...x, download_count: x.download_count + 1 } : x))
-    api.stressReleases.countDownload(r.id)
-    window.open(r.file_url, "_blank", "noopener,noreferrer")
+    window.open(url, "_blank", "noopener,noreferrer")
   }
 
   const latest = releases[0]
@@ -101,10 +107,10 @@ export default function StressTesterDownload() {
             ) : latest ? (
               <>
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <button onClick={() => download(latest)} style={{ cursor: "pointer" }}
-                    className="flex items-center justify-center gap-2.5 rounded-xl bg-primary px-7 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                  <button onClick={() => download(latest)} disabled={busyId === latest.id} style={{ cursor: "pointer" }}
+                    className="flex items-center justify-center gap-2.5 rounded-xl bg-primary px-7 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-70">
                     <Icon name="Download" size={20} />
-                    Скачать бесплатно
+                    {busyId === latest.id ? "Готовим файл…" : "Скачать бесплатно"}
                   </button>
                   <button onClick={scrollToVersions} style={{ cursor: "pointer" }}
                     className="flex items-center justify-center gap-2 rounded-xl border border-border px-6 py-4 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors">
@@ -337,9 +343,9 @@ export default function StressTesterDownload() {
                           <span className="flex items-center gap-1 text-xs text-foreground/40">
                             <Icon name="Download" size={11} />{r.download_count}
                           </span>
-                          <button onClick={() => download(r)} style={{ cursor: "pointer" }}
-                            className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors">
-                            <Icon name="Download" size={12} />Скачать
+                          <button onClick={() => download(r)} disabled={busyId === r.id} style={{ cursor: "pointer" }}
+                            className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-60">
+                            <Icon name="Download" size={12} />{busyId === r.id ? "Готовим…" : "Скачать"}
                           </button>
                         </div>
                         {r.changelog && (

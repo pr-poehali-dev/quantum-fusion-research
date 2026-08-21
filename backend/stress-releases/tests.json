@@ -17,7 +17,10 @@
       "name": "Upload url requires admin",
       "method": "POST",
       "path": "/",
-      "body": {"action": "upload_url", "file_name": "app.exe"},
+      "body": {
+        "action": "upload_url",
+        "file_name": "app.exe"
+      },
       "expectedStatus": 403,
       "bodyMatcher": "partial"
     },
@@ -25,7 +28,11 @@
       "name": "Create requires admin",
       "method": "POST",
       "path": "/",
-      "body": {"action": "create", "version": "1.0", "file_url": "http://x/a.exe"},
+      "body": {
+        "action": "create",
+        "version": "1.0",
+        "file_url": "http://x/a.exe"
+      },
       "expectedStatus": 403,
       "bodyMatcher": "partial"
     },
@@ -33,7 +40,10 @@
       "name": "Delete requires admin",
       "method": "POST",
       "path": "/",
-      "body": {"action": "delete", "id": 1},
+      "body": {
+        "action": "delete",
+        "id": 1
+      },
       "expectedStatus": 403,
       "bodyMatcher": "partial"
     },
@@ -41,17 +51,22 @@
       "name": "Resolve link requires admin",
       "method": "POST",
       "path": "/",
-      "body": {"action": "resolve_link", "link": "https://disk.yandex.ru/d/xxx"},
+      "body": {
+        "action": "resolve_link",
+        "link": "https://disk.yandex.ru/d/xxx"
+      },
       "expectedStatus": 403,
       "bodyMatcher": "partial"
     },
     {
-      "name": "Download counter is public",
+      "name": "Download of missing release returns 404",
       "method": "POST",
       "path": "/",
-      "body": {"action": "count_download", "id": 999999},
-      "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "body": {
+        "action": "count_download",
+        "id": 999999
+      },
+      "expectedStatus": 404,
       "bodyMatcher": "partial"
     }
   ]

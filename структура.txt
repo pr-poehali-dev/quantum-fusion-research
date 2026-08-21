@@ -1680,3 +1680,24 @@ src/components/admin/StressProfilesTab.tsx — в редакторе выбор 
   («Наш профиль (общий)» / компания из adminGetCompanies) и галочка
   «Публичный для гостей» (недоступна для профилей компаний); в списке тег
   владельца: название компании / «гостевой» / «наш».
+
+[v8.30] Версии тестера: выбор файла из нашего хранилища + защита ссылок.
+backend/stress-releases/index.py:
+  POST action=storage_files (только админ) — список объектов бакета files
+  (.exe/.msi/.zip/.7z), с пагинацией, сортировка по дате, до 200 записей;
+  download_url(s3_key, file_name) — presigned GET на 1 час с
+    ResponseContentDisposition attachment; filename="<оригинал>" —
+    иначе браузер сохранял файл под техническим именем ключа (uuid.exe);
+  row_to_dict() — для записей с s3_key публичный file_url НЕ отдаётся
+    (поле пустое, добавлено storage: "local"|"external"); админ видит адрес;
+  count_download — учитывает только опубликованные версии, для локальных
+    файлов возвращает свежую временную ссылку, иначе 404.
+src/lib/api.ts — api.stressReleases.storageFiles(adminKey, prefix).
+src/components/admin/StressReleasesTab.tsx — блок «Файл из хранилища»:
+  кнопка «Показать файлы», список с именем/размером, выбор файла
+  (подставляет имя, размер и номер версии из имени), поле ссылки при этом
+  отключается; при сохранении в create уходит s3_key вместо file_url.
+src/pages/StressTesterDownload.tsx — download() берёт ссылку из ответа
+  count_download (состояние busyId, надпись «Готовим файл…»).
+Безопасность: листинг бакета снаружи закрыт (bucket.poehali.dev → 401,
+CDN-каталог → 404), угадать чужой файл нельзя — ключи содержат uuid.

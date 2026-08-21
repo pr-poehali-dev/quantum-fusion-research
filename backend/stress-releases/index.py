@@ -134,14 +134,40 @@ def cdn_url(key):
     return f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
 
 
+def download_url(s3_key, file_name):
+    """Временная ссылка на файл в нашем хранилище с правильным именем.
+
+    Прямой адрес CDN не отдаём: во-первых, браузер сохраняет файл под
+    техническим именем ключа (набор символов вместо StressTester_Setup),
+    во-вторых, постоянный адрес расходится по чатам и живёт вечно.
+    Ссылка действует час и подставляет нормальное имя при сохранении.
+    """
+    name = (file_name or "stress-tester.exe").replace('"', "")
+    return s3().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": "files", "Key": s3_key,
+            "ResponseContentType": "application/octet-stream",
+            "ResponseContentDisposition": f'attachment; filename="{name}"',
+        },
+        ExpiresIn=60 * 60,
+    )
+
+
 def row_to_dict(r, admin=False):
+    s3_key = r[9] or ""
     d = {
         "id": r[0], "version": r[1], "changelog": r[2] or "",
-        "file_url": r[3], "file_name": r[4] or "", "file_size": int(r[5] or 0),
+        # Файл из нашего хранилища скачивается по временной ссылке —
+        # её выдаёт count_download, поэтому наружу адрес не публикуем.
+        "file_url": "" if s3_key else (r[3] or ""),
+        "file_name": r[4] or "", "file_size": int(r[5] or 0),
         "download_count": int(r[7] or 0), "created_at": r[8],
+        "storage": "local" if s3_key else "external",
     }
     if admin:
-        d["s3_key"] = r[9] or ""
+        d["s3_key"] = s3_key
+        d["file_url"] = r[3] or ""
         d["is_published"] = bool(r[6])
     return d
 
@@ -198,12 +224,19 @@ def handler(event: dict, context) -> dict:
             if rid:
                 cur.execute(
                     f"UPDATE {TABLE} SET download_count = download_count + 1 "
-                    f"WHERE id = {rid} RETURNING source_link, file_url"
+                    f"WHERE id = {rid} AND is_published = TRUE "
+                    f"RETURNING source_link, file_url, s3_key, file_name"
                 )
                 row = cur.fetchone()
                 conn.commit()
                 if row:
-                    target = row[0] or row[1] or ""
+                    if row[2]:
+                        # Наше хранилище: временная ссылка с нормальным именем.
+                        target = download_url(row[2], row[3])
+                    else:
+                        target = row[0] or row[1] or ""
+            if not target:
+                return resp(404, {"ok": False, "error": "Версия недоступна"})
             return resp(200, {"ok": True, "file_url": target})
 
         # ── Дальше только админ ───────────────────────────────────────────
@@ -224,6 +257,37 @@ def handler(event: dict, context) -> dict:
                 ExpiresIn=6 * 60 * 60,  # 6 часов: 5 ГБ на медленном канале грузятся долго
             )
             return resp(200, {"upload_url": url, "s3_key": key, "file_url": cdn_url(key)})
+
+        # Список файлов в нашем хранилище — чтобы выбрать уже залитый EXE
+        # прямо в админке, не составляя ссылку руками.
+        if action == "storage_files":
+            prefix = (body.get("prefix") or params.get("prefix") or "").strip()
+            files = []
+            token = None
+            while True:
+                kw = {"Bucket": "files", "MaxKeys": 1000}
+                if prefix:
+                    kw["Prefix"] = prefix
+                if token:
+                    kw["ContinuationToken"] = token
+                page = s3().list_objects_v2(**kw)
+                for o in page.get("Contents", []):
+                    key = o["Key"]
+                    size = int(o.get("Size") or 0)
+                    # Показываем только дистрибутивы: мелочь и картинки не нужны.
+                    if not key.lower().endswith((".exe", ".msi", ".zip", ".7z")):
+                        continue
+                    files.append({
+                        "key": key,
+                        "name": key.rsplit("/", 1)[-1],
+                        "size": size,
+                        "modified": str(o.get("LastModified") or ""),
+                    })
+                if not page.get("IsTruncated"):
+                    break
+                token = page.get("NextContinuationToken")
+            files.sort(key=lambda f: f["modified"], reverse=True)
+            return resp(200, {"ok": True, "files": files[:200]})
 
         # Публичная ссылка Яндекс.Диска → прямая ссылка на файл + имя и размер.
         # Хранилище проекта не принимает загрузку из браузера, поэтому большие

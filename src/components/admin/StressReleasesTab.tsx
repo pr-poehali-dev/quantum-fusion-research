@@ -23,6 +23,8 @@ export function fmtSize(bytes: number): string {
   return `${mb.toFixed(mb >= 100 ? 0 : 1).replace(".", ",")} МБ`
 }
 
+interface StorageFile { key: string; name: string; size: number; modified: string }
+
 export function fmtDate(iso: string): string {
   if (!iso) return ""
   const d = new Date(iso)
@@ -44,6 +46,11 @@ export default function StressReleasesTab() {
   const [found, setFound] = useState<{ name: string; size: number } | null>(null)
   const [error, setError] = useState("")
 
+  // Файлы, уже залитые в наше хранилище: можно выбрать вместо ссылки.
+  const [storage, setStorage] = useState<StorageFile[] | null>(null)
+  const [picked, setPicked] = useState<StorageFile | null>(null)
+  const [storageBusy, setStorageBusy] = useState(false)
+
   const load = () => {
     api.stressReleases.list(getAdminKey())
       .then(d => setReleases(d?.releases || []))
@@ -55,6 +62,27 @@ export default function StressReleasesTab() {
   const reset = () => {
     setVersion(""); setChangelog(""); setLink("")
     setFound(null); setBusy(false); setError("")
+    setPicked(null); setStorage(null)
+  }
+
+  // Список дистрибутивов из нашего хранилища (exe/msi/zip).
+  const loadStorage = async () => {
+    const ak = getAdminKey()
+    if (!ak) { setError("Нет доступа администратора"); return }
+    setStorageBusy(true); setError("")
+    const r = await api.stressReleases.storageFiles(ak).catch(() => null)
+    setStorageBusy(false)
+    if (!r?.ok) { setError("Не удалось получить список файлов"); return }
+    setStorage(r.files || [])
+  }
+
+  const pickFile = (f: StorageFile) => {
+    setPicked(f); setLink(""); setFound({ name: f.name, size: f.size }); setError("")
+    if (!version.trim()) {
+      // Номер версии обычно есть в имени файла — подставим его.
+      const m = f.name.match(/(\d+(?:\.\d+){1,3})/)
+      if (m) setVersion(m[1])
+    }
   }
 
   // Проверяем ссылку заранее: сразу видно имя и размер файла.
@@ -74,18 +102,28 @@ export default function StressReleasesTab() {
     const ak = getAdminKey()
     if (!ak) { setError("Нет доступа администратора"); return }
     if (!version.trim()) { setError("Укажите номер версии"); return }
-    const r = await check()
-    if (!r) return
+
+    let payload: Record<string, unknown>
+    if (picked) {
+      payload = {
+        file_url: "", source_link: "", s3_key: picked.key,
+        file_name: picked.name, file_size: picked.size,
+      }
+    } else {
+      const r = await check()
+      if (!r) return
+      payload = {
+        file_url: r.file_url, source_link: r.public_link || "",
+        file_name: r.file_name, file_size: Number(r.file_size || 0),
+      }
+    }
 
     setBusy(true)
     const res = await api.stressReleases.create({
       version: version.trim(),
       changelog: changelog.trim(),
-      file_url: r.file_url,
-      source_link: r.public_link || "",
-      file_name: r.file_name,
-      file_size: Number(r.file_size || 0),
       is_published: publish,
+      ...payload,
     }, ak).catch(() => null)
     setBusy(false)
 
@@ -122,9 +160,47 @@ export default function StressReleasesTab() {
       <div className="mb-8 rounded-xl border border-border bg-card p-5">
         <h3 className="mb-1 font-medium">Новая версия</h3>
         <p className="mb-4 text-xs text-foreground/50">
-          Загрузите файл программы на Яндекс.Диск, откройте к нему доступ по ссылке
-          и вставьте её сюда — сайт сам заберёт имя, размер и настроит скачивание.
+          Выберите файл, уже загруженный в наше хранилище, — или вставьте ссылку
+          с Яндекс.Диска. Имя и размер подставятся сами.
         </p>
+
+        {/* Файлы из нашего хранилища */}
+        <div className="mb-4 rounded-lg border border-border bg-background p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-foreground/70">Файл из хранилища</span>
+            <button onClick={loadStorage} disabled={storageBusy || busy} style={{ cursor: "pointer" }}
+              className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40">
+              <Icon name={storageBusy ? "Loader2" : "FolderOpen"} size={13} className={storageBusy ? "animate-spin" : ""} />
+              {storage ? "Обновить список" : "Показать файлы"}
+            </button>
+          </div>
+
+          {picked && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-green-400">
+              <Icon name="Check" size={13} />
+              Выбран: {picked.name} — {fmtSize(picked.size)}
+            </p>
+          )}
+
+          {storage && (
+            storage.length === 0 ? (
+              <p className="mt-2 text-xs text-foreground/40">
+                В хранилище нет файлов программы (.exe, .msi, .zip).
+              </p>
+            ) : (
+              <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+                {storage.map(f => (
+                  <button key={f.key} onClick={() => pickFile(f)} disabled={busy} style={{ cursor: "pointer" }}
+                    className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${picked?.key === f.key ? "border-primary bg-primary/5 text-foreground" : "border-border text-foreground/70 hover:border-primary/50"}`}>
+                    <Icon name="FileBox" size={14} className="shrink-0 text-foreground/40" />
+                    <span className="min-w-0 flex-1 truncate" title={f.key}>{f.name}</span>
+                    <span className="shrink-0 text-foreground/40">{fmtSize(f.size)}</span>
+                  </button>
+                ))}
+              </div>
+            )
+          )}
+        </div>
 
         <div className="mb-3 grid gap-3 sm:grid-cols-3">
           <div>
@@ -133,19 +209,22 @@ export default function StressReleasesTab() {
               placeholder="1.4.2" className={inputCls} />
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-foreground/60">Ссылка на файл *</label>
-            <input value={link} onChange={e => { setLink(e.target.value); setFound(null) }} disabled={busy}
-              placeholder="https://disk.yandex.ru/d/..." className={inputCls} />
+            <label className="mb-1 block text-xs text-foreground/60">
+              Ссылка на файл {picked ? "(не нужна — файл выбран выше)" : "*"}
+            </label>
+            <input value={link} onChange={e => { setLink(e.target.value); setFound(null); setPicked(null) }}
+              disabled={busy || !!picked}
+              placeholder="https://disk.yandex.ru/d/..." className={`${inputCls} disabled:opacity-50`} />
           </div>
         </div>
 
-        <button onClick={check} disabled={busy || !link.trim()} style={{ cursor: "pointer" }}
+        <button onClick={check} disabled={busy || !link.trim() || !!picked} style={{ cursor: "pointer" }}
           className="mb-3 flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40">
           <Icon name={busy ? "Loader2" : "Link"} size={13} className={busy ? "animate-spin" : ""} />
           Проверить ссылку
         </button>
 
-        {found && (
+        {found && !picked && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-green-400">
             <Icon name="Check" size={13} />
             Файл найден: {found.name}{found.size ? ` — ${fmtSize(found.size)}` : ""}
