@@ -35,6 +35,15 @@ function fmtLeft(sec: number): string {
   return `${Math.max(1, m)} мин`
 }
 
+function fmtTime(s: string | null): string {
+  if (!s) return ""
+  const d = new Date(s.replace(" ", "T"))
+  if (isNaN(d.getTime())) return ""
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  })
+}
+
 function fmtAgo(sec: number): string {
   if (sec < 90) return "только что"
   const m = Math.round(sec / 60)
@@ -59,10 +68,13 @@ export default function LiveRuns({ adminKey, auth }: Props) {
 
   useEffect(() => {
     load()
-    // Отбивка приходит редко (раз в 15 минут), поэтому обновляем раз в минуту:
-    // этого хватает, чтобы «осталось» и «на связи» не выглядели застывшими.
+    // Данные меняются не чаще отбивки, но обновлять надо: так уходят
+    // завершившиеся прогоны и вовремя появляется пометка «нет связи».
     const t = setInterval(load, 60_000)
-    return () => clearInterval(t)
+    // Возврат на вкладку — сразу свежие данные, а не через минуту.
+    const onFocus = () => load()
+    window.addEventListener("focus", onFocus)
+    return () => { clearInterval(t); window.removeEventListener("focus", onFocus) }
   }, [load])
 
   if (runs.length === 0) return null
@@ -109,6 +121,15 @@ export default function LiveRuns({ adminKey, auth }: Props) {
               </span>
             </div>
 
+            {/* Пока связи нет, данные ниже — с последней отбивки: показываем
+                это прямо, чтобы «осталось ~» не выглядело настоящим. */}
+            {r.stale && (
+              <p className="mt-1 text-xs text-amber-400">
+                Стенд не выходит на связь. Данные ниже — на момент последней
+                отбивки{r.heartbeat_at ? ` (${fmtTime(r.heartbeat_at)})` : ""}.
+              </p>
+            )}
+
             <p className="mt-1 truncate text-xs text-foreground/50">
               {r.profile_name}
               {r.current_test_name ? ` · ${r.current_test_name}` : ""}
@@ -123,7 +144,7 @@ export default function LiveRuns({ adminKey, auth }: Props) {
             )}
 
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-foreground/40">
-              {r.remaining_sec > 0 && (
+              {r.remaining_sec > 0 && !r.stale && (
                 <span className="flex items-center gap-1">
                   <Icon name="Clock" size={11} />осталось ~{fmtLeft(r.remaining_sec)}
                 </span>

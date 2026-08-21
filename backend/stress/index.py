@@ -350,7 +350,7 @@ def handler(event, context):
             return list_runs(cur, company_filter)
         # Прогоны, которые идут прямо сейчас (по отбивкам heartbeat).
         if action == "live_runs" and method == "GET":
-            return live_runs(cur, company_filter)
+            return live_runs(cur, conn, company_filter)
         if action == "get" and method == "GET":
             return get_run(cur, int(params.get("id") or 0),
                            partner_cid if not admin else None, conn)
@@ -921,7 +921,7 @@ def heartbeat(cur, conn, body, company_id=None):
     return ok({"ok": True, "run_uid": run_uid})
 
 
-def live_runs(cur, company_filter=None):
+def live_runs(cur, conn=None, company_filter=None):
     """Прогоны, которые идут прямо сейчас — по отбивкам heartbeat.
 
     Запись живёт в stress_run_live: программа шлёт отбивку раз в
@@ -935,6 +935,16 @@ def live_runs(cur, company_filter=None):
         where = f" WHERE partner_company_id = {int(company_filter)}"
     elif company_filter == "own":
         where = " WHERE partner_company_id IS NULL"
+
+    # Прогон снимает себя с контроля сам, но если программу закрыли, стенд
+    # выключили или он ушёл в синий экран — запись осталась бы висеть вечно.
+    # Считаем такой прогон брошенным, когда пропущено 3 отбивки подряд, и
+    # убираем из «Идут сейчас»: результат всё равно уже не придёт.
+    cur.execute(
+        f"DELETE FROM {SCHEMA}.stress_run_live WHERE next_heartbeat_at IS NOT NULL "
+        f"AND NOW() > next_heartbeat_at + "
+        f"((grace_sec + 3 * GREATEST(heartbeat_interval_sec, 300)) || ' seconds')::interval"
+    )
     cur.execute(
         f"SELECT run_uid, machine_name, profile_name, company_name, order_number, "
         f"started_at, heartbeat_at, next_heartbeat_at, heartbeat_interval_sec, "
@@ -957,6 +967,8 @@ def live_runs(cur, company_filter=None):
         "stale": bool(r[17]),
         "since_heartbeat_sec": int(r[18] or 0),
     } for r in cur.fetchall()]
+    if conn is not None:
+        conn.commit()
     return ok({"runs": runs, "count": len(runs)})
 
 
