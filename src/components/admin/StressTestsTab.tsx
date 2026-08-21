@@ -411,17 +411,6 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                     )}
                   </div>
                 )}
-                {/* Публичная ссылка на отчёт — её можно отправить клиенту */}
-                {selected.public_code && (
-                  <button onClick={() => copyReportLink(selected.public_code!)}
-                    title="Скопировать публичную ссылку на отчёт" style={{ cursor: "pointer" }}
-                    className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-foreground/60 transition-colors hover:border-primary hover:text-foreground">
-                    <Icon name={linkCopied === selected.public_code ? "Check" : "Link"} size={12} />
-                    {linkCopied === selected.public_code
-                      ? "Ссылка скопирована"
-                      : `/tests/${selected.public_code}`}
-                  </button>
-                )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
                   {selected.profile_name && <span><Icon name="ListChecks" size={12} className="mr-1 inline" />{selected.profile_name}</span>}
                   {selected.os_info && <span><Icon name="Cpu" size={12} className="mr-1 inline" />{selected.os_info}</span>}
@@ -445,7 +434,8 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                   </div>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
                 <button onClick={() => openRunReport(selected as unknown as ReportRun, "super")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }} title="Суперкомпактный отчёт (PDF): только тесты с баллами">
                   <Icon name="AlignJustify" size={13} /> Суперкомпактный
                 </button>
@@ -458,6 +448,18 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                 {!isPartner && (
                   <button onClick={() => removeRun(selected.id)} className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors" style={{ cursor: "pointer" }}>
                     <Icon name="Trash2" size={13} /> Удалить
+                  </button>
+                )}
+                </div>
+
+                {/* Публичная ссылка на отчёт — её отправляют клиенту */}
+                {selected.public_code && (
+                  <button onClick={() => copyReportLink(selected.public_code!)}
+                    title={`${window.location.origin}/tests/${selected.public_code}`}
+                    style={{ cursor: "pointer" }}
+                    className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10">
+                    <Icon name={linkCopied === selected.public_code ? "Check" : "Link"} size={13} />
+                    {linkCopied === selected.public_code ? "Ссылка скопирована" : "Скопировать ссылку клиенту"}
                   </button>
                 )}
               </div>

@@ -1864,5 +1864,6 @@ src/pages/PublicReport.tsx (новый) + роут /tests/:code в App.tsx —
   «Проверьте свой компьютер» со ссылкой на /stresstester. Нет отчёта —
   «Отчёт не найден».
 src/lib/api.ts — api.stress.publicReport(code).
-src/components/admin/StressTestsTab.tsx — в шапке прогона кнопка
-  «/tests/<код>»: копирует полную ссылку. Работает и у партнёра.
+src/components/admin/StressTestsTab.tsx — в карточке прогона под кнопками
+  отчётов (Суперкомпактный/Отчёт/Подробный/Удалить) кнопка «Скопировать
+  ссылку клиенту»: копирует полный адрес /tests/<код>. Есть и у партнёра.
