@@ -172,6 +172,12 @@ def handler(event, context):
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # ── Витрина на сайте: последний завершённый прогон (без авторизации) ──
+        # Показываем как в админке, но без датчиков и без служебных полей:
+        # это демонстрация возможностей программы, а не доступ к данным.
+        if action == "last_public_run" and method == "GET":
+            return last_public_run(cur)
+
         # ── Публичная проверка отчёта по QR-коду (без авторизации) ──────────
         if action == "verify" and method == "GET":
             data = bp.lookup_verify(cur, params.get("code"))
@@ -1447,6 +1453,44 @@ def get_run(cur, run_id, owner_cid=None):
         "avg": float(m[5]) if m[5] is not None else None,
         "samples": m[6],
     } for m in cur.fetchall()]
+    return ok({"run": run})
+
+
+def last_public_run(cur):
+    """Последний завершённый прогон для витрины на сайте.
+
+    Отдаём без авторизации, поэтому наружу идёт только то, что уместно
+    показать посетителю: профиль, железо, итоги и список тестов. Датчики
+    (stress_metrics) и файлы отчётов не выдаём — это данные владельца ПК.
+    Имя машины тоже скрываем: у партнёров там бывают имена клиентов.
+    """
+    cur.execute(
+        f"SELECT sr.id, sr.profile_name, sr.started_at, sr.finished_at, "
+        f"sr.total_tests, sr.passed_tests, sr.failed_tests, sr.status, "
+        f"sr.created_at, sr.hardware "
+        f"FROM {SCHEMA}.stress_runs sr "
+        f"WHERE sr.finished_at IS NOT NULL AND sr.total_tests > 0 "
+        f"ORDER BY sr.finished_at DESC LIMIT 1"
+    )
+    r = cur.fetchone()
+    if not r:
+        return ok({"run": None})
+    run = {
+        "id": r[0], "profile_name": r[1] or "", "started_at": r[2],
+        "finished_at": r[3], "total_tests": r[4], "passed_tests": r[5],
+        "failed_tests": r[6], "status": r[7], "created_at": r[8],
+        "hardware": r[9] or None,
+    }
+    cur.execute(
+        f"SELECT test_name, exit_code, duration_sec, timed_out, success, score_text "
+        f"FROM {SCHEMA}.stress_results WHERE run_id = {int(r[0])} "
+        f"ORDER BY sort_order, id"
+    )
+    run["results"] = [{
+        "test_name": x[0] or "", "exit_code": x[1],
+        "duration_sec": float(x[2]) if x[2] is not None else 0,
+        "timed_out": x[3], "success": x[4], "score_text": x[5] or "",
+    } for x in cur.fetchall()]
     return ok({"run": run})
 
 

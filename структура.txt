@@ -1778,3 +1778,18 @@ src/components/admin/StressReleasesTab.tsx — экспортируются clea
 src/pages/StressTesterDownload.tsx — версии сгруппированы: у актуальной
   карточки кнопки «Полная версия» и «Облегчённая версия», в архиве —
   версия с кнопками по сборкам; счётчик скачиваний суммируется.
+
+[v8.35] Витрина «Последний тест» на странице программы.
+backend/stress/index.py — публичный GET ?action=last_public_run (без
+  авторизации): последний прогон с finished_at, любой компании (нашей или
+  партнёрской). Отдаёт profile_name, hardware, итоги и список тестов
+  (test_name, exit_code, duration_sec, timed_out, success, score_text).
+  НЕ отдаёт: датчики stress_metrics, файлы отчётов, machine_name,
+  название компании — это данные владельца ПК.
+src/lib/api.ts — api.stress.lastPublicRun().
+src/components/LastPublicRun.tsx (новый) — карточка отчёта как в админке:
+  вердикт (ошибки/успех), «Конфигурация ПК», три счётчика (всего/успешно/
+  с ошибкой), список тестов с баллом (shortScore) и строкой statsLine.
+  Если прогонов нет — блок не рисуется.
+src/pages/StressTesterDownload.tsx — блок вставлен перед секцией
+  «Скачать программу» (#versions).

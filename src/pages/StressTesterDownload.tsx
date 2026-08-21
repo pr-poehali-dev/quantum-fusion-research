@@ -4,6 +4,7 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import Seo from "@/components/Seo"
 import Footer from "@/components/Footer"
+import LastPublicRun from "@/components/LastPublicRun"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { Release, fmtSize, fmtDate, groupReleases, editionOf } from "@/components/admin/StressReleasesTab"
 
@@ -286,6 +287,9 @@ export default function StressTesterDownload() {
       </section>
 
       {/* ── Версии ── */}
+      {/* Живой пример: последний прогон с наших стендов */}
+      <LastPublicRun />
+
       <section id="versions" className="mx-auto max-w-3xl px-6 py-14">
         <h2 className="mb-6 text-2xl font-light sm:text-3xl">Скачать программу</h2>
 
