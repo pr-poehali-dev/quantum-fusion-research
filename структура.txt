@@ -1820,3 +1820,24 @@ src/components/admin/stress/LiveRuns.tsx (новый) — блок «Идут с
   Обновляется раз в минуту (отбивка редкая — 15 минут).
 src/components/admin/StressTestsTab.tsx — блок над списком прогонов,
   работает и в админке, и в кабинете партнёра (auth пробрасывается).
+
+[v8.38] OTA-обновления StressRunner: launcher_version из каталога версий.
+backend/stress/index.py:
+  GET ?action=launcher_version[&channel=full|lite] — ПУБЛИЧНЫЙ (EXE
+    спрашивает до авторизации). Отдаёт product, channel, latest_version,
+    version_label, download_url, release_notes, file_name, file_size,
+    download_url_lite/_full (вторая сборка), source (catalog|env).
+  _latest_release(cur, edition) — самая свежая опубликованная сборка,
+    сортировка по числовым частям версии (string_to_array ...::int[]).
+  _release_download_url() — presigned GET на час прямо на .exe; внешняя
+    ссылка (Я.Диск) только как запасной вариант: для OTA не годится.
+  _numeric_version() — «1.0.7.0 Beta» → «1.0.7.0», иначе EXE не сравнит
+    с FileVersion; человеческое название уходит в version_label.
+  Lite отсутствует → отдаём full, чтобы стенд не остался без обновлений.
+  Env STRESS_LAUNCHER_VERSION / _DOWNLOAD_URL / _RELEASE_NOTES — fallback
+    на случай пустого каталога, редеплой ради релиза не нужен.
+src/lib/api.ts — api.stress.launcherVersion(channel).
+src/components/admin/StressReleasesTab.tsx — блок «Автообновление
+  программы»: по каждой сборке видно, до какой версии обновятся стенды,
+  либо предупреждение «нет опубликованной сборки».
+desktop/КАК ВЫКАТИТЬ РЕЛИЗ.md (новый) — инструкция для команды.

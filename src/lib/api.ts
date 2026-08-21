@@ -389,6 +389,9 @@ export const api = {
     // companyId — фильтр по компании (для админа); партнёру бэкенд ставит свою.
     list: (adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=list${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    // Что программа получает при проверке обновлений (публично, без ключа).
+    launcherVersion: (channel: "full" | "lite" = "full") =>
+      fetch(`${URLS.stress}?action=launcher_version&channel=${channel}`).then(r => r.json()),
     // Прогоны, которые идут прямо сейчас (по отбивкам heartbeat).
     liveRuns: (adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=live_runs${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),

@@ -181,6 +181,21 @@ export default function StressReleasesTab() {
     await api.stressReleases.update({ id: r.id, is_published: !r.is_published }, ak).catch(() => {})
   }
 
+  // Что сейчас получают стенды при проверке обновлений.
+  const [ota, setOta] = useState<Record<string, { version: string; label: string; ok: boolean }>>({})
+  useEffect(() => {
+    (["full", "lite"] as const).forEach(ch => {
+      api.stress.launcherVersion(ch).then(d => setOta(prev => ({
+        ...prev,
+        [ch]: {
+          version: d?.latest_version || "",
+          label: d?.version_label || d?.latest_version || "",
+          ok: Boolean(d?.latest_version && d?.download_url),
+        },
+      }))).catch(() => {})
+    })
+  }, [releases.length])
+
   // Правка уже добавленной версии: номер и описание «что нового».
   const [editId, setEditId] = useState<number | null>(null)
   const [editVersion, setEditVersion] = useState("")
@@ -321,6 +336,42 @@ export default function StressReleasesTab() {
           <Icon name={busy ? "Loader2" : "Plus"} size={15} className={busy ? "animate-spin" : ""} />
           {busy ? "Сохраняем…" : "Добавить версию"}
         </button>
+      </div>
+
+      {/* Что получают стенды при проверке обновлений */}
+      <div className="mb-4 rounded-xl border border-border bg-card p-4">
+        <p className="mb-2 flex items-center gap-2 text-sm font-medium">
+          <Icon name="RefreshCw" size={14} />Автообновление программы
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(["full", "lite"] as const).map(ch => {
+            const x = ota[ch]
+            return (
+              <div key={ch} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs">
+                <span className={`rounded px-1.5 py-0.5 text-[10px] ${ch === "lite" ? "bg-sky-500/10 text-sky-500" : "bg-primary/10 text-primary"}`}>
+                  {ch === "lite" ? "Lite" : "Полная"}
+                </span>
+                {!x ? (
+                  <span className="text-foreground/40">проверяем…</span>
+                ) : x.ok ? (
+                  <>
+                    <span className="text-foreground/70">стенды обновятся до {x.label}</span>
+                    <Icon name="Check" size={13} className="ml-auto text-green-400" />
+                  </>
+                ) : (
+                  <>
+                    <span className="text-amber-400">нет опубликованной сборки</span>
+                    <Icon name="TriangleAlert" size={13} className="ml-auto text-amber-400" />
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <p className="mt-2 text-xs text-foreground/40">
+          Программа сама берёт самую свежую опубликованную версию из списка ниже —
+          менять что-то в настройках сервера не нужно.
+        </p>
       </div>
 
       {/* Список версий */}

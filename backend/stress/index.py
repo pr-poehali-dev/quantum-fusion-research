@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import base64
 import uuid
 import html as html_mod
@@ -172,6 +173,12 @@ def handler(event, context):
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # ── Проверка обновлений из программы (публично, без токена) ─────────
+        # EXE спрашивает это ДО авторизации, поэтому ключ не требуем.
+        if action == "launcher_version" and method == "GET":
+            return launcher_version(cur, params.get("channel")
+                                    or params.get("edition"))
+
         # ── Витрина на сайте: последний завершённый прогон (без авторизации) ──
         # Показываем как в админке, но без датчиков и без служебных полей:
         # это демонстрация возможностей программы, а не доступ к данным.
@@ -1488,6 +1495,99 @@ def get_run(cur, run_id, owner_cid=None):
         "samples": m[6],
     } for m in cur.fetchall()]
     return ok({"run": run})
+
+
+def _numeric_version(raw):
+    """Номер версии в виде, который понимает EXE: только цифры и точки.
+
+    В каталоге версия может быть подписана по-человечески («1.0.7.0 Beta»),
+    а программа сравнивает её со своей FileVersion — там допустимы только
+    числа. Лишнее отбрасываем, недостающие части дополняем нулями.
+    """
+    nums = re.findall(r"\d+", str(raw or ""))
+    if not nums:
+        return ""
+    nums = (nums + ["0", "0", "0", "0"])[:4]
+    return ".".join(nums)
+
+
+def _release_download_url(row):
+    """Прямая ссылка на файл релиза для автообновления.
+
+    Файл из нашего хранилища отдаём временной подписанной ссылкой (час) —
+    она качается без авторизации и ведёт прямо на .exe. Внешние ссылки
+    (Яндекс.Диск) для OTA не годятся: там страница с проверками, поэтому
+    их отдаём только как запасной вариант.
+    """
+    s3_key, file_url, source_link = row
+    if s3_key:
+        try:
+            return _s3().generate_presigned_url(
+                "get_object", Params={"Bucket": "files", "Key": s3_key},
+                ExpiresIn=60 * 60)
+        except Exception as e:
+            print(f"[LAUNCHER] presigned failed: {e}")
+    return file_url or source_link or ""
+
+
+def _latest_release(cur, edition):
+    """Самая свежая опубликованная сборка нужного вида (full | lite)."""
+    cur.execute(
+        f"SELECT version, changelog, s3_key, file_url, source_link, file_name, file_size "
+        f"FROM {SCHEMA}.stress_app_releases "
+        f"WHERE is_published = TRUE AND COALESCE(edition, 'full') = {esc(edition)} "
+        f"ORDER BY string_to_array(regexp_replace(version, '[^0-9.]', '', 'g'), '.')"
+        f"::int[] DESC NULLS LAST, id DESC LIMIT 1"
+    )
+    return cur.fetchone()
+
+
+def launcher_version(cur, channel=None):
+    """Актуальная версия программы для автообновления StressRunner.
+
+    Читаем из каталога релизов (админка «Версии тестера»), чтобы выкладка
+    новой версии не требовала передеплоя функции. Переменные окружения
+    остаются запасным вариантом, если каталог пуст.
+    """
+    channel = "lite" if str(channel or "").lower() in ("lite", "light") else "full"
+
+    out = {
+        "ok": True,
+        "product": "Deboshir StressTester",
+        "channel": channel,
+        "latest_version": "",
+        "download_url": "",
+        "release_notes": "",
+    }
+
+    row = _latest_release(cur, channel)
+    # Lite-сборки может не быть — тогда обновляем на полную, чтобы стенд
+    # не остался без обновлений вовсе.
+    if not row and channel == "lite":
+        row = _latest_release(cur, "full")
+    if row:
+        label = (row[0] or "").strip()
+        out["latest_version"] = _numeric_version(label)
+        # Человеческое название версии — для окна «Доступна версия…».
+        out["version_label"] = label
+        out["release_notes"] = (row[1] or "").strip()
+        out["download_url"] = _release_download_url((row[2], row[3], row[4]))
+        out["file_name"] = row[5] or ""
+        out["file_size"] = int(row[6] or 0)
+        # Вторая сборка — на будущее, старый клиент это поле просто не читает.
+        other = _latest_release(cur, "full" if channel == "lite" else "lite")
+        if other:
+            key = "download_url_full" if channel == "lite" else "download_url_lite"
+            out[key] = _release_download_url((other[2], other[3], other[4]))
+
+    if not out["latest_version"]:
+        out["latest_version"] = os.environ.get("STRESS_LAUNCHER_VERSION") or "1.0.0"
+        out["download_url"] = os.environ.get("STRESS_LAUNCHER_DOWNLOAD_URL") or ""
+        out["release_notes"] = os.environ.get("STRESS_LAUNCHER_RELEASE_NOTES") or ""
+        out["source"] = "env"
+    else:
+        out["source"] = "catalog"
+    return ok(out)
 
 
 def last_public_run(cur):
