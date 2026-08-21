@@ -499,7 +499,7 @@ def _format_notify_core(body):
 
 # Пороги обслуживания GPU — те же, что в программе (см. NOTIFY_TELEGRAM_FORMAT).
 GPU_HOTSPOT_MAX = 100.0     # Hot Spot ≥ 100 °C — алярм
-GPU_MEM_TEMP_MAX = 90.0     # память видеокарты > 90 °C
+GPU_MEM_TEMP_MAX = 100.0    # память видеокарты ≥ 100 °C (порог поднят с 90)
 GPU_HOTSPOT_DELTA_MAX = 17.0  # разница Hot Spot и ядра
 
 
