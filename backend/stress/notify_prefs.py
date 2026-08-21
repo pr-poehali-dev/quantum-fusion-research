@@ -10,6 +10,7 @@
 на общий админский чат (STRESS_TG_CHAT_ID), который работает как раньше.
 """
 import os
+import re
 import hashlib
 import html as html_mod
 
@@ -340,11 +341,21 @@ def dedup_key(event, data):
 # что было в предыдущем. Поэтому в чат отправляется одно сообщение, которое
 # дополняется: событие с большим весом переписывает уже отправленное.
 FINAL_RANK = {
-    "gpu_maintenance_required": 1,
-    "run_interrupted": 1,
-    "upload_failed": 1,
-    "run_finished": 2,
+    # Промежуточные: прогон ещё идёт, сообщение будет дополняться дальше.
+    "test_failed": 1,
+    "heartbeat_stale": 1,
+    # Финальные алерты — прогон закончился нештатно.
+    "gpu_maintenance_required": 2,
+    "run_interrupted": 2,
+    "upload_failed": 2,
+    # Итог — самое полное сообщение, перекрывает всё выше.
+    "run_finished": 3,
 }
+
+# События «прогон в процессе»: могут прийти НЕСКОЛЬКО раз за прогон (упал
+# второй тест, третий...). Каждое следующее полнее предыдущего, поэтому при
+# равном весе не молчим, а обновляем уже отправленное сообщение.
+PROGRESS_EVENTS = {"test_failed", "heartbeat_stale"}
 
 
 def _slot_keys(data):
@@ -360,6 +371,14 @@ def _slot_keys(data):
     run_uid = str(data.get("run_uid") or "").strip()
     order = str(data.get("order_number") or "").strip()
     machine = str(data.get("machine") or "").strip()
+    # Один и тот же стенд приходит то как «стенд Даня», то как
+    # «Заказ 5206 · стенд Даня» — приводим к общему виду, иначе события
+    # одного прогона попадут в разные слоты и придут двумя сообщениями.
+    m = re.match(r"^\s*(?:заказ|order)\s*[№#]?\s*([\w-]+)\s*(?:·|\||-|—|:)\s*(.+)$",
+                 machine, re.IGNORECASE)
+    if m:
+        order = order or m.group(1)
+        machine = m.group(2).strip()
     if run_uid:
         keys.append(f"uid|{run_uid}")
     if order:
@@ -411,7 +430,12 @@ def _claim_merged(cur, chat_id, raw_event, data):
             return "send", None, slot_uid
         slot_uid, message_id, prev_rank = row[0], row[1], int(row[2] or 0)
         cur.connection.commit()
-        if rank <= prev_rank:
+        # Строго меньше — назад не откатываемся (итог не затирается алертом).
+        if rank < prev_rank:
+            return "skip", None, None
+        # Тот же вес: для «прогон продолжается» это следующий упавший тест —
+        # дополняем сообщение. Для остальных — точный повтор, молчим.
+        if rank == prev_rank and raw_event not in PROGRESS_EVENTS:
             return "skip", None, None
         if not message_id:
             # Первое сообщение ещё не долетело — шлём обычным, слот тот же.

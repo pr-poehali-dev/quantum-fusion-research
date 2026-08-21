@@ -1054,12 +1054,21 @@ def _clean_run_labels(body):
     profile = str(body.get("profile_name") or "").strip()
     order = str(body.get("order_number") or "").strip()
 
-    # «Заказ 5222 · F+S+V (short)» → «F+S+V (short)»
-    m = re.match(r"^\s*(?:заказ|order)\s*[№#]?\s*([\w-]+)\s*(?:·|\||-|—|:)\s*(.+)$",
-                 profile, re.IGNORECASE)
-    if m:
-        order = order or m.group(1)
-        profile = m.group(2).strip()
+    # «Заказ 5206 · стенд Даня» / «Заказ 5222 · F+S+V (short)» — отрезаем
+    # приклеенный спереди номер заказа, оставляя настоящее название.
+    def strip_order(value):
+        nonlocal order
+        v = str(value or "").strip()
+        m = re.match(
+            r"^\s*(?:заказ|order)\s*[№#]?\s*([\w-]+)\s*(?:·|\||-|—|:)\s*(.+)$",
+            v, re.IGNORECASE)
+        if m:
+            order = order or m.group(1)
+            return m.group(2).strip()
+        return v
+
+    profile = strip_order(profile)
+    machine = strip_order(machine)
 
     # Стенд назван просто «Заказ 5222» — это не имя стенда, а номер заказа.
     m = re.match(r"^\s*(?:заказ|order)\s*[№#]?\s*([\w-]+)\s*$", machine,
