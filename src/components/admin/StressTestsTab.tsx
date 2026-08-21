@@ -3,13 +3,13 @@ import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
 import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
-import MetricPrefsTab from "@/components/admin/MetricPrefsTab"
 import StressBrandingTab from "@/components/admin/StressBrandingTab"
 import StressSensorFeedbackTab from "@/components/admin/StressSensorFeedbackTab"
+import StressReleasesTab from "@/components/admin/StressReleasesTab"
 import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
 import { openRunReport, type ReportRun } from "@/components/admin/stress/folderReport"
 import { testTitle } from "@/components/admin/stress/scoreFormat"
-import { MetricPref, CATEGORIES, categoryOf, prefId } from "@/components/admin/metricUtils"
+import { CATEGORIES, categoryOf } from "@/components/admin/metricUtils"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
 interface Metric { key: string; label: string; unit: string; min: number | null; max: number | null; avg: number | null; samples: number }
@@ -89,16 +89,14 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
   const [allCompanies, setAllCompanies] = useState(false)
   // Авторизация запросов к stress: партнёр — по сессии, админ — по adminKey
   const auth = isPartner ? { session } : { allCompanies }
-  const [view, setView] = useState<"runs" | "folders" | "profiles" | "metrics" | "branding" | "sensors">("runs")
+  const [view, setView] = useState<"runs" | "folders" | "profiles" | "branding" | "sensors" | "releases">("runs")
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Run | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState("")
-  const [prefs, setPrefs] = useState<MetricPref[]>([])
   const [catFilter, setCatFilter] = useState<string>("all")
-  const [highlightMetric, setHighlightMetric] = useState<string | null>(null)
 
   // Папки прогонов + выбор нескольких прогонов чекбоксами
   const [folders, setFolders] = useState<StressFolder[]>([])
@@ -123,12 +121,6 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
 
   useEffect(() => { load() }, [load])
   useEffect(() => { loadFolders() }, [loadFolders])
-  useEffect(() => {
-    // Настройки отображения метрик — только для админа (партнёру не нужны)
-    if (isPartner) return
-    api.stress.metricPrefsList(adminKey).then(d => setPrefs(d.prefs || []))
-  }, [adminKey, view, isPartner])
-
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => {
       const n = new Set(prev)
@@ -219,11 +211,6 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
               style={{ cursor: "pointer" }}>
               <Icon name="ListChecks" size={15} /> Профили тестов
             </button>
-            <button onClick={() => setView("metrics")}
-              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "metrics" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
-              style={{ cursor: "pointer" }}>
-              <Icon name="SlidersHorizontal" size={15} /> Метрики
-            </button>
             <button onClick={() => setView("branding")}
               className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "branding" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
               style={{ cursor: "pointer" }}>
@@ -234,13 +221,18 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
               style={{ cursor: "pointer" }}>
               <Icon name="Radio" size={15} /> Датчики
             </button>
+            <button onClick={() => setView("releases")}
+              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${view === "releases" ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:text-foreground"}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name="PackageOpen" size={15} /> Версии тестера
+            </button>
           </>
         )}
       </div>
 
-      {view === "sensors" ? <StressSensorFeedbackTab adminKey={adminKey} />
+      {view === "releases" ? <StressReleasesTab />
+       : view === "sensors" ? <StressSensorFeedbackTab adminKey={adminKey} />
        : view === "branding" ? <StressBrandingTab adminKey={adminKey} />
-       : view === "metrics" ? <MetricPrefsTab highlight={highlightMetric} onHighlightDone={() => setHighlightMetric(null)} />
        : view === "profiles" ? <StressProfilesTab />
        : view === "folders" ? (
          <StressFoldersPanel
@@ -464,24 +456,12 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
               </div>
             </div>
 
-            {/* Метрики (датчики) с применением настроек из вкладки «Метрики».
-                RAM-температуры (SPD) идут сюда же, в категорию «Память». */}
+            {/* Датчики прогона. Категория определяется по ключу метрики,
+                RAM-температуры (SPD) попадают в «Память». */}
             {(() => {
-              const prefMap = new Map(prefs.map(p => [prefId(p.metric_key, p.label_orig), p]))
               const items = (selected.metrics || [])
-                .map(m => {
-                  const pr = prefMap.get(prefId(m.key, m.label))
-                  return {
-                    m,
-                    visible: pr ? pr.visible : true,
-                    label: pr && pr.label_custom ? pr.label_custom : m.label,
-                    category: pr ? pr.category : categoryOf(m.key),
-                    order: pr ? pr.sort_order : 999,
-                  }
-                })
-                .filter(x => x.visible)
+                .map(m => ({ m, label: m.label, category: categoryOf(m.key) }))
                 .filter(x => catFilter === "all" || x.category === catFilter)
-                .sort((a, b) => a.order - b.order)
               if ((selected.metrics || []).length === 0) return null
               return (
                 <div className="mb-5">
@@ -506,9 +486,7 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {items.map((x, i) => (
                         <div key={i}
-                          onDoubleClick={() => { setHighlightMetric(prefId(x.m.key, x.m.label)); setView("metrics") }}
-                          title="Двойной клик — настроить эту метрику"
-                          className="rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/50" style={{ cursor: "pointer" }}>
+                          className="rounded-xl border border-border bg-card p-3">
                           <div className="truncate text-[11px] text-foreground/40" title={x.label}>{x.label}</div>
                           <div className="mt-1 flex items-baseline gap-1">
                             <span className="text-xl font-bold text-foreground">{x.m.max ?? "—"}</span>

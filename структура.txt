@@ -1636,3 +1636,22 @@ src/components/admin/StressSensorFeedbackTab.tsx — список обращен
   стенд/заказ/дата, счётчики слотов, метка «HWiNFO выкл.», раскрытие с
   названиями недостающих датчиков, скачивание ZIP, «разобрано», удаление.
 src/components/admin/StressTestsTab.tsx — раздел «Датчики» (view=sensors).
+
+[v8.27] Стресс-тесты: «Версии тестера» внутри вкладки, раздел «Метрики» удалён.
+src/components/admin/StressTestsTab.tsx — разделы: Результаты · Папки ·
+  Профили тестов · Брендинг и уведомления · Датчики · Версии тестера
+  (view="releases" → StressReleasesTab). Раздел metrics удалён вместе с
+  состояниями prefs/highlightMetric и загрузкой metricPrefsList; блок
+  «Датчики» в карточке прогона теперь показывает метрики как есть,
+  категория считается через categoryOf(), фильтр по категориям сохранён,
+  двойной клик по метрике больше ничего не открывает.
+src/components/admin/MetricPrefsTab.tsx — удалён.
+src/components/admin/metricUtils.ts — остаётся (CATEGORIES, categoryOf).
+src/pages/Admin.tsx — вкладка stress_releases убрана (lazy-импорт, рендер,
+  запись в toolsTabs); AdminTab в src/pages/admin/types.ts без stress_releases.
+src/components/admin/AdminTabsNav.tsx — LAYOUT_VERSION v2 → v3, «Обвязка» =
+  Стресс-тесты + Telegram-бот.
+src/lib/api.ts — метод metricPrefsList/metricPrefsSave удалены.
+backend/stress/index.py — actions metric_prefs_list / metric_prefs_save и
+  функции удалены; таблица stress_metric_prefs больше не используется.
+Профили тестов и пресеты в БД пусты (0 записей) — списки открываются чистыми.

@@ -20,7 +20,7 @@ export const ROW_ICON_OPTIONS = [
   "Lock", "Shield", "Eye", "Search", "Filter", "Bolt", "Gem", "Crown",
 ]
 
-const LAYOUT_VERSION = "v2"
+const LAYOUT_VERSION = "v3"
 const storageKey = () => `admin_tabs_layout_${LAYOUT_VERSION}__${getAdminKey() || "default"}`
 
 // Дефолтная раскладка админки
@@ -31,7 +31,7 @@ function defaultLayout(allTabs: TabMeta[]): Layout {
     ["Операции", "CalendarDays", ["schedule", "calendar", "price_monitor"]],
     ["Финансы и настройки", "Wallet", ["finance", "analytics", "faq", "company_settings", "promos"]],
     ["Сайт", "Globe", ["products", "compatibility", "users", "user_builds", "articles"]],
-    ["Обвязка", "LayoutGrid", ["stress", "stress_releases", "telegram_bot"]],
+    ["Обвязка", "LayoutGrid", ["stress", "telegram_bot"]],
   ]
   const known = new Set(allTabs.map(t => t.key))
   const rows: Row[] = groups.map((g, i) => ({

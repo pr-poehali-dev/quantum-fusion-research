@@ -403,10 +403,6 @@ export const api = {
       fetch(`${URLS.stress}?action=profile_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "profile_save", ...(data as object) }) }).then(r => r.json()),
     profileDelete: (id: number, adminKey: string) =>
       fetch(`${URLS.stress}?action=profile_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    metricPrefsList: (adminKey: string) =>
-      fetch(`${URLS.stress}?action=metric_prefs_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    metricPrefsSave: (prefs: unknown, adminKey: string) =>
-      fetch(`${URLS.stress}?action=metric_prefs_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "metric_prefs_save", prefs }) }).then(r => r.json()),
     presetsList: (adminKey: string) =>
       fetch(`${URLS.stress}?action=presets_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     presetSave: (data: unknown, adminKey: string) =>

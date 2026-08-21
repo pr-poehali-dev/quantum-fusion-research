@@ -19,7 +19,6 @@ const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
 const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
 const PriceMonitorTab = lazy(() => import("@/components/admin/PriceMonitorTab"))
 const StressTestsTab = lazy(() => import("@/components/admin/StressTestsTab"))
-const StressReleasesTab = lazy(() => import("@/components/admin/StressReleasesTab"))
 const UserBuildsTab = lazy(() => import("@/components/admin/UserBuildsTab"))
 const CompanySettings = lazy(() => import("@/components/admin/CompanySettings"))
 const TelegramBotTab = lazy(() => import("@/components/admin/TelegramBotTab"))
@@ -187,7 +186,6 @@ export default function Admin() {
   // Группа 6 — Обвязка (сервисные инструменты)
   const toolsTabs = [
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
-    { key: "stress_releases", label: "Версии тестера", icon: "PackageOpen" },
     { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
   ]
   // Группа 4 — Финансы и настройки
@@ -414,7 +412,6 @@ export default function Admin() {
         {tab === "stress" && <StressTestsTab />}
 
         {/* STRESS RELEASES — версии EXE для скачивания клиентами */}
-        {tab === "stress_releases" && <StressReleasesTab />}
         </Suspense>
         </ErrorBoundary>
       </div>
