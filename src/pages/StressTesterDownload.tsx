@@ -275,10 +275,11 @@ export default function StressTesterDownload() {
               </div>
             </div>
 
-            {/* ФОТО 3 — мастерская/сборки. Заменить: public/stresstester/shop.png */}
+            {/* Пример отчёта: его и присылают нам на разбор */}
             <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-              <img src="/stresstester/shop.png" alt="Мастерская BeGraphics"
-                className="w-full" width={1200} height={900} loading="lazy" />
+              <img src="https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/87b405a3-4381-4903-8df5-a195d94339db.png"
+                alt="Пример отчёта стресс-теста с найденной ошибкой"
+                className="w-full" width={1030} height={919} loading="lazy" />
             </div>
           </div>
         </div>
