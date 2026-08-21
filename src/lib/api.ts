@@ -475,6 +475,8 @@ export const api = {
       fetch(URLS.stressReleases, { headers: adminKey ? { "X-Admin-Key": adminKey } : {} }).then(r => r.json()),
     getUploadUrl: (fileName: string, adminKey: string) =>
       fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "upload_url", file_name: fileName, ak: adminKey }) }).then(r => r.json()),
+    fixFileNames: (adminKey: string) =>
+      fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "fix_file_names", ak: adminKey }) }).then(r => r.json()),
     storageFiles: (adminKey: string, prefix = "") =>
       fetch(URLS.stressReleases, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey }, body: JSON.stringify({ action: "storage_files", prefix, ak: adminKey }) }).then(r => r.json()),
     resolveLink: (link: string, adminKey: string) =>

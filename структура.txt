@@ -1701,3 +1701,26 @@ src/pages/StressTesterDownload.tsx — download() берёт ссылку из �
   count_download (состояние busyId, надпись «Готовим файл…»).
 Безопасность: листинг бакета снаружи закрыт (bucket.poehali.dev → 401,
 CDN-каталог → 404), угадать чужой файл нельзя — ключи содержат uuid.
+
+[v8.31] Имя файла при скачивании версии тестера.
+Причина бага: наше хранилище НЕ применяет Content-Disposition, заданный в
+presigned-ссылке (проверено action=selftest_storage → disposition пустой),
+поэтому браузер берёт имя из конца адреса — а файл лежал под ключом
+<uuid>.exe. Copy_object работает, значит лечится перекладыванием объекта.
+backend/stress-releases/index.py:
+  nice_file_name(name, version) — если имя похоже на uuid, собирает
+    StressTester_Setup_<версия>.<ext>;
+  key_from_url(url) — вытаскивает ключ, если ссылка ведёт в наш бакет
+    (версии, добавленные ссылкой на CDN, теперь считаются локальными);
+  ensure_named_key(key, nice) — copy_object в stress_app/<uuid>/<имя> +
+    удаление исходного объекта; вызывается при create;
+  POST action=fix_file_names (админ) — та же операция для уже добавленных
+    версий, обновляет s3_key/file_url/file_name;
+  POST action=selftest_storage — проверка copy_object и Content-Disposition
+    на временном объекте __selftest__/*, чистит за собой;
+  count_download — ключ берётся из s3_key ИЛИ из file_url.
+БД: V0243 — восстановлен s3_key из file_url, uuid-имена заменены на
+StressTester_Setup_<версия>.exe.
+src/lib/api.ts — api.stressReleases.fixFileNames(adminKey).
+src/components/admin/StressReleasesTab.tsx — кнопка «Исправить имена
+файлов» над списком версий.

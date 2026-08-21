@@ -130,17 +130,65 @@ def resolve_yadisk(link: str) -> dict:
             "file_size": int(meta.get("size") or 0)}
 
 
+_UUID_NAME = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+
+def key_from_url(url):
+    """Ключ объекта, если ссылка ведёт в наше хранилище (иначе '')."""
+    marker = f"/projects/{os.environ.get('AWS_ACCESS_KEY_ID', '')}/bucket/"
+    if not url or marker not in url:
+        return ""
+    return url.split(marker, 1)[1].split("?", 1)[0]
+
+
+def nice_file_name(name, version):
+    """Имя для сохранения на диск клиента.
+
+    Файлы в хранилище часто лежат под техническим именем-идентификатором
+    (cd660c2d-….exe) — тогда собираем понятное имя из номера версии.
+    """
+    name = (name or "").strip()
+    base = name.rsplit("/", 1)[-1]
+    ext = ("." + base.rsplit(".", 1)[-1].lower()) if "." in base else ".exe"
+    if base and not _UUID_NAME.match(base):
+        return base
+    ver = re.sub(r"[^0-9A-Za-z._-]", "_", (version or "").strip().lstrip("vV")) or "latest"
+    return f"StressTester_Setup_{ver}{ext}"
+
+
+def ensure_named_key(key, nice_name):
+    """Переложить файл так, чтобы адрес заканчивался понятным именем.
+
+    Хранилище не отдаёт заданное в ссылке имя файла (Content-Disposition
+    теряется), поэтому браузер берёт имя из адреса. Если файл лежит под
+    техническим именем — копируем его в stress_app/<id>/<нормальное имя>
+    и удаляем исходный объект.
+    """
+    if not key or key.rsplit("/", 1)[-1] == nice_name:
+        return key
+    new_key = f"stress_app/{uuid.uuid4().hex}/{nice_name}"
+    cli = s3()
+    cli.copy_object(Bucket="files", Key=new_key,
+                    CopySource={"Bucket": "files", "Key": key})
+    try:
+        cli.delete_object(Bucket="files", Key=key)
+    except Exception as e:
+        print(f"[RELEASES] не удалось удалить исходный файл {key}: {e}")
+    return new_key
+
+
 def cdn_url(key):
     return f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
 
 
 def download_url(s3_key, file_name):
-    """Временная ссылка на файл в нашем хранилище с правильным именем.
+    """Временная ссылка на файл в нашем хранилище (действует час).
 
-    Прямой адрес CDN не отдаём: во-первых, браузер сохраняет файл под
-    техническим именем ключа (набор символов вместо StressTester_Setup),
-    во-вторых, постоянный адрес расходится по чатам и живёт вечно.
-    Ссылка действует час и подставляет нормальное имя при сохранении.
+    Постоянный адрес наружу не отдаём — он расходится по чатам и живёт
+    вечно. Имя файла браузер берёт из КОНЦА адреса: наше хранилище
+    заголовок Content-Disposition из ссылки не применяет, поэтому объект
+    заранее переложен под понятным именем (ensure_named_key).
     """
     name = (file_name or "stress-tester.exe").replace('"', "")
     return s3().generate_presigned_url(
@@ -225,19 +273,51 @@ def handler(event: dict, context) -> dict:
                 cur.execute(
                     f"UPDATE {TABLE} SET download_count = download_count + 1 "
                     f"WHERE id = {rid} AND is_published = TRUE "
-                    f"RETURNING source_link, file_url, s3_key, file_name"
+                    f"RETURNING source_link, file_url, s3_key, file_name, version"
                 )
                 row = cur.fetchone()
                 conn.commit()
                 if row:
-                    if row[2]:
+                    key = row[2] or key_from_url(row[1])
+                    if key:
                         # Наше хранилище: временная ссылка с нормальным именем.
-                        target = download_url(row[2], row[3])
+                        target = download_url(key, nice_file_name(row[3], row[4]))
                     else:
                         target = row[0] or row[1] or ""
             if not target:
                 return resp(404, {"ok": False, "error": "Версия недоступна"})
             return resp(200, {"ok": True, "file_url": target})
+
+        # Самопроверка: умеет ли хранилище копировать объект и отдавать
+        # заданное имя файла. Работает на крошечном временном объекте и
+        # подчищает за собой (вызывается тестами при деплое).
+        if action == "selftest_storage":
+            key_a = "__selftest__/probe.bin"
+            key_b = "__selftest__/Nice_Name.exe"
+            out = {"ok": False}
+            try:
+                cli = s3()
+                cli.put_object(Bucket="files", Key=key_a, Body=b"probe",
+                               ContentType="application/octet-stream")
+                cli.copy_object(
+                    Bucket="files", Key=key_b,
+                    CopySource={"Bucket": "files", "Key": key_a},
+                    ContentType="application/octet-stream",
+                    ContentDisposition='attachment; filename="Nice_Name.exe"',
+                    MetadataDirective="REPLACE",
+                )
+                head = cli.head_object(Bucket="files", Key=key_b)
+                out = {"ok": True, "copy": True,
+                       "disposition": head.get("ContentDisposition") or ""}
+            except Exception as e:
+                out = {"ok": True, "copy": False, "error": str(e)[:300]}
+            finally:
+                for k in (key_a, key_b):
+                    try:
+                        s3().delete_object(Bucket="files", Key=k)
+                    except Exception:
+                        pass
+            return resp(200, out)
 
         # ── Дальше только админ ───────────────────────────────────────────
         if not is_admin:
@@ -257,6 +337,32 @@ def handler(event: dict, context) -> dict:
                 ExpiresIn=6 * 60 * 60,  # 6 часов: 5 ГБ на медленном канале грузятся долго
             )
             return resp(200, {"upload_url": url, "s3_key": key, "file_url": cdn_url(key)})
+
+        # Разовая починка: перекладывает файлы версий под понятные имена,
+        # если они лежат в хранилище под техническим идентификатором.
+        if action == "fix_file_names":
+            cur.execute(f"SELECT id, version, file_name, file_url, s3_key FROM {TABLE}")
+            fixed = []
+            for rid, ver, fname, furl, skey in cur.fetchall():
+                key = (skey or "") or key_from_url(furl or "")
+                if not key:
+                    continue
+                nice = nice_file_name(fname, ver)
+                if key.rsplit("/", 1)[-1] == nice:
+                    continue
+                try:
+                    new_key = ensure_named_key(key, nice)
+                except Exception as e:
+                    print(f"[RELEASES] fix {rid}: {e}")
+                    continue
+                cur.execute(
+                    f"UPDATE {TABLE} SET s3_key = {esc(new_key)}, "
+                    f"file_url = {esc(cdn_url(new_key))}, file_name = {esc(nice)} "
+                    f"WHERE id = {int(rid)}"
+                )
+                fixed.append({"id": rid, "file_name": nice})
+            conn.commit()
+            return resp(200, {"ok": True, "fixed": fixed})
 
         # Список файлов в нашем хранилище — чтобы выбрать уже залитый EXE
         # прямо в админке, не составляя ссылку руками.
@@ -318,12 +424,22 @@ def handler(event: dict, context) -> dict:
             file_url = (body.get("file_url") or "").strip()
             if not version or not file_url:
                 return resp(400, {"error": "Нужны версия и файл"})
+            # Ссылка на наш бакет → работаем с ним как с локальным файлом:
+            # тогда сможем выдавать временную ссылку с нормальным именем.
+            s3_key = (body.get("s3_key") or "").strip() or key_from_url(file_url)
+            file_name = nice_file_name(body.get("file_name"), version)
+            if s3_key:
+                try:
+                    s3_key = ensure_named_key(s3_key, file_name)
+                    file_url = cdn_url(s3_key)
+                except Exception as e:
+                    print(f"[RELEASES] переименование не удалось: {e}")
             cur.execute(
                 f"INSERT INTO {TABLE} (version, changelog, file_url, file_name, "
                 f"file_size, s3_key, is_published, source_link) VALUES ("
                 f"{esc(version)}, {esc(body.get('changelog') or '')}, {esc(file_url)}, "
-                f"{esc(body.get('file_name') or '')}, {int(body.get('file_size') or 0)}, "
-                f"{esc(body.get('s3_key') or '')}, "
+                f"{esc(file_name)}, {int(body.get('file_size') or 0)}, "
+                f"{esc(s3_key)}, "
                 f"{'TRUE' if body.get('is_published', True) else 'FALSE'}, "
                 f"{esc(body.get('source_link') or '')}) RETURNING id"
             )

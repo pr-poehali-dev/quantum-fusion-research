@@ -50,6 +50,7 @@ export default function StressReleasesTab() {
   const [storage, setStorage] = useState<StorageFile[] | null>(null)
   const [picked, setPicked] = useState<StorageFile | null>(null)
   const [storageBusy, setStorageBusy] = useState(false)
+  const [fixing, setFixing] = useState(false)
 
   const load = () => {
     api.stressReleases.list(getAdminKey())
@@ -129,6 +130,18 @@ export default function StressReleasesTab() {
 
     if (!res?.ok) { setError("Не удалось сохранить версию"); return }
     reset()
+    load()
+  }
+
+  // Файлы, залитые в хранилище под техническим именем, перекладываем так,
+  // чтобы клиент сохранял их как StressTester_Setup_<версия>.exe.
+  const fixNames = async () => {
+    const ak = getAdminKey()
+    if (!ak) { setError("Нет доступа администратора"); return }
+    setFixing(true); setError("")
+    const r = await api.stressReleases.fixFileNames(ak).catch(() => null)
+    setFixing(false)
+    if (!r?.ok) { setError("Не удалось исправить имена файлов"); return }
     load()
   }
 
@@ -253,7 +266,15 @@ export default function StressReleasesTab() {
       </div>
 
       {/* Список версий */}
-      <h3 className="mb-3 font-medium">Загруженные версии ({releases.length})</h3>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h3 className="font-medium">Загруженные версии ({releases.length})</h3>
+        <button onClick={fixNames} disabled={fixing} style={{ cursor: "pointer" }}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40"
+          title="Переименовать файлы в хранилище, чтобы клиент скачивал их под понятным именем">
+          <Icon name={fixing ? "Loader2" : "Wand2"} size={13} className={fixing ? "animate-spin" : ""} />
+          {fixing ? "Исправляем…" : "Исправить имена файлов"}
+        </button>
+      </div>
       {loading ? (
         <p className="text-sm text-foreground/40">Загрузка…</p>
       ) : releases.length === 0 ? (
