@@ -596,21 +596,25 @@ export default function OrderProcessPage() {
               <p className="text-xs text-foreground/40 mb-1">Итого</p>
               <p className="text-xl font-bold">{fmt(total)}</p>
             </div>
-            <div className="text-right min-w-[160px]">
-              <p className="text-xs text-foreground/40 mb-1">Предоплата и остаток</p>
-              <PrepaymentEditor
-                total={total}
-                percent={order.prepayment_percent}
-                amount={order.prepayment_amount}
-                highlight={order.status === "done"}
-                defaultPercent={order.is_stock_sale ? 0 : 30}
-                onSave={async (payload) => {
-                  const res = await api.orders.setPrepayment({ id: order.id, ...payload })
-                  setOrder(prev => prev ? { ...prev, prepayment_percent: res.prepayment_percent, prepayment_amount: res.prepayment_amount, remaining_amount: res.remaining_amount } : prev)
-                  return res
-                }}
-              />
-            </div>
+            {/* Предоплата и остаток — только у сборок ПК. Заказ комплектующих
+                оплачивается целиком при выдаче, делить сумму незачем. */}
+            {!isParts && (
+              <div className="text-right min-w-[160px]">
+                <p className="text-xs text-foreground/40 mb-1">Предоплата и остаток</p>
+                <PrepaymentEditor
+                  total={total}
+                  percent={order.prepayment_percent}
+                  amount={order.prepayment_amount}
+                  highlight={order.status === "done"}
+                  defaultPercent={order.is_stock_sale ? 0 : 30}
+                  onSave={async (payload) => {
+                    const res = await api.orders.setPrepayment({ id: order.id, ...payload })
+                    setOrder(prev => prev ? { ...prev, prepayment_percent: res.prepayment_percent, prepayment_amount: res.prepayment_amount, remaining_amount: res.remaining_amount } : prev)
+                    return res
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -1104,7 +1108,7 @@ export default function OrderProcessPage() {
         loading={contractLoading}
         defaultName={order?.customer_name}
         defaultPhone={order?.customer_phone}
-        defaultPrepay={order?.prepayment_amount ?? (total ? total * 0.3 : null)}
+        defaultPrepay={isParts ? null : (order?.prepayment_amount ?? (total ? total * 0.3 : null))}
       />
 
       {/* Модалка выдачи / списания */}

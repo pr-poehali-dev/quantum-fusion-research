@@ -125,11 +125,14 @@ export default function PrepaymentConfirmModal({ orderId, total, defaultAmount, 
             </div>
           </>
         )}
+        {/* Полная оплата: «остаток» показываем, только если приняли меньше
+            суммы заказа — иначе строка про остаток бессмысленна. */}
         {(!isFull || remaining > 0) && (
           <p className="mb-4 text-xs text-foreground/40">
-            {isRemaining ? "Остаток после оплаты" : "Остаток к доплате"}: {fmt(remaining)}
+            {isFull ? "Недоплата" : isRemaining ? "Остаток после оплаты" : "Остаток к доплате"}: {fmt(remaining)}
           </p>
         )}
+        {isFull && remaining <= 0 && <div className="mb-4" />}
 
         <label className="mb-1 block text-xs text-foreground/50">Счёт зачисления</label>
         <div className="mb-3 flex flex-wrap gap-2">
