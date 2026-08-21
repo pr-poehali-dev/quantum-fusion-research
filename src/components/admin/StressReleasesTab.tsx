@@ -162,8 +162,8 @@ export default function StressReleasesTab() {
     load()
   }
 
-  // Файлы, залитые в хранилище под техническим именем, перекладываем так,
-  // чтобы клиент сохранял их как StressTester_Setup_<версия>.exe.
+  // Проверка версий: чинит имена и заново привязывает записи к настоящим
+  // файлам, если ссылка указывала на пустышку.
   const fixNames = async () => {
     const ak = getAdminKey()
     if (!ak) { setError("Нет доступа администратора"); return }
@@ -412,9 +412,9 @@ export default function StressReleasesTab() {
         <h3 className="font-medium">Загруженные версии ({groupReleases(releases).length})</h3>
         <button onClick={fixNames} disabled={fixing} style={{ cursor: "pointer" }}
           className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40"
-          title="Переименовать файлы в хранилище, чтобы клиент скачивал их под понятным именем">
+          title="Проверить, что у каждой версии есть настоящий файл в хранилище, и починить имена">
           <Icon name={fixing ? "Loader2" : "Wand2"} size={13} className={fixing ? "animate-spin" : ""} />
-          {fixing ? "Исправляем…" : "Исправить имена файлов"}
+          {fixing ? "Проверяем…" : "Проверить файлы версий"}
         </button>
       </div>
       {loading ? (

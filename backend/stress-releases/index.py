@@ -180,35 +180,25 @@ def clean_version(raw):
 _LAST_RENAME_ERROR = {"msg": ""}
 
 
-def ensure_named_key(key, nice_name):
-    """Переложить файл так, чтобы адрес заканчивался понятным именем.
-
-    Хранилище не отдаёт заданное в ссылке имя файла (Content-Disposition
-    теряется), поэтому браузер берёт имя из адреса. Если файл лежит под
-    техническим именем — копируем его в stress_app/<id>/<нормальное имя>
-    и удаляем исходный объект.
-    """
-    if not key or key.rsplit("/", 1)[-1] == nice_name:
-        return key
-    new_key = f"stress_app/{uuid.uuid4().hex}/{nice_name}"
-    cli = s3()
+def object_size(key):
+    """Размер объекта в хранилище, 0 — если его нет."""
+    if not key:
+        return 0
     try:
-        cli.copy_object(Bucket="files", Key=new_key,
-                        CopySource={"Bucket": "files", "Key": key})
+        return int(s3().head_object(Bucket="files", Key=key).get("ContentLength") or 0)
     except Exception as e:
-        # Файл останется под прежним адресом — скачивание не ломаем.
-        print(f"[RELEASES] переименование не удалось: {e}")
-        _LAST_RENAME_ERROR["msg"] = str(e)[:300]
-        return key
-    # Исходник удаляем ТОЛЬКО если это наша же служебная копия в
-    # stress_app/. Файл, который человек сам загрузил в хранилище, трогать
-    # нельзя — иначе он «пропадает» из Ядра сразу после сохранения версии.
-    if key.startswith("stress_app/"):
-        try:
-            cli.delete_object(Bucket="files", Key=key)
-        except Exception as e:
-            print(f"[RELEASES] не удалось удалить служебную копию {key}: {e}")
-    return new_key
+        print(f"[RELEASES] нет объекта {key}: {e}")
+        return 0
+
+
+def ensure_named_key(key, nice_name):
+    """Раньше перекладывала файл под понятным именем — больше не делает.
+
+    Копирование через это хранилище отдавало объект нулевого размера:
+    человек скачивал «пустой» установщик. Имя файла теперь задаётся
+    заголовком во временной ссылке (download_url), копий не создаём.
+    """
+    return key
 
 
 def cdn_url(key):
@@ -221,10 +211,10 @@ def download_url(s3_key, file_name):
     Постоянный адрес наружу не отдаём — он расходится по чатам и живёт
     вечно. Имя файла браузер берёт из КОНЦА адреса: наше хранилище
     заголовок Content-Disposition из ссылки не применяет, поэтому объект
-    заранее переложен под понятным именем (ensure_named_key).
+    заранее лежит под понятным именем (см. upload_url).
     """
     name = (file_name or "stress-tester.exe").replace('"', "")
-    # Имя берётся из адреса объекта (см. ensure_named_key): подсказку
+    # Имя берётся из адреса объекта (см. upload_url): подсказку
     # Content-Disposition хранилище отбрасывает. Оставляем её на случай,
     # если поведение изменится, но полагаться на неё нельзя.
     return s3().generate_presigned_url(
@@ -320,19 +310,13 @@ def handler(event: dict, context) -> dict:
                 if row:
                     key = row[2] or key_from_url(row[1])
                     if key:
-                        # Наше хранилище: временная ссылка. Файлы, залитые до
-                        # появления «говорящих» путей, перекладываем на лету —
-                        # иначе браузер сохранит их под техническим именем.
+                        # Наше хранилище: временная ссылка на час.
                         nice = nice_file_name(row[3], row[4], row[5] or "full")
-                        new_key = ensure_named_key(key, nice)
-                        if new_key != key:
-                            cur.execute(
-                                f"UPDATE {TABLE} SET s3_key = {esc(new_key)}, "
-                                f"file_url = {esc(cdn_url(new_key))}, "
-                                f"file_name = {esc(nice)} WHERE id = {rid}"
-                            )
-                            conn.commit()
-                            key = new_key
+                        # Пустой объект в хранилище — лучше честная ошибка,
+                        # чем «скачанный» установщик на 0 байт.
+                        if object_size(key) <= 0:
+                            return resp(404, {"ok": False,
+                                              "error": "Файл версии недоступен"})
                         target = download_url(key, nice)
                     else:
                         target = row[0] or row[1] or ""
@@ -384,7 +368,9 @@ def handler(event: dict, context) -> dict:
             name = (body.get("file_name") or "stress-tester.exe").strip()
             # Оставляем только безопасные символы, иначе ключ объекта может сломаться.
             safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:120] or "app.exe"
-            key = f"stress_app/{uuid.uuid4().hex}_{safe}"
+            # Имя файла браузер берёт из конца адреса, поэтому уникальный
+            # идентификатор выносим в папку, а не в имя.
+            key = f"stress_app/{uuid.uuid4().hex}/{safe}"
             url = s3().generate_presigned_url(
                 "put_object",
                 Params={"Bucket": "files", "Key": key,
@@ -395,30 +381,51 @@ def handler(event: dict, context) -> dict:
 
         # Разовая починка: перекладывает файлы версий под понятные имена,
         # если они лежат в хранилище под техническим идентификатором.
+        # «Проверить файлы»: чинит имена и заново привязывает версии к
+        # настоящим файлам в хранилище. Нужно после того, как копирование
+        # объектов оставило записи, ссылающиеся на пустышки.
         if action == "fix_file_names":
-            cur.execute(f"SELECT id, version, file_name, file_url, s3_key, edition "
-                        f"FROM {TABLE}")
+            live = []
+            token = None
+            while True:
+                kw = {"Bucket": "files", "MaxKeys": 1000, "Prefix": "stress_app/"}
+                if token:
+                    kw["ContinuationToken"] = token
+                page = s3().list_objects_v2(**kw)
+                for o in page.get("Contents", []):
+                    if int(o.get("Size") or 0) > 0:
+                        live.append((o["Key"], int(o["Size"])))
+                if not page.get("IsTruncated"):
+                    break
+                token = page.get("NextContinuationToken")
+
+            by_size = {}
+            for k, sz in live:
+                by_size.setdefault(sz, k)
+
+            cur.execute(f"SELECT id, version, file_name, file_url, s3_key, edition, "
+                        f"file_size FROM {TABLE}")
             fixed = []
-            for rid, ver, fname, furl, skey, edi in cur.fetchall():
-                key = (skey or "") or key_from_url(furl or "")
-                if not key:
-                    continue
+            for rid, ver, fname, furl, skey, edi, fsize in cur.fetchall():
+                sets2 = []
                 nice = nice_file_name(fname, ver, edi or "full")
-                if key.rsplit("/", 1)[-1] == nice:
-                    continue
-                try:
-                    new_key = ensure_named_key(key, nice)
-                except Exception as e:
-                    print(f"[RELEASES] fix {rid}: {e}")
-                    continue
-                cur.execute(
-                    f"UPDATE {TABLE} SET s3_key = {esc(new_key)}, "
-                    f"file_url = {esc(cdn_url(new_key))}, file_name = {esc(nice)} "
-                    f"WHERE id = {int(rid)}"
-                )
-                fixed.append({"id": rid, "file_name": nice})
+                if nice != (fname or ""):
+                    sets2.append(f"file_name = {esc(nice)}")
+
+                key = (skey or "") or key_from_url(furl or "")
+                if key and object_size(key) <= 0:
+                    # Запись смотрит в пустоту — ищем настоящий файл по размеру.
+                    cand = by_size.get(int(fsize or 0), "")
+                    if cand:
+                        sets2.append(f"s3_key = {esc(cand)}")
+                        sets2.append(f"file_url = {esc(cdn_url(cand))}")
+                if sets2:
+                    cur.execute(f"UPDATE {TABLE} SET {', '.join(sets2)} "
+                                f"WHERE id = {int(rid)}")
+                    fixed.append({"id": rid, "file_name": nice})
             conn.commit()
-            return resp(200, {"ok": True, "fixed": fixed})
+            return resp(200, {"ok": True, "fixed": fixed,
+                              "files_in_storage": len(live)})
 
         # Список файлов в нашем хранилище — чтобы выбрать уже залитый EXE
         # прямо в админке, не составляя ссылку руками.
@@ -495,11 +502,13 @@ def handler(event: dict, context) -> dict:
             s3_key = s3_key or key_from_url(file_url)
             file_name = nice_file_name(file_name_raw, version, edition)
             if s3_key:
-                try:
-                    s3_key = ensure_named_key(s3_key, file_name)
-                    file_url = cdn_url(s3_key)
-                except Exception as e:
-                    print(f"[RELEASES] переименование не удалось: {e}")
+                # Не публикуем версию, если файла в хранилище нет или он пуст —
+                # иначе человек скачает «пустой» установщик.
+                size = object_size(s3_key)
+                if size <= 0:
+                    return resp(400, {"error": "Файл в хранилище не найден или пуст"})
+                body["file_size"] = size
+                file_url = cdn_url(s3_key)
 
             cur.execute(
                 f"INSERT INTO {TABLE} (version, edition, changelog, file_url, file_name, "
@@ -523,21 +532,16 @@ def handler(event: dict, context) -> dict:
                 # Номер версии храним «голым» — по нему сверяются сборки.
                 new_ver = clean_version(body["version"])
                 sets.append(f"version = {esc(new_ver)}")
-                # Файл переименовываем следом, чтобы имя совпадало с версией.
+                # Файл не трогаем: имя при скачивании задаётся заголовком,
+                # а копирование объекта в хранилище ломало содержимое.
                 cur.execute(f"SELECT file_name, file_url, s3_key, edition "
                             f"FROM {TABLE} WHERE id = {rid}")
                 cur_row = cur.fetchone()
                 if cur_row:
-                    key = (cur_row[2] or "") or key_from_url(cur_row[1] or "")
-                    nice = nice_file_name("", new_ver, cur_row[3] or "full")
-                    if key and key.rsplit("/", 1)[-1] != nice:
-                        try:
-                            new_key = ensure_named_key(key, nice)
-                            sets.append(f"s3_key = {esc(new_key)}")
-                            sets.append(f"file_url = {esc(cdn_url(new_key))}")
-                            sets.append(f"file_name = {esc(nice)}")
-                        except Exception as e:
-                            print(f"[RELEASES] переименование при правке: {e}")
+                    sets.append(
+                        f"file_name = "
+                        f"{esc(nice_file_name('', new_ver, cur_row[3] or 'full'))}")
+
             # Замена файла установки: пришла новая ссылка или файл из
             # хранилища. Счётчик скачиваний и id версии сохраняем — меняется
             # только сам дистрибутив.
@@ -553,11 +557,11 @@ def handler(event: dict, context) -> dict:
                 key = new_key or key_from_url(new_url)
                 nice = nice_file_name(body.get("file_name") or "", ver, edi)
                 if key:
-                    try:
-                        key = ensure_named_key(key, nice)
-                        new_url = cdn_url(key)
-                    except Exception as e:
-                        print(f"[RELEASES] замена файла: {e}")
+                    size = object_size(key)
+                    if size <= 0:
+                        return resp(400, {"error": "Файл в хранилище не найден или пуст"})
+                    body["file_size"] = size
+                    new_url = cdn_url(key)
                 sets = [x for x in sets
                         if not x.startswith(("s3_key =", "file_url =", "file_name ="))]
                 sets.append(f"s3_key = {esc(key)}")
