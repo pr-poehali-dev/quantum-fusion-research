@@ -1875,8 +1875,12 @@ def profiles_pull(cur, scope="auto", company_id=None, has_token=False,
     guest  — только помеченные «для гостей» (пароль не нужен);
     full   — весь активный каталог, требуется ingest-токен;
     auto   — full при верном токене, иначе guest.
-    Партнёрский токен дополнительно ограничивает выдачу его профилями
-    плюс нашими общими (без владельца).
+
+    ПАРТНЁРСКИЙ ПАК ЗАМЕЩАЕТ БАЗОВЫЙ. Если у компании есть хотя бы один свой
+    активный профиль — отдаём ТОЛЬКО её профили, наши общие не подмешиваем.
+    Партнёр настроил свой набор тестов — он и должен быть в программе, без
+    наших «30 минут» и прочего. Если своих профилей ещё нет — компания
+    получает наш базовый каталог, чтобы программа не осталась пустой.
 
     build — сборка программы: "lite" получает только профили уровня lite
     (в облегчённой версии часть тестов не установлена), "full" — оба уровня.
@@ -1897,16 +1901,32 @@ def profiles_pull(cur, scope="auto", company_id=None, has_token=False,
     build = "lite" if str(build or "").lower() in ("lite", "light") else "full"
 
     where = ["p.is_active = TRUE"]
+    pack = "base"          # какой набор в итоге отдали: base | partner
     if scope == "guest":
+        # Гость — только общедоступные наши профили. Партнёрские паки и
+        # закрытые внутренние профили гостю недоступны никогда.
         levels = "('lite')" if build == "lite" else "('lite', 'full')"
         where.append(f"p.public_level IN {levels}")
         where.append("p.company_id IS NULL")
-    elif build == "lite":
-        # Полный каталог, но профили с недоступными в Lite тестами не шлём.
-        where.append("p.public_level <> 'full'")
     elif company_id:
-        # Партнёру — его профили и общие, чужие не показываем.
-        where.append(f"(p.company_id IS NULL OR p.company_id = {int(company_id)})")
+        # Партнёр: его пак ЗАМЕЩАЕТ наш базовый, если он есть.
+        cur.execute(
+            f"SELECT COUNT(*) FROM {SCHEMA}.stress_profiles "
+            f"WHERE company_id = {int(company_id)} AND is_active = TRUE"
+        )
+        has_own = int((cur.fetchone() or [0])[0] or 0) > 0
+        if has_own:
+            where.append(f"p.company_id = {int(company_id)}")
+            pack = "partner"
+        else:
+            # Своих профилей нет — отдаём базовый каталог, чтобы не остаться
+            # без тестов. Чужие партнёрские профили не показываем никогда.
+            where.append("p.company_id IS NULL")
+        if build == "lite":
+            where.append("p.public_level <> 'full'")
+    elif build == "lite":
+        # Наш общий токен, Lite-сборка: профили с недоступными тестами не шлём.
+        where.append("p.public_level <> 'full'")
 
     cur.execute(
         f"SELECT {_PROF_COLS} {_PROF_FROM.format(schema=SCHEMA)} "
@@ -1920,6 +1940,7 @@ def profiles_pull(cur, scope="auto", company_id=None, has_token=False,
                          "public_level": p.get("public_level", "none"),
                          "owner_tag": p.get("owner_tag", "")})
     return ok({"profiles": profiles, "count": len(profiles), "build": build,
+               "pack": pack,
                "audience": "authenticated" if scope == "full" else "guest"})
 
 

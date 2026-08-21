@@ -125,8 +125,15 @@ const furmarkGpuzPreset = (): TestItem => ({
   ],
 })
 
-export default function StressProfilesTab() {
+interface StressProfilesTabProps {
+  /** Кабинет партнёра: показываем только его пак, без чужих и без пресетов. */
+  isPartner?: boolean
+  session?: string | null
+}
+
+export default function StressProfilesTab({ isPartner = false, session }: StressProfilesTabProps = {}) {
   const adminKey = getAdminKey()
+  const auth = isPartner ? { session } : undefined
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<Profile | null>(null)
@@ -137,21 +144,47 @@ export default function StressProfilesTab() {
 
   const [companies, setCompanies] = useState<CompanyOption[]>([])
 
+  // ── Фильтры списка профилей ──
+  const [q, setQ] = useState("")
+  // Владелец: all | own (наши) | партнёрские (число = id компании) | any_partner
+  const [ownerFilter, setOwnerFilter] = useState<string>("all")
+  // Доступ: all | none | lite | full
+  const [levelFilter, setLevelFilter] = useState<string>("all")
+  // Статус: all | active | off
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+
   const load = useCallback(() => {
     setLoading(true)
-    Promise.all([
-      api.stress.profilesList(adminKey),
-      api.stress.presetsList(adminKey),
-    ]).then(([prof, pres]) => {
-      setProfiles(prof.profiles || [])
-      setPresets(pres.presets || [])
-    }).finally(() => setLoading(false))
+    api.stress.profilesList(adminKey, auth)
+      .then(prof => setProfiles(prof.profiles || []))
+      .finally(() => setLoading(false))
+    if (isPartner) { setPresets([]); setCompanies([]); return }
+    api.stress.presetsList(adminKey).then(pres => setPresets(pres.presets || [])).catch(() => setPresets([]))
     api.auth.adminGetCompanies(adminKey)
       .then(r => setCompanies((r.companies || []).map((c: CompanyOption) => ({ id: c.id, name: c.name }))))
       .catch(() => setCompanies([]))
-  }, [adminKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminKey, isPartner, session])
 
   useEffect(() => { load() }, [load])
+
+  // Применение фильтров к списку
+  const shown = profiles.filter(p => {
+    if (q.trim()) {
+      const s = q.trim().toLowerCase()
+      const hay = `${p.name} ${p.note} ${p.owner_tag || ""} ${p.tests.map(t => t.name).join(" ")}`.toLowerCase()
+      if (!hay.includes(s)) return false
+    }
+    if (ownerFilter === "own" && p.company_id) return false
+    if (ownerFilter === "any_partner" && !p.company_id) return false
+    if (/^\d+$/.test(ownerFilter) && p.company_id !== Number(ownerFilter)) return false
+    if (levelFilter !== "all" && (p.public_level || "none") !== levelFilter) return false
+    if (statusFilter === "active" && !p.is_active) return false
+    if (statusFilter === "off" && p.is_active) return false
+    return true
+  })
+  const filtersOn = q.trim() !== "" || ownerFilter !== "all" || levelFilter !== "all" || statusFilter !== "all"
+  const resetFilters = () => { setQ(""); setOwnerFilter("all"); setLevelFilter("all"); setStatusFilter("all") }
 
   const savePreset = () => {
     if (!editPreset) return
@@ -174,7 +207,7 @@ export default function StressProfilesTab() {
     if (!edit) return
     if (!edit.name.trim()) { alert("Укажите название профиля"); return }
     setSaving(true)
-    api.stress.profileSave(edit, adminKey).then(() => {
+    api.stress.profileSave(edit, adminKey, auth).then(() => {
       setEdit(null)
       load()
     }).finally(() => setSaving(false))
@@ -183,7 +216,7 @@ export default function StressProfilesTab() {
   const remove = (id?: number) => {
     if (!id) return
     if (!confirm("Удалить профиль?")) return
-    api.stress.profileDelete(id, adminKey).then(load)
+    api.stress.profileDelete(id, adminKey, auth).then(load)
   }
 
   // ── Хелперы редактирования тестов ──
@@ -318,6 +351,12 @@ export default function StressProfilesTab() {
           </label>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {isPartner ? (
+              <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-foreground/50">
+                Профиль вашей компании. Программа с вашим токеном скачивает
+                только ваши профили — наш базовый набор в них не подмешивается.
+              </div>
+            ) : (
             <label className="block">
               <span className="mb-1 block text-xs text-foreground/50">Кому принадлежит</span>
               <select
@@ -333,6 +372,8 @@ export default function StressProfilesTab() {
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
+            )}
+            {!isPartner && (
             <label className="block">
               <span className="mb-1 block text-xs text-foreground/50">Доступ для гостей</span>
               <select
@@ -355,10 +396,12 @@ export default function StressProfilesTab() {
                   : "В Lite-сборке часть тестов не установлена — такие профили помечайте «полный»."}
               </span>
             </label>
+            )}
           </div>
         </div>
 
         {/* Готовые пресеты */}
+        {!isPartner && (
         <div className="mt-5 rounded-xl border border-border bg-card p-4">
           <div className="mb-2 flex items-center gap-2">
             <Icon name="Zap" size={15} className="text-accent" />
@@ -379,6 +422,7 @@ export default function StressProfilesTab() {
             ))}
           </div>
         </div>
+        )}
 
         {/* Тесты */}
         <div className="mt-5 space-y-3">
@@ -587,12 +631,16 @@ export default function StressProfilesTab() {
   return (
     <div className="max-w-3xl">
       <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Профили тестов</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {isPartner ? "Мои тесты" : "Профили тестов"}
+        </h2>
         <div className="flex items-center gap-2">
-          <button onClick={() => setEditPreset(emptyPreset())}
-            className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-            <Icon name="Zap" size={16} className="text-accent" /> Создать новый тест
-          </button>
+          {!isPartner && (
+            <button onClick={() => setEditPreset(emptyPreset())}
+              className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground/80 hover:border-accent hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="Zap" size={16} className="text-accent" /> Создать новый тест
+            </button>
+          )}
           <button onClick={() => setEdit(emptyProfile())} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
             <Icon name="Plus" size={16} /> Новый профиль
           </button>
@@ -600,21 +648,71 @@ export default function StressProfilesTab() {
       </div>
 
       <p className="mb-4 text-xs text-foreground/40">
-        Стенд с паролем скачивает все активные профили. Гость без пароля —
-        только помеченные публичными. Lite-сборка получает лишь профили
-        уровня «Lite»: в ней установлены не все тесты.
+        {isPartner
+          ? "Это пак тестов вашей компании. Программа с вашим токеном скачивает именно его — наши общие профили не подмешиваются. Если удалить все свои профили, программа получит базовый набор."
+          : "Стенд с паролем скачивает все активные профили. Гость без пароля — только помеченные публичными. У партнёра свой пак полностью замещает базовый. Lite-сборка получает лишь профили уровня «Lite»: в ней установлены не все тесты."}
       </p>
+
+      {/* ── Фильтры ── */}
+      {profiles.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[200px] flex-1">
+            <Icon name="Search" size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/30" />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Поиск по названию, тесту, заметке"
+              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary focus:outline-none" />
+          </div>
+          {!isPartner && (
+            <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+              <option value="all">Все владельцы</option>
+              <option value="own">Наши (базовые)</option>
+              <option value="any_partner">Любой партнёр</option>
+              {companies.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            </select>
+          )}
+          <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+            <option value="all">Любой доступ</option>
+            <option value="none">Закрытый</option>
+            <option value="lite">Гостевой Lite</option>
+            <option value="full">Гостевой полный</option>
+          </select>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "pointer" }}>
+            <option value="all">Все статусы</option>
+            <option value="active">Включённые</option>
+            <option value="off">Выключенные</option>
+          </select>
+          {filtersOn && (
+            <button onClick={resetFilters}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              <Icon name="X" size={13} /> Сбросить
+            </button>
+          )}
+          <span className="text-xs text-foreground/40">
+            {filtersOn ? `${shown.length} из ${profiles.length}` : `${profiles.length} профилей`}
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
       ) : profiles.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-foreground/40">
           <Icon name="ListChecks" size={28} className="mx-auto mb-2 text-foreground/20" />
-          Профилей пока нет. Создайте первый — приложение на ПК скачает его автоматически.
+          {isPartner
+            ? "Своих профилей пока нет — программа скачивает наш базовый набор. Создайте первый, и он полностью заменит базовый."
+            : "Профилей пока нет. Создайте первый — приложение на ПК скачает его автоматически."}
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-foreground/40">
+          <Icon name="SearchX" size={28} className="mx-auto mb-2 text-foreground/20" />
+          Под фильтры ничего не подошло.
         </div>
       ) : (
         <div className="space-y-2">
-          {profiles.map(p => (
+          {shown.map(p => (
             <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -646,7 +744,8 @@ export default function StressProfilesTab() {
         </div>
       )}
 
-      {/* Готовые тесты (пресеты) */}
+      {/* Готовые тесты (пресеты) — только в админке */}
+      {!isPartner && (
       <div className="mt-8">
         <div className="mb-3 flex items-center gap-2">
           <Icon name="Zap" size={15} className="text-accent" />
@@ -679,6 +778,7 @@ export default function StressProfilesTab() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

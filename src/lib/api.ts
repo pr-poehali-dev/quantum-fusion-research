@@ -410,12 +410,13 @@ export const api = {
       fetch(`${URLS.stress}?action=delete_runs`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "delete_runs", run_ids }) }).then(r => r.json()),
     renameRun: (id: number, machine_name: string, adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=rename_run`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "rename_run", id, machine_name }) }).then(r => r.json()),
-    profilesList: (adminKey: string) =>
-      fetch(`${URLS.stress}?action=profiles_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
-    profileSave: (data: unknown, adminKey: string) =>
-      fetch(`${URLS.stress}?action=profile_save`, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": adminKey }, body: JSON.stringify({ action: "profile_save", ...(data as object) }) }).then(r => r.json()),
-    profileDelete: (id: number, adminKey: string) =>
-      fetch(`${URLS.stress}?action=profile_delete&id=${id}`, { method: "DELETE", headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
+    // Профили: админ ходит по ключу, партнёр — по сессии (видит только свои).
+    profilesList: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=profiles_list`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    profileSave: (data: unknown, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=profile_save`, { method: "POST", headers: { "Content-Type": "application/json", ...stressHeaders(adminKey, auth) }, body: JSON.stringify({ action: "profile_save", ...(data as object) }) }).then(r => r.json()),
+    profileDelete: (id: number, adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=profile_delete&id=${id}`, { method: "DELETE", headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     presetsList: (adminKey: string) =>
       fetch(`${URLS.stress}?action=presets_list`, { headers: { "X-Admin-Token": adminKey } }).then(r => r.json()),
     presetSave: (data: unknown, adminKey: string) =>
