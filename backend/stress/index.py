@@ -352,7 +352,8 @@ def handler(event, context):
         if action == "live_runs" and method == "GET":
             return live_runs(cur, company_filter)
         if action == "get" and method == "GET":
-            return get_run(cur, int(params.get("id") or 0), partner_cid if not admin else None)
+            return get_run(cur, int(params.get("id") or 0),
+                           partner_cid if not admin else None, conn)
         if action == "delete_runs" and method in ("POST", "DELETE"):
             return delete_runs(cur, conn, body.get("run_ids"),
                                partner_cid if not admin else None)
@@ -1439,7 +1440,7 @@ def folder_report(cur, fid, owner_cid=None):
     return ok({"folder": folder, "runs": runs})
 
 
-def get_run(cur, run_id, owner_cid=None):
+def get_run(cur, run_id, owner_cid=None, conn=None):
     if not run_id:
         return err("id required")
     own = f" AND sr.partner_company_id = {int(owner_cid)}" if owner_cid is not None else ""
@@ -1447,7 +1448,8 @@ def get_run(cur, run_id, owner_cid=None):
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
-        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware "
+        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware, "
+        f"COALESCE(sr.public_code, '') "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.id = {run_id}{own}"
@@ -1465,7 +1467,18 @@ def get_run(cur, run_id, owner_cid=None):
         "partner_company_id": r[15], "company_name": r[16] or "",
         "company_is_own": bool(r[17]) or not r[15],
         "hardware": r[18] or None,
+        # Код публичной ссылки на отчёт: /tests/<код>
+        "public_code": r[19] or "",
     }
+    # Прогоны, загруженные до появления публичных ссылок, кода не имеют —
+    # выдаём его при первом открытии, чтобы кнопка «ссылка клиенту» была везде.
+    if not run["public_code"]:
+        code = gen_public_code(cur)
+        cur.execute(f"UPDATE {SCHEMA}.stress_runs SET public_code = {esc(code)} "
+                    f"WHERE id = {int(run_id)}")
+        if conn is not None:
+            conn.commit()
+        run["public_code"] = code
     cur.execute(
         f"SELECT id, test_name, command, exit_code, duration_sec, planned_sec, timed_out, success, "
         f"started_at, finished_at, sort_order, score_text, ocr_stress_failed FROM {SCHEMA}.stress_results "

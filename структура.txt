@@ -1854,7 +1854,8 @@ backend/stress/index.py:
   GET ?action=public_report&code=<код> — ПУБЛИЧНО: профиль, железо, итоги,
     список тестов. Датчики, файлы, machine_name и run_uid не отдаются;
     название компании — только если она не is_own. Нет кода → found:false;
-  list_runs и get_run отдают public_code (для кнопки копирования).
+  list_runs, get_run и folder_report отдают public_code; get_run(cur, id,
+    owner, conn) выдаёт код на лету, если у старого прогона его нет.
 src/components/PublicRunCard.tsx (новый) — общая карточка отчёта
   (вердикт, конфигурация ПК, счётчики, список тестов); используется и на
   витрине «последний тест», и на странице отчёта. LastPublicRun.tsx
