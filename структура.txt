@@ -1841,3 +1841,28 @@ src/components/admin/StressReleasesTab.tsx — блок «Автообновле
   программы»: по каждой сборке видно, до какой версии обновятся стенды,
   либо предупреждение «нет опубликованной сборки».
 desktop/КАК ВЫКАТИТЬ РЕЛИЗ.md (новый) — инструкция для команды.
+
+[v8.39] Публичная ссылка на каждый отчёт: /tests/<код>.
+БД: V0246 — stress_runs.public_code VARCHAR(16) + уникальный индекс,
+  коды выданы всем накопленным прогонам (алфавит без похожих символов,
+  длина 6 — как short_code у сборок сообщества).
+  Отличие от verify_code (brand_pack): тот считается HMAC по brand_key
+  партнёра и у наших прогонов пуст; public_code есть у КАЖДОГО прогона.
+backend/stress/index.py:
+  gen_public_code(cur) — уникальный код, 20 попыток, fallback token_urlsafe;
+  ingest пишет public_code при вставке прогона;
+  GET ?action=public_report&code=<код> — ПУБЛИЧНО: профиль, железо, итоги,
+    список тестов. Датчики, файлы, machine_name и run_uid не отдаются;
+    название компании — только если она не is_own. Нет кода → found:false;
+  list_runs и get_run отдают public_code (для кнопки копирования).
+src/components/PublicRunCard.tsx (новый) — общая карточка отчёта
+  (вердикт, конфигурация ПК, счётчики, список тестов); используется и на
+  витрине «последний тест», и на странице отчёта. LastPublicRun.tsx
+  переписан на неё.
+src/pages/PublicReport.tsx (новый) + роут /tests/:code в App.tsx —
+  страница отчёта: карточка, кнопка «Скопировать ссылку», блок
+  «Проверьте свой компьютер» со ссылкой на /stresstester. Нет отчёта —
+  «Отчёт не найден».
+src/lib/api.ts — api.stress.publicReport(code).
+src/components/admin/StressTestsTab.tsx — в шапке прогона кнопка
+  «/tests/<код>»: копирует полную ссылку. Работает и у партнёра.

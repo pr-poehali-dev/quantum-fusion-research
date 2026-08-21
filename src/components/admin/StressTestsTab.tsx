@@ -43,6 +43,7 @@ interface Run {
   failed_tests: number
   status: string
   created_at: string
+  public_code?: string      // код публичной ссылки на отчёт: /tests/<код>
   folder_id?: number | null
   folder_sort?: number
   results?: ResultRow[]
@@ -97,6 +98,13 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
   const [detailLoading, setDetailLoading] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState("")
+  // Публичная ссылка на отчёт: копируем её целиком, вместе с адресом сайта.
+  const [linkCopied, setLinkCopied] = useState<string | null>(null)
+  const copyReportLink = (code: string) => {
+    navigator.clipboard.writeText(`${window.location.origin}/tests/${code}`)
+    setLinkCopied(code)
+    setTimeout(() => setLinkCopied(null), 2000)
+  }
   const [catFilter, setCatFilter] = useState<string>("all")
 
   // Папки прогонов + выбор нескольких прогонов чекбоксами
@@ -402,6 +410,17 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                       </span>
                     )}
                   </div>
+                )}
+                {/* Публичная ссылка на отчёт — её можно отправить клиенту */}
+                {selected.public_code && (
+                  <button onClick={() => copyReportLink(selected.public_code!)}
+                    title="Скопировать публичную ссылку на отчёт" style={{ cursor: "pointer" }}
+                    className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-foreground/60 transition-colors hover:border-primary hover:text-foreground">
+                    <Icon name={linkCopied === selected.public_code ? "Check" : "Link"} size={12} />
+                    {linkCopied === selected.public_code
+                      ? "Ссылка скопирована"
+                      : `/tests/${selected.public_code}`}
+                  </button>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
                   {selected.profile_name && <span><Icon name="ListChecks" size={12} className="mr-1 inline" />{selected.profile_name}</span>}

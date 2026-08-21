@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import secrets
 import base64
 import uuid
 import html as html_mod
@@ -184,6 +185,10 @@ def handler(event, context):
         # это демонстрация возможностей программы, а не доступ к данным.
         if action == "last_public_run" and method == "GET":
             return last_public_run(cur)
+
+        # Публичная ссылка на конкретный отчёт: /tests/<код>
+        if action == "public_report" and method == "GET":
+            return public_report(cur, params.get("code"))
 
         # ── Публичная проверка отчёта по QR-коду (без авторизации) ──────────
         if action == "verify" and method == "GET":
@@ -1025,11 +1030,13 @@ def ingest(cur, conn, body, company_id=None):
     cur.execute(
         f"INSERT INTO {SCHEMA}.stress_runs "
         f"(run_uid, profile_name, machine_name, os_info, note, started_at, finished_at, "
-        f"total_tests, passed_tests, failed_tests, status, partner_company_id, hardware) VALUES "
+        f"total_tests, passed_tests, failed_tests, status, partner_company_id, hardware, "
+        f"public_code) VALUES "
         f"({esc(run_uid)}, {esc(body.get('profile_name', ''))}, {esc(body.get('machine_name', ''))}, "
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
-        f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}) RETURNING id"
+        f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}, "
+        f"{esc(gen_public_code(cur))}) RETURNING id"
     )
     run_id = cur.fetchone()[0]
 
@@ -1172,7 +1179,8 @@ def list_runs(cur, company_filter=None):
         f"SELECT r.id, r.run_uid, r.profile_name, r.machine_name, r.os_info, r.note, "
         f"r.started_at, r.finished_at, r.total_tests, r.passed_tests, r.failed_tests, "
         f"r.status, r.created_at, r.folder_id, r.partner_company_id, r.folder_sort, "
-        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE), r.hardware "
+        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE), r.hardware, "
+        f"COALESCE(r.public_code, '') "
         f"FROM {SCHEMA}.stress_runs r "
         f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
         f"{where_sql} ORDER BY r.created_at DESC LIMIT 500"
@@ -1186,6 +1194,8 @@ def list_runs(cur, company_filter=None):
         # Пустая компания = наш прогон (загружен не партнёром)
         "company_name": r[16] or "", "company_is_own": bool(r[17]) or not r[14],
         "hardware": r[18] or None,
+        # Код публичной ссылки на отчёт: /tests/<код>
+        "public_code": r[19] or "",
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
@@ -1362,7 +1372,8 @@ def folder_report(cur, fid, owner_cid=None):
         f"SELECT sr.id, sr.run_uid, sr.profile_name, sr.machine_name, sr.os_info, sr.note, "
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
-        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware "
+        f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware, "
+        f"COALESCE(sr.public_code, '') "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.folder_sort, sr.created_at DESC"
@@ -1588,6 +1599,65 @@ def launcher_version(cur, channel=None):
     else:
         out["source"] = "catalog"
     return ok(out)
+
+
+_PUBLIC_ALPHABET = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def gen_public_code(cur, length=6):
+    """Короткий код публичной ссылки на отчёт: /tests/<код>.
+
+    Алфавит без похожих символов (нет 0/O, 1/l/I) — код диктуют голосом
+    и переписывают с экрана. Уникальность проверяем по базе.
+    """
+    for _ in range(20):
+        code = "".join(secrets.choice(_PUBLIC_ALPHABET) for _ in range(length))
+        cur.execute(
+            f"SELECT 1 FROM {SCHEMA}.stress_runs WHERE public_code = {esc(code)}")
+        if not cur.fetchone():
+            return code
+    return secrets.token_urlsafe(6)[:8]
+
+
+def public_report(cur, code):
+    """Отчёт по публичной ссылке /tests/<код> — без авторизации.
+
+    Показываем то же, что и в отчёте программы: профиль, железо, итоги и
+    список тестов. Датчики и файлы не отдаём — это данные владельца ПК.
+    Имя стенда тоже скрыто: у партнёров туда попадают имена клиентов.
+    """
+    code = str(code or "").strip()
+    if not code or len(code) > 16:
+        return err("not found", 404)
+    cur.execute(
+        f"SELECT r.id, r.profile_name, r.started_at, r.finished_at, "
+        f"r.total_tests, r.passed_tests, r.failed_tests, r.status, r.hardware, "
+        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE) "
+        f"FROM {SCHEMA}.stress_runs r "
+        f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
+        f"WHERE r.public_code = {esc(code)} LIMIT 1"
+    )
+    r = cur.fetchone()
+    if not r:
+        return ok({"ok": True, "found": False})
+    run = {
+        "profile_name": r[1] or "", "started_at": r[2], "finished_at": r[3],
+        "total_tests": r[4], "passed_tests": r[5], "failed_tests": r[6],
+        "status": r[7], "hardware": r[8] or None,
+        # Название компании показываем, только если она сама себя не скрывает.
+        "company_name": "" if r[10] else (r[9] or ""),
+    }
+    cur.execute(
+        f"SELECT test_name, exit_code, duration_sec, timed_out, success, score_text "
+        f"FROM {SCHEMA}.stress_results WHERE run_id = {int(r[0])} "
+        f"ORDER BY sort_order, id"
+    )
+    run["results"] = [{
+        "test_name": x[0] or "", "exit_code": x[1],
+        "duration_sec": float(x[2]) if x[2] is not None else 0,
+        "timed_out": x[3], "success": x[4], "score_text": x[5] or "",
+    } for x in cur.fetchall()]
+    return ok({"ok": True, "found": True, "run": run})
 
 
 def last_public_run(cur):
