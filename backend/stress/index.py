@@ -336,6 +336,9 @@ def handler(event, context):
 
         if action == "list" and method == "GET":
             return list_runs(cur, company_filter)
+        # Прогоны, которые идут прямо сейчас (по отбивкам heartbeat).
+        if action == "live_runs" and method == "GET":
+            return live_runs(cur, company_filter)
         if action == "get" and method == "GET":
             return get_run(cur, int(params.get("id") or 0), partner_cid if not admin else None)
         if action == "delete_runs" and method in ("POST", "DELETE"):
@@ -521,9 +524,10 @@ def notify_parts(body):
             tail = f"\n\n🎮 GPU: {_esc(gpu)}"
 
     elif event == "test_failed":
+        # Ранний алерт середины цепочки: один упавший тест и напоминание,
+        # что прогон продолжается. Итог со списком придёт отдельно.
         test_name = body.get("test_name")
         headline = _notify_headline(body, f"💥 <b>Упал тест: {_esc(test_name)}</b>")
-        tail = f"\n\n❌ {_esc(test_name)}"
         detail = (body.get("error_detail") or "").strip() if body.get("error_detail") else ""
         exit_code = body.get("exit_code")
         dur = body.get("duration_sec")
@@ -535,10 +539,12 @@ def notify_parts(body):
                 extra.append(f"{float(dur):.0f} сек")
             except (TypeError, ValueError):
                 pass
+        line = f"\n\n❌ {_esc(test_name)}"
         if extra:
-            tail += f"\n   {', '.join(extra)}"
+            line += f" · {', '.join(extra)}"
         if detail:
-            tail += f"\n   {_esc(detail)}"
+            line += f"\n   {_esc(detail[:200])}"
+        tail = line + "\n\n⏳ Прогон продолжается…"
 
     elif event == "sensors_missing":
         headline = _notify_headline(body, "📡 <b>Не хватает датчиков — тестовый стенд</b>")
@@ -615,7 +621,12 @@ def _build_notify_text(body):
     if parts is None:
         return None
     headline, tail = parts
-    core = _format_notify_core(body)
+    # Промежуточный алерт «упал шаг, прогон идёт дальше» держим коротким:
+    # полный список тестов уйдёт в итоговом сообщении, дублировать незачем.
+    if body.get("event") == "test_failed":
+        core = _format_notify_core(dict(body, tests=None))
+    else:
+        core = _format_notify_core(body)
     link = f"\n\n🔗 {_site_base()}/admin/stress"
     return f"{headline}\n\n{core}{tail}{link}"
 
@@ -897,6 +908,45 @@ def heartbeat(cur, conn, body, company_id=None):
     return ok({"ok": True, "run_uid": run_uid})
 
 
+def live_runs(cur, company_filter=None):
+    """Прогоны, которые идут прямо сейчас — по отбивкам heartbeat.
+
+    Запись живёт в stress_run_live: программа шлёт отбивку раз в
+    heartbeat_interval_sec и удаляет запись, когда прогон закончился.
+    Считаем прогон «на связи», пока не просрочена ожидаемая отбивка
+    (next_heartbeat_at + grace_sec) — иначе помечаем stale, чтобы в
+    списке было видно: связь со стендом потеряна.
+    """
+    where = ""
+    if isinstance(company_filter, int):
+        where = f" WHERE partner_company_id = {int(company_filter)}"
+    elif company_filter == "own":
+        where = " WHERE partner_company_id IS NULL"
+    cur.execute(
+        f"SELECT run_uid, machine_name, profile_name, company_name, order_number, "
+        f"started_at, heartbeat_at, next_heartbeat_at, heartbeat_interval_sec, "
+        f"current_test_index, current_test_name, planned_total, completed_count, "
+        f"failed_count, has_errors, remaining_sec, current_test_remaining_sec, "
+        f"(NOW() > next_heartbeat_at + (grace_sec || ' seconds')::interval) AS stale, "
+        f"EXTRACT(EPOCH FROM (NOW() - heartbeat_at)) "
+        f"FROM {SCHEMA}.stress_run_live{where} ORDER BY started_at DESC"
+    )
+    runs = [{
+        "run_uid": r[0], "machine_name": r[1] or "", "profile_name": r[2] or "",
+        "company_name": r[3] or "", "order_number": r[4] or "",
+        "started_at": r[5], "heartbeat_at": r[6], "next_heartbeat_at": r[7],
+        "heartbeat_interval_sec": int(r[8] or 0),
+        "current_test_index": int(r[9] or 0), "current_test_name": r[10] or "",
+        "planned_total": int(r[11] or 0), "completed_count": int(r[12] or 0),
+        "failed_count": int(r[13] or 0), "has_errors": bool(r[14]),
+        "remaining_sec": int(r[15] or 0),
+        "current_test_remaining_sec": int(r[16] or 0),
+        "stale": bool(r[17]),
+        "since_heartbeat_sec": int(r[18] or 0),
+    } for r in cur.fetchall()]
+    return ok({"runs": runs, "count": len(runs)})
+
+
 def check_stale_heartbeats(cur, conn):
     """Ищет прогоны без отбивки и шлёт предупреждение в Telegram.
 
@@ -1031,19 +1081,10 @@ def ingest(cur, conn, body, company_id=None):
         try:
             machine = body.get("machine_name") or "—"
             profile = body.get("profile_name") or "—"
-            # По каждому упавшему тесту — отдельное «test_failed»
-            for r in results:
-                if not r.get("success"):
-                    t = _build_notify_text({
-                        "event": "test_failed", "machine": machine, "profile": profile,
-                        "test_name": r.get("test_name"), "exit_code": r.get("exit_code"),
-                        "duration_sec": r.get("duration_sec"),
-                    })
-                    if t and np.claim_admin_send(cur, "test_failed", {
-                            "machine": machine, "profile": profile,
-                            "test_name": r.get("test_name"),
-                            "exit_code": r.get("exit_code")}):
-                        send_stress(t)
+            # Отдельные «test_failed» здесь НЕ шлём: прогон уже закончился,
+            # и итоговое сообщение содержит полный список тестов с ошибками.
+            # Ранний алерт по упавшему шагу шлёт сама программа — но только
+            # когда после него в профиле ещё есть тесты.
             # Итог прогона — со списком тестов, как в спеке формата.
             fin_text = _build_notify_text({
                 "event": "run_finished", "machine": machine, "profile": profile,
@@ -1066,15 +1107,8 @@ def ingest(cur, conn, body, company_id=None):
     # не влияют на общий админский чат выше.
     if company_id:
         try:
-            for r in results:
-                if not r.get("success"):
-                    np.notify_company(cur, company_id, "test_failed", {
-                        "machine": body.get("machine_name"),
-                        "profile": body.get("profile_name"),
-                        "test_name": r.get("test_name"),
-                        "exit_code": r.get("exit_code"),
-                        "duration_sec": r.get("duration_sec"),
-                    })
+            # Как и в админском чате: по завершённому прогону шлём только
+            # итог, иначе партнёр получал по два сообщения на один сбой.
             fin_body = {
                 "event": "run_finished",
                 "machine": body.get("machine_name"),

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import Icon from "@/components/ui/icon"
+import LiveRuns from "@/components/admin/stress/LiveRuns"
 import { getAdminKey } from "@/pages/admin/constants"
 import StressProfilesTab from "@/components/admin/StressProfilesTab"
 import StressBrandingTab from "@/components/admin/StressBrandingTab"
@@ -317,6 +318,9 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
             </div>
           </div>
         )}
+
+        {/* Прогоны, которые идут прямо сейчас — по отбивкам со стендов */}
+        <LiveRuns adminKey={adminKey} auth={auth} />
 
         {loading ? (
           <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>

@@ -1793,3 +1793,30 @@ src/components/LastPublicRun.tsx (новый) — карточка отчёта 
   Если прогонов нет — блок не рисуется.
 src/pages/StressTesterDownload.tsx — блок вставлен перед секцией
   «Скачать программу» (#versions).
+
+[v8.37] Живые прогоны в админке/партнёрке + починка дублей уведомлений.
+backend/stress/index.py:
+  live_runs(cur, company_filter) + GET ?action=live_runs (нужен админ-ключ
+    или сессия партнёра) — читает stress_run_live: стенд, профиль, текущий
+    тест, план/готово/ошибки, осталось секунд, признак stale
+    (NOW() > next_heartbeat_at + grace_sec) и since_heartbeat_sec.
+    Партнёр видит только свои прогоны (partner_company_id).
+  notify: ветка test_failed переписана под mid-chain формат — заголовок,
+    стенд/заказ/профиль, ОДНА строка «❌ тест · код, сек» + error_detail,
+    «⏳ Прогон продолжается…», ссылка. Полный список тестов в этом событии
+    больше не печатается (_build_notify_text вырезает tests).
+  ingest: убрана рассылка test_failed по каждому упавшему тесту — и в
+    админский чат, и в партнёрские. Прогон уже закончился, поэтому шлём
+    только run_finished со списком. Это и был источник дублей.
+desktop/StressRunner/Runner.cs — ранний алерт test_failed уходит только
+  если idx < profile.Tests.Count (есть следующий тест); ставится
+  res.FailureNotified; в payload добавлены test_index/total_tests и
+  error_detail (FailureDetail: таймаут / балл / код завершения).
+desktop/StressRunner/Models.cs — ResultPayload.ScoreText, FailureNotified.
+src/lib/api.ts — api.stress.liveRuns(adminKey, auth).
+src/components/admin/stress/LiveRuns.tsx (новый) — блок «Идут сейчас»:
+  пульсирующая точка, стенд, компания, заказ, текущий тест N из M,
+  полоса прогресса, «осталось ~», счётчики, «нет связи» при stale.
+  Обновляется раз в минуту (отбивка редкая — 15 минут).
+src/components/admin/StressTestsTab.tsx — блок над списком прогонов,
+  работает и в админке, и в кабинете партнёра (auth пробрасывается).

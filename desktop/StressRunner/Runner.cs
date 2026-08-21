@@ -80,17 +80,25 @@ public class Runner
                 : $"    ОШИБКА (код {res.ExitCode?.ToString() ?? "—"}, {res.DurationSec:F0} сек)");
             OnTestDone?.Invoke(res.Success, test.Name);
 
-            // Уведомление в Telegram СРАЗУ при ошибке теста (прогон продолжается).
-            if (!res.Success)
+            // Ранний алерт об ошибке шлём ТОЛЬКО если после этого теста в
+            // профиле есть следующие: смысл сообщения — «упал шаг, прогон
+            // идёт дальше». Если упал последний (или единственный) тест,
+            // через пару секунд уйдёт итог — второе сообщение было бы дублем.
+            bool hasNextTest = idx < profile.Tests.Count;
+            if (!res.Success && hasNextTest && !res.FailureNotified)
             {
+                res.FailureNotified = true;
                 Notify(new
                 {
                     @event = "test_failed",
                     machine = run.MachineName,
                     profile = profile.Name,
                     test_name = test.Name,
+                    test_index = idx,
+                    total_tests = profile.Tests.Count,
                     exit_code = res.ExitCode,
                     duration_sec = res.DurationSec,
+                    error_detail = FailureDetail(res),
                 });
             }
         }
@@ -120,6 +128,16 @@ public class Runner
         });
 
         return run;
+    }
+
+    /// <summary>Краткая причина падения для уведомления: таймаут, код, балл.</summary>
+    private static string FailureDetail(ResultPayload res)
+    {
+        if (res.TimedOut) return "не уложился в отведённое время";
+        var score = (res.ScoreText ?? string.Empty).Trim();
+        if (score.Length > 0)
+            return score.Length > 200 ? score.Substring(0, 200) : score;
+        return res.ExitCode.HasValue ? $"код завершения {res.ExitCode}" : string.Empty;
     }
 
     private ResultPayload RunSingle(TestItem test)

@@ -147,6 +147,10 @@ public class ResultPayload
     [JsonPropertyName("started_at")] public string? StartedAt { get; set; }
     [JsonPropertyName("finished_at")] public string? FinishedAt { get; set; }
     [JsonPropertyName("files")] public List<FilePayload> Files { get; set; } = new();
+    /// <summary>Балл/вывод бенчмарка — идёт в уведомление как краткая причина.</summary>
+    [JsonPropertyName("score_text")] public string? ScoreText { get; set; }
+    /// <summary>Ранний алерт по этому тесту уже отправлен — второй раз не шлём.</summary>
+    [JsonIgnore] public bool FailureNotified { get; set; }
 }
 
 public class FilePayload

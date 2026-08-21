@@ -389,6 +389,9 @@ export const api = {
     // companyId — фильтр по компании (для админа); партнёру бэкенд ставит свою.
     list: (adminKey: string, auth?: StressAuth) =>
       fetch(`${URLS.stress}?action=list${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
+    // Прогоны, которые идут прямо сейчас (по отбивкам heartbeat).
+    liveRuns: (adminKey: string, auth?: StressAuth) =>
+      fetch(`${URLS.stress}?action=live_runs${stressQ(adminKey, auth)}`, { headers: stressHeaders(adminKey, auth) }).then(r => r.json()),
     // Витрина на сайте: последний завершённый прогон, без авторизации
     // и без датчиков — только профиль, железо, итоги и список тестов.
     lastPublicRun: () =>
