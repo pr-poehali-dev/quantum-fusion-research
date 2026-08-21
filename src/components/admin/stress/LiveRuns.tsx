@@ -56,8 +56,25 @@ interface Props {
   auth?: StressAuth
 }
 
+const HIDDEN_KEY = "stress_live_hidden"
+
+function readHidden(): string[] {
+  try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]") } catch { return [] }
+}
+
 export default function LiveRuns({ adminKey, auth }: Props) {
   const [runs, setRuns] = useState<LiveRun[]>([])
+
+  // Прогоны без связи можно убрать из списка вручную: стенд мог просто
+  // выключиться, и висеть в «идут сейчас» ему незачем. Скрытие помним
+  // между заходами; вернулась связь — карточка снова появится.
+  const [hidden, setHidden] = useState<string[]>(readHidden)
+
+  const hide = (uid: string) => {
+    const next = Array.from(new Set([...hidden, uid]))
+    setHidden(next)
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(next.slice(-200)))
+  }
 
   const load = useCallback(() => {
     api.stress.liveRuns(adminKey, auth)
@@ -77,7 +94,10 @@ export default function LiveRuns({ adminKey, auth }: Props) {
     return () => { clearInterval(t); window.removeEventListener("focus", onFocus) }
   }, [load])
 
-  if (runs.length === 0) return null
+  const visible = runs.filter(r => !(r.stale && hidden.includes(r.run_uid)))
+  const hiddenCount = runs.length - visible.length
+
+  if (visible.length === 0 && hiddenCount === 0) return null
 
   return (
     <div className="mb-4 space-y-2">
@@ -86,10 +106,17 @@ export default function LiveRuns({ adminKey, auth }: Props) {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-70" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
         </span>
-        <h3 className="text-sm font-medium">Идут сейчас ({runs.length})</h3>
+        <h3 className="text-sm font-medium">Идут сейчас ({visible.length})</h3>
+        {hiddenCount > 0 && (
+          <button onClick={() => { setHidden([]); localStorage.removeItem(HIDDEN_KEY) }}
+            style={{ cursor: "pointer" }}
+            className="ml-auto text-xs text-foreground/40 hover:text-foreground transition-colors">
+            Показать скрытые ({hiddenCount})
+          </button>
+        )}
       </div>
 
-      {runs.map(r => {
+      {visible.map(r => {
         const total = r.planned_total || 0
         const done = Math.min(r.completed_count, total || r.completed_count)
         const pct = total > 0 ? Math.round((done / total) * 100) : 0
@@ -124,10 +151,17 @@ export default function LiveRuns({ adminKey, auth }: Props) {
             {/* Пока связи нет, данные ниже — с последней отбивки: показываем
                 это прямо, чтобы «осталось ~» не выглядело настоящим. */}
             {r.stale && (
-              <p className="mt-1 text-xs text-amber-400">
-                Стенд не выходит на связь. Данные ниже — на момент последней
-                отбивки{r.heartbeat_at ? ` (${fmtTime(r.heartbeat_at)})` : ""}.
-              </p>
+              <div className="mt-1 flex flex-wrap items-start gap-2">
+                <p className="min-w-0 flex-1 text-xs text-amber-400">
+                  Стенд не выходит на связь. Данные ниже — на момент последней
+                  отбивки{r.heartbeat_at ? ` (${fmtTime(r.heartbeat_at)})` : ""}.
+                </p>
+                <button onClick={() => hide(r.run_uid)} style={{ cursor: "pointer" }}
+                  title="Убрать из списка идущих сейчас"
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-amber-500/40 px-2 py-1 text-[11px] text-amber-400 hover:bg-amber-500/10 transition-colors">
+                  <Icon name="EyeOff" size={11} />Скрыть
+                </button>
+              </div>
             )}
 
             <p className="mt-1 truncate text-xs text-foreground/50">
