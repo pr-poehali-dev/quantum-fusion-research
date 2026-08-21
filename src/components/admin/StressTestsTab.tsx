@@ -10,6 +10,7 @@ import StressReleasesTab from "@/components/admin/StressReleasesTab"
 import StressFoldersPanel, { StressFolder } from "@/components/admin/stress/StressFoldersPanel"
 import { openRunReport, type ReportRun } from "@/components/admin/stress/folderReport"
 import { testTitle } from "@/components/admin/stress/scoreFormat"
+import GpuMaintenanceNotice from "@/components/stress/GpuMaintenanceNotice"
 import { CATEGORIES, categoryOf } from "@/components/admin/metricUtils"
 
 interface RunFile { file_name: string; file_url: string; file_size: number }
@@ -45,6 +46,10 @@ interface Run {
   created_at: string
   public_code?: string      // код публичной ссылки на отчёт: /tests/<код>
   order_number?: string     // номер заказа (отдельно от имени стенда)
+  /** Перегрев видеокарты: тесты могли пройти, но GPU требует обслуживания. */
+  gpu_maintenance?: boolean
+  gpu_issues?: string[]
+  gpu_issue_codes?: string[]
   folder_id?: number | null
   folder_sort?: number
   results?: ResultRow[]
@@ -360,8 +365,14 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                     <span className="truncate text-sm font-medium text-foreground">
                       {r.order_number ? `Заказ ${r.order_number}` : (r.machine_name || r.profile_name || `Прогон #${r.id}`)}
                     </span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>
-                      {r.passed_tests}/{r.total_tests}
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {/* Видеокарта перегревается — видно сразу в списке */}
+                      {r.gpu_maintenance && (
+                        <Icon name="TriangleAlert" size={13} className="text-orange-500" />
+                      )}
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.failed_tests > 0 ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"}`}>
+                        {r.passed_tests}/{r.total_tests}
+                      </span>
                     </span>
                   </div>
                   {/* Бейдж компании: чей это прогон (в режиме «все компании») */}
@@ -494,6 +505,13 @@ export default function StressTestsTab({ scope = "admin", session }: StressTests
                 <div className="text-xs text-foreground/40">с ошибкой</div>
               </div>
             </div>
+
+            {/* Перегрев видеокарты: тесты могли пройти, но GPU просит обслуживания */}
+            {selected.gpu_maintenance && (
+              <div className="mb-5">
+                <GpuMaintenanceNotice issues={selected.gpu_issues} />
+              </div>
+            )}
 
             {/* Датчики прогона. Категория определяется по ключу метрики,
                 RAM-температуры (SPD) попадают в «Память». */}

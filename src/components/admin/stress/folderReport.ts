@@ -37,6 +37,8 @@ export interface ReportRun {
   partner_link?: string           // первая ссылка партнёра (для QR-кода)
   partner_links?: string[]        // весь перечень строк/ссылок (список под лого)
   hardware?: ReportHardware | null // конфигурация ПК, которую прислал десктоп
+  gpu_maintenance?: boolean       // видеокарта требует обслуживания
+  gpu_issues?: string[]           // человекочитаемые причины (перегрев и т.п.)
 }
 export interface ReportFolder {
   id: number; name: string; order_id: number | null; order_ref: string
@@ -124,6 +126,10 @@ const REPORT_CSS = `
   .hw-row .k { color: #8a8a8a; }
   .hw-row .v { color: #1a1a1a; }
   .hw-row .v span { display: block; }
+  .gpu-warn { border: 1px solid #e0a24a; background: #fdf4e6; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
+  .gpu-warn-t { font-size: 13px; font-weight: 700; color: #a35c07; margin-bottom: 4px; }
+  .gpu-warn ul { margin: 0; padding-left: 18px; }
+  .gpu-warn li { font-size: 12px; color: #4a3a24; line-height: 1.5; }
   .stats { display: flex; gap: 0; border: 1px solid #d7d7d7; border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
   .stat { flex: 1; padding: 16px 20px; border-right: 1px solid #e4e4e4; }
   .stat:last-child { border-right: none; }
@@ -281,6 +287,15 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
       <div class="hw-row"><div class="k">${h(k)}</div><div class="v">${v.split("\n").map(line => `<span>${h(line)}</span>`).join("")}</div></div>`).join("")}
     </div>` : ""
 
+  // ПРЕДУПРЕЖДЕНИЕ ОБ ОБСЛУЖИВАНИИ GPU — тесты могли пройти, но видеокарта
+  // перегревается (Hot Spot / память). Показываем прямо в отчёте.
+  const gpuIssues = (r.gpu_issues || []).map(i => String(i).trim()).filter(Boolean)
+  const gpuBlock = (r.gpu_maintenance && gpuIssues.length) ? `
+    <div class="gpu-warn">
+      <div class="gpu-warn-t">Требуется обслуживание GPU</div>
+      <ul>${gpuIssues.map(i => `<li>${h(i)}</li>`).join("")}</ul>
+    </div>` : ""
+
   return `
     <section class="page" ${pageBreak ? 'style="page-break-after: always;"' : ""}>
       <div class="head">
@@ -293,6 +308,7 @@ async function renderRunPage(r: ReportRun, mode: ReportMode, pageBreak: boolean)
         ${brand}
       </div>
       ${hwBlock}
+      ${gpuBlock}
       <div class="stats">
         <div class="stat"><div class="n">${r.total_tests}</div><div class="l">всего</div></div>
         <div class="stat ok"><div class="n">${r.passed_tests}</div><div class="l">успешно</div></div>

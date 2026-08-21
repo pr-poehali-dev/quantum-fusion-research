@@ -497,6 +497,28 @@ def _format_notify_core(body):
     return "\n".join(parts)
 
 
+def _gpu_issue_list(body):
+    """Человекочитаемые предупреждения GPU из тела запроса.
+
+    Программа кладёт их по-разному: в run_finished это `gpu_issues`, в
+    отдельном событии gpu_maintenance_required — `issues`. Элемент бывает
+    строкой либо объектом {code, message, ...} — берём текст сообщения.
+    """
+    raw = body.get("gpu_issues")
+    if not raw:
+        raw = body.get("issues")
+    out = []
+    for i in (raw or []):
+        if isinstance(i, dict):
+            text = i.get("message") or i.get("text") or i.get("title") or ""
+        else:
+            text = i
+        text = str(text or "").strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def _gpu_block(issues):
     """Блок «GPU — обслуживание» со списком человекочитаемых проблем."""
     issues = [i for i in (issues or []) if str(i).strip()]
@@ -1127,18 +1149,32 @@ def ingest(cur, conn, body, company_id=None):
     # собирает её сам и шлёт вместе с прогоном. Формат см. в шапке отчёта.
     hardware = body.get("hardware")
     hardware_sql = f"{esc(json.dumps(hardware, ensure_ascii=False))}::jsonb" if hardware else "NULL"
+
+    # Предупреждения об обслуживании GPU (Hot Spot ≥ 100 °C, перегрев памяти,
+    # большая дельта Hot Spot − Core). Программа шлёт их вместе с отчётом —
+    # сохраняем, чтобы блок «GPU — обслуживание» был виден и в карточке
+    # прогона, и в отчёте, а не только в Telegram.
+    gpu_issues = _gpu_issue_list(body)
+    gpu_codes = [str(c) for c in (body.get("gpu_issue_codes") or []) if str(c).strip()]
+    gpu_maint = bool(body.get("gpu_maintenance")) or bool(gpu_issues)
+    gpu_issues_sql = (f"{esc(json.dumps(gpu_issues, ensure_ascii=False))}::jsonb"
+                      if gpu_issues else "NULL")
+    gpu_codes_sql = (f"{esc(json.dumps(gpu_codes, ensure_ascii=False))}::jsonb"
+                     if gpu_codes else "NULL")
+
     public_code = gen_public_code(cur)
     cur.execute(
         f"INSERT INTO {SCHEMA}.stress_runs "
         f"(run_uid, profile_name, machine_name, order_number, os_info, note, "
         f"started_at, finished_at, "
         f"total_tests, passed_tests, failed_tests, status, partner_company_id, hardware, "
-        f"public_code) VALUES "
+        f"public_code, gpu_maintenance, gpu_issues, gpu_issue_codes) VALUES "
         f"({esc(run_uid)}, {esc(profile_name)}, {esc(machine_name)}, {esc(order_number)}, "
         f"{esc(body.get('os_info', ''))}, {esc(body.get('note', ''))}, "
         f"{ts(body.get('started_at'))}, {ts(body.get('finished_at'))}, "
         f"{len(results)}, {passed}, {failed}, {esc(status)}, {company_sql}, {hardware_sql}, "
-        f"{esc(public_code)}) RETURNING id"
+        f"{esc(public_code)}, {'TRUE' if gpu_maint else 'FALSE'}, "
+        f"{gpu_issues_sql}, {gpu_codes_sql}) RETURNING id"
     )
     run_id = cur.fetchone()[0]
 
@@ -1213,6 +1249,9 @@ def ingest(cur, conn, body, company_id=None):
                 "order_number": order_number, "note": body.get("note"),
                 "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),
+                # Блок «GPU — обслуживание» раньше терялся при приёме отчёта:
+                # в уведомление шли только тесты.
+                "gpu_maintenance": gpu_maint, "gpu_issues": gpu_issues,
             })
             if fin_text and np.claim_admin_send(cur, "run_finished", {
                     "run_uid": run_uid,
@@ -1246,6 +1285,7 @@ def ingest(cur, conn, body, company_id=None):
                 "note": body.get("note"),
                 "tests": _tests_from_results(results),
                 "passed": passed, "total": len(results),
+                "gpu_maintenance": gpu_maint, "gpu_issues": gpu_issues,
             }
             fin_parts = notify_parts(fin_body) or ("", "")
             np.notify_company(cur, company_id, "run_finished",
@@ -1295,7 +1335,8 @@ def list_runs(cur, company_filter=None):
         f"r.started_at, r.finished_at, r.total_tests, r.passed_tests, r.failed_tests, "
         f"r.status, r.created_at, r.folder_id, r.partner_company_id, r.folder_sort, "
         f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE), r.hardware, "
-        f"COALESCE(r.public_code, ''), COALESCE(r.order_number, '') "
+        f"COALESCE(r.public_code, ''), COALESCE(r.order_number, ''), "
+        f"COALESCE(r.gpu_maintenance, FALSE), r.gpu_issues, r.gpu_issue_codes "
         f"FROM {SCHEMA}.stress_runs r "
         f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
         f"{where_sql} ORDER BY r.created_at DESC LIMIT 500"
@@ -1313,6 +1354,10 @@ def list_runs(cur, company_filter=None):
         "public_code": r[19] or "",
         # Номер заказа — отдельным полем (раньше клеился к имени стенда)
         "order_number": r[20] or "",
+        # Предупреждения об обслуживании GPU (перегрев Hot Spot / памяти)
+        "gpu_maintenance": bool(r[21]),
+        "gpu_issues": r[22] or [],
+        "gpu_issue_codes": r[23] or [],
     } for r in cur.fetchall()]
     return ok({"runs": runs})
 
@@ -1495,7 +1540,8 @@ def folder_report(cur, fid, owner_cid=None):
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
         f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware, "
-        f"COALESCE(sr.public_code, ''), COALESCE(sr.order_number, '') "
+        f"COALESCE(sr.public_code, ''), COALESCE(sr.order_number, ''), "
+        f"COALESCE(sr.gpu_maintenance, FALSE), sr.gpu_issues, sr.gpu_issue_codes "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.folder_id = {int(fid)} ORDER BY sr.folder_sort, sr.created_at DESC"
@@ -1511,6 +1557,9 @@ def folder_report(cur, fid, owner_cid=None):
             "hardware": r[18] or None,
             "public_code": r[19] or "",
             "order_number": r[20] or "",
+            "gpu_maintenance": bool(r[21]),
+            "gpu_issues": r[22] or [],
+            "gpu_issue_codes": r[23] or [],
             "metrics": [], "results": [],
         })
     if runs:
@@ -1572,7 +1621,8 @@ def get_run(cur, run_id, owner_cid=None, conn=None):
         f"sr.started_at, sr.finished_at, sr.total_tests, sr.passed_tests, sr.failed_tests, "
         f"sr.status, sr.created_at, pc.report_logo_url, pc.social_links, "
         f"sr.partner_company_id, COALESCE(pc.name, ''), COALESCE(pc.is_own, FALSE), sr.hardware, "
-        f"COALESCE(sr.public_code, ''), COALESCE(sr.order_number, '') "
+        f"COALESCE(sr.public_code, ''), COALESCE(sr.order_number, ''), "
+        f"COALESCE(sr.gpu_maintenance, FALSE), sr.gpu_issues, sr.gpu_issue_codes "
         f"FROM {SCHEMA}.stress_runs sr "
         f"LEFT JOIN {SCHEMA}.partner_companies pc ON pc.id = sr.partner_company_id "
         f"WHERE sr.id = {run_id}{own}"
@@ -1594,6 +1644,10 @@ def get_run(cur, run_id, owner_cid=None, conn=None):
         "public_code": r[19] or "",
         # Номер заказа — отдельным полем (раньше клеился к имени стенда)
         "order_number": r[20] or "",
+        # Предупреждения об обслуживании GPU (перегрев Hot Spot / памяти)
+        "gpu_maintenance": bool(r[21]),
+        "gpu_issues": r[22] or [],
+        "gpu_issue_codes": r[23] or [],
     }
     # Прогоны, загруженные до появления публичных ссылок, кода не имеют —
     # выдаём его при первом открытии, чтобы кнопка «ссылка клиенту» была везде.
@@ -1770,7 +1824,8 @@ def public_report(cur, code):
     cur.execute(
         f"SELECT r.id, r.profile_name, r.started_at, r.finished_at, "
         f"r.total_tests, r.passed_tests, r.failed_tests, r.status, r.hardware, "
-        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE) "
+        f"COALESCE(c.name, ''), COALESCE(c.is_own, FALSE), "
+        f"COALESCE(r.gpu_maintenance, FALSE), r.gpu_issues "
         f"FROM {SCHEMA}.stress_runs r "
         f"LEFT JOIN {SCHEMA}.partner_companies c ON c.id = r.partner_company_id "
         f"WHERE r.public_code = {esc(code)} LIMIT 1"
@@ -1784,6 +1839,9 @@ def public_report(cur, code):
         "status": r[7], "hardware": r[8] or None,
         # Название компании показываем, только если она сама себя не скрывает.
         "company_name": "" if r[10] else (r[9] or ""),
+        # Требуется ли обслуживание видеокарты — клиенту это важно знать.
+        "gpu_maintenance": bool(r[11]),
+        "gpu_issues": r[12] or [],
     }
     cur.execute(
         f"SELECT id, test_name, exit_code, duration_sec, timed_out, success, score_text "

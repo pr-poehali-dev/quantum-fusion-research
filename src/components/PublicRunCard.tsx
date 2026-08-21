@@ -2,6 +2,7 @@ import { useState } from "react"
 import Icon from "@/components/ui/icon"
 import { shortScore, statsLine } from "@/components/admin/stress/scoreFormat"
 import { CATEGORIES, categoryOf } from "@/components/admin/metricUtils"
+import GpuMaintenanceNotice from "@/components/stress/GpuMaintenanceNotice"
 
 // Карточка отчёта о прогоне для публичных страниц: витрина «последний тест»
 // и страница /tests/<код>. Показывает то же, что отчёт программы, но без
@@ -52,6 +53,9 @@ export interface PublicRun {
   hardware?: PublicHardware | null
   results: PublicRunResult[]
   metrics?: PublicMetric[]     // датчики: min / сред / max за прогон
+  /** Видеокарта требует обслуживания (перегрев Hot Spot / памяти). */
+  gpu_maintenance?: boolean
+  gpu_issues?: string[]
 }
 
 export function fmtRunDate(s: string | null): string {
@@ -239,6 +243,13 @@ export default function PublicRunCard({ run }: { run: PublicRun }) {
           </div>
         ))}
       </div>
+
+      {/* Перегрев видеокарты: тесты могли пройти, но GPU просит обслуживания */}
+      {run.gpu_maintenance && (
+        <div className="px-5 pt-4 sm:px-6">
+          <GpuMaintenanceNotice issues={run.gpu_issues} />
+        </div>
+      )}
 
       {/* Датчики за прогон */}
       <Sensors metrics={run.metrics || []} />

@@ -2118,3 +2118,21 @@ src/components/admin/StressTestsTab.tsx
 [v8.60] StressTestsTab: заголовок прогона — «Заказ N» (при наличии номера),
 имя стенда переехало в строку метаданных рядом с профилем. Без заказа
 заголовок = machine_name (прежнее поведение). Переименование правит стенд.
+
+[v8.61] Предупреждения об обслуживании GPU видны в интерфейсе, а не только в TG.
+db_migrations/V0251 — stress_runs += gpu_maintenance BOOLEAN, gpu_issues JSONB,
+gpu_issue_codes JSONB (+ частичный индекс по gpu_maintenance).
+backend/stress/index.py
+  • НОВОЕ _gpu_issue_list(body) — достаёт список причин из gpu_issues ИЛИ
+    issues, элемент может быть строкой либо {code, message};
+  • ingest(): сохраняет gpu_maintenance/gpu_issues/gpu_issue_codes в БД;
+  • ФИКС: при приёме отчёта блок «GPU — обслуживание» не попадал в Telegram
+    (в _build_notify_text/fin_body не передавались gpu-поля) — теперь идёт;
+  • list_runs / get_run / folder_report отдают эти поля;
+  • public_report отдаёт gpu_maintenance + gpu_issues (клиенту это важно).
+src/components/stress/GpuMaintenanceNotice.tsx — НОВЫЙ общий блок-предупреждение.
+src/components/admin/StressTestsTab.tsx — блок под сводкой + оранжевый значок
+  в списке прогонов; Run += gpu_maintenance/gpu_issues/gpu_issue_codes.
+src/components/PublicRunCard.tsx — блок в публичном отчёте /tests/<код>.
+src/components/admin/stress/folderReport.ts — блок «Требуется обслуживание GPU»
+  в PDF (стиль .gpu-warn), ReportRun += gpu_maintenance/gpu_issues.
