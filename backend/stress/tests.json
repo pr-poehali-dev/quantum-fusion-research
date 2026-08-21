@@ -47,12 +47,6 @@
       "expectedStatus": 403
     },
     {
-      "name": "Profiles pull without token forbidden",
-      "method": "GET",
-      "path": "/?action=profiles_pull",
-      "expectedStatus": 403
-    },
-    {
       "name": "Verify token without token forbidden",
       "method": "GET",
       "path": "/?action=verify_token",
@@ -172,6 +166,28 @@
       "name": "Sensor feedback list without admin forbidden",
       "method": "GET",
       "path": "/?action=sensor_feedback_list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Guest profiles pull works without token",
+      "method": "GET",
+      "path": "/?action=profiles_pull&scope=guest",
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Full profiles pull without token forbidden",
+      "method": "GET",
+      "path": "/?action=profiles_pull&scope=full",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Profiles push without token forbidden",
+      "method": "POST",
+      "path": "/?action=profiles_push",
+      "body": {
+        "profiles": []
+      },
       "expectedStatus": 403
     }
   ]

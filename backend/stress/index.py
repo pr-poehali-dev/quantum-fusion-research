@@ -190,8 +190,17 @@ def handler(event, context):
                 return err("forbidden", 403)
             return ok(check_stale_heartbeats(cur, conn))
 
-        if action in ("ingest", "profiles_pull", "verify_token", "notify",
-                      "heartbeat", "sensor_feedback",
+        # Гостевой каталог профилей: без пароля отдаём только помеченные
+        # «для гостей». С валидным токеном — полный каталог (ниже).
+        if action == "profiles_pull" and method == "GET":
+            token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
+            is_global = bool(token) and token == os.environ.get("STRESS_INGEST_TOKEN")
+            partner_cid = None if is_global else company_by_ingest_token(cur, token)
+            return profiles_pull(cur, params.get("scope"), partner_cid,
+                                 has_token=bool(is_global or partner_cid))
+
+        if action in ("ingest", "verify_token", "notify",
+                      "heartbeat", "sensor_feedback", "profiles_push",
                       "partner_branding", "partner_branding_assets",
                       "partner_branding_zip"):
             token = headers.get("X-Stress-Token") or headers.get("x-stress-token")
@@ -199,6 +208,10 @@ def handler(event, context):
             # Партнёрский токен компании (если не совпал с общим)
             partner_cid = None if is_global else company_by_ingest_token(cur, token)
             if not is_global and partner_cid is None:
+                # Заливку пака может делать и админ по своему ключу
+                # (dev-скрипт «Залить профили на сайт»).
+                if action == "profiles_push" and is_admin(cur, headers, params, body):
+                    return profiles_push(cur, conn, body, None)
                 return err("forbidden", 403)
             if action == "verify_token" and method == "GET":
                 # Совместимость: прежние поля ok/valid сохранены. Дополнительно
@@ -212,8 +225,8 @@ def handler(event, context):
                 return ok(out)
             if action == "ingest" and method == "POST":
                 return ingest(cur, conn, body, partner_cid)
-            if action == "profiles_pull" and method == "GET":
-                return profiles_pull(cur)
+            if action == "profiles_push" and method == "POST":
+                return profiles_push(cur, conn, body, partner_cid)
             if action == "notify" and method == "POST":
                 return notify(body, cur, conn, partner_cid)
             if action == "heartbeat" and method == "POST":
@@ -308,6 +321,8 @@ def handler(event, context):
             # White-label брендинг PDF и файл-ключ .stbrand
             "brand_config", "brand_save", "brand_download", "brand_revoke",
             "brand_prefill", "brand_archive",
+            # Профили своей компании (выгрузка/загрузка из StressRunner)
+            "profiles_list", "profile_save", "profile_delete", "profiles_push",
         }
         if not admin and action not in partner_allowed:
             return err("forbidden", 403)
@@ -359,13 +374,18 @@ def handler(event, context):
                 return err("company_required", 400)
             return brand_route(cur, conn, action, method, body, notify_cid)
 
-        # Профили (редактор в админке)
+        # Профили (редактор в админке; партнёр видит и правит только свои)
         if action == "profiles_list" and method == "GET":
-            return profiles_list(cur)
+            return profiles_list(cur, None if admin else partner_cid)
         if action == "profile_save" and method in ("POST", "PUT"):
-            return profile_save(cur, conn, body)
+            return profile_save(cur, conn, body,
+                                None if admin else partner_cid,
+                                force_company=not admin)
         if action == "profile_delete" and method == "DELETE":
-            return profile_delete(cur, conn, int(params.get("id") or 0))
+            return profile_delete(cur, conn, int(params.get("id") or 0),
+                                  None if admin else partner_cid)
+        if action == "profiles_push" and method == "POST":
+            return profiles_push(cur, conn, body, None if admin else partner_cid)
 
         # Отчёты о нехватке датчиков со стендов (только админ)
         if action == "sensor_feedback_list" and method == "GET":
@@ -1485,63 +1505,179 @@ def _row_to_profile(r):
             tests = json.loads(tests)
         except Exception:
             tests = []
-    return {
+    out = {
         "id": r[0], "name": r[1], "note": r[2], "tests": tests or [],
         "is_active": r[4], "sort_order": r[5],
     }
+    if len(r) > 6:
+        out["is_public"] = bool(r[6])
+        out["company_id"] = r[7]
+        # Тег принадлежности: название компании либо «Публичный».
+        out["owner_tag"] = (r[8] or "") if len(r) > 8 and r[8] else (
+            "Публичный" if r[6] else "Общий")
+    return out
 
 
-def profiles_list(cur):
+_PROF_COLS = ("p.id, p.name, p.note, p.tests, p.is_active, p.sort_order, "
+              "p.is_public, p.company_id, c.name")
+_PROF_FROM = (f"FROM {{schema}}.stress_profiles p "
+              f"LEFT JOIN {{schema}}.partner_companies c ON c.id = p.company_id")
+
+
+def profiles_list(cur, company_filter=None):
+    """Список профилей для админки. Партнёр видит только свои."""
+    where = ""
+    if isinstance(company_filter, int):
+        where = f"WHERE p.company_id = {int(company_filter)}"
     cur.execute(
-        f"SELECT id, name, note, tests, is_active, sort_order "
-        f"FROM {SCHEMA}.stress_profiles ORDER BY sort_order, id"
+        f"SELECT {_PROF_COLS} {_PROF_FROM.format(schema=SCHEMA)} {where} "
+        f"ORDER BY p.sort_order, p.id"
     )
     return ok({"profiles": [_row_to_profile(r) for r in cur.fetchall()]})
 
 
-def profiles_pull(cur):
-    # То же, но только активные — для desktop-приложения.
+def profiles_pull(cur, scope="auto", company_id=None, has_token=False):
+    """Выдача профилей в StressRunner.
+
+    guest  — только помеченные «для гостей» (пароль не нужен);
+    full   — весь активный каталог, требуется ingest-токен;
+    auto   — full при верном токене, иначе guest.
+    Партнёрский токен дополнительно ограничивает выдачу его профилями
+    плюс нашими общими (без владельца).
+    """
+    scope = (scope or "auto").lower()
+    if scope in ("auto", ""):
+        scope = "full" if has_token else "guest"
+    if scope in ("public", "guest"):
+        scope = "guest"
+    elif scope in ("all", "full"):
+        scope = "full"
+    else:
+        scope = "guest"
+
+    if scope == "full" and not has_token:
+        return err("forbidden", 403)
+
+    where = ["p.is_active = TRUE"]
+    if scope == "guest":
+        where.append("p.is_public = TRUE")
+        where.append("p.company_id IS NULL")
+    elif company_id:
+        # Партнёру — его профили и общие, чужие не показываем.
+        where.append(f"(p.company_id IS NULL OR p.company_id = {int(company_id)})")
+
     cur.execute(
-        f"SELECT id, name, note, tests, is_active, sort_order "
-        f"FROM {SCHEMA}.stress_profiles WHERE is_active = TRUE ORDER BY sort_order, id"
+        f"SELECT {_PROF_COLS} {_PROF_FROM.format(schema=SCHEMA)} "
+        f"WHERE {' AND '.join(where)} ORDER BY p.sort_order, p.id"
     )
     profiles = []
     for r in cur.fetchall():
         p = _row_to_profile(r)
-        profiles.append({"name": p["name"], "note": p["note"], "tests": p["tests"]})
-    return ok({"profiles": profiles})
+        profiles.append({"name": p["name"], "note": p["note"], "tests": p["tests"],
+                         "is_public": p.get("is_public", False),
+                         "owner_tag": p.get("owner_tag", "")})
+    return ok({"profiles": profiles, "count": len(profiles),
+               "audience": "authenticated" if scope == "full" else "guest"})
 
 
-def profile_save(cur, conn, body):
+def profiles_push(cur, conn, body, company_id=None):
+    """Заливка пака профилей из StressRunner: upsert по имени владельца.
+
+    Чужие профили не трогаем — только добавляем/обновляем присланные.
+    Новые профили по умолчанию закрыты для гостей.
+    """
+    items = body.get("profiles") or []
+    if not isinstance(items, list):
+        return err("profiles must be a list", 400)
+
+    owner = f"{int(company_id)}" if company_id else "NULL"
+    owner_match = (f"p.company_id = {int(company_id)}" if company_id
+                   else "p.company_id IS NULL")
+    added, updated = 0, 0
+    for i, it in enumerate(items):
+        name = str(it.get("name") or "").strip()[:200]
+        if not name:
+            continue
+        note = str(it.get("note") or "")[:2000]
+        tests_json = json.dumps(it.get("tests") or [], ensure_ascii=False)
+        is_active = "FALSE" if it.get("is_active") is False else "TRUE"
+        is_public = "TRUE" if it.get("is_public") else "FALSE"
+        sort_order = int(it.get("sort_order") or i)
+
+        cur.execute(
+            f"SELECT p.id FROM {SCHEMA}.stress_profiles p "
+            f"WHERE lower(p.name) = lower({esc(name)}) AND {owner_match}"
+        )
+        row = cur.fetchone()
+        if row:
+            cur.execute(
+                f"UPDATE {SCHEMA}.stress_profiles SET note = {esc(note)}, "
+                f"tests = {esc(tests_json)}::jsonb, is_active = {is_active}, "
+                f"sort_order = {sort_order}, updated_at = NOW() WHERE id = {row[0]}"
+            )
+            updated += 1
+        else:
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.stress_profiles "
+                f"(name, note, tests, is_active, is_public, sort_order, company_id) "
+                f"VALUES ({esc(name)}, {esc(note)}, {esc(tests_json)}::jsonb, "
+                f"{is_active}, {is_public}, {sort_order}, {owner})"
+            )
+            added += 1
+    conn.commit()
+    return ok({"ok": True, "added": added, "updated": updated,
+               "total": added + updated})
+
+
+def profile_save(cur, conn, body, company_id=None, force_company=False):
     pid = body.get("id")
-    name = body.get("name", "")
-    note = body.get("note", "")
+    name = str(body.get("name") or "")[:200]
+    note = str(body.get("note") or "")[:2000]
     tests = body.get("tests") or []
     is_active = body.get("is_active", True)
+    is_public = bool(body.get("is_public"))
     sort_order = int(body.get("sort_order") or 0)
     tests_json = json.dumps(tests, ensure_ascii=False)
 
+    # Владелец: партнёр всегда пишет в свою компанию; админ может выбрать
+    # компанию явно (company_id в теле) либо оставить профиль общим.
+    if force_company:
+        owner = f"{int(company_id)}" if company_id else "NULL"
+    else:
+        raw = body.get("company_id")
+        owner = f"{int(raw)}" if raw else "NULL"
+
     if pid:
+        scope_sql = f" AND company_id = {int(company_id)}" if force_company else ""
         cur.execute(
             f"UPDATE {SCHEMA}.stress_profiles SET name = {esc(name)}, note = {esc(note)}, "
             f"tests = {esc(tests_json)}::jsonb, is_active = {'TRUE' if is_active else 'FALSE'}, "
-            f"sort_order = {sort_order}, updated_at = NOW() WHERE id = {int(pid)} RETURNING id"
+            f"is_public = {'TRUE' if is_public else 'FALSE'}, company_id = {owner}, "
+            f"sort_order = {sort_order}, updated_at = NOW() "
+            f"WHERE id = {int(pid)}{scope_sql} RETURNING id"
         )
     else:
         cur.execute(
-            f"INSERT INTO {SCHEMA}.stress_profiles (name, note, tests, is_active, sort_order) VALUES "
+            f"INSERT INTO {SCHEMA}.stress_profiles "
+            f"(name, note, tests, is_active, is_public, sort_order, company_id) VALUES "
             f"({esc(name)}, {esc(note)}, {esc(tests_json)}::jsonb, "
-            f"{'TRUE' if is_active else 'FALSE'}, {sort_order}) RETURNING id"
+            f"{'TRUE' if is_active else 'FALSE'}, {'TRUE' if is_public else 'FALSE'}, "
+            f"{sort_order}, {owner}) RETURNING id"
         )
-    new_id = cur.fetchone()[0]
+    row = cur.fetchone()
+    if not row:
+        conn.rollback()
+        return err("profile not found", 404)
     conn.commit()
-    return ok({"ok": True, "id": new_id})
+    return ok({"ok": True, "id": row[0]})
 
 
-def profile_delete(cur, conn, pid):
+def profile_delete(cur, conn, pid, company_id=None):
     if not pid:
         return err("id required")
-    cur.execute(f"DELETE FROM {SCHEMA}.stress_profiles WHERE id = {pid}")
+    scope_sql = f" AND company_id = {int(company_id)}" if company_id else ""
+    cur.execute(f"DELETE FROM {SCHEMA}.stress_profiles "
+                f"WHERE id = {int(pid)}{scope_sql}")
     conn.commit()
     return ok({"ok": True})
 

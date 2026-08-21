@@ -1655,3 +1655,28 @@ src/lib/api.ts — метод metricPrefsList/metricPrefsSave удалены.
 backend/stress/index.py — actions metric_prefs_list / metric_prefs_save и
   функции удалены; таблица stress_metric_prefs больше не используется.
 Профили тестов и пресеты в БД пусты (0 записей) — списки открываются чистыми.
+
+[v8.28] Профили стресс-тестов: гостевой канал, привязка к компании, push.
+БД: V0242 — stress_profiles + is_public (BOOL, default FALSE) и company_id
+(INTEGER, NULL = наш общий профиль); индексы по is_public/company_id и
+уникальный uq_stress_profiles_owner_name (COALESCE(company_id,0), lower(name))
+— основа upsert по имени при заливке пака.
+backend/stress/index.py:
+  GET ?action=profiles_pull&scope=guest|full|auto — вынесен ДО проверки
+    токена; guest (без пароля) → только is_active AND is_public AND
+    company_id IS NULL; full → нужен ingest-токен (иначе 403), партнёрский
+    токен отдаёт свои профили + общие; auto → full при валидном токене,
+    иначе guest. Ответ: {profiles:[{name,note,tests,is_public,owner_tag}],
+    count, audience:"guest"|"authenticated"}.
+  POST ?action=profiles_push — заливка пака: upsert по имени в пределах
+    владельца (партнёрский токен → его компания, X-Admin-Token → общие),
+    чужие профили не удаляются; новые по умолчанию is_public=false.
+    Ответ {ok, added, updated, total}.
+  profiles_list / profile_save / profile_delete — отдают и принимают
+    is_public и company_id; партнёру доступны только свои профили
+    (force_company), в списке приходит owner_tag (название компании,
+    «Публичный» или «Общий»); partner_allowed расширен профилями.
+src/components/admin/StressProfilesTab.tsx — в редакторе выбор владельца
+  («Наш профиль (общий)» / компания из adminGetCompanies) и галочка
+  «Публичный для гостей» (недоступна для профилей компаний); в списке тег
+  владельца: название компании / «гостевой» / «наш».

@@ -41,7 +41,12 @@ interface Profile {
   tests: TestItem[]
   is_active: boolean
   sort_order: number
+  is_public?: boolean       // виден гостю приложения (без пароля)
+  company_id?: number | null // владелец: партнёрская компания, null = наш
+  owner_tag?: string         // готовая подпись владельца с сервера
 }
+
+interface CompanyOption { id: number; name: string }
 
 const emptyTest = (): TestItem => ({
   name: "", program: "", args: "", working_dir: "",
@@ -52,6 +57,7 @@ const emptyTest = (): TestItem => ({
 })
 const emptyProfile = (): Profile => ({
   name: "", note: "", tests: [emptyTest()], is_active: true, sort_order: 0,
+  is_public: false, company_id: null,
 })
 
 // Пресет теста, как он лежит в БД (конструктор готовых тестов).
@@ -128,6 +134,8 @@ export default function StressProfilesTab() {
   const [editPreset, setEditPreset] = useState<DbPreset | null>(null)
   const [savingPreset, setSavingPreset] = useState(false)
 
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
@@ -137,6 +145,9 @@ export default function StressProfilesTab() {
       setProfiles(prof.profiles || [])
       setPresets(pres.presets || [])
     }).finally(() => setLoading(false))
+    api.auth.adminGetCompanies(adminKey)
+      .then(r => setCompanies((r.companies || []).map((c: CompanyOption) => ({ id: c.id, name: c.name }))))
+      .catch(() => setCompanies([]))
   }, [adminKey])
 
   useEffect(() => { load() }, [load])
@@ -304,6 +315,36 @@ export default function StressProfilesTab() {
             <input type="checkbox" checked={edit.is_active} onChange={e => setEdit({ ...edit, is_active: e.target.checked })} />
             Активен (приложение скачивает только активные профили)
           </label>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Кому принадлежит</span>
+              <select
+                value={edit.company_id ?? ""}
+                onChange={e => setEdit({
+                  ...edit,
+                  company_id: e.target.value ? Number(e.target.value) : null,
+                  is_public: e.target.value ? false : edit.is_public,
+                })}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                style={{ cursor: "pointer" }}>
+                <option value="">Наш профиль (общий)</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition-colors ${edit.company_id ? "border-border opacity-50" : "border-border text-foreground/70"}`}
+              style={{ cursor: edit.company_id ? "not-allowed" : "pointer" }}>
+              <input type="checkbox" className="mt-0.5" disabled={!!edit.company_id}
+                checked={!!edit.is_public}
+                onChange={e => setEdit({ ...edit, is_public: e.target.checked })} />
+              <span>
+                Публичный для гостей
+                <span className="mt-0.5 block text-xs text-foreground/40">
+                  Виден в приложении без пароля. Профили компаний публичными не бывают.
+                </span>
+              </span>
+            </label>
+          </div>
         </div>
 
         {/* Готовые пресеты */}
@@ -547,6 +588,11 @@ export default function StressProfilesTab() {
         </div>
       </div>
 
+      <p className="mb-4 text-xs text-foreground/40">
+        Стенд с паролем скачивает все активные профили. Гость без пароля
+        получает только те, что помечены «Публичный для гостей».
+      </p>
+
       {loading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
       ) : profiles.length === 0 ? (
@@ -562,6 +608,13 @@ export default function StressProfilesTab() {
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-foreground">{p.name}</span>
                   {!p.is_active && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground/40">выключен</span>}
+                  {p.company_id ? (
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{p.owner_tag || "компания"}</span>
+                  ) : p.is_public ? (
+                    <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-500">гостевой</span>
+                  ) : (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground/40">наш</span>
+                  )}
                 </div>
                 <div className="mt-0.5 text-xs text-foreground/40">{p.tests.length} тестов{p.note ? ` · ${p.note}` : ""}</div>
               </div>
