@@ -2040,3 +2040,24 @@ backend/stress/notify_prefs.py
   • _site_link(public_code) — прямая ссылка на отчёт;
   • новая подстановка шаблона {отчёт} (и {ссылка} теперь тоже ведёт на отчёт).
 db_migrations/V0247 — канал 5134086758 отключён у всех компаний кроме нашей.
+
+[v8.56] Стресс-тестер: склейка финальных уведомлений прогона в одно сообщение.
+Проблема: программа шлёт по одному прогону ДВА события подряд — сначала алерт
+(run_interrupted / gpu_maintenance_required / upload_failed), затем ingest шлёт
+run_finished. Второе сообщение содержит всё из первого → в чате два поста.
+backend/stress/tg_notify.py
+  • send_stress() теперь возвращает message_id (и chat_id) успешной отправки;
+  • НОВОЕ edit_stress(text, chat_id, message_id) — editMessageText; ошибка
+    «message is not modified» считается успехом; при неудаче вызывающий шлёт
+    обычным сообщением.
+backend/stress/notify_prefs.py
+  • FINAL_RANK — «вес» финальных событий: алерты=1, run_finished=2;
+  • MERGE_WINDOW_MIN=60 — окно склейки (дедуп остаётся 5 мин);
+  • _merge_slot_key(run_uid) — один слот сообщения на прогон;
+  • _claim_merged() → ("send"|"edit"|"skip", message_id);
+  • _remember_message() — запоминает message_id и rank;
+  • notify_company(): при mode=edit переписывает уже отправленное сообщение;
+  • НОВОЕ send_admin_merged() — то же для общего админского чата.
+backend/stress/index.py
+  • notify() и ingest() шлют в админский чат через np.send_admin_merged().
+db_migrations/V0248 — stress_notify_sent += message_id BIGINT, rank SMALLINT.

@@ -239,7 +239,10 @@ def send_stress(text: str, chat_id: str = None) -> dict:
         payload = json.loads(body) if body else {}
         if payload.get("ok"):
             _tg_log("stress_result", chat_id, True, None, text)
-            return {"ok": True}
+            # message_id нужен, чтобы следующее событие того же прогона
+            # ДОПОЛНИЛО это сообщение, а не пришло вторым (см. edit_stress).
+            mid = (payload.get("result") or {}).get("message_id")
+            return {"ok": True, "message_id": mid, "chat_id": chat_id}
         desc = payload.get("description") or body
         print(f"STRESS_TG: Telegram отклонил chat_id={chat_id} — {desc}")
         _tg_log("stress_result", chat_id, False, desc, text)
@@ -248,6 +251,49 @@ def send_stress(text: str, chat_id: str = None) -> dict:
         last_err = str(e)
         print(f"STRESS_TG: сетевая ошибка chat_id={chat_id} — {e}")
     return {"ok": False, "error": str(last_err)}
+
+
+def edit_stress(text: str, chat_id: str, message_id) -> dict:
+    """Переписать ранее отправленное сообщение (объединение уведомлений).
+
+    Программа шлёт по одному прогону два события подряд: сначала алерт
+    (перезагрузка ПК / перегрев GPU / отчёт не загружен), потом итог. Итог
+    уже содержит весь текст алерта, поэтому вторым сообщением он не приходит
+    — вместо этого мы дописываем его в первое.
+
+    Не вышло отредактировать (сообщение слишком старое, удалено, у бота нет
+    прав) — возвращаем ok=False, и вызывающий шлёт обычным сообщением.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = str(chat_id or "").strip()
+    if not token or not chat_id or not message_id:
+        return {"ok": False, "error": "no_target"}
+    data = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "message_id": str(message_id),
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }).encode()
+    try:
+        status, raw = _tg_post(
+            f"/bot{token}/editMessageText", data,
+            {"Content-Type": "application/x-www-form-urlencoded"})
+        body = raw.decode("utf-8", "replace")
+        payload = json.loads(body) if body else {}
+        if payload.get("ok"):
+            _tg_log("stress_result", chat_id, True, None, text)
+            return {"ok": True, "message_id": message_id}
+        desc = payload.get("description") or body
+        # «message is not modified» — текст тот же, считаем успехом:
+        # дубля в чате всё равно не будет.
+        if "not modified" in str(desc).lower():
+            return {"ok": True, "message_id": message_id}
+        print(f"STRESS_TG: правка не удалась chat_id={chat_id} — {desc}")
+        return {"ok": False, "error": str(desc)}
+    except Exception as e:
+        print(f"STRESS_TG: сетевая ошибка правки chat_id={chat_id} — {e}")
+        return {"ok": False, "error": str(e)}
 
 
 def notify_stress(text: str) -> bool:

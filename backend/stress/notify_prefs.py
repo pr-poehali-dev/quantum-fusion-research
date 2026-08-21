@@ -13,7 +13,7 @@ import os
 import hashlib
 import html as html_mod
 
-from tg_notify import send_stress
+from tg_notify import send_stress, edit_stress
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
 
@@ -301,6 +301,9 @@ def _want(chat_val, company_val):
 
 
 DEDUP_WINDOW_MIN = 5
+# Окно объединения событий одного прогона в одно сообщение. Больше, чем окно
+# дедупликации: между алертом о перегреве и итогом бывает несколько минут.
+MERGE_WINDOW_MIN = 60
 
 
 def dedup_key(event, data):
@@ -330,6 +333,93 @@ def dedup_key(event, data):
     if event == "test_failed":
         parts.append(str(data.get("exit_code")))
     return "|".join(parts)[:300]
+
+
+# «Вес» финального сообщения о прогоне. Программа шлёт по одному прогону
+# несколько событий подряд (алерт → итог), и КАЖДОЕ следующее содержит всё,
+# что было в предыдущем. Поэтому в чат отправляется одно сообщение, которое
+# дополняется: событие с большим весом переписывает уже отправленное.
+FINAL_RANK = {
+    "gpu_maintenance_required": 1,
+    "run_interrupted": 1,
+    "upload_failed": 1,
+    "run_finished": 2,
+}
+
+
+def _merge_slot_key(run_uid):
+    """Ключ «одного сообщения про этот прогон» (общий для всех его событий)."""
+    return f"run|{run_uid}"
+
+
+def _claim_merged(cur, chat_id, raw_event, run_uid):
+    """Занять слот финального сообщения прогона.
+
+    Возвращает (действие, message_id):
+      ("send", None)     — сообщения ещё не было, шлём обычным;
+      ("edit", 12345)    — сообщение уже есть, ДОПОЛНЯЕМ его новым текстом;
+      ("skip", None)     — уже отправлено что-то более полное, молчим.
+    """
+    rank = FINAL_RANK.get(raw_event, 0)
+    if not run_uid or not rank:
+        return "send", None
+    h = hashlib.sha256(_merge_slot_key(run_uid).encode("utf-8")).hexdigest()
+    try:
+        cur.execute(
+            f"DELETE FROM {SCHEMA}.stress_notify_sent "
+            f"WHERE chat_id=%s AND dedup_hash=%s "
+            f"AND sent_at < NOW() - INTERVAL '{MERGE_WINDOW_MIN} minutes'",
+            (str(chat_id), h))
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.stress_notify_sent "
+            f"(chat_id, dedup_hash, event, rank) VALUES (%s, %s, %s, %s) "
+            f"ON CONFLICT (chat_id, dedup_hash) DO NOTHING RETURNING id",
+            (str(chat_id), h, str(raw_event)[:40], rank))
+        if cur.fetchone() is not None:
+            cur.connection.commit()
+            return "send", None
+        cur.execute(
+            f"SELECT message_id, rank FROM {SCHEMA}.stress_notify_sent "
+            f"WHERE chat_id=%s AND dedup_hash=%s", (str(chat_id), h))
+        row = cur.fetchone()
+        cur.connection.commit()
+        if not row:
+            return "send", None
+        message_id, prev_rank = row[0], int(row[1] or 0)
+        if rank <= prev_rank:
+            return "skip", None
+        if not message_id:
+            # Первое сообщение ещё не долетело (или ушло без id) — шлём обычным.
+            return "send", None
+        return "edit", message_id
+    except Exception as e:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        print(f"STRESS_NOTIFY: объединение недоступно ({e}) — шлём как есть")
+        return "send", None
+
+
+def _remember_message(cur, chat_id, run_uid, raw_event, message_id):
+    """Запомнить id отправленного сообщения и вес события."""
+    rank = FINAL_RANK.get(raw_event, 0)
+    if not run_uid or not rank:
+        return
+    h = hashlib.sha256(_merge_slot_key(run_uid).encode("utf-8")).hexdigest()
+    try:
+        cur.execute(
+            f"UPDATE {SCHEMA}.stress_notify_sent SET message_id=%s, rank=%s, "
+            f"event=%s, sent_at=NOW() WHERE chat_id=%s AND dedup_hash=%s",
+            (int(message_id) if message_id else None, rank,
+             str(raw_event)[:40], str(chat_id), h))
+        cur.connection.commit()
+    except Exception as e:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        print(f"STRESS_NOTIFY: не удалось запомнить message_id: {e}")
 
 
 def _claim_send(cur, chat_id, event, key):
@@ -372,6 +462,30 @@ def _claim_send(cur, chat_id, event, key):
 def claim_admin_send(cur, event, data):
     """То же для общего админского чата (у него нет записи в stress_notify_chats)."""
     return _claim_send(cur, "__admin__", event, dedup_key(event, data))
+
+
+def send_admin_merged(cur, raw_event, run_uid, text):
+    """Отправка в общий админский чат с объединением событий прогона.
+
+    Алерт (перегрев / перезагрузка / отчёт не загружен) и следующий за ним
+    итог — это одно и то же сообщение на разных стадиях. Второе не шлём,
+    а дописываем в первое.
+    """
+    run_uid = str(run_uid or "").strip()
+    mode, message_id = _claim_merged(cur, "__admin__", raw_event, run_uid)
+    if mode == "skip":
+        return {"ok": True, "skipped": "merged"}
+    if mode == "edit":
+        chat = os.environ.get("STRESS_TG_CHAT_ID")
+        res = edit_stress(text, chat, message_id)
+        if res.get("ok"):
+            _remember_message(cur, "__admin__", run_uid, raw_event, message_id)
+            return res
+    res = send_stress(text)
+    if res.get("ok"):
+        _remember_message(cur, "__admin__", run_uid, raw_event,
+                          res.get("message_id"))
+    return res
 
 
 def notify_company(cur, company_id, event, data):
@@ -422,7 +536,31 @@ def notify_company(cur, company_id, event, data):
             result["results"].append({"chat_id": ch["chat_id"], "ok": True,
                                       "skipped": "duplicate"})
             continue
-        res = send_stress(text, chat_id=ch["chat_id"])
+
+        # Финальные события одного прогона (алерт → итог) сводим в ОДНО
+        # сообщение: каждое следующее содержит всё из предыдущего, поэтому
+        # вместо второго сообщения переписываем первое.
+        run_uid = str(data.get("run_uid") or "").strip()
+        mode, message_id = _claim_merged(cur, ch["chat_id"], raw_event, run_uid)
+        if mode == "skip":
+            result["results"].append({"chat_id": ch["chat_id"], "ok": True,
+                                      "skipped": "merged"})
+            continue
+        if mode == "edit":
+            res = edit_stress(text, ch["chat_id"], message_id)
+            if res.get("ok"):
+                _remember_message(cur, ch["chat_id"], run_uid, raw_event, message_id)
+            else:
+                # Правка не прошла (сообщение удалили и т.п.) — шлём обычным.
+                res = send_stress(text, chat_id=ch["chat_id"])
+                if res.get("ok"):
+                    _remember_message(cur, ch["chat_id"], run_uid, raw_event,
+                                      res.get("message_id"))
+        else:
+            res = send_stress(text, chat_id=ch["chat_id"])
+            if res.get("ok"):
+                _remember_message(cur, ch["chat_id"], run_uid, raw_event,
+                                  res.get("message_id"))
         try:
             if res.get("ok"):
                 cur.execute(

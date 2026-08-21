@@ -712,7 +712,11 @@ def notify(body, cur=None, conn=None, company_id=None):
         if partner_res and (partner_res.get("sent") or partner_res.get("failed")):
             return ok({"ok": True, "partner": partner_res})
         return err("unknown event")
-    res = send_stress(text)
+    if cur is not None:
+        res = np.send_admin_merged(cur, body.get("event", ""),
+                                   body.get("run_uid"), text)
+    else:
+        res = send_stress(text)
     out = {"ok": bool(res.get("ok"))}
     if not res.get("ok"):
         out["error"] = res.get("error")
@@ -1147,7 +1151,10 @@ def ingest(cur, conn, body, company_id=None):
                     "run_uid": run_uid,
                     "machine": machine, "profile": profile,
                     "passed": passed, "total": len(results)}):
-                notify_result = send_stress(fin_text)
+                # Если по этому прогону уже уходил алерт (перегрев GPU,
+                # перезагрузка ПК) — дописываем итог в него, а не шлём второе.
+                notify_result = np.send_admin_merged(
+                    cur, "run_finished", run_uid, fin_text)
             conn.commit()
             if notify_result and not notify_result.get("ok"):
                 print(f"[INGEST_NOTIFY] run_id={run_id} telegram error: {notify_result.get('error')}")
