@@ -2185,3 +2185,18 @@ src/pages/B2B.tsx — колонка «Розница» рендерится в�
   оптовые под hasPrices; gridCols без опта = [2fr_140px_1fr_120px_80px_80px];
   CSV всегда содержит розницу; тексты: «Базовый прайс открыт. Введите пароль,
   чтобы увидеть оптовые цены», кнопки «Показать опт» / «Скрыть оптовые».
+
+[v8.67] Поиск состава сборки (админка → Каталог → Сборки → состав).
+ПРИЧИНА бага «не ищет ОЗУ Netac»: configSlots строился из
+api.products.getAll() БЕЗ include_archived, а товар был архивным при остатке
+3 шт. на складе. Архивных с остатком сейчас 3 (Netac Z DDR5, Cougar Flo,
+Maxsun iCraft B850 AIGA).
+src/pages/Admin.tsx:~110 — грузим products с include_archived=true;
+  в setProducts кладём только неархивные (список товаров не засоряется),
+  а в configSlots идут ВСЕ + stock_qty + is_archived.
+src/pages/admin/types.ts — Product.is_archived?, ConfigComponent.stock_qty? /
+  .is_archived?
+src/components/admin/catalog/BuildsSection.tsx — состояние onlyInStock;
+  чекбокс «Только наличие» над поиском (+ счётчик скрытых); подсказки
+  сортируются «сначала в наличии», показывают остаток (зелёный «N шт.» /
+  серое «нет») и бейдж «архив».

@@ -68,6 +68,8 @@ export interface Product {
   sort_order: number
   is_featured: boolean
   is_used?: boolean
+  /** Товар убран из каталога, но может оставаться на складе. */
+  is_archived?: boolean
   warranty_months?: number
   image_url: string | null
   image_urls: string[]
@@ -87,6 +89,10 @@ export interface ConfigComponent {
   name: string
   brand?: string
   price: number
+  /** Остаток на складе — показываем прямо в поиске состава сборки. */
+  stock_qty?: number
+  /** Товар в архиве каталога (но может лежать на складе). */
+  is_archived?: boolean
 }
 
 export interface Tag {

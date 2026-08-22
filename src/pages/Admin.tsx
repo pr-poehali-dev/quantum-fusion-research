@@ -107,15 +107,20 @@ export default function Admin() {
       api.tags.getAll().then(d => setTags(d.tags || []))
       Promise.all([
         api.builds.getAll().then(d => Array.isArray(d) ? d : (d.builds || [])),
-        api.products.getAll().then(d => {
+        // include_archived: архивные товары бывают на складе (например
+        // «Netac Z DDR5» — 3 шт. в наличии), и их надо находить в составе сборки.
+        api.products.getAll({ include_archived: "true" }).then(d => {
           const prods = d.products || []
-          setProducts(prods)
+          setProducts(prods.filter((p: Product) => !p.is_archived))
           setCategories(d.categories || [])
           const slots: Record<string, ConfigComponent[]> = {}
           for (const p of prods) {
             const slot = p.category?.slug || "other"
             if (!slots[slot]) slots[slot] = []
-            slots[slot].push({ id: p.id, slot, name: p.name, brand: p.category?.name, price: p.price })
+            slots[slot].push({
+              id: p.id, slot, name: p.name, brand: p.category?.name, price: p.price,
+              stock_qty: p.stock_qty ?? 0, is_archived: !!p.is_archived,
+            })
           }
           setConfigSlots(slots)
           return d

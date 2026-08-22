@@ -52,6 +52,8 @@ export function BuildsSection({
   const [componentSearch, setComponentSearch] = useState("")
   const [componentSearchIdx, setComponentSearchIdx] = useState(0)
   const componentSearchRef = useRef<HTMLInputElement>(null)
+  // «Только наличие» — в подсказках остаются лишь позиции с остатком на складе.
+  const [onlyInStock, setOnlyInStock] = useState(false)
   const [copiedBuildId, setCopiedBuildId] = useState<number | null>(null)
   const [dupeLoading, setDupeLoading] = useState<number | null>(null)
   const [copyLoading, setCopyLoading] = useState<number | null>(null)
@@ -286,7 +288,16 @@ export function BuildsSection({
           {(() => {
             const allComps = Object.entries(configSlots).flatMap(([slot, comps]) => comps.map(c => ({ ...c, slot })))
             const q = componentSearch.trim().toLowerCase()
-            const results = q.length >= 1 ? allComps.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10) : []
+            const qty = (c: ConfigComponent) => c.stock_qty ?? 0
+            const matched = q.length >= 1
+              ? allComps.filter(c => c.name.toLowerCase().includes(q))
+              : []
+            // С галочкой «только наличие» в сборку можно закинуть лишь то,
+            // что реально лежит на складе.
+            const results = (onlyInStock ? matched.filter(c => qty(c) > 0) : matched)
+              .sort((a, b) => (qty(b) > 0 ? 1 : 0) - (qty(a) > 0 ? 1 : 0))
+              .slice(0, 10)
+            const hiddenByStock = onlyInStock ? matched.length - matched.filter(c => qty(c) > 0).length : 0
             const safeIdx = Math.min(componentSearchIdx, results.length - 1)
             const addComp = (comp: ConfigComponent & { slot: string }) => {
               addCatalogComponent(comp.slot, comp)
@@ -296,6 +307,16 @@ export function BuildsSection({
             }
             return (
               <div className="relative mb-4">
+                {/* Только наличие — ограничивает выбор тем, что есть на складе */}
+                <label className="mb-2 flex w-fit items-center gap-2 text-xs text-foreground/60 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+                  <input type="checkbox" checked={onlyInStock}
+                    onChange={e => { setOnlyInStock(e.target.checked); setComponentSearchIdx(0) }}
+                    className="h-3.5 w-3.5 accent-primary" style={{ cursor: "pointer" }} />
+                  Только наличие
+                  {onlyInStock && hiddenByStock > 0 && (
+                    <span className="text-foreground/35">· скрыто {hiddenByStock}</span>
+                  )}
+                </label>
                 <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 focus-within:border-primary transition-colors">
                   <Icon name="Search" size={15} className="text-foreground/40 shrink-0" />
                   <input ref={componentSearchRef} type="text" value={componentSearch}
@@ -320,6 +341,15 @@ export function BuildsSection({
                           style={{ cursor: "pointer" }}>
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-foreground/50">{c.slot}</span>
                           <span className="flex-1 truncate font-medium">{c.name}</span>
+                          {c.is_archived && (
+                            <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400" title="Товар в архиве каталога, но есть на складе">
+                              архив
+                            </span>
+                          )}
+                          {/* Остаток на складе прямо в подсказке */}
+                          <span className={`shrink-0 text-[11px] font-medium tabular-nums ${qty(c) > 0 ? "text-emerald-400" : "text-foreground/30"}`}>
+                            {qty(c) > 0 ? `${qty(c)} шт.` : "нет"}
+                          </span>
                           <span className="shrink-0 text-xs font-bold text-accent">{c.price ? c.price.toLocaleString("ru-RU") + " ₽" : "—"}</span>
                           {isAdded && <Icon name="Check" size={12} className="text-primary shrink-0" />}
                         </button>
@@ -328,7 +358,11 @@ export function BuildsSection({
                   </div>
                 )}
                 {q.length >= 1 && results.length === 0 && (
-                  <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-4 py-3 text-xs text-foreground/40 shadow-xl">Ничего не найдено</div>
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-4 py-3 text-xs text-foreground/40 shadow-xl">
+                    {hiddenByStock > 0
+                      ? `Найдено ${hiddenByStock}, но ничего нет на складе — снимите «Только наличие»`
+                      : "Ничего не найдено"}
+                  </div>
                 )}
               </div>
             )
