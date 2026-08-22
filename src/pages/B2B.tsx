@@ -120,10 +120,12 @@ export default function B2B() {
   }
 
   const exportCSV = () => {
-    const header = ["SKU", "Партномер", "Название", "Категория", ...(hasPrices ? ["Розница", "Опт 1", "Опт 2"] : []), "Гарантия (мес)", "В наличии"]
+    // Базовая цена выгружается всегда, оптовые — только если открыты.
+    const header = ["SKU", "Партномер", "Название", "Категория", "Розница",
+      ...(hasPrices ? ["Опт 1", "Опт 2"] : []), "Гарантия (мес)", "В наличии"]
     const rows = sorted.map(i => [
-      i.sku, i.part_number, `"${i.name}"`, i.category,
-      ...(hasPrices ? [i.price_retail || 0, i.price_opt1 || 0, i.price_opt2 || 0] : []),
+      i.sku, i.part_number, `"${i.name}"`, i.category, i.price_retail || 0,
+      ...(hasPrices ? [i.price_opt1 || 0, i.price_opt2 || 0] : []),
       i.warranty_months, i.qty_available
     ])
     const csv = [header, ...rows].map(r => r.join(";")).join("\n")
@@ -136,10 +138,10 @@ export default function B2B() {
 
   const inStock = items.filter(i => i.qty_available > 0).length
 
-  // Сетка колонок зависит от того, видны ли цены
+  // Колонка «Розница» есть всегда; две оптовые добавляются при доступе.
   const gridCols = hasPrices
     ? "lg:grid-cols-[2fr_140px_1fr_120px_120px_120px_80px_80px]"
-    : "lg:grid-cols-[2fr_140px_1fr_80px_80px]"
+    : "lg:grid-cols-[2fr_140px_1fr_120px_80px_80px]"
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -156,7 +158,7 @@ export default function B2B() {
             {hasPrices && !companyB2B && (
               <button onClick={logoutPrices} className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-foreground/60 hover:border-primary hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
                 <Icon name="LogOut" size={14} />
-                <span className="hidden sm:inline">Скрыть цены</span>
+                <span className="hidden sm:inline">Скрыть оптовые</span>
               </button>
             )}
           </div>
@@ -217,7 +219,9 @@ export default function B2B() {
           <div className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-4">
             <div className="flex items-center gap-2 mb-2">
               <Icon name="Lock" size={16} className="text-primary" />
-              <p className="text-sm font-medium text-foreground">Введите пароль, чтобы видеть оптовые цены</p>
+              <p className="text-sm font-medium text-foreground">
+                Базовый прайс открыт. Введите пароль, чтобы увидеть оптовые цены
+              </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
@@ -235,7 +239,7 @@ export default function B2B() {
                 className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
                 style={{ cursor: "pointer" }}
               >
-                {checking ? "Проверка..." : "Показать цены"}
+                {checking ? "Проверка..." : "Показать опт"}
               </button>
             </div>
             {pwdError && <p className="mt-2 text-xs text-red-400">{pwdError}</p>}
@@ -292,11 +296,12 @@ export default function B2B() {
             </button>
             <div>Партномер</div>
             <div>Категория</div>
+            {/* Базовая цена видна всем, оптовые — только по паролю/аккаунту */}
+            <button onClick={() => toggleSort("price_retail")} className="flex items-center gap-1 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+              Розница <SortIcon field="price_retail" />
+            </button>
             {hasPrices && (
               <>
-                <button onClick={() => toggleSort("price_retail")} className="flex items-center gap-1 hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
-                  Розница <SortIcon field="price_retail" />
-                </button>
                 <div>Опт 1</div>
                 <div>Опт 2</div>
               </>
@@ -340,15 +345,17 @@ export default function B2B() {
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/50">{item.category}</span>
                   </div>
 
-                  {/* Цены — только при доступе */}
+                  {/* Базовая цена — видна всем без пароля */}
+                  <div className="flex items-center justify-between lg:block">
+                    <span className="text-xs text-foreground/40 lg:hidden">Розница</span>
+                    <span className={`text-sm font-semibold ${(item.price_retail || 0) > 0 ? "text-foreground" : "text-foreground/25"}`}>
+                      {fmt(item.price_retail)}
+                    </span>
+                  </div>
+
+                  {/* Оптовые цены — только при доступе */}
                   {hasPrices && (
                     <>
-                      <div className="flex items-center justify-between lg:block">
-                        <span className="text-xs text-foreground/40 lg:hidden">Розница</span>
-                        <span className={`text-sm font-semibold ${(item.price_retail || 0) > 0 ? "text-foreground" : "text-foreground/25"}`}>
-                          {fmt(item.price_retail)}
-                        </span>
-                      </div>
                       <div className="flex items-center justify-between lg:block">
                         <span className="text-xs text-foreground/40 lg:hidden">Опт 1</span>
                         <span className={`text-sm ${(item.price_opt1 || 0) > 0 ? "text-primary font-medium" : "text-foreground/25"}`}>

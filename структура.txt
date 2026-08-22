@@ -2176,3 +2176,12 @@ src/components/shop/cards.tsx — ProductImageCarousel без фото рису�
 src/pages/ProductPage.tsx — заглушка вместо серой иконки монитора.
 backend/products/index.py:~279 — из resource=tier убрано условие
   (image_url IS NOT NULL OR jsonb_array_length(image_urls) > 0).
+
+[v8.66] B2B: базовый (розничный) прайс открыт без пароля.
+backend/b2b-prices/index.py:~141 — price_retail отдаётся ВСЕГДА, под
+  has_prices остались только price_opt1 / price_opt2. Флаг has_prices теперь
+  означает «открыты ОПТОВЫЕ цены», а не «цены вообще».
+src/pages/B2B.tsx — колонка «Розница» рендерится всегда (шапка + строки),
+  оптовые под hasPrices; gridCols без опта = [2fr_140px_1fr_120px_80px_80px];
+  CSV всегда содержит розницу; тексты: «Базовый прайс открыт. Введите пароль,
+  чтобы увидеть оптовые цены», кнопки «Показать опт» / «Скрыть оптовые».

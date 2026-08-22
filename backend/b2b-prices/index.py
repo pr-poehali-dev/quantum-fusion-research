@@ -138,8 +138,10 @@ def handler(event: dict, context) -> dict:
                 "warranty_months": r[8] or 12,
                 "qty_available": qty_available,
             }
+            # Базовый (розничный) прайс открыт всем — это та же цена, что и в
+            # каталоге, скрывать её незачем. Под паролем только опт 1 и опт 2.
+            item["price_retail"] = float(r[5]) if r[5] else 0
             if has_prices:
-                item["price_retail"] = float(r[5]) if r[5] else 0
                 item["price_opt1"] = float(r[6]) if r[6] else 0
                 item["price_opt2"] = float(r[7]) if r[7] else 0
             items.append(item)
@@ -148,6 +150,7 @@ def handler(event: dict, context) -> dict:
             "items": items,
             "categories": categories,
             "total": len(items),
+            # has_prices = открыты ли ОПТОВЫЕ цены. Базовая есть всегда.
             "has_prices": has_prices,
         })}
 
