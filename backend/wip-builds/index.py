@@ -23,6 +23,14 @@ STAGES = [
     "Готов, можно забрать", "Отнести в сдэк", "Забрали", "Отменён",
 ]
 
+# Этапы, с которых комп «в свободную продажу» можно показывать в каталоге:
+# железо собрано, проверено и физически готово к выдаче. До этого карточка
+# висит в черновиках, чтобы не продать то, чего ещё нет.
+READY_TO_SELL_STAGES = {
+    "Проверка перед выдачей", "Ожидание упаковки",
+    "Готов, можно забрать", "Отнести в сдэк",
+}
+
 COMPONENT_STATUSES = ["pending", "ordered_delay", "ordered_transit", "ready", "need_order"]
 # pending = не обработано
 # need_order = надо заказать
@@ -584,12 +592,20 @@ def handler(event: dict, context) -> dict:
                     )
                     cur.execute(f"UPDATE {SCHEMA}.wip_builds SET for_sale=FALSE WHERE id=%s", (body["id"],))
                 elif fs:
-                    # «В свободную продажу» отмечена → сразу публикуем на сайте с
-                    # грифом «в наличии», НЕ дожидаясь этапа «Готов, можно забрать».
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
-                        (bid,)
-                    )
+                    # «В свободную продажу» отмечена. Публикуем на сайте с грифом
+                    # «в наличии» ТОЛЬКО когда комп реально готов к выдаче —
+                    # раньше он висел в каталоге уже с этапа «Заказ», хотя железо
+                    # ещё даже не собрано. До готовности держим карточку в черновике.
+                    if st in READY_TO_SELL_STAGES:
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
+                            (bid,)
+                        )
+                    else:
+                        cur.execute(
+                            f"UPDATE {SCHEMA}.pc_builds SET status='draft', in_stock=FALSE WHERE id=%s",
+                            (bid,)
+                        )
                 else:
                     # Галочка «в свободную продажу» не стоит → снимаем гриф «в наличии»
                     cur.execute(
@@ -811,6 +827,26 @@ def handler(event: dict, context) -> dict:
                         "UPDATE pc_builds SET status='archive' WHERE id=(SELECT build_id FROM wip_builds WHERE id=%s)",
                         (wip_id,)
                     )
+                elif wip_build_id:
+                    # Комп «в свободную продажу» появляется в каталоге сам, как только
+                    # доходит до готовности к выдаче, и уходит обратно в черновик,
+                    # если этап откатили назад (например, «Досборать»).
+                    cur.execute(
+                        f"SELECT for_sale FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,)
+                    )
+                    fs_row = cur.fetchone()
+                    if fs_row and fs_row[0]:
+                        if new_stage in READY_TO_SELL_STAGES:
+                            cur.execute(
+                                "UPDATE pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
+                                (wip_build_id,)
+                            )
+                            print(f"WIP {wip_id}: сборка {wip_build_id} опубликована в каталог ({new_stage})")
+                        else:
+                            cur.execute(
+                                "UPDATE pc_builds SET status='draft', in_stock=FALSE WHERE id=%s",
+                                (wip_build_id,)
+                            )
                 # Синхронизируем статус заказа ПК со стадией сборки
                 STAGE_TO_ORDER_STATUS = {
                     "Согласование":           "new",

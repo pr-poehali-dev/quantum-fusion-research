@@ -261,10 +261,21 @@ export function AdminWipTab({
   }
 
   const syncWipOrder = async (w: WipBuild) => {
-    if (!w.order_id || !w.id) return
+    if (!w.id) return
     setSyncingWipId(w.id)
     setSyncDoneWipId(null)
-    const res = await api.orders.updateItem({ id: w.order_id, action: "sync_order", item_idx: 0 })
+    // У сборки «в свободную продажу» клиента нет, поэтому заказ мог не создаться.
+    // Готовим его на лету, иначе синхронизировать со складом нечего.
+    let orderId = w.order_id
+    if (!orderId) {
+      const ens = await api.wipBuilds.ensureOrder(w.id)
+      if (ens?.error) { setSyncingWipId(null); alert(ens.error); return }
+      orderId = ens?.order_id
+      if (orderId) setWipBuilds(bs => bs.map(b => b.id === w.id
+        ? { ...b, order_id: orderId!, total: ens.total ?? b.total } : b))
+    }
+    if (!orderId) { setSyncingWipId(null); alert("Не удалось подготовить заказ для синхронизации"); return }
+    const res = await api.orders.updateItem({ id: orderId, action: "sync_order", item_idx: 0 })
     setSyncingWipId(null)
     if (res.error) { alert(res.error); return }
     setSyncDoneWipId(w.id)
@@ -1161,7 +1172,8 @@ export function AdminWipTab({
                                 <Icon name="Warehouse" size={13} />
                               </button>
                             ) : null,
-                            sync: () => (w.stage === "Заказ" && w.order_id && w.id) ? (
+                            // Заказ создастся сам при клике, если его ещё нет
+                            sync: () => (w.stage === "Заказ" && w.id) ? (
                               <button onClick={() => syncWipOrder(w)}
                                 disabled={syncingWipId === w.id}
                                 title="Выбить компоненты со склада и создать резервы"

@@ -2200,3 +2200,21 @@ src/components/admin/catalog/BuildsSection.tsx — состояние onlyInStoc
   чекбокс «Только наличие» над поиском (+ счётчик скрытых); подсказки
   сортируются «сначала в наличии», показывают остаток (зелёный «N шт.» /
   серое «нет») и бейдж «архив».
+
+[v8.68] WIP «в свободную продажу»: публикация только по готовности + sync.
+backend/wip-builds/index.py:
+  ~26 READY_TO_SELL_STAGES = {Проверка перед выдачей, Ожидание упаковки,
+     Готов можно забрать, Отнести в сдэк} — этапы, с которых for_sale-сборка
+     показывается в каталоге.
+  ~586 (PUT) и ~824 (PATCH stage): for_sale + этап из READY_TO_SELL_STAGES →
+     pc_builds status='catalog', in_stock=TRUE; иначе → status='draft',
+     in_stock=FALSE. Раньше публиковалось СРАЗУ при for_sale=TRUE, из-за чего
+     недособранный ПК висел на главной (случай PC00022 / build 172).
+src/components/admin/AdminWipTab.tsx:
+  syncWipOrder — если у WIP нет order_id, заказ создаётся на лету через
+    api.wipBuilds.ensureOrder (у сборки на продажу клиента нет, заказ не
+    заводился и кнопка не появлялась).
+  условие кнопки sync: было (stage==="Заказ" && order_id && id),
+    стало (stage==="Заказ" && id).
+db_migrations/V0255 — разово убрал в draft for_sale-сборки, висевшие в
+  каталоге на ранних этапах.
