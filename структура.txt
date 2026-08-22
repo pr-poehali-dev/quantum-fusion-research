@@ -2163,3 +2163,16 @@ backend/stress/index.py — константа; тексты предупреж�
 db_migrations/V0254 — пересчёт gpu_maintenance/gpu_issues по новому порогу
 у сохранённых прогонов (флаг может и СНИМАТЬСЯ, если 90-99 °C был единственной
 причиной).
+
+[v8.65] Каталог: фото товара больше НЕ обязательно.
+src/components/shop/PhotoComingSoon.tsx — НОВЫЙ компонент-заглушка
+  «Фото готовится» (size sm/md/lg), экспортит PHOTO_PLACEHOLDER_URL.
+src/components/shop/shared.ts — hasPhoto() вынесен сюда; теперь используется
+  ТОЛЬКО для сортировки (карточки с фото выше), НЕ для скрытия товаров.
+src/pages/Shop.tsx — сняты все фильтры .filter(hasPhoto): подсказки поиска,
+  спек-фильтры, витрина, Б/У-лента, категорийные полки.
+src/components/shop/cards.tsx — ProductImageCarousel без фото рисует
+  PhotoComingSoon (+ бейдж «Нет в наличии» поверх).
+src/pages/ProductPage.tsx — заглушка вместо серой иконки монитора.
+backend/products/index.py:~279 — из resource=tier убрано условие
+  (image_url IS NOT NULL OR jsonb_array_length(image_urls) > 0).

@@ -6,6 +6,7 @@ import Icon from "@/components/ui/icon"
 import { useCart } from "@/store/cart"
 import Seo, { SITE_URL } from "@/components/Seo"
 import PromoBanner from "@/components/PromoBanner"
+import PhotoComingSoon from "@/components/shop/PhotoComingSoon"
 
 interface Product {
   id: number
@@ -302,9 +303,7 @@ export default function ProductPage() {
                   </div>
                 </>
               ) : (
-                <div className="flex h-full items-center justify-center">
-                  <Icon name="Monitor" size={64} className="text-foreground/15" />
-                </div>
+                <PhotoComingSoon size="lg" />
               )}
               {discount && (
                 <span className="absolute left-3 top-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground">

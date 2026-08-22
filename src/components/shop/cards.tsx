@@ -2,17 +2,22 @@ import { useState, useEffect, useRef } from "react"
 import Icon from "@/components/ui/icon"
 import OptimizedImage from "@/components/ui/optimized-image"
 import { Product, Build, BuildTag, CommunityBuild, getTagClass, SLOT_NAMES, SLOT_ICONS } from "./shared"
+import PhotoComingSoon from "./PhotoComingSoon"
 
 // ── Мини-карусель фото для карточки товара ──
 export function ProductImageCarousel({ images, name, inStock }: { images: string[]; name: string; inStock: boolean }) {
   const [idx, setIdx] = useState(0)
+  // Фото ещё нет — товар всё равно показываем, с заглушкой вместо картинки.
   if (!images.length) return (
-    <div className="relative h-full w-full flex flex-col items-center justify-center overflow-hidden">
-      <img src="https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/files/7e41fee1-74d8-448d-8412-0435e59185ae.jpg" alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" />
-      <div className="relative z-10 flex flex-col items-center gap-1.5">
-        <Icon name="ImageOff" size={20} className="text-foreground/40" />
-        <span className="text-[11px] text-foreground/40 font-medium">Фото готовятся</span>
-      </div>
+    <div className="relative h-full w-full">
+      <PhotoComingSoon />
+      {!inStock && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
+          <span className="rounded-xl border border-white/25 bg-black/50 px-4 py-1.5 text-sm font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
+            Нет в наличии
+          </span>
+        </div>
+      )}
     </div>
   )
   return (

@@ -273,11 +273,12 @@ def handler(event: dict, context) -> dict:
         elif params.get("resource") == "tier":
             schema = "t_p72635010_quantum_fusion_resea"
             if method == "GET":
-                # Все НЕархивные товары с фото — для построения тир-листа.
+                # Все НЕархивные товары — для построения тир-листа.
+                # Фото не обязательно: без него карточка покажет заглушку
+                # «Фото готовится», а товар не пропадёт из каталога.
                 # Можно ограничить категорией (?category=slug).
                 category_slug = params.get("category")
-                where = ["p.is_archived = FALSE",
-                         "(p.image_url IS NOT NULL OR jsonb_array_length(COALESCE(p.image_urls,'[]'::jsonb)) > 0)"]
+                where = ["p.is_archived = FALSE"]
                 args = []
                 if category_slug:
                     where.append("c.slug = %s")

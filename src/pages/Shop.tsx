@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import ShopFilters, { ShopAttr, ShopSpecProduct, ShopFilterState, ShopSortKey, emptyFilterState, applyShopFilters, sortShopProducts, ShopSortControl } from "@/components/shop/ShopFilters"
 import {
   Product, Category, BuildTag, Build, CommunityBuild,
-  matchCategory, getTagClass,
+  matchCategory, getTagClass, hasPhoto,
 } from "@/components/shop/shared"
 import {
   ProductCard, BuildCard, ProductModal, BuildModal, CommunityBuildCard,
@@ -294,9 +294,8 @@ export default function Shop() {
                 {searchFocused && searchInput.trim().length >= 2 && (() => {
                   const q = searchInput.trim().toLowerCase()
                   const matchedCat = matchCategory(searchInput, categories)
-                  const hasPhoto = (p: Product) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
                   const found = allProducts
-                    .filter(p => hasPhoto(p) && p.name.toLowerCase().includes(q))
+                    .filter(p => p.name.toLowerCase().includes(q))
                     .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
                     .slice(0, 5)
                   if (!matchedCat && found.length === 0) return null
@@ -410,13 +409,13 @@ export default function Shop() {
                   {[...Array(8)].map((_, i) => <div key={i} className="h-72 rounded-xl bg-card animate-pulse" />)}
                 </div>
               ) : (() => {
-                const hasPhoto = (p: ShopSpecProduct) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
+
                 // Поиск по названию + фильтры панели
                 const bySearch = search
                   ? specProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
                   : specProducts
                 const filtered = sortShopProducts(
-                  applyShopFilters(bySearch, filterState).filter(hasPhoto),
+                  applyShopFilters(bySearch, filterState),
                   sortKey,
                 )
                 // Карточки рендерим по полному Product из allProducts (там old_price, is_used и т.д.)
@@ -482,15 +481,17 @@ export default function Shop() {
                 <p>{usedOnly ? "Б/У товаров пока нет" : "Товары не найдены"}</p>
               </div>
             ) : (() => {
-              // Показываем товар только если у него есть фото (без фото — скрываем,
-              // даже не в наличии остаётся виден, если фото есть)
-              const hasPhoto = (p: Product) => !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
               // При фильтре Б/У показываем ВСЕ б/у-лоты из полного списка,
-              // независимо от выбранной категории
-              const visible = (usedOnly ? allProducts.filter(p => p.is_used) : products).filter(hasPhoto)
-              const sorted = [...visible].sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
+              // независимо от выбранной категории.
+              // Товары без фото тоже показываем — вместо картинки заглушка
+              // «Фото готовится». Но в выдаче они идут ниже: сначала в наличии,
+              // потом уже с реальными фотографиями.
+              const visible = usedOnly ? allProducts.filter(p => p.is_used) : products
+              const sorted = [...visible].sort((a, b) =>
+                (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0) ||
+                (hasPhoto(b) ? 1 : 0) - (hasPhoto(a) ? 1 : 0))
               // Рекомендуемые — всегда все is_featured из products (без фильтра по категории)
-              const featuredSource = ((activeCategory === "all" && !search && !usedOnly && allProducts.length > 0) ? allProducts : visible).filter(hasPhoto)
+              const featuredSource = (activeCategory === "all" && !search && !usedOnly && allProducts.length > 0) ? allProducts : visible
               const featured = [...featuredSource]
                 .filter(p => p.is_featured)
                 .sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))
@@ -511,7 +512,7 @@ export default function Shop() {
               )
               // Б/У комплектующие из allProducts (в наличии)
               const usedProducts = allProducts
-                .filter(p => p.is_used && p.in_stock && hasPhoto(p))
+                .filter(p => p.is_used && p.in_stock)
                 .sort((a, b) => (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0))
 
               // Режим «Только Б/У» — плоский список всех б/у-лотов, без групп
@@ -534,7 +535,7 @@ export default function Shop() {
               // в наличии — выше.
               const catProducts = categories.map(cat => {
                 const inCat = allProducts
-                  .filter(p => p.category?.slug === cat.slug && hasPhoto(p))
+                  .filter(p => p.category?.slug === cat.slug)
                   .sort((a, b) => {
                     if ((b.in_stock ? 1 : 0) !== (a.in_stock ? 1 : 0)) return (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0)
                     const mA = a.avg_cost > 0 ? (a.price - a.avg_cost) / a.price : 0

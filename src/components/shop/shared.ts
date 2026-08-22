@@ -60,6 +60,16 @@ export interface CommunityBuild {
   created_at: string
 }
 
+/**
+ * Есть ли у товара хоть одна фотография.
+ *
+ * Раньше по этому признаку товары СКРЫВАЛИ из каталога. Теперь показываем все,
+ * а признак используем только для сортировки: карточки с настоящими фото
+ * идут выше, чем заглушки «Фото готовится».
+ */
+export const hasPhoto = (p: { image_url?: string | null; image_urls?: string[] }): boolean =>
+  !!(p.image_url || (p.image_urls && p.image_urls.length > 0))
+
 export const TAG_COLOR_MAP: Record<string, string> = {
   primary: "border-primary/40 bg-primary/15 text-primary",
   green: "border-green-400/40 bg-green-400/15 text-green-400",
