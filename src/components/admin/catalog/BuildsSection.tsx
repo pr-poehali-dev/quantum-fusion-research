@@ -289,8 +289,10 @@ export function BuildsSection({
             const allComps = Object.entries(configSlots).flatMap(([slot, comps]) => comps.map(c => ({ ...c, slot })))
             const q = componentSearch.trim().toLowerCase()
             const qty = (c: ConfigComponent) => c.stock_qty ?? 0
+            // Ищем и по названию, и по складскому артикулу (например VCEU0239).
             const matched = q.length >= 1
-              ? allComps.filter(c => c.name.toLowerCase().includes(q))
+              ? allComps.filter(c => c.name.toLowerCase().includes(q)
+                  || (c.sku || "").toLowerCase().includes(q))
               : []
             // С галочкой «только наличие» в сборку можно закинуть лишь то,
             // что реально лежит на складе.
@@ -341,6 +343,7 @@ export function BuildsSection({
                           style={{ cursor: "pointer" }}>
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-foreground/50">{c.slot}</span>
                           <span className="flex-1 truncate font-medium">{c.name}</span>
+                          {c.sku && <span className="shrink-0 font-mono text-[10px] text-primary/50">{c.sku}</span>}
                           {c.is_archived && (
                             <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400" title="Товар в архиве каталога, но есть на складе">
                               архив

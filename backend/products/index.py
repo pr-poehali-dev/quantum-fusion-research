@@ -136,6 +136,8 @@ def handler(event: dict, context) -> dict:
             "warranty_months": int(row[20]) if len(row) > 20 and row[20] is not None else 0,
             "brand_id": row[21] if len(row) > 21 else None,
             "brand": row[22] if len(row) > 22 else None,
+            "sku": row[23] if len(row) > 23 else None,
+            "part_number": row[24] if len(row) > 24 else None,
         }
 
     try:
@@ -403,10 +405,13 @@ def handler(event: dict, context) -> dict:
                                       WHERE g.product_id = p.id AND s.qty > 0), 0) as avg_cost,
                             p.is_archived, p.is_used,
                             COALESCE(wg.warranty_months, p.warranty_months) as warranty_months,
-                            p.brand_id, b.name as brand_name
+                            p.brand_id, b.name as brand_name,
+                            COALESCE(wg.sku, wg2.sku) as sku,
+                            COALESCE(wg.part_number, wg2.part_number) as part_number
                      FROM products p
                      LEFT JOIN categories c ON p.category_id = c.id
                      LEFT JOIN warehouse_groups wg ON wg.id = p.warehouse_group_id
+                     LEFT JOIN warehouse_groups wg2 ON wg2.product_id = p.id
                      LEFT JOIN brands b ON b.id = p.brand_id"""
             if product_id:
                 cur.execute(sel + " WHERE p.id = %s", (product_id,))
@@ -429,13 +434,20 @@ def handler(event: dict, context) -> dict:
                 if featured == "true":
                     where_clauses.append("p.is_featured = TRUE")
                 if search:
-                    # Раскладочный поиск: учитываем альтернативную раскладку запроса
+                    # Раскладочный поиск: учитываем альтернативную раскладку запроса.
+                    # Ищем не только по названию, но и по артикулу (sku) и
+                    # партномеру со склада — менеджеры ищут железо по коду
+                    # вроде «VCEU0239», а не по длинному названию.
                     from layout import search_variants
                     variants = search_variants(search)
-                    ors = " OR ".join(["LOWER(p.name) LIKE %s"] * len(variants))
+                    ors = " OR ".join([
+                        "(LOWER(p.name) LIKE %s"
+                        " OR LOWER(COALESCE(wg.sku, wg2.sku)) LIKE %s"
+                        " OR LOWER(COALESCE(wg.part_number, wg2.part_number)) LIKE %s)"
+                    ] * len(variants))
                     where_clauses.append(f"({ors})")
                     for v in variants:
-                        args.append(f"%{v}%")
+                        args.extend([f"%{v}%", f"%{v}%", f"%{v}%"])
                 where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
                 cur.execute(sel + f" {where_sql} ORDER BY p.sort_order ASC, p.id ASC", args)
                 rows = cur.fetchall()

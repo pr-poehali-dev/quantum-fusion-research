@@ -119,7 +119,7 @@ export default function Admin() {
             if (!slots[slot]) slots[slot] = []
             slots[slot].push({
               id: p.id, slot, name: p.name, brand: p.category?.name, price: p.price,
-              stock_qty: p.stock_qty ?? 0, is_archived: !!p.is_archived,
+              stock_qty: p.stock_qty ?? 0, is_archived: !!p.is_archived, sku: p.sku,
             })
           }
           setConfigSlots(slots)

@@ -70,6 +70,7 @@ export interface Product {
   is_used?: boolean
   /** Товар убран из каталога, но может оставаться на складе. */
   is_archived?: boolean
+  sku?: string
   warranty_months?: number
   image_url: string | null
   image_urls: string[]
@@ -93,6 +94,8 @@ export interface ConfigComponent {
   stock_qty?: number
   /** Товар в архиве каталога (но может лежать на складе). */
   is_archived?: boolean
+  /** Складской артикул — по нему тоже ищем. */
+  sku?: string
 }
 
 export interface Tag {

@@ -232,13 +232,13 @@ export default function OrderProcessPage() {
   // Поиск товаров для замены
   const [replaceIdx, setReplaceIdx] = useState<number | null>(null)
   const [searchQ, setSearchQ] = useState("")
-  const [searchResults, setSearchResults] = useState<{ id: number; name: string; price: number; category: string }[]>([])
+  const [searchResults, setSearchResults] = useState<{ id: number; name: string; price: number; category: string; sku?: string; stock_qty?: number }[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
 
   // Добавление нового товара
   const [showAddItem, setShowAddItem] = useState(false)
   const [addSearchQ, setAddSearchQ] = useState("")
-  const [addSearchResults, setAddSearchResults] = useState<{ id: number; name: string; price: number; category: string }[]>([])
+  const [addSearchResults, setAddSearchResults] = useState<{ id: number; name: string; price: number; category: string; sku?: string; stock_qty?: number }[]>([])
   const [addSearchLoading, setAddSearchLoading] = useState(false)
   const [addingItem, setAddingItem] = useState(false)
   const [addQty, setAddQty] = useState(1)
@@ -692,13 +692,17 @@ export default function OrderProcessPage() {
                     className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm bg-background hover:bg-muted border border-border hover:border-primary/30 transition-colors text-left disabled:opacity-50">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium truncate">{p.name}</p>
-                      <p className="text-xs text-foreground/40 mt-0.5">
-                        {typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}
+                      <p className="text-xs text-foreground/40 mt-0.5 flex items-center gap-2">
+                        {/* Артикул — по нему же и ищем */}
+                        {p.sku && <span className="font-mono text-primary/60">{p.sku}</span>}
+                        <span>{typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}</span>
                       </p>
                     </div>
                     <div className="shrink-0 ml-3 text-right">
                       <p className="text-sm font-bold text-primary">{fmt(p.price)}</p>
-                      <p className="text-xs text-foreground/40">за шт.</p>
+                      <p className={`text-xs ${(p.stock_qty ?? 0) > 0 ? "text-emerald-400" : "text-foreground/40"}`}>
+                        {(p.stock_qty ?? 0) > 0 ? `${p.stock_qty} шт.` : "нет на складе"}
+                      </p>
                     </div>
                   </button>
                 ))}
@@ -1068,13 +1072,16 @@ export default function OrderProcessPage() {
                             className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm bg-background hover:bg-muted border border-border hover:border-primary/30 transition-colors text-left">
                             <div className="min-w-0 flex-1">
                               <p className="font-medium truncate">{p.name}</p>
-                              <p className="text-xs text-foreground/40 mt-0.5">
-                                {typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}
+                              <p className="text-xs text-foreground/40 mt-0.5 flex items-center gap-2">
+                                {p.sku && <span className="font-mono text-primary/60">{p.sku}</span>}
+                                <span>{typeof p.category === "object" ? (p.category as {name: string})?.name : p.category}</span>
                               </p>
                             </div>
                             <div className="shrink-0 ml-3 text-right">
                               <p className="text-sm font-bold text-primary">{fmt(p.price)}</p>
-                              <p className="text-xs text-foreground/40">за шт.</p>
+                              <p className={`text-xs ${(p.stock_qty ?? 0) > 0 ? "text-emerald-400" : "text-foreground/40"}`}>
+                                {(p.stock_qty ?? 0) > 0 ? `${p.stock_qty} шт.` : "нет на складе"}
+                              </p>
                             </div>
                           </button>
                         ))}

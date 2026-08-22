@@ -30,7 +30,7 @@ interface Group {
   wants_assembly: boolean; assembly_fee: number; assembly_type: "percent" | "manual"
   slot_statuses: Record<string, string>; units: Unit[]; issued_count: number; assembled_count: number
 }
-interface Prod { id: number; name: string; price: number; category?: { slug?: string } | string }
+interface Prod { id: number; name: string; price: number; category?: { slug?: string } | string; sku?: string; stock_qty?: number }
 
 const money = (n: number) => n.toLocaleString("ru-RU") + " ₽"
 const UNIT_STATUS: Record<string, { label: string; color: string }> = {
@@ -476,6 +476,10 @@ function SlotRow({ slotLabel, comp, onPick, onQty, onPrice }: {
                 <button key={p.id} onClick={() => { onPick(p); setQ(""); setResults([]); setOpen(false) }}
                   className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent/10" style={{ cursor: "pointer" }}>
                   <span className="truncate text-foreground">{p.name}</span>
+                  {p.sku && <span className="shrink-0 font-mono text-[10px] text-primary/60">{p.sku}</span>}
+                  <span className={`shrink-0 text-[10px] ${(p.stock_qty ?? 0) > 0 ? "text-emerald-400" : "text-foreground/30"}`}>
+                    {(p.stock_qty ?? 0) > 0 ? `${p.stock_qty} шт.` : "нет"}
+                  </span>
                   <span className="shrink-0 text-xs text-foreground/40">{money(p.price)}</span>
                 </button>
               ))}

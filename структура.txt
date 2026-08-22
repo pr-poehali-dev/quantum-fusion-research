@@ -2218,3 +2218,21 @@ src/components/admin/AdminWipTab.tsx:
     стало (stage==="Заказ" && id).
 db_migrations/V0255 — разово убрал в draft for_sale-сборки, висевшие в
   каталоге на ранних этапах.
+
+[v8.70] Поиск комплектующих по артикулу (SKU).
+ПРИЧИНА бага «не добавить VCEU0239»: sku живёт в warehouse_groups, а функция
+products его вообще не отдавала и искала только по p.name — артикул найти
+было невозможно в принципе.
+backend/products/index.py:
+  ~406 SELECT + COALESCE(wg.sku, wg2.sku), COALESCE(wg.part_number,
+     wg2.part_number); добавлен LEFT JOIN warehouse_groups wg2 ON
+     wg2.product_id = p.id (связь бывает и через product_id, не только через
+     products.warehouse_group_id; дублей product_id в warehouse_groups нет).
+  ~139 row_to_product: поля sku, part_number.
+  ~434 поиск: (name LIKE ? OR sku LIKE ? OR part_number LIKE ?) с сохранением
+     раскладочных вариантов search_variants.
+Фронт (артикул + остаток в выдаче поиска):
+  src/pages/OrderProcessPage.tsx — add_item и replace_item;
+  src/pages/AdminBatchOrderPage.tsx — SlotRow (interface Prod + sku/stock_qty);
+  src/components/admin/catalog/BuildsSection.tsx — фильтр по name ИЛИ sku;
+  src/pages/Admin.tsx — sku прокинут в configSlots.
