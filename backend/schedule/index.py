@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import date
 import psycopg2
 
 SCHEMA = "t_p72635010_quantum_fusion_resea"
@@ -182,6 +183,14 @@ def handler(event: dict, context) -> dict:
                     parts.append(f"@{tg}" if tg else (nm or ""))
                 return ", ".join([p for p in parts if p])
 
+            # Невыполненные задачи переезжают на сегодня. Раньше это делалось
+            # ТОЛЬКО при открытии календаря (action=events), а утренний пинг
+            # приходит в 11:00 — до того, как кто-то зашёл в админку. Поэтому
+            # задачи ещё висели вчерашним днём и сводка писала «дел нет», хотя
+            # в календаре они были.
+            _carry_over_tasks(cur)
+            conn.commit()
+
             sent = []
             _base = (os.environ.get("SITE_BASE_URL") or "").rstrip("/")
             _cal_link = f"\n🔗 <a href=\"{_base}/admin/calendar\">Открыть календарь</a>" if _base else ""
@@ -214,20 +223,28 @@ def handler(event: dict, context) -> dict:
                 f"FROM {SCHEMA}.calendar_events ce "
                 f"LEFT JOIN {SCHEMA}.calendar_event_employees cee ON cee.event_id = ce.id "
                 f"LEFT JOIN {SCHEMA}.employees e ON e.id = cee.employee_id "
-                f"WHERE ce.event_date = CURRENT_DATE "
-                f"  AND NOT (ce.kind = 'task' AND ce.status = 'done') "
-                f"GROUP BY ce.id ORDER BY ce.kind, ce.id"
+                # События — строго сегодняшние (они привязаны к дате).
+                # Задачи — сегодняшние И просроченные: если перенос почему-то
+                # не сработал, незакрытая задача всё равно попадёт в сводку,
+                # а не потеряется молча.
+                f"WHERE ((ce.kind = 'event' AND ce.event_date = CURRENT_DATE) "
+                f"    OR (ce.kind = 'task' AND ce.event_date <= CURRENT_DATE "
+                f"        AND ce.status <> 'done')) "
+                f"GROUP BY ce.id ORDER BY ce.kind, ce.event_date, ce.id"
             )
             cal_rows = cur.fetchall()
             if cal_rows:
-                blocks = ["📋 <b>События и задачи на сегодня</b>"]
+                _cnt = len(cal_rows)
+                blocks = [f"📋 <b>События и задачи на сегодня</b> ({_cnt})"]
                 for _id, title, descr, origin_date, event_date, kind, emps_json in cal_rows:
                     emps = json.loads(emps_json) if isinstance(emps_json, str) else (emps_json or [])
                     resp = fmt_resp([(e.get("name"), e.get("tag")) for e in emps])
-                    # Дни простоя задачи (xN) — если переносилась с прошлых дней
+                    # Дни простоя задачи (xN) — сколько дней она уже висит.
+                    # Считаем до СЕГОДНЯ, а не до даты копии: у просроченной
+                    # задачи дата копии вчерашняя и счётчик был занижен.
                     days_idle = 0
-                    if kind == "task" and origin_date and event_date:
-                        days_idle = (event_date - origin_date).days + 1
+                    if kind == "task" and origin_date:
+                        days_idle = (date.today() - origin_date).days + 1
                     _x = f" <b>×{days_idle}</b>" if days_idle > 1 else ""
                     _ico = "📅" if kind == "event" else "•"
                     block = f"\n━━━━━━━━━━\n{_ico} <b>{title}</b>{_x}"

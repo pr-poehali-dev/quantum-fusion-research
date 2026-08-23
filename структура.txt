@@ -2236,3 +2236,18 @@ backend/products/index.py:
   src/pages/AdminBatchOrderPage.tsx — SlotRow (interface Prod + sku/stock_qty);
   src/components/admin/catalog/BuildsSection.tsx — фильтр по name ИЛИ sku;
   src/pages/Admin.tsx — sku прокинут в configSlots.
+
+[v8.71] Утренний дайджест (schedule?action=morning_ping).
+ПРИЧИНА бага «на сегодня задач и событий нет»: _carry_over_tasks() (перенос
+незакрытых задач на сегодня) вызывался ТОЛЬКО в action=events, т.е. при
+открытии календаря. Пинг в 11:00 приходит раньше — задачи ещё висели вчерашней
+датой, а дайджест искал строго event_date = CURRENT_DATE.
+backend/schedule/index.py:
+  ~185 morning_ping теперь сам вызывает _carry_over_tasks(cur) + commit.
+  ~225 выборка: события — строго CURRENT_DATE; задачи — event_date <=
+     CURRENT_DATE AND status <> 'done' (просроченные не теряются, даже если
+     перенос не отработал).
+  ~240 счётчик ×N считается от origin_date до date.today() (был до даты копии
+     — у просроченной задачи занижался).
+  ~237 в заголовок блока добавлено количество.
+  import: from datetime import date.
