@@ -150,6 +150,19 @@ def handler(event: dict, context) -> dict:
     session_id = headers.get("X-Session-Id") or headers.get("x-session-id")
     action = params.get("action", "")
 
+    # Вход в админку — просто сверка пароля с секретом, база тут не нужна.
+    # Раньше соединение с БД открывалось ДО этой проверки, и вход ждал
+    # коннекта впустую (это заметная часть «долгой проверки» при холодном
+    # старте функции). Отвечаем сразу.
+    if action == "admin_login":
+        if method == "POST":
+            _b = json.loads(event.get("body") or "{}")
+            _ak = _b.get("ak") or ""
+        else:
+            _ak = params.get("ak") or ""
+        _ok = bool(_ak) and _ak == os.environ.get("ADMIN_KEY", "begraphics2024")
+        return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": _ok})}
+
     conn = get_conn()
     cur = conn.cursor()
 

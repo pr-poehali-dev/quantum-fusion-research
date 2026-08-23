@@ -95,16 +95,20 @@ export default function Admin() {
   useEffect(() => {
     if (!authed) return
     setLoading(true)
+    // ВАЖНО: у каждой ветки обязателен .catch со снятием loading. Без него
+    // упавший запрос (сеть моргнула) оставлял вечный «серый» экран загрузки,
+    // и вход выглядел как «админка бесконечно думает».
+    const stop = () => setLoading(false)
     if (tab === "orders" || tab === "orders_archive") {
-      api.orders.getAll().then(d => { setOrders(d.orders || []); setLoading(false) })
+      api.orders.getAll().then(d => { setOrders(d.orders || []); stop() }).catch(stop)
     } else if (tab === "products" || tab === "add_product") {
       api.products.getAll().then(d => {
         setProducts(d.products || [])
         setCategories(d.categories || [])
-        setLoading(false)
-      })
+        stop()
+      }).catch(stop)
     } else if (tab === "builds" || tab === "archive" || tab === "add_build") {
-      api.tags.getAll().then(d => setTags(d.tags || []))
+      api.tags.getAll().then(d => setTags(d.tags || [])).catch(() => {})
       Promise.all([
         api.builds.getAll().then(d => Array.isArray(d) ? d : (d.builds || [])),
         // include_archived: архивные товары бывают на складе (например
@@ -125,21 +129,21 @@ export default function Admin() {
           setConfigSlots(slots)
           return d
         }),
-      ]).then(([b]) => { setBuilds(b); setLoading(false) }).catch(() => setLoading(false))
+      ]).then(([b]) => { setBuilds(b); stop() }).catch(stop)
     } else if (tab === "wip_builds" || tab === "wip_archive") {
       api.wipBuilds.getAll().then(d => {
         setWipBuilds(d.wip_builds || [])
         setWipStages(d.stages || [])
-        setLoading(false)
-      })
+        stop()
+      }).catch(stop)
     } else if (tab === "tags") {
-      api.tags.getAll().then(d => { setTags(d.tags || []); setLoading(false) })
+      api.tags.getAll().then(d => { setTags(d.tags || []); stop() }).catch(stop)
     } else if (tab === "articles" || tab === "add_article") {
-      api.articles.getAll().then(d => { setArticles(d.articles || []); setLoading(false) })
+      api.articles.getAll().then(d => { setArticles(d.articles || []); stop() }).catch(stop)
     } else if (tab === "users") {
-      api.auth.adminGetUsers(getAdminKey()).then(d => { setAdminUsers(d.users || []); setLoading(false) })
+      api.auth.adminGetUsers(getAdminKey()).then(d => { setAdminUsers(d.users || []); stop() }).catch(stop)
     } else {
-      setLoading(false)
+      stop()
     }
   }, [authed, tab])
 
@@ -154,7 +158,9 @@ export default function Admin() {
         sessionStorage.setItem(ADMIN_KEY_STORAGE, password)
         setAuthed(true)
       } else alert("Неверный пароль")
-    } catch { alert("Ошибка соединения") }
+    } catch {
+      alert("Сервер не ответил. Проверьте интернет и попробуйте ещё раз.")
+    }
     setLoginLoading(false)
   }
   const logout = () => {
