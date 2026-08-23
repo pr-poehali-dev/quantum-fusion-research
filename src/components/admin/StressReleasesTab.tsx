@@ -106,6 +106,49 @@ export default function StressReleasesTab() {
     setStorage(r.files || [])
   }
 
+  // Загрузка файла прямо в хранилище. Это единственный способ получить
+  // красивое имя при скачивании: хранилище не умеет ни переименовывать
+  // большие файлы, ни подставлять имя из ссылки — браузер берёт его из
+  // конца адреса. Поэтому файл сразу кладём по адресу с нужным именем.
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
+
+  const uploadFile = async (file: File) => {
+    const ak = getAdminKey()
+    if (!ak) { setError("Нет доступа администратора"); return }
+    setError("")
+    // Имя формируем из номера версии — как оно и сохранится у клиента.
+    const ver = cleanVersion(version) || (file.name.match(/(\d+(?:\.\d+){1,3})/)?.[1] ?? "")
+    const lite = /lite/i.test(file.name) || /lite/i.test(version)
+    const ext = file.name.includes(".") ? "." + file.name.split(".").pop()!.toLowerCase() : ".exe"
+    const wanted = ver ? `StressTester_Setup_${ver}${lite ? "_Lite" : ""}${ext}` : file.name
+
+    const r = await api.stressReleases.getUploadUrl(wanted, ak).catch(() => null)
+    if (!r?.upload_url) { setError("Не удалось начать загрузку"); return }
+
+    setUploadPct(0)
+    let ok = true
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open("PUT", r.upload_url)
+      xhr.setRequestHeader("Content-Type", "application/octet-stream")
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100))
+      }
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(String(xhr.status)))
+      xhr.onerror = () => reject(new Error("network"))
+      xhr.send(file)
+    }).catch(() => {
+      ok = false
+      setError("Файл не загрузился, попробуйте ещё раз")
+    })
+    setUploadPct(null)
+    if (!ok) return
+    setPicked({ key: r.s3_key, name: wanted, size: file.size, modified: "" })
+    setFound({ name: wanted, size: file.size })
+    setLink("")
+    if (!version.trim() && ver) setVersion(ver)
+  }
+
   const pickFile = (f: StorageFile) => {
     setPicked(f); setLink(""); setFound({ name: f.name, size: f.size }); setError("")
     if (!version.trim()) {
@@ -287,6 +330,16 @@ export default function StressReleasesTab() {
         <div className="mb-4 rounded-lg border border-border bg-background p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-foreground/70">Файл из хранилища</span>
+            {/* Загрузка отсюда — единственный способ получить правильное имя
+                при скачивании: файл сразу ложится по адресу с нужным именем. */}
+            <label className={`flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs text-primary transition-colors hover:bg-primary/10 ${uploadPct !== null || busy ? "pointer-events-none opacity-40" : ""}`}
+              style={{ cursor: "pointer" }}>
+              <Icon name={uploadPct !== null ? "Loader2" : "Upload"} size={13} className={uploadPct !== null ? "animate-spin" : ""} />
+              {uploadPct !== null ? `Загрузка ${uploadPct}%` : "Загрузить файл"}
+              <input type="file" accept=".exe,.msi,.zip" className="hidden"
+                disabled={uploadPct !== null || busy}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = "" }} />
+            </label>
             <button onClick={loadStorage} disabled={storageBusy || busy} style={{ cursor: "pointer" }}
               className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40">
               <Icon name={storageBusy ? "Loader2" : "FolderOpen"} size={13} className={storageBusy ? "animate-spin" : ""} />

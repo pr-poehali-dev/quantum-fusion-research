@@ -142,6 +142,40 @@ def key_from_url(url):
     return url.split(marker, 1)[1].split("?", 1)[0]
 
 
+_TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def translit(text):
+    """Кириллица → латиница. «Хотфикс» → «Hotfix», а не «________».
+
+    Имя файла должно оставаться читаемым: раньше все не-ASCII символы
+    заменялись подчёркиваниями и версия «1.2.1.0 Хотфикс» превращалась
+    в «StressTester_Setup_1.2.1.0________.exe».
+    """
+    out = []
+    for ch in str(text or ""):
+        low = ch.lower()
+        if low in _TRANSLIT:
+            rep = _TRANSLIT[low]
+            out.append(rep.capitalize() if ch.isupper() and rep else rep)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def safe_part(text, fallback=""):
+    """Кусок имени файла: транслит + только безопасные символы, без «___»."""
+    s = re.sub(r"[^0-9A-Za-z._-]+", "_", translit(text)).strip("_. -")
+    s = re.sub(r"_{2,}", "_", s)
+    return s or fallback
+
+
 def nice_file_name(name, version, edition="full"):
     """Имя для сохранения на диск клиента.
 
@@ -151,10 +185,17 @@ def nice_file_name(name, version, edition="full"):
     name = (name or "").strip()
     base = name.rsplit("/", 1)[-1]
     ext = ("." + base.rsplit(".", 1)[-1].lower()) if "." in base else ".exe"
-    if base and not _UUID_NAME.match(base):
-        return base
-    ver = re.sub(r"[^0-9A-Za-z._-]", "_", clean_version(version)) or "latest"
     suffix = "_Lite" if edition == "lite" else ""
+    # Имя из хранилища берём, только если оно осмысленное. Уже испорченные
+    # «StressTester_Setup_1.2.1.0________.exe» пересобираем из версии заново.
+    if base and not _UUID_NAME.match(base) and "__" not in base:
+        stem = safe_part(base.rsplit(".", 1)[0], "StressTester_Setup")
+        # Lite-сборка ОБЯЗАНА отличаться именем от полной: иначе два разных
+        # файла лягут по одному адресу и перезапишут друг друга.
+        if suffix and not re.search(r"(?i)lite", stem):
+            stem += suffix
+        return stem + ext
+    ver = safe_part(clean_version(version), "latest")
     return f"StressTester_Setup_{ver}{suffix}{ext}"
 
 
@@ -192,13 +233,66 @@ def object_size(key):
 
 
 def ensure_named_key(key, nice_name):
-    """Раньше перекладывала файл под понятным именем — больше не делает.
+    """Кладёт файл по адресу, оканчивающемуся правильным именем.
 
-    Копирование через это хранилище отдавало объект нулевого размера:
-    человек скачивал «пустой» установщик. Имя файла теперь задаётся
-    заголовком во временной ссылке (download_url), копий не создаём.
+    Хранилище игнорирует подсказку Content-Disposition во временной ссылке
+    (проверено selftest_storage: disposition пустой), поэтому браузер берёт
+    имя из КОНЦА адреса. Если объект лежит под «uuid.exe» — рядом делается
+    копия «…/StressTester_Setup_1.3.0.exe», и скачивание идёт с неё.
+
+    Копия проверяется по размеру: раньше copy_object отдавал пустой объект
+    и люди качали установщик на 0 байт. Если копия не удалась или пуста —
+    возвращаем исходный ключ, лучше некрасивое имя, чем битый файл.
     """
-    return key
+    if not key or not nice_name:
+        return key
+    if key.rsplit("/", 1)[-1] == nice_name:
+        return key
+    src_size = object_size(key)
+    print(f"[RELEASES] переименование {key} -> {nice_name}, размер {src_size}")
+    if src_size <= 0:
+        return key
+    # Папка своя у каждого файла: имена версий совпадают (полная и Lite одной
+    # версии), и в общей папке копии затирали бы друг друга.
+    if "/" in key:
+        folder = key.rsplit("/", 1)[0]
+    else:
+        folder = f"stress_app/{key.rsplit('.', 1)[0]}"
+    new_key = f"{folder}/{nice_name}"
+    if object_size(new_key) == src_size:
+        return new_key
+    try:
+        _copy_object(key, new_key, src_size)
+    except Exception as e:
+        _LAST_RENAME_ERROR["msg"] = str(e)[:300]
+        print(f"[RELEASES] не удалось переименовать {key} -> {new_key}: {e}")
+        return key
+    if object_size(new_key) != src_size:
+        _LAST_RENAME_ERROR["msg"] = "копия получилась другого размера"
+        print(f"[RELEASES] копия {new_key} битая, оставляем {key}")
+        return key
+    _LAST_RENAME_ERROR["msg"] = ""
+    return new_key
+
+
+# Ограничение хранилища (проверено на боевых файлах):
+#  • copy_object на сотнях мегабайт молча создаёт ПУСТОЙ объект;
+#  • multipart-копирование запрещено (405 Method Not Allowed).
+# Поэтому большие файлы переложить под красивым именем нельзя в принципе —
+# их надо СРАЗУ загружать под правильным именем (см. upload_url, там ключ
+# оканчивается именем файла). Мелкие копируем обычным способом.
+_COPY_SIZE_LIMIT = 64 * 1024 * 1024
+
+
+def _copy_object(src_key, dst_key, size):
+    if size > _COPY_SIZE_LIMIT:
+        raise RuntimeError(
+            "файл слишком большой для переименования в хранилище — "
+            "загрузите его через «Загрузить файл» в админке")
+    s3().copy_object(Bucket="files", Key=dst_key,
+                     CopySource={"Bucket": "files", "Key": src_key},
+                     ContentType="application/octet-stream",
+                     MetadataDirective="REPLACE")
 
 
 def cdn_url(key):
@@ -317,6 +411,24 @@ def handler(event: dict, context) -> dict:
                         if object_size(key) <= 0:
                             return resp(404, {"ok": False,
                                               "error": "Файл версии недоступен"})
+                        # Имя браузер берёт из конца адреса — кладём файл под
+                        # понятным именем и запоминаем новый ключ, чтобы копия
+                        # делалась один раз, а не на каждое скачивание.
+                        # Если не успеет (большой файл, таймаут) — отдадим
+                        # исходный ключ, скачивание не должно падать из-за имени.
+                        try:
+                            named = ensure_named_key(key, nice)
+                        except Exception as e:
+                            print(f"[RELEASES] переименование пропущено: {e}")
+                            named = key
+                        if named != key:
+                            cur.execute(
+                                f"UPDATE {TABLE} SET s3_key = {esc(named)}, "
+                                f"file_url = {esc(cdn_url(named))}, "
+                                f"file_name = {esc(nice)} WHERE id = {rid}"
+                            )
+                            conn.commit()
+                            key = named
                         target = download_url(key, nice)
                     else:
                         target = row[0] or row[1] or ""
@@ -508,6 +620,9 @@ def handler(event: dict, context) -> dict:
                 if size <= 0:
                     return resp(400, {"error": "Файл в хранилище не найден или пуст"})
                 body["file_size"] = size
+                # Сразу кладём файл под понятным именем: браузер берёт имя из
+                # конца адреса, а не из подсказки в ссылке.
+                s3_key = ensure_named_key(s3_key, file_name)
                 file_url = cdn_url(s3_key)
 
             cur.execute(
