@@ -1364,12 +1364,19 @@ function SerialInput({ value, saving, onSave, label, itemName }: {
         placeholder="Введите S/N..."
         className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono focus:border-primary focus:outline-none"
       />
-      <button onClick={() => handleSave(v)} disabled={saving || v === value}
+      {/* Кнопка блокируется ТОЛЬКО на время сохранения. Раньше стояло
+          `v === value`, и уже вписанный серийник подтвердить было нельзя:
+          кнопка сразу серая. Это мешало перепривязать/переподтвердить S/N —
+          на позициях с несколькими штуками выглядело как «третью не нажать». */}
+      <button onClick={() => handleSave(v)} disabled={saving}
+        title={v === value ? "Подтвердить ещё раз" : "Сохранить серийный номер"}
         style={{ cursor: "pointer" }}
         className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-200 shrink-0 ${
           flash
             ? "border-green-400 bg-green-400/15 text-green-400 scale-110"
-            : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
+            : v !== value
+              ? "border-amber-400 bg-amber-400/15 text-amber-400 hover:bg-amber-400/25"
+              : "border-border text-foreground/50 hover:text-foreground hover:border-primary"
         } disabled:opacity-30`}>
         {saving ? <Icon name="Loader" size={13} className="animate-spin" /> : <Icon name="Check" size={13} />}
       </button>
@@ -1421,7 +1428,10 @@ function PriceInput({ value, saving, onSave }: {
   const dirty = Number(v) !== value && v.trim() !== ""
 
   const handleSave = () => {
-    if (!dirty) return
+    // Пустое поле сохранять нечего, а вот подтвердить ту же цену — можно:
+    // раньше кнопка была серой при неизменённой цене и «подтвердить цену»
+    // становилось невозможно.
+    if (v.trim() === "" || Number.isNaN(Number(v))) return
     playConfirmSound()
     setFlash(true)
     setTimeout(() => setFlash(false), 150)
@@ -1441,7 +1451,8 @@ function PriceInput({ value, saving, onSave }: {
             dirty ? "border-amber-400 focus:border-amber-400" : "border-border focus:border-primary"
           }`}
         />
-        <button onClick={handleSave} disabled={saving || !dirty}
+        <button onClick={handleSave} disabled={saving || v.trim() === ""}
+          title={dirty ? "Сохранить новую цену" : "Подтвердить цену"}
           style={{ cursor: "pointer" }}
           className={`rounded-lg border px-3 py-1.5 text-xs transition-transform duration-100 ${
             flash ? "scale-90" : ""

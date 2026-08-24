@@ -90,6 +90,8 @@ def store_code_by_serials(cur, serials, pid):
     """Магазин для строки гарантийки: сперва по серийнику (точно),
     иначе фолбэк на последнюю поставку товара."""
     for sn in (serials or []):
+        if not sn:
+            continue  # в списке бывают пустые «дырки» — это ещё не заполненный S/N
         code = store_code_for_serial(cur, sn)
         if code:
             return code
@@ -314,7 +316,11 @@ def handler(event: dict, context) -> dict:
                 serials = it.get("serial_numbers") or []
                 if not serials and it.get("serial_number"):
                     serials = [it["serial_number"]]
-                serials = [s for s in serials if s and str(s).strip()]
+                # Пустые «дырки» сохраняем: каждый элемент = отдельный
+                # экземпляр товара, иначе строки в талоне теряются.
+                serials = [str(s).strip() if s else "" for s in serials]
+                while serials and not serials[-1]:
+                    serials.pop()
                 # Гарантия: из строки снимка, иначе со склада, иначе 12
                 warranty = it.get("warranty_months")
                 if warranty is None and pid:
@@ -398,7 +404,11 @@ def handler(event: dict, context) -> dict:
                 if not sn and it.get("serial_number"):
                     sn = [it["serial_number"]]
                 if sn:
-                    slot_serials[slot] = [s for s in sn if s and str(s).strip()]
+                    # Пустые в середине — отдельные экземпляры, не выбрасываем.
+                    _sn = [str(s).strip() if s else "" for s in sn]
+                    while _sn and not _sn[-1]:
+                        _sn.pop()
+                    slot_serials[slot] = _sn
                 price = float(it.get("final_price") or it.get("price", 0))
                 if price:
                     slot_item_price[slot] = price
@@ -512,9 +522,16 @@ def handler(event: dict, context) -> dict:
             serials = item.get("serial_numbers") or []
             if not serials and item.get("serial_number"):
                 serials = [item["serial_number"]]
-            serials = [s for s in serials if s and str(s).strip()]
+            # Пустые «дырки» в середине списка ВАЖНЫ: позиция на 3 шт. с
+            # серийниками ["A…6", "", "A…7"] — это три разных экземпляра, и
+            # третий не должен пропадать из талона. Раньше пустые вычищались,
+            # список схлопывался до двух, и одна строка печаталась без S/N.
+            serials = [str(s).strip() if s else "" for s in serials]
+            while serials and not serials[-1]:
+                serials.pop()  # хвостовые пустые — просто «ещё не заполнено»
             # Магазин: точно по серийнику из sn_archive, иначе по последней поставке.
-            store_code = store_code_for_serial(cur, serials[0]) if serials else None
+            _first = next((s for s in serials if s), None)
+            store_code = store_code_for_serial(cur, _first) if _first else None
             if not store_code and pid and item.get("item_type") == "product":
                 store_code = store_code_for_product(cur, pid)
             enriched.append({
@@ -588,13 +605,15 @@ def handler(event: dict, context) -> dict:
         qty_total = int(it.get("qty", 1) or 1)
         serials = it["serials"]
         if serials:
-            # Отдельная строка на каждый серийник (кол-во 1 на строку).
-            for sn in serials:
-                cells = [it["name"], sn, warranty_str, "1", price_str]
+            # Отдельная строка на каждый экземпляр (кол-во 1 на строку).
+            # Незаполненный серийник — прочерк, но строка ЕСТЬ: иначе товар
+            # пропадал из талона (было на заказе с 3 шт. и пустым вторым S/N).
+            for sn in serials[:qty_total]:
+                cells = [it["name"], sn or "—", warranty_str, "1", price_str]
                 p.cell_row(cells, col_w, font="dj", size=8)
             # Если серийников МЕНЬШЕ, чем количество товара — оставшиеся единицы
             # печатаем одной строкой без серийника (иначе часть товара терялась).
-            rest = qty_total - len(serials)
+            rest = qty_total - len(serials[:qty_total])
             if rest > 0:
                 cells = [it["name"], "—", warranty_str, str(rest), price_str]
                 p.cell_row(cells, col_w, font="dj", size=8)
