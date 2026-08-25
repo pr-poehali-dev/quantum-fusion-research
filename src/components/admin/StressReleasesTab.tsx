@@ -14,6 +14,10 @@ export interface Release {
   created_at: string
   is_published?: boolean
   edition?: "full" | "lite"   // сборка: полная или облегчённая
+  // Адрес объекта в хранилище. ВАЖНО: клиент скачивает файл под именем из
+  // КОНЦА этого адреса, а не под file_name — поэтому в админке проверяем
+  // именно s3_key, иначе имя выглядит красивым, а скачивается «лабуда».
+  s3_key?: string
 }
 
 // Полная и Lite — одна версия программы, поэтому сверяем по её номеру.
@@ -53,6 +57,16 @@ export function fmtSize(bytes: number): string {
 }
 
 interface StorageFile { key: string; name: string; size: number; modified: string }
+
+// Имя вида «c9c2787b-3a81-4ba0-a038-f5a027c78065.exe» — технический
+// идентификатор, а не название. Хранилище отдаёт файл ровно под тем именем,
+// что стоит в конце адреса (подсказку в ссылке оно игнорирует — проверено),
+// поэтому такой файл клиент скачает с этой же «лабудой» в имени.
+const UUID_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+export function badStorageName(name: string): boolean {
+  const base = (name || "").split("/").pop() || ""
+  return UUID_NAME.test(base) || base.includes("__")
+}
 
 export function fmtDate(iso: string): string {
   if (!iso) return ""
@@ -322,24 +336,46 @@ export default function StressReleasesTab() {
       <div className="mb-8 rounded-xl border border-border bg-card p-5">
         <h3 className="mb-1 font-medium">Новая версия</h3>
         <p className="mb-4 text-xs text-foreground/50">
-          Выберите файл, уже загруженный в наше хранилище, — или вставьте ссылку
-          с Яндекс.Диска. Имя и размер подставятся сами.
+          Укажите номер версии и загрузите установщик — файл сразу ляжет
+          в хранилище под правильным именем.
         </p>
+
+        {/* ГЛАВНОЕ действие — загрузка файла. Только она гарантирует красивое
+            имя при скачивании: хранилище не применяет имя из ссылки (проверено)
+            и не умеет переименовывать большие файлы, поэтому имя должно быть
+            правильным уже в момент загрузки. */}
+        <label className={`mb-3 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${uploadPct !== null || busy
+          ? "pointer-events-none border-border opacity-50"
+          : "border-primary/40 bg-primary/5 hover:border-primary hover:bg-primary/10"}`}
+          style={{ cursor: "pointer" }}>
+          <Icon name={uploadPct !== null ? "Loader2" : "Upload"} size={22}
+            className={uploadPct !== null ? "animate-spin text-primary" : "text-primary"} />
+          {uploadPct !== null ? (
+            <>
+              <span className="text-sm font-medium text-primary">Загрузка {uploadPct}%</span>
+              <span className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted">
+                <span className="block h-full rounded-full bg-primary transition-all" style={{ width: `${uploadPct}%` }} />
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-foreground">Загрузить установщик</span>
+              <span className="text-xs text-foreground/50">
+                {version.trim()
+                  ? `Сохранится как StressTester_Setup_${cleanVersion(version)}.exe`
+                  : "Сначала укажите номер версии ниже — он войдёт в имя файла"}
+              </span>
+            </>
+          )}
+          <input type="file" accept=".exe,.msi,.zip" className="hidden"
+            disabled={uploadPct !== null || busy}
+            onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = "" }} />
+        </label>
 
         {/* Файлы из нашего хранилища */}
         <div className="mb-4 rounded-lg border border-border bg-background p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-foreground/70">Файл из хранилища</span>
-            {/* Загрузка отсюда — единственный способ получить правильное имя
-                при скачивании: файл сразу ложится по адресу с нужным именем. */}
-            <label className={`flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs text-primary transition-colors hover:bg-primary/10 ${uploadPct !== null || busy ? "pointer-events-none opacity-40" : ""}`}
-              style={{ cursor: "pointer" }}>
-              <Icon name={uploadPct !== null ? "Loader2" : "Upload"} size={13} className={uploadPct !== null ? "animate-spin" : ""} />
-              {uploadPct !== null ? `Загрузка ${uploadPct}%` : "Загрузить файл"}
-              <input type="file" accept=".exe,.msi,.zip" className="hidden"
-                disabled={uploadPct !== null || busy}
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = "" }} />
-            </label>
+            <span className="text-xs font-medium text-foreground/70">Или выбрать уже загруженный файл</span>
             <button onClick={loadStorage} disabled={storageBusy || busy} style={{ cursor: "pointer" }}
               className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground/70 hover:border-primary hover:text-foreground transition-colors disabled:opacity-40">
               <Icon name={storageBusy ? "Loader2" : "FolderOpen"} size={13} className={storageBusy ? "animate-spin" : ""} />
@@ -348,10 +384,24 @@ export default function StressReleasesTab() {
           </div>
 
           {picked && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-green-400">
-              <Icon name="Check" size={13} />
-              Выбран: {picked.name} — {fmtSize(picked.size)}
-            </p>
+            <>
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-green-400">
+                <Icon name="Check" size={13} />
+                Выбран: {picked.name} — {fmtSize(picked.size)}
+              </p>
+              {/* Честно предупреждаем: у файла с техническим именем красивого
+                  имени при скачивании не будет — переименовать его хранилище
+                  не позволяет, нужно перезалить. */}
+              {badStorageName(picked.name) && (
+                <p className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-2 text-xs text-amber-400">
+                  <Icon name="TriangleAlert" size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    У этого файла техническое имя — клиент скачает его именно так.
+                    Чтобы имя было красивым, загрузите установщик кнопкой выше.
+                  </span>
+                </p>
+              )}
+            </>
           )}
 
           {storage && (
@@ -361,14 +411,19 @@ export default function StressReleasesTab() {
               </p>
             ) : (
               <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
-                {storage.map(f => (
-                  <button key={f.key} onClick={() => pickFile(f)} disabled={busy} style={{ cursor: "pointer" }}
-                    className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${picked?.key === f.key ? "border-primary bg-primary/5 text-foreground" : "border-border text-foreground/70 hover:border-primary/50"}`}>
-                    <Icon name="FileBox" size={14} className="shrink-0 text-foreground/40" />
-                    <span className="min-w-0 flex-1 truncate" title={f.key}>{f.name}</span>
-                    <span className="shrink-0 text-foreground/40">{fmtSize(f.size)}</span>
-                  </button>
-                ))}
+                {storage.map(f => {
+                  const bad = badStorageName(f.name)
+                  return (
+                    <button key={f.key} onClick={() => pickFile(f)} disabled={busy} style={{ cursor: "pointer" }}
+                      title={bad ? "Техническое имя: клиент скачает файл именно с ним" : f.key}
+                      className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${picked?.key === f.key ? "border-primary bg-primary/5 text-foreground" : "border-border text-foreground/70 hover:border-primary/50"}`}>
+                      <Icon name={bad ? "TriangleAlert" : "FileBox"} size={14}
+                        className={`shrink-0 ${bad ? "text-amber-400" : "text-foreground/40"}`} />
+                      <span className={`min-w-0 flex-1 truncate ${bad ? "text-amber-400/80" : ""}`}>{f.name}</span>
+                      <span className="shrink-0 text-foreground/40">{fmtSize(f.size)}</span>
+                    </button>
+                  )
+                })}
               </div>
             )
           )}
@@ -494,14 +549,20 @@ export default function StressReleasesTab() {
 
               {/* Сборки этой версии: полная и облегчённая */}
               <div className="space-y-1.5">
-                {g.items.map(r => (
+                {g.items.map(r => {
+                  // Реальное имя скачивания — из адреса объекта, а не file_name.
+                  const realName = (r.s3_key || "").split("/").pop() || r.file_name
+                  const badName = badStorageName(realName)
+                  return (
                   <div key={r.id}>
                     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
                       <span className={`rounded px-1.5 py-0.5 text-[10px] ${editionOf(r) === "lite" ? "bg-sky-500/10 text-sky-500" : "bg-primary/10 text-primary"}`}>
                         {editionOf(r) === "lite" ? "Lite" : "Полная"}
                       </span>
-                      <span className="min-w-0 truncate text-xs text-foreground/60" title={r.file_name}>
-                        {r.file_name || "—"}
+                      <span className={`min-w-0 truncate text-xs ${badName ? "text-amber-400" : "text-foreground/60"}`}
+                        title={badName ? `Клиент скачает файл как «${realName}» — перезалейте установщик, чтобы имя было красивым` : realName}>
+                        {badName && <Icon name="TriangleAlert" size={11} className="mr-1 inline align-[-1px]" />}
+                        {realName || "—"}
                       </span>
                       <span className="text-xs text-foreground/40">{fmtSize(r.file_size)}</span>
                       <span className="flex items-center gap-1 text-xs text-foreground/40">
@@ -596,7 +657,8 @@ export default function StressReleasesTab() {
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               {g.items.find(x => x.changelog)?.changelog && (
