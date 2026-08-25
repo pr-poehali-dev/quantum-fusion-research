@@ -138,6 +138,11 @@ def handler(event: dict, context) -> dict:
             "brand": row[22] if len(row) > 22 else None,
             "sku": row[23] if len(row) > 23 else None,
             "part_number": row[24] if len(row) > 24 else None,
+            # SEO из вкладки «SEO» админки: если пусто — фронт берёт
+            # автоматический заголовок/описание.
+            "slug": row[25] if len(row) > 25 else None,
+            "meta_title": row[26] if len(row) > 26 else None,
+            "meta_description": row[27] if len(row) > 27 else None,
         }
 
     try:
@@ -407,14 +412,21 @@ def handler(event: dict, context) -> dict:
                             COALESCE(wg.warranty_months, p.warranty_months) as warranty_months,
                             p.brand_id, b.name as brand_name,
                             COALESCE(wg.sku, wg2.sku) as sku,
-                            COALESCE(wg.part_number, wg2.part_number) as part_number
+                            COALESCE(wg.part_number, wg2.part_number) as part_number,
+                            p.slug, p.meta_title, p.meta_description
                      FROM products p
                      LEFT JOIN categories c ON p.category_id = c.id
                      LEFT JOIN warehouse_groups wg ON wg.id = p.warehouse_group_id
                      LEFT JOIN warehouse_groups wg2 ON wg2.product_id = p.id
                      LEFT JOIN brands b ON b.id = p.brand_id"""
             if product_id:
-                cur.execute(sel + " WHERE p.id = %s", (product_id,))
+                # Открываем и по номеру (/product/778), и по читаемому адресу
+                # (/product/maxsun-z890). Старые ссылки продолжают работать —
+                # это условие обязательного сохранения уже разосланных ссылок.
+                if str(product_id).isdigit():
+                    cur.execute(sel + " WHERE p.id = %s", (int(product_id),))
+                else:
+                    cur.execute(sel + " WHERE p.slug = %s", (str(product_id),))
                 row = cur.fetchone()
                 if not row:
                     return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}

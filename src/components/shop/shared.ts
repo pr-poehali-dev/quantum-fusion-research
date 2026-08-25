@@ -12,6 +12,10 @@ export interface Product {
   is_used?: boolean
   avg_cost: number
   category: { id: number; name: string; slug: string } | null
+  // SEO-поля из админки (вкладка «SEO»). Пусто — берётся автоматический вариант.
+  slug?: string | null
+  meta_title?: string | null
+  meta_description?: string | null
 }
 
 export interface Category {

@@ -1,0 +1,30 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "List requires admin key",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 403
+    },
+    {
+      "name": "Export requires admin key",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "export_csv"},
+      "expectedStatus": 403
+    },
+    {
+      "name": "Autofill requires admin key",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "autofill"},
+      "expectedStatus": 403
+    }
+  ]
+}

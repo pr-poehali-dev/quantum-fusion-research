@@ -26,6 +26,11 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles, a
     html_attachment: "",
     toc: [] as { title: string; anchor: string }[],
     tier_cards: [] as { title: string; image_url: string; rank: string | null; product_id?: number; anchor?: string }[],
+    // SEO: если пусто — на странице подставится автоматический вариант.
+    meta_title: "", meta_description: "",
+    // Блок «вопрос-ответ» — его цитируют ИИ-поисковики и из него собирается
+    // разметка FAQPage для Google/Яндекса.
+    faq: [] as { q: string; a: string }[],
   })
   const [copiedAnchor, setCopiedAnchor] = useState<string | null>(null)
   const [tierProductSearch, setTierProductSearch] = useState("")  // поиск товара для карточки тир-листа
@@ -104,11 +109,14 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles, a
       html_attachment: articleForm.html_attachment || null,
       toc: articleForm.toc.filter(t => t.title.trim() && t.anchor.trim()),
       tier_cards: articleForm.tier_cards.filter(c => c.title.trim() || c.image_url),
+      meta_title: articleForm.meta_title || null,
+      meta_description: articleForm.meta_description || null,
+      faq: articleForm.faq.filter(f => f.q.trim() && f.a.trim()),
     }
     if (articleForm.id) await api.articles.update(payload)
     else await api.articles.create(payload)
     setAutoEditArticleId?.(null)
-    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] })
+    setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [], meta_title: "", meta_description: "", faq: [] })
     setTab("articles")
   }
 
@@ -120,9 +128,11 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles, a
       image_url: a.image_url || "", image_urls: a.image_urls || (a.image_url ? [a.image_url] : []),
       categories: (a.categories && a.categories.length ? a.categories : [a.category || "article"]),
       is_published: a.is_published, html_attachment: "", toc: [], tier_cards: [],
+      meta_title: a.meta_title || "", meta_description: a.meta_description || "", faq: [],
     })
     api.articles.getById(a.id, true).then(full => {
-      setArticleForm(f => f.id === a.id ? { ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [], categories: (full.categories && full.categories.length ? full.categories : f.categories) } : f)
+      setArticleForm(f => f.id === a.id ? { ...f, content: full.content || "", html_attachment: full.html_attachment || "", image_urls: full.image_urls || f.image_urls || [], toc: full.toc || [], tier_cards: full.tier_cards || [], faq: full.faq || [],
+        meta_title: full.meta_title || f.meta_title, meta_description: full.meta_description || f.meta_description, categories: (full.categories && full.categories.length ? full.categories : f.categories) } : f)
     })
   }
 
@@ -160,7 +170,7 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles, a
     <div>
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Статьи и тесты</h2>
-        <button onClick={() => { setAutoEditArticleId?.(null); setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [] }); setTab("add_article") }}
+        <button onClick={() => { setAutoEditArticleId?.(null); setArticleForm({ id: null, title: "", slug: "", excerpt: "", content: "", image_url: "", image_urls: [], categories: ["article"], is_published: false, html_attachment: "", toc: [], tier_cards: [], meta_title: "", meta_description: "", faq: [] }); setTab("add_article") }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors" style={{ cursor: "pointer" }}>
           <Icon name="Plus" size={15} />Новая статья
         </button>
@@ -510,6 +520,87 @@ export function ArticlesSection({ tab, setTab, loading, articles, setArticles, a
             </details>
           )}
         </div>
+        {/* ── SEO и блок «вопрос-ответ» ── */}
+        <div className="rounded-xl border border-border bg-card/40 p-4">
+          <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <Icon name="Search" size={15} className="text-primary" /> Как статья выглядит в поиске
+          </label>
+          <p className="mt-0.5 mb-3 text-xs text-foreground/50">
+            Оставьте пустым — подставится заголовок статьи и краткое описание.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-xs text-foreground/60">Заголовок в поиске</label>
+                <span className={`text-[10px] ${articleForm.meta_title.length > 60 ? "text-red-400" : "text-foreground/30"}`}>
+                  {articleForm.meta_title.length} / 60
+                </span>
+              </div>
+              <input value={articleForm.meta_title} onChange={e => setArticleForm(f => ({ ...f, meta_title: e.target.value }))}
+                placeholder={articleForm.title || "Заголовок статьи"}
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-xs text-foreground/60">Описание в поиске</label>
+                <span className={`text-[10px] ${articleForm.meta_description.length > 160 ? "text-red-400" : "text-foreground/30"}`}>
+                  {articleForm.meta_description.length} / 160
+                </span>
+              </div>
+              <textarea rows={2} value={articleForm.meta_description}
+                onChange={e => setArticleForm(f => ({ ...f, meta_description: e.target.value }))}
+                placeholder="Коротко и по делу: о чём статья и чем полезна"
+                className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-border pt-3">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Icon name="MessagesSquare" size={15} className="text-primary" /> Вопросы и ответы
+                </label>
+                <p className="mt-0.5 text-xs text-foreground/50">
+                  Короткие вопросы с ответами по теме статьи. Именно их цитируют
+                  нейросети и показывает Google прямо в выдаче.
+                </p>
+              </div>
+              <button type="button"
+                onClick={() => setArticleForm(f => ({ ...f, faq: [...f.faq, { q: "", a: "" }] }))}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                style={{ cursor: "pointer" }}>
+                <Icon name="Plus" size={13} /> Вопрос
+              </button>
+            </div>
+            {articleForm.faq.length === 0 ? (
+              <p className="py-3 text-center text-xs text-foreground/40">Вопросов пока нет</p>
+            ) : (
+              <div className="space-y-2">
+                {articleForm.faq.map((f, i) => (
+                  <div key={i} className="rounded-lg border border-border bg-background/40 p-2">
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <input value={f.q}
+                        onChange={e => setArticleForm(fm => ({ ...fm, faq: fm.faq.map((x, xi) => xi === i ? { ...x, q: e.target.value } : x) }))}
+                        placeholder="Вопрос (напр. «Сколько служит блок питания?»)"
+                        className="flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                      <button type="button"
+                        onClick={() => setArticleForm(fm => ({ ...fm, faq: fm.faq.filter((_, xi) => xi !== i) }))}
+                        className="rounded-lg border border-border px-2 py-1.5 text-foreground/40 hover:border-red-400 hover:text-red-400 transition-colors"
+                        style={{ cursor: "pointer" }}>
+                        <Icon name="Trash2" size={12} />
+                      </button>
+                    </div>
+                    <textarea rows={2} value={f.a}
+                      onChange={e => setArticleForm(fm => ({ ...fm, faq: fm.faq.map((x, xi) => xi === i ? { ...x, a: e.target.value } : x) }))}
+                      placeholder="Ответ: 2-4 предложения, простым языком, без воды"
+                      className="w-full resize-y rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" style={{ cursor: "text" }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex items-center gap-3">
           <input type="checkbox" id="is_published" checked={articleForm.is_published} onChange={e => setArticleForm(f => ({ ...f, is_published: e.target.checked }))} className="h-4 w-4 rounded border-border accent-primary" style={{ cursor: "pointer" }} />
           <label htmlFor="is_published" className="text-sm text-foreground/70" style={{ cursor: "pointer" }}>Опубликовать (показывать на сайте)</label>

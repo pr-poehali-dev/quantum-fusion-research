@@ -254,6 +254,10 @@ def fmt_build(row, tags=None, reserved=False, price_map=None):
         "lock_prices": lock_prices,
         "reserved": bool(reserved),
         "tags": tags or [],
+        # SEO из вкладки «SEO» админки (пусто → фронт берёт автоматический).
+        "slug": row[20] if len(row) > 20 else None,
+        "meta_title": row[21] if len(row) > 21 else None,
+        "meta_description": row[22] if len(row) > 22 else None,
     }
 
 
@@ -339,11 +343,17 @@ def handler(event: dict, context) -> dict:
             base = """SELECT id, name, description, image_urls, components, parts_total,
                              assembly_type, assembly_fee, total_price, status, is_featured,
                              sort_order, created_at, client_token, client_user_id, parent_id, in_stock,
-                             sell_with_vat, short_code, lock_prices
+                             sell_with_vat, short_code, lock_prices,
+                             slug, meta_title, meta_description
                       FROM pc_builds"""
 
             if build_id:
-                cur.execute(base + " WHERE id = %s", (build_id,))
+                # По номеру и по читаемому адресу: старые ссылки продолжают
+                # работать, новые красивые — тоже.
+                if str(build_id).isdigit():
+                    cur.execute(base + " WHERE id = %s", (int(build_id),))
+                else:
+                    cur.execute(base + " WHERE slug = %s", (str(build_id),))
                 row = cur.fetchone()
                 if not row:
                     return resp(404, {"error": "Не найдено"})

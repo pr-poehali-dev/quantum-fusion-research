@@ -14,6 +14,7 @@ const CalendarTab = lazy(() => import("@/components/admin/CalendarTab"))
 const FinanceTab = lazy(() => import("@/components/admin/FinanceTab"))
 const AnalyticsTab = lazy(() => import("@/components/admin/AnalyticsTab"))
 const FaqTab = lazy(() => import("@/components/admin/FaqTab"))
+const SeoTab = lazy(() => import("@/components/admin/SeoTab"))
 const PromoTab = lazy(() => import("@/components/admin/PromoTab"))
 const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
 const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
@@ -198,6 +199,7 @@ export default function Admin() {
   const toolsTabs = [
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
     { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
+    { key: "seo", label: "SEO", icon: "Search" },
   ]
   // Группа 4 — Финансы и настройки
   const financeTabs = [
@@ -392,6 +394,13 @@ export default function Admin() {
         {tab === "company_settings" && (
           <div style={{ padding: "32px 50px 48px" }}>
             <CompanySettings />
+          </div>
+        )}
+
+        {/* SEO — мета-теги товаров, сборок и статей, выгрузка/загрузка CSV */}
+        {tab === "seo" && (
+          <div style={{ padding: "32px 50px 48px" }}>
+            <SeoTab />
           </div>
         )}
 

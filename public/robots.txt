@@ -17,6 +17,29 @@ Disallow: /order-sheet
 User-agent: Bingbot
 Allow: /
 
+# ИИ-поисковики: пускаем осознанно — попадание в их ответы приводит клиентов.
+# Краткая выжимка о сайте и материалы для цитирования лежат в llms.txt.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: YandexAdditional
+Allow: /
+
 User-agent: Twitterbot
 Allow: /
 
@@ -33,3 +56,6 @@ Disallow: /order-sheet
 
 Host: https://begraphics.ru
 Sitemap: https://functions.poehali.dev/9e4806c6-6f0d-4f6a-9874-33291a5d124f
+
+# Выжимка о компании и статьи для ИИ-ассистентов
+LLM-Content: https://functions.poehali.dev/9e4806c6-6f0d-4f6a-9874-33291a5d124f?format=llms

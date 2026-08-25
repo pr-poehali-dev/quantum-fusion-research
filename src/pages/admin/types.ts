@@ -143,6 +143,11 @@ export interface Article {
   html_attachment?: string | null
   toc?: { title: string; anchor: string }[]
   tier_cards?: { title: string; image_url: string; rank: string | null; product_id?: number; anchor?: string }[]
+  // SEO: пусто — на странице подставится автоматический вариант.
+  meta_title?: string | null
+  meta_description?: string | null
+  // Блок «вопрос-ответ» — источник разметки FAQPage для поисковиков и ИИ.
+  faq?: { q: string; a: string }[]
 }
 
 export interface WipBuild {
@@ -180,4 +185,4 @@ export interface WipBuild {
   updated_at?: string
 }
 
-export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "sn_archive" | "compatibility" | "users" | "schedule" | "calendar" | "finance" | "analytics" | "faq" | "promos" | "cables" | "rma" | "quiz_requests" | "price_monitor" | "stress" | "company_settings" | "telegram_bot" | "user_builds"
+export type AdminTab = "orders" | "orders_archive" | "wip_builds" | "wip_archive" | "products" | "add_product" | "builds" | "archive" | "add_build" | "tags" | "articles" | "add_article" | "warehouse" | "sn_archive" | "compatibility" | "users" | "schedule" | "calendar" | "finance" | "analytics" | "faq" | "promos" | "cables" | "rma" | "quiz_requests" | "price_monitor" | "stress" | "company_settings" | "telegram_bot" | "user_builds" | "seo"

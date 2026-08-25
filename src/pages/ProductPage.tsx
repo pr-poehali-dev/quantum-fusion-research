@@ -21,6 +21,10 @@ interface Product {
   is_featured: boolean
   is_used?: boolean
   category: { id: number; name: string; slug: string } | null
+  // SEO-поля из админки (вкладка «SEO»). Пусто — берётся автоматический вариант.
+  slug?: string | null
+  meta_title?: string | null
+  meta_description?: string | null
 }
 
 function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: number; onClose: () => void }) {
@@ -222,11 +226,14 @@ export default function ProductPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Заголовок и описание берём из SEO-центра админки, если там заданы,
+          иначе — разумный автоматический вариант. Адрес в canonical всегда
+          читаемый (slug), чтобы поисковик не считал две ссылки дублями. */}
       <Seo
-        title={product.name}
-        description={(product.description || `${product.name} — купить в BeGraphics. Цена ${fmt(product.price)}.`)}
+        title={product.meta_title || product.name}
+        description={product.meta_description || product.description || `${product.name} — купить в BeGraphics. Цена ${fmt(product.price)}.`}
         image={images[0]}
-        path={`/product/${product.id}`}
+        path={`/product/${product.slug || product.id}`}
         type="product"
         jsonLd={{
           "@context": "https://schema.org",
@@ -240,7 +247,7 @@ export default function ProductPage() {
             price: Math.round(product.price),
             priceCurrency: "RUB",
             availability: product.in_stock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-            url: `${SITE_URL}/product/${product.id}`,
+            url: `${SITE_URL}/product/${product.slug || product.id}`,
           },
         }}
       />

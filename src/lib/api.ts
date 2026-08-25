@@ -28,6 +28,7 @@ const URLS = {
   promos: "https://functions.poehali.dev/b70b011e-6249-4d99-8b90-f0f695e62cae",
   tgBot: "https://functions.poehali.dev/6cf7e69d-a5f1-45db-b94e-43f37dd16961",
   stressReleases: "https://functions.poehali.dev/f575fff5-64cd-4482-b0b8-3d68c05ffdaa",
+  seo: "https://functions.poehali.dev/72702be6-5346-41bf-8f0a-1ff803ff698f",
 }
 
 function authHeaders(session?: string | null) {
@@ -584,5 +585,19 @@ export const api = {
       fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_log_clear" }) }).then(r => r.json()),
     test: (chat_id: string | number, ak: string, thread_id?: string | number) =>
       fetch(URLS.tgBot, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Token": ak }, body: JSON.stringify({ action: "tg_test", chat_id, thread_id }) }).then(r => r.json()),
+  },
+  seo: {
+    list: (ak: string, kind = "all") =>
+      fetch(`${URLS.seo}?action=list&kind=${kind}`, { headers: { "X-Admin-Key": ak } }).then(r => r.json()),
+    save: (data: Record<string, unknown>, ak: string) =>
+      fetch(URLS.seo, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "save", ...data }) }).then(r => r.json()),
+    autofill: (kind: string, ak: string, only_empty = true) =>
+      fetch(URLS.seo, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "autofill", kind, only_empty }) }).then(r => r.json()),
+    exportCsv: (kind: string, ak: string) =>
+      fetch(URLS.seo, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "export_csv", kind }) }).then(r => r.json()),
+    importCsv: (csv: string, ak: string) =>
+      fetch(URLS.seo, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "import_csv", csv }) }).then(r => r.json()),
+    saveFaq: (id: number, faq: { q: string; a: string }[], ak: string) =>
+      fetch(URLS.seo, { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Key": ak }, body: JSON.stringify({ action: "save_faq", id, faq }) }).then(r => r.json()),
   },
 }

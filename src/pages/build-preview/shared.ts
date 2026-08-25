@@ -68,6 +68,10 @@ export interface Build {
   sell_with_vat?: boolean
   lock_prices?: boolean
   tags?: BuildTag[]
+  // SEO-поля из админки (вкладка «SEO»). Пусто — берётся автоматический вариант.
+  slug?: string | null
+  meta_title?: string | null
+  meta_description?: string | null
 }
 
 // Продажа с НДС: +22% и округление вверх до 250 ₽ (единая формула проекта)

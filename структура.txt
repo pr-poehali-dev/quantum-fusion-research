@@ -2315,3 +2315,30 @@ backend/generate-warranty/index.py:
      [:qty_total] чтобы не печатать лишнего.
 Проверено на заказе 803: в талоне 3 строки, оба серийника на своих
 местах, незаполненный — прочерк.
+
+[v8.75] SEO-центр — постоянная работа над поисковой выдачей.
+ЛОГИКА ОДНА, ЖИВЁТ В backend/seo (URL 72702be6-5346-41bf-8f0a-1ff803ff698f):
+  action=list      — сводка по товарам/сборкам/статьям + готовые подсказки
+                     (suggest_title / suggest_description / suggest_slug)
+                     и список проблем (problems) по каждой странице;
+  action=autofill  — массовое заполнение по шаблону. only_empty=True по
+                     умолчанию: РУЧНЫЕ ТЕКСТЫ НЕ ПЕРЕТИРАЮТСЯ;
+  action=export_csv / import_csv — выгрузка и загрузка (разделитель «;» или
+                     «,» определяется автоматически, BOM для Excel);
+  action=save / save_faq — точечная правка и блок «вопрос-ответ».
+  Границы: TITLE_MAX=60, DESC_MIN=70, DESC_MAX=160 (те же в SeoTab.tsx).
+БД (V0256): pc_builds.slug/meta_title/meta_description; articles.faq JSONB.
+  У products и articles SEO-поля были раньше, но НЕ отдавались наружу —
+  теперь отдаются (products/builds/articles index.py).
+ЧИТАЕМЫЕ АДРЕСА: /product/maxsun-z890 и /product/778 работают ОБА —
+  в products/builds/articles условие `if str(id).isdigit()` → по id, иначе
+  по slug. Старые ссылки ломать нельзя. canonical и sitemap отдают slug.
+ИИ-ПОИСК: sitemap?format=llms → llms.txt (описание компании, статьи,
+  блоки «вопрос-ответ» с указанием источника). robots.txt пускает GPTBot,
+  OAI-SearchBot, PerplexityBot, ClaudeBot, Google-Extended, YandexAdditional.
+  Статьи отдают разметку FAQPage (ArticlePage.tsx) — её цитируют ассистенты.
+ФРОНТ: src/components/admin/SeoTab.tsx — вкладка «SEO» (группа toolsTabs):
+  светофор по разделам, фильтр «только требующие внимания», правка с
+  счётчиком символов, кнопки «Промпт для ИИ» (в буфер, с запасным
+  window.prompt если буфер недоступен), «Выгрузить CSV», «Загрузить CSV»,
+  «Заполнить пустые». Редактор «вопрос-ответ» — в форме статьи.

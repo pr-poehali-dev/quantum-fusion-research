@@ -26,6 +26,11 @@ interface Article {
   created_at: string
   toc?: TocItem[]
   tier_cards?: TierCard[]
+  // SEO-поля из админки (вкладка «SEO»).
+  meta_title?: string | null
+  meta_description?: string | null
+  // Блок «вопрос-ответ» — источник разметки FAQPage для поисковиков и ИИ.
+  faq?: { q: string; a: string }[]
 }
 
 interface TocItem { title: string; anchor: string }
@@ -667,11 +672,12 @@ export default function ArticlePage() {
 
   return (
     <>
+      {/* Метки из SEO-центра приоритетнее автоматических. */}
       <Seo
-        title={article.title}
-        description={article.excerpt}
+        title={article.meta_title || article.title}
+        description={article.meta_description || article.excerpt}
         image={images[0]}
-        path={`/articles/${article.id}`}
+        path={`/articles/${article.slug || article.id}`}
         type="article"
         jsonLd={{
           "@context": "https://schema.org",
@@ -682,9 +688,24 @@ export default function ArticlePage() {
           datePublished: article.created_at,
           author: { "@type": "Organization", name: SITE_NAME },
           publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
-          mainEntityOfPage: `${SITE_URL}/articles/${article.id}`,
+          mainEntityOfPage: `${SITE_URL}/articles/${article.slug || article.id}`,
         }}
       />
+      {/* Блок «вопрос-ответ» отдельной разметкой: именно её берут Google,
+          Яндекс и ИИ-ассистенты, когда цитируют статью как источник ответа. */}
+      {(article.faq || []).length > 0 && (
+        <Seo
+          jsonLd={{
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: (article.faq || []).map(f => ({
+              "@type": "Question",
+              name: f.q,
+              acceptedAnswer: { "@type": "Answer", text: f.a },
+            })),
+          }}
+        />
+      )}
       <div className="min-h-screen bg-background text-foreground">
         <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-sm">
           <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
@@ -744,6 +765,25 @@ export default function ArticlePage() {
                       <Icon name="ExternalLink" size={13} />
                       Посмотреть вложение
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Вопросы и ответы: полезны читателю и это же содержимое
+                  цитируют нейросети и Google в блоке быстрых ответов. */}
+              {(article.faq || []).length > 0 && (
+                <div className="mt-12">
+                  <h2 className="mb-4 text-xl font-medium text-foreground">Частые вопросы</h2>
+                  <div className="space-y-2">
+                    {(article.faq || []).map((f, i) => (
+                      <details key={i} className="group rounded-xl border border-border bg-card p-4">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-foreground">
+                          {f.q}
+                          <Icon name="ChevronDown" size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                        </summary>
+                        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                      </details>
+                    ))}
                   </div>
                 </div>
               )}

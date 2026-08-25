@@ -353,11 +353,12 @@ export default function BuildPreview() {
 
   return (
     <div className="relative w-screen overflow-hidden bg-background text-foreground" style={{ height: "100dvh", overscrollBehavior: "none" }}>
+      {/* Метки из SEO-центра приоритетнее автоматических. */}
       <Seo
-        title={build.name}
-        description={`Готовая сборка ПК «${build.name}»: ${components.length} комплектующих, сборка и настройка включены. Итоговая цена ${calcTotalPrice.toLocaleString("ru-RU")} ₽.`}
+        title={build.meta_title || build.name}
+        description={build.meta_description || `Готовая сборка ПК «${build.name}»: ${components.length} комплектующих, сборка и настройка включены. Итоговая цена ${calcTotalPrice.toLocaleString("ru-RU")} ₽.`}
         image={buildImages[0]}
-        path={`/build-preview/${build.id}`}
+        path={`/build-preview/${build.slug || build.id}`}
         type="product"
         noindex={isTokenMode}
         jsonLd={isTokenMode ? undefined : {
@@ -372,7 +373,7 @@ export default function BuildPreview() {
             price: Math.round(calcTotalPrice),
             priceCurrency: "RUB",
             availability: "https://schema.org/InStock",
-            url: `${SITE_URL}/build-preview/${build.id}`,
+            url: `${SITE_URL}/build-preview/${build.slug || build.id}`,
           },
         }}
       />

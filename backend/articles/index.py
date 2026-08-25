@@ -17,6 +17,18 @@ def slugify(text: str) -> str:
     text = re.sub(r'[^a-z0-9]+', '-', text)
     return text.strip('-')
 
+def _clean_faq(raw):
+    """Блок «вопрос-ответ»: пустые пары выбрасываем, чтобы в разметку
+    FAQPage не попал мусор — поисковики за такое понижают страницу."""
+    out = []
+    for it in (raw or []):
+        q = str((it or {}).get("q", "")).strip()
+        a = str((it or {}).get("a", "")).strip()
+        if q and a:
+            out.append({"q": q, "a": a})
+    return out
+
+
 def handler(event: dict, context) -> dict:
     """
     Статьи и тесты.
@@ -60,7 +72,14 @@ def handler(event: dict, context) -> dict:
             "views": row[12] if len(row) > 12 and row[12] is not None else 0,
             "created_at": row[9].isoformat() if row[9] else None,
             "updated_at": None,
+            # SEO из вкладки «SEO» админки (пусто → фронт берёт автоматический).
+            "meta_title": row[16] if len(row) > 16 else None,
+            "meta_description": row[17] if len(row) > 17 else None,
         }
+        # Блок «вопрос-ответ» — из него собирается разметка FAQPage,
+        # которую цитируют поисковики и ИИ-ассистенты.
+        faq_raw = row[18] if len(row) > 18 else None
+        a["faq"] = faq_raw if isinstance(faq_raw, list) else (json.loads(faq_raw) if faq_raw else [])
         if full:
             a["content"] = row[4]
             a["html_attachment"] = row[10] if len(row) > 10 else None
@@ -71,7 +90,8 @@ def handler(event: dict, context) -> dict:
         return a
 
     COLS = ("id, title, slug, excerpt, content, cover_url, category, "
-            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc, tier_cards, categories")
+            "is_published, sort_order, created_at, html_attachment, image_urls, views, toc, tier_cards, categories, "
+            "meta_title, meta_description, faq")
 
     if method == "GET":
         article_id = params.get("id")
@@ -79,12 +99,17 @@ def handler(event: dict, context) -> dict:
             # Считаем просмотр при открытии статьи (если не передан noview=1 —
             # например для предпросмотра в админке).
             if params.get("noview") != "1":
-                cur.execute("UPDATE articles SET views = COALESCE(views, 0) + 1 WHERE id = %s", (article_id,))
+                if str(article_id).isdigit():
+                    cur.execute("UPDATE articles SET views = COALESCE(views, 0) + 1 WHERE id = %s", (int(article_id),))
+                else:
+                    cur.execute("UPDATE articles SET views = COALESCE(views, 0) + 1 WHERE slug = %s", (str(article_id),))
                 conn.commit()
-            cur.execute(
-                f"SELECT {COLS} FROM articles WHERE id = %s",
-                (article_id,)
-            )
+            # Открываем и по номеру, и по читаемому адресу — старые ссылки
+            # обязаны продолжать работать.
+            if str(article_id).isdigit():
+                cur.execute(f"SELECT {COLS} FROM articles WHERE id = %s", (int(article_id),))
+            else:
+                cur.execute(f"SELECT {COLS} FROM articles WHERE slug = %s", (str(article_id),))
             row = cur.fetchone()
             if not row:
                 return {"statusCode": 404, "headers": cors, "body": json.dumps({"error": "Not found"})}
@@ -123,15 +148,18 @@ def handler(event: dict, context) -> dict:
         cats = body.get("categories") or ([body["category"]] if body.get("category") else ["article"])
         main_cat = cats[0] if cats else "article"
         cur.execute(
-            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc, tier_cards, categories)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            """INSERT INTO articles (title, slug, excerpt, content, cover_url, category, is_published, html_attachment, image_urls, toc, tier_cards, categories, meta_title, meta_description, faq)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              cover_url, main_cat,
              body.get("is_published", False),
              body.get("html_attachment") or None,
              image_urls, json.dumps(body.get("toc") or []),
              json.dumps(body.get("tier_cards") or []),
-             json.dumps(cats))
+             json.dumps(cats),
+             body.get("meta_title") or None,
+             body.get("meta_description") or None,
+             json.dumps(_clean_faq(body.get("faq"))))
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -146,14 +174,19 @@ def handler(event: dict, context) -> dict:
         main_cat = cats[0] if cats else "article"
         cur.execute(
             """UPDATE articles SET title=%s, slug=%s, excerpt=%s, content=%s, cover_url=%s,
-               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s, tier_cards=%s, categories=%s WHERE id=%s""",
+               category=%s, is_published=%s, html_attachment=%s, image_urls=%s, toc=%s, tier_cards=%s, categories=%s,
+               meta_title=%s, meta_description=%s, faq=%s WHERE id=%s""",
             (body["title"], slug, body.get("excerpt"), body.get("content", ""),
              cover_url, main_cat,
              body.get("is_published", False),
              body.get("html_attachment") or None,
              image_urls, json.dumps(body.get("toc") or []),
              json.dumps(body.get("tier_cards") or []),
-             json.dumps(cats), body["id"])
+             json.dumps(cats),
+             body.get("meta_title") or None,
+             body.get("meta_description") or None,
+             json.dumps(_clean_faq(body.get("faq"))),
+             body["id"])
         )
         conn.commit()
         return {"statusCode": 200, "headers": cors, "body": json.dumps({"ok": True})}
