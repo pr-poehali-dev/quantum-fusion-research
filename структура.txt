@@ -2337,7 +2337,7 @@ backend/generate-warranty/index.py:
   блоки «вопрос-ответ» с указанием источника). robots.txt пускает GPTBot,
   OAI-SearchBot, PerplexityBot, ClaudeBot, Google-Extended, YandexAdditional.
   Статьи отдают разметку FAQPage (ArticlePage.tsx) — её цитируют ассистенты.
-ФРОНТ: src/components/admin/SeoTab.tsx — вкладка «SEO» (группа toolsTabs):
+ФРОНТ: src/components/admin/SeoTab.tsx — вкладка «SEO» (группа quickTabs = «Сайт»):
   светофор по разделам, фильтр «только требующие внимания», правка с
   счётчиком символов, кнопки «Промпт для ИИ» (в буфер, с запасным
   window.prompt если буфер недоступен), «Выгрузить CSV», «Загрузить CSV»,

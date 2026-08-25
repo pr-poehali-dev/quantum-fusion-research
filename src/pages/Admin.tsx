@@ -199,7 +199,6 @@ export default function Admin() {
   const toolsTabs = [
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
     { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
-    { key: "seo", label: "SEO", icon: "Search" },
   ]
   // Группа 4 — Финансы и настройки
   const financeTabs = [
@@ -216,6 +215,7 @@ export default function Admin() {
     { key: "users", label: "Пользователи", icon: "Users" },
     { key: "user_builds", label: "Сборки клиентов", icon: "Wrench" },
     { key: "articles", label: "Статьи", icon: "BookOpen" },
+    { key: "seo", label: "SEO", icon: "Search" },
   ]
 
   // Группы для мобильного выпадающего меню
