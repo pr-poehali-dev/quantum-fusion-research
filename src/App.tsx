@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { lazy, Suspense, ComponentType } from "react";
 import AdminGuard from "@/components/admin/AdminGuard";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import MetrikaTracker from "@/components/MetrikaTracker";
 import { captureUtm } from "@/lib/utm";
 
 // Обёртка для lazy-импортов: если после нового деплоя браузер держит ссылку
@@ -101,6 +102,7 @@ const App = () => (
           <Sonner />
         </Suspense>
         <BrowserRouter>
+          <MetrikaTracker />
           <ErrorBoundary>
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen">
