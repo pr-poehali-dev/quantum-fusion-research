@@ -526,14 +526,29 @@ def handler(event: dict, context) -> dict:
                     elif slot == "cooling": slot_map["cooling"] = name
                     else: slot_map.setdefault("extra", name)
 
+                # Контакт клиента переносим в сборку сразу: иначе менеджер видит
+                # в карточке пустое «Контакт клиента» и ищет телефон в заказе.
+                # Формат тот же, что при покупке ПК из наличия: «Имя · телефон»
+                _stub = ("", ".", "-", "—")
+                _wip_name = (body.get("customer_name") or customer or "").strip()
+                _wip_phone = (body.get("customer_phone") or "").strip()
+                _wip_mail = (body.get("customer_email") or "").strip()
+                if _wip_phone in _stub:
+                    _wip_phone = ""
+                # Клиенты часто вписывают ник и в имя, и в почту — не дублируем
+                if _wip_mail in _stub or _wip_mail.lower() == _wip_name.lower():
+                    _wip_mail = ""
+                _wip_contact = " · ".join(p for p in (_wip_name, _wip_phone, _wip_mail) if p)[:128] or None
+
                 cur.execute(
                     """INSERT INTO wip_builds (order_number, stage, order_id, build_id, client_token,
+                       contact,
                        cpu, motherboard, ram, gpu, storage, psu, case_name, cooling, extra,
                        cpu_status, motherboard_status, ram_status, gpu_status, storage_status,
                        psu_status, case_status, cooling_status, extra_status, updated_at)
-                       VALUES (%s, 'Согласование', %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,
+                       VALUES (%s, 'Согласование', %s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,
                        'pending','pending','pending','pending','pending','pending','pending','pending','pending', NOW())""",
-                    (f"{order_id:05d}", order_id, build_id, client_token,
+                    (f"{order_id:05d}", order_id, build_id, client_token, _wip_contact,
                      slot_map.get("cpu"), slot_map.get("motherboard"), slot_map.get("ram"),
                      slot_map.get("gpu"), slot_map.get("storage"), slot_map.get("psu"),
                      slot_map.get("case_name"), slot_map.get("cooling"), slot_map.get("extra"))
