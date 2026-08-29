@@ -185,17 +185,18 @@ def nice_file_name(name, version, edition="full"):
     name = (name or "").strip()
     base = name.rsplit("/", 1)[-1]
     ext = ("." + base.rsplit(".", 1)[-1].lower()) if "." in base else ".exe"
+    if ext not in (".exe", ".msi", ".zip"):
+        ext = ".exe"
     suffix = "_Lite" if edition == "lite" else ""
-    # Имя из хранилища берём, только если оно осмысленное. Уже испорченные
-    # «StressTester_Setup_1.2.1.0________.exe» пересобираем из версии заново.
-    if base and not _UUID_NAME.match(base) and "__" not in base:
-        stem = safe_part(base.rsplit(".", 1)[0], "StressTester_Setup")
-        # Lite-сборка ОБЯЗАНА отличаться именем от полной: иначе два разных
-        # файла лягут по одному адресу и перезапишут друг друга.
-        if suffix and not re.search(r"(?i)lite", stem):
-            stem += suffix
-        return stem + ext
-    ver = safe_part(clean_version(version), "latest")
+
+    # Имя собирается ПО ПРАВИЛУ, а не берётся у загруженного файла: иначе
+    # «setup.exe» или имя от прошлой редакции уезжает клиенту как есть, а
+    # переименовать объект в хранилище потом невозможно.
+    ver = safe_part(clean_version(version), "")
+    if not ver:
+        # Версии нет — пробуем достать её из имени файла («…_1.3.2.0.exe»)
+        m = re.search(r"(\d+(?:\.\d+){1,3})", base)
+        ver = m.group(1) if m else "latest"
     return f"StressTester_Setup_{ver}{suffix}{ext}"
 
 
@@ -275,24 +276,59 @@ def ensure_named_key(key, nice_name):
     return new_key
 
 
-# Ограничение хранилища (проверено на боевых файлах):
-#  • copy_object на сотнях мегабайт молча создаёт ПУСТОЙ объект;
-#  • multipart-копирование запрещено (405 Method Not Allowed).
-# Поэтому большие файлы переложить под красивым именем нельзя в принципе —
-# их надо СРАЗУ загружать под правильным именем (см. upload_url, там ключ
-# оканчивается именем файла). Мелкие копируем обычным способом.
+# Ограничение хранилища: обычный copy_object на сотнях мегабайт молча
+# создаёт ПУСТОЙ объект. Большие файлы перекладываем по частям
+# (upload_part_copy) — тогда установщик на 2 ГБ переименовывается на месте
+# и перезаливать его вручную не нужно.
 _COPY_SIZE_LIMIT = 64 * 1024 * 1024
+_PART_SIZE = 64 * 1024 * 1024
 
 
 def _copy_object(src_key, dst_key, size):
-    if size > _COPY_SIZE_LIMIT:
-        raise RuntimeError(
-            "файл слишком большой для переименования в хранилище — "
-            "загрузите его через «Загрузить файл» в админке")
-    s3().copy_object(Bucket="files", Key=dst_key,
-                     CopySource={"Bucket": "files", "Key": src_key},
-                     ContentType="application/octet-stream",
-                     MetadataDirective="REPLACE")
+    if size <= _COPY_SIZE_LIMIT:
+        s3().copy_object(Bucket="files", Key=dst_key,
+                         CopySource={"Bucket": "files", "Key": src_key},
+                         ContentType="application/octet-stream",
+                         MetadataDirective="REPLACE")
+        return
+    _copy_object_multipart(src_key, dst_key, size)
+
+
+def _copy_object_multipart(src_key, dst_key, size):
+    """Копирование крупного файла по частям, без скачивания к себе.
+
+    Части копируются внутри хранилища (upload_part_copy), поэтому объём
+    трафика функции нулевой и укладываемся в таймаут даже на 2 ГБ.
+    """
+    cli = s3()
+    up = cli.create_multipart_upload(
+        Bucket="files", Key=dst_key, ContentType="application/octet-stream")
+    upload_id = up["UploadId"]
+    try:
+        parts = []
+        pos = 0
+        num = 1
+        while pos < size:
+            end = min(pos + _PART_SIZE, size) - 1
+            r = cli.upload_part_copy(
+                Bucket="files", Key=dst_key, UploadId=upload_id, PartNumber=num,
+                CopySource={"Bucket": "files", "Key": src_key},
+                CopySourceRange=f"bytes={pos}-{end}",
+            )
+            parts.append({"ETag": r["CopyPartResult"]["ETag"], "PartNumber": num})
+            pos = end + 1
+            num += 1
+        cli.complete_multipart_upload(
+            Bucket="files", Key=dst_key, UploadId=upload_id,
+            MultipartUpload={"Parts": parts})
+        print(f"[RELEASES] {src_key} -> {dst_key}: скопировано частями ({num - 1} шт.)")
+    except Exception:
+        # Незавершённая многочастная загрузка занимает место — убираем.
+        try:
+            cli.abort_multipart_upload(Bucket="files", Key=dst_key, UploadId=upload_id)
+        except Exception:
+            pass
+        raise
 
 
 def cdn_url(key):
@@ -445,6 +481,8 @@ def handler(event: dict, context) -> dict:
         if action == "selftest_storage":
             key_a = "__selftest__/probe.bin"
             key_b = "__selftest__/Nice_Name.exe"
+            key_c = "__selftest__/probe_big.bin"
+            key_d = "__selftest__/Nice_Name_Big.exe"
             out = {"ok": False}
             try:
                 cli = s3()
@@ -460,10 +498,52 @@ def handler(event: dict, context) -> dict:
                 head = cli.head_object(Bucket="files", Key=key_b)
                 out = {"ok": True, "copy": True,
                        "disposition": head.get("ContentDisposition") or ""}
+
+                # Сохраняется ли имя файла В САМОМ объекте при загрузке:
+                # если да — переименование не требуется вовсе, имя приедет
+                # вместе с файлом и перезаливать ничего не придётся.
+                cli.put_object(Bucket="files", Key=key_c, Body=b"probe2",
+                               ContentType="application/octet-stream",
+                               ContentDisposition='attachment; filename="Nice_On_Put.exe"')
+                h2 = cli.head_object(Bucket="files", Key=key_c)
+                out["disposition_on_put"] = h2.get("ContentDisposition") or ""
+
+                # Копирование ЧАСТЯМИ — для больших установщиков
+                try:
+                    big = b"x" * (6 * 1024 * 1024)
+                    cli.put_object(Bucket="files", Key=key_d + ".src", Body=big,
+                                   ContentType="application/octet-stream")
+                    _copy_object_multipart(key_d + ".src", key_d, len(big))
+                    got = int(cli.head_object(Bucket="files", Key=key_d)["ContentLength"])
+                    out["multipart_copy"] = (got == len(big))
+                except Exception as e2:
+                    out["multipart_copy"] = False
+                    out["multipart_error"] = str(e2)[:160]
+
+                # Обычное копирование НАСТОЯЩЕГО большого файла: если оно
+                # работает, старые релизы переименуются без перезаливки.
+                probe_src = (body.get("probe_key") or "").strip()
+                if probe_src:
+                    dst = "__selftest__/BigCopyProbe.exe"
+                    try:
+                        src_sz = int(cli.head_object(Bucket="files", Key=probe_src)["ContentLength"])
+                        cli.copy_object(Bucket="files", Key=dst,
+                                        CopySource={"Bucket": "files", "Key": probe_src},
+                                        ContentType="application/octet-stream",
+                                        MetadataDirective="REPLACE")
+                        dst_sz = int(cli.head_object(Bucket="files", Key=dst)["ContentLength"])
+                        out["big_copy"] = {"src": src_sz, "dst": dst_sz, "ok": src_sz == dst_sz}
+                    except Exception as e3:
+                        out["big_copy"] = {"error": str(e3)[:200]}
+                    finally:
+                        try:
+                            cli.delete_object(Bucket="files", Key=dst)
+                        except Exception:
+                            pass
             except Exception as e:
                 out = {"ok": True, "copy": False, "error": str(e)[:300]}
             finally:
-                for k in (key_a, key_b):
+                for k in (key_a, key_b, key_c, key_d, key_d + ".src"):
                     try:
                         s3().delete_object(Bucket="files", Key=k)
                     except Exception:
@@ -478,6 +558,16 @@ def handler(event: dict, context) -> dict:
         if action == "upload_url":
             ensure_cors()
             name = (body.get("file_name") or "stress-tester.exe").strip()
+
+            # Имя собираем ЗДЕСЬ, а не доверяем тому, что прислал браузер:
+            # переименовать файл в хранилище потом невозможно (большие копии
+            # выходят пустыми), поэтому промахнуться с именем нельзя.
+            ver = clean_version(body.get("version") or name)
+            edition = (body.get("edition") or "").strip().lower()
+            if edition not in ("full", "lite"):
+                edition = detect_edition(body.get("edition"), name, body.get("version"))
+            name = nice_file_name(name, ver, edition)
+
             # Оставляем только безопасные символы, иначе ключ объекта может сломаться.
             safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:120] or "app.exe"
             # Имя файла браузер берёт из конца адреса, поэтому уникальный
@@ -489,7 +579,10 @@ def handler(event: dict, context) -> dict:
                         "ContentType": "application/octet-stream"},
                 ExpiresIn=6 * 60 * 60,  # 6 часов: 5 ГБ на медленном канале грузятся долго
             )
-            return resp(200, {"upload_url": url, "s3_key": key, "file_url": cdn_url(key)})
+            # file_name возвращаем: браузер покажет менеджеру итоговое имя,
+            # под которым установщик скачается у клиента.
+            return resp(200, {"upload_url": url, "s3_key": key,
+                              "file_url": cdn_url(key), "file_name": name})
 
         # Разовая починка: перекладывает файлы версий под понятные имена,
         # если они лежат в хранилище под техническим идентификатором.
@@ -529,8 +622,20 @@ def handler(event: dict, context) -> dict:
                     # Запись смотрит в пустоту — ищем настоящий файл по размеру.
                     cand = by_size.get(int(fsize or 0), "")
                     if cand:
+                        key = cand
                         sets2.append(f"s3_key = {esc(cand)}")
                         sets2.append(f"file_url = {esc(cdn_url(cand))}")
+
+                # Файл лежит под техническим именем — перекладываем его под
+                # понятным. Крупные копируются частями, поэтому перезаливать
+                # установщик вручную больше не нужно.
+                if key and key.rsplit("/", 1)[-1] != nice:
+                    named = ensure_named_key(key, nice)
+                    if named and named != key:
+                        sets2 = [s for s in sets2 if not s.startswith(("s3_key", "file_url"))]
+                        sets2.append(f"s3_key = {esc(named)}")
+                        sets2.append(f"file_url = {esc(cdn_url(named))}")
+
                 if sets2:
                     cur.execute(f"UPDATE {TABLE} SET {', '.join(sets2)} "
                                 f"WHERE id = {int(rid)}")

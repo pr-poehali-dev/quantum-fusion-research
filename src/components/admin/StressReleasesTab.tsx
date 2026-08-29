@@ -130,14 +130,15 @@ export default function StressReleasesTab() {
     const ak = getAdminKey()
     if (!ak) { setError("Нет доступа администратора"); return }
     setError("")
-    // Имя формируем из номера версии — как оно и сохранится у клиента.
+    // Итоговое имя собирает бэкенд — он же владеет правилами именования.
+    // Переименовать файл в хранилище потом невозможно, поэтому имя должно
+    // быть правильным сразу при загрузке.
     const ver = cleanVersion(version) || (file.name.match(/(\d+(?:\.\d+){1,3})/)?.[1] ?? "")
     const lite = /lite/i.test(file.name) || /lite/i.test(version)
-    const ext = file.name.includes(".") ? "." + file.name.split(".").pop()!.toLowerCase() : ".exe"
-    const wanted = ver ? `StressTester_Setup_${ver}${lite ? "_Lite" : ""}${ext}` : file.name
 
-    const r = await api.stressReleases.getUploadUrl(wanted, ak).catch(() => null)
+    const r = await api.stressReleases.getUploadUrl(file.name, ak, ver, lite ? "lite" : "full").catch(() => null)
     if (!r?.upload_url) { setError("Не удалось начать загрузку"); return }
+    const wanted = r.file_name || file.name
 
     setUploadPct(0)
     let ok = true
