@@ -145,9 +145,9 @@ export default function HomeStonks() {
 
   const Banner = ({ img, title, to, imgPos, priority }: { img: { src: string; srcSet: string }; title: string; to: string; imgPos?: string; priority?: boolean }) => (
     <button onClick={() => navigate(to)} style={{ cursor: "pointer" }}
-      className="group relative h-[280px] overflow-hidden rounded-2xl border border-border sm:h-48">
+      className="group relative h-[180px] overflow-hidden rounded-2xl border border-border sm:h-48">
       <img src={img.src} srcSet={img.srcSet} sizes="(max-width: 640px) 100vw, 33vw"
-        alt={title} style={{ objectPosition: imgPos }} width={768} height={280}
+        alt={title} style={{ objectPosition: imgPos }} width={768} height={180}
         loading={priority ? "eager" : "lazy"}
         // @ts-expect-error fetchpriority — валидный HTML-атрибут, ускоряет загрузку LCP-картинки
         fetchpriority={priority ? "high" : "low"}
