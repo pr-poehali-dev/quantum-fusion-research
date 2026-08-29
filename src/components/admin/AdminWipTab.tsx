@@ -873,6 +873,21 @@ export function AdminWipTab({
                     В свободную продажу
                     <span className="ml-auto text-xs text-foreground/40">публикует в «Наши ПК» с тегом «в наличии»</span>
                   </label>
+                  {/* Что мешает публикации — видно сразу, а не после того,
+                      как менеджер не найдёт сборку на сайте. */}
+                  {wipForm.for_sale && !wipForm.card_ready && (
+                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+                      <Icon name="TriangleAlert" size={14} className="mt-0.5 shrink-0" />
+                      <span>
+                        На сайт пока не выйдет: {[
+                          !wipForm.build_id && "не создана карточка в каталоге",
+                          wipForm.build_id && !wipForm.build_has_photo && "нет фотографий",
+                          wipForm.build_id && !wipForm.build_has_name && "служебное название вместо понятного",
+                        ].filter(Boolean).join(", ")}.
+                        {" "}Заполните карточку — сборка опубликуется сама.
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="mb-1 block text-xs text-foreground/50">
@@ -1064,9 +1079,23 @@ export function AdminWipTab({
                         <span className="font-mono font-semibold text-foreground text-xs">#{w.order_number}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${WIP_STAGE_COLORS[w.stage] || "bg-muted text-foreground/50"}`}>{stageLabel(w)}</span>
                         {w.for_sale && (
-                          <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold text-green-400" title="Сборка в свободной продаже на сайте">
-                            <Icon name="Tag" size={9} />В продаже
-                          </span>
+                          w.card_ready ? (
+                            <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold text-green-400" title="Сборка в свободной продаже на сайте">
+                              <Icon name="Tag" size={9} />В продаже
+                            </span>
+                          ) : (
+                            // Пока карточка не оформлена, на сайт она не выйдет:
+                            // покупателю нужны фото и понятное название.
+                            <span
+                              className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-400"
+                              title={`Не попадёт на сайт: ${[
+                                !w.build_id && "карточка в каталоге не создана",
+                                w.build_id && !w.build_has_photo && "нет фото",
+                                w.build_id && !w.build_has_name && "служебное название",
+                              ].filter(Boolean).join(", ")}. Заполните карточку в «Наши ПК».`}>
+                              <Icon name="TriangleAlert" size={9} />Заполнить карточку
+                            </span>
+                          )
                         )}
                       </div>
                       <div

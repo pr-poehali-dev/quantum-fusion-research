@@ -98,6 +98,41 @@ def _auto_stage_wip(cur, wip_id):
     return new_stage
 
 
+def _has_photo(images):
+    """Есть ли у карточки хотя бы одно фото. image_urls приходит из БД как
+    список, JSON-строка или NULL — приводим всё к одному виду."""
+    if not images:
+        return False
+    if isinstance(images, str):
+        try:
+            images = json.loads(images)
+        except (ValueError, TypeError):
+            return bool(images.strip())
+    if isinstance(images, list):
+        return any(str(u).strip() for u in images)
+    return False
+
+
+def _is_real_name(name, order_number):
+    """Название «для людей» или служебная заглушка.
+
+    from_wip создаёт карточку как «Сборка {номер}», а из заказа приходит
+    «Заказ 00806» — такое имя в каталоге показывать нельзя: покупателю оно
+    ничего не говорит. Значит, менеджер ещё не переименовал карточку.
+    """
+    n = (name or "").strip()
+    if not n:
+        return False
+    low = n.lower()
+    if low.startswith("сборка") or low.startswith("заказ"):
+        return False
+    # Имя = просто номер заказа («00806», «PC00021») — тоже заглушка
+    num = (order_number or "").strip().lower()
+    if num and low == num:
+        return False
+    return True
+
+
 def fmt_row(row):
     keys = [
         "id", "order_number", "stage", "contact", "delivery_type", "delivery_address",
@@ -111,6 +146,7 @@ def fmt_row(row):
         "prepayment_percent", "prepayment_amount", "prepayment_confirmed",
         "assembled_by", "assembler_name", "for_sale",
         "source_id", "source_name",
+        "build_name", "build_images", "build_status",
     ]
     d = dict(zip(keys, row))
     for k in ["received_at", "issued_at"]:
@@ -128,6 +164,15 @@ def fmt_row(row):
         prepay = float(d["prepayment_amount"])
     else:
         prepay = round(total * pct / 100, 2)
+    # ── Готовность карточки к публикации на сайте ────────────────────────
+    # Сборку «в свободную продажу» показываем в каталоге, только когда её
+    # карточка оформлена: есть фото и человеческое название. Иначе покупатель
+    # видел бы серый квадрат с надписью «Заказ 00806».
+    d["build_has_photo"] = _has_photo(d.get("build_images"))
+    d["build_has_name"] = _is_real_name(d.get("build_name"), d.get("order_number"))
+    d["card_ready"] = bool(d.get("build_id")) and d["build_has_photo"] and d["build_has_name"]
+    d.pop("build_images", None)
+
     confirmed = bool(d.get("prepayment_confirmed"))
     d["prepayment_percent"] = pct
     d["prepayment_amount"] = prepay
@@ -201,7 +246,9 @@ def handler(event: dict, context) -> dict:
                        pb.components as build_components,
                        o.prepayment_percent, o.prepayment_amount, o.prepayment_confirmed,
                        w.assembled_by, emp.name as assembler_name, w.for_sale,
-                       o.source_id, ms.name as source_name
+                       o.source_id, ms.name as source_name,
+                       pb.name as build_name, pb.image_urls as build_images,
+                       pb.status as build_status
                 FROM wip_builds w
                 LEFT JOIN orders o ON w.order_id = o.id
                 LEFT JOIN pc_builds pb ON pb.id = w.build_id
@@ -578,12 +625,19 @@ def handler(event: dict, context) -> dict:
 
             # Синхронизация «свободной продажи» со сборкой в каталоге «Наши ПК»
             cur.execute(
-                f"SELECT build_id, for_sale, stage FROM {SCHEMA}.wip_builds WHERE id=%s",
+                f"SELECT w.build_id, w.for_sale, w.stage, w.order_number, "
+                f"pb.name, pb.image_urls "
+                f"FROM {SCHEMA}.wip_builds w "
+                f"LEFT JOIN {SCHEMA}.pc_builds pb ON pb.id = w.build_id "
+                f"WHERE w.id=%s",
                 (body["id"],)
             )
             row = cur.fetchone()
             if row and row[0]:
-                bid, fs, st = row
+                bid, fs, st, onum, bname, bimgs = row
+                # Карточка «оформлена» = есть фото и нормальное название.
+                # Без этого в каталоге висит серый квадрат «Заказ 00806».
+                card_ready = _has_photo(bimgs) and _is_real_name(bname, onum)
                 if st == "Забрали":
                     # Комп выдан → снимаем с продажи и архивируем карточку
                     cur.execute(
@@ -596,7 +650,9 @@ def handler(event: dict, context) -> dict:
                     # «в наличии» ТОЛЬКО когда комп реально готов к выдаче —
                     # раньше он висел в каталоге уже с этапа «Заказ», хотя железо
                     # ещё даже не собрано. До готовности держим карточку в черновике.
-                    if st in READY_TO_SELL_STAGES:
+                    # Второе условие — карточка оформлена (фото + название):
+                    # иначе покупатель видит пустой квадрат со служебным номером.
+                    if st in READY_TO_SELL_STAGES and card_ready:
                         cur.execute(
                             f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
                             (bid,)
@@ -832,11 +888,18 @@ def handler(event: dict, context) -> dict:
                     # доходит до готовности к выдаче, и уходит обратно в черновик,
                     # если этап откатили назад (например, «Досборать»).
                     cur.execute(
-                        f"SELECT for_sale FROM {SCHEMA}.wip_builds WHERE id=%s", (wip_id,)
+                        f"SELECT w.for_sale, w.order_number, pb.name, pb.image_urls "
+                        f"FROM {SCHEMA}.wip_builds w "
+                        f"LEFT JOIN {SCHEMA}.pc_builds pb ON pb.id = w.build_id "
+                        f"WHERE w.id=%s", (wip_id,)
                     )
                     fs_row = cur.fetchone()
                     if fs_row and fs_row[0]:
-                        if new_stage in READY_TO_SELL_STAGES:
+                        # Публикуем только оформленную карточку: с фото и
+                        # нормальным названием. «Заказ 00806» без фото —
+                        # это пустой серый квадрат в каталоге.
+                        card_ready = _has_photo(fs_row[3]) and _is_real_name(fs_row[2], fs_row[1])
+                        if new_stage in READY_TO_SELL_STAGES and card_ready:
                             cur.execute(
                                 "UPDATE pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
                                 (wip_build_id,)

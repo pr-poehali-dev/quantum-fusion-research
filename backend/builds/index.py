@@ -156,6 +156,58 @@ def _rebuild_orders_from_build(cur, build_id, components, assembly_fee):
         )
 
 
+# Этапы WIP, на которых комп реально готов к выдаче (дубль списка из
+# wip-builds: функции разные, а правило публикации одно).
+READY_TO_SELL_STAGES = {
+    "Проверка перед выдачей", "Ожидание упаковки",
+    "Готов, можно забрать", "Отнести в сдэк",
+}
+
+
+def _publish_if_card_ready(cur, build_id):
+    """Дооформили карточку (добавили фото и название) — публикуем на сайте.
+
+    Сборка «в свободную продажу» ждёт в черновиках, пока карточка не готова.
+    Менеджер обычно доводит её уже после того, как комп собран, поэтому
+    проверку делаем здесь: иначе карточка так и осталась бы в черновике до
+    следующей смены этапа.
+    """
+    if not build_id:
+        return
+    cur.execute(
+        f"SELECT w.id, w.for_sale, w.stage, w.order_number, pb.name, pb.image_urls, pb.status "
+        f"FROM {SCHEMA}.pc_builds pb "
+        f"JOIN {SCHEMA}.wip_builds w ON w.build_id = pb.id "
+        f"WHERE pb.id = %s", (build_id,)
+    )
+    row = cur.fetchone()
+    if not row:
+        return
+    _, for_sale, stage, onum, name, images, status = row
+    if not for_sale or stage not in READY_TO_SELL_STAGES:
+        return
+    # Клиентские карточки не трогаем — они не для витрины
+    if status not in ("draft", "catalog"):
+        return
+
+    имя_ок = bool((name or "").strip()) and not (name or "").strip().lower().startswith(("сборка", "заказ"))
+    if имя_ок and (onum or "").strip().lower() == (name or "").strip().lower():
+        имя_ок = False
+    фото = images
+    if isinstance(фото, str):
+        try:
+            фото = json.loads(фото)
+        except (ValueError, TypeError):
+            фото = [фото] if фото.strip() else []
+    фото_ок = isinstance(фото, list) and any(str(u).strip() for u in фото)
+
+    if имя_ок and фото_ок:
+        cur.execute(
+            f"UPDATE {SCHEMA}.pc_builds SET status='catalog', in_stock=TRUE WHERE id=%s",
+            (build_id,)
+        )
+
+
 def _sync_wip_from_build(cur, build_id, components):
     """Если к pc_build привязана WIP-сборка — переносим названия комплектующих
     из components в текстовые поля WIP (cpu/gpu/ram/...), чтобы железо
@@ -570,6 +622,7 @@ def handler(event: dict, context) -> dict:
             _sync_wip_from_build(cur, body["id"], body.get("components", []))
             _rebuild_orders_from_build(cur, body["id"], body.get("components", []),
                                        body.get("assembly_fee", 0))
+            _publish_if_card_ready(cur, body["id"])
             conn.commit()
             return resp(200, {"ok": True})
 

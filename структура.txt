@@ -2399,3 +2399,20 @@ backend/generate-contract/index.py, build_contract() ~249:
    Backend в live_runs отдаёт current_test_name одинаково админу и партнёру.
 3) backend/generate-contract/index.py, days_ru() ~98: склонение «день/дня/дней»
    (было всегда «дней» → «21 дней»). Используется в «Срок поставки».
+
+[v8.83] Свободная продажа выходит на сайт только с оформленной карточкой.
+Правило публикации: for_sale=TRUE И этап в READY_TO_SELL_STAGES И card_ready.
+card_ready = есть фото + название «для людей» (не «Заказ …» / «Сборка …»
+  и не равно order_number). Раньше хватало первых двух условий, и в каталог
+  падал серый квадрат «Заказ 00806» без фото.
+backend/wip-builds/index.py:
+  _has_photo() / _is_real_name() ~101 — общие проверки;
+  fmt_row() отдаёт card_ready, build_has_photo, build_has_name, build_name,
+  build_status (SELECT дополнен pb.name, pb.image_urls, pb.status);
+  ДВА места публикации, правило нужно в обоих: PUT ~626 и смена этапа ~890.
+backend/builds/index.py: _publish_if_card_ready() ~159 — карточку дооформляют
+  ПОЗЖЕ (комп уже готов), поэтому публикуем и при PUT сборки, иначе она ждала
+  бы следующей смены этапа. Клиентские (status='client') не трогаем.
+src/components/admin/AdminWipTab.tsx: янтарная плашка «Заполнить карточку» в
+  шапке колонки ~1066 и подробное предупреждение в форме ~876.
+db_migrations/V0257 — снял с витрины уже опубликованные пустые карточки.

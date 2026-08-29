@@ -181,6 +181,12 @@ export interface WipBuild {
   for_sale?: boolean
   source_id?: number | null
   source_name?: string | null
+  // Готовность карточки к публикации на сайте (считает бэкенд)
+  card_ready?: boolean
+  build_has_photo?: boolean
+  build_has_name?: boolean
+  build_name?: string | null
+  build_status?: string | null
   created_at?: string
   updated_at?: string
 }
