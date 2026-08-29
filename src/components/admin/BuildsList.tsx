@@ -1,6 +1,15 @@
+import { useState } from "react"
 import Icon from "@/components/ui/icon"
 import { PCBuild } from "@/pages/admin/types"
 import { BUILD_STATUS } from "@/pages/admin/constants"
+
+// Где сборка размещена — тем же языком, что и статус в карточке
+const PLACEMENT_FILTERS: { key: string; label: string; icon?: string; hint: string }[] = [
+  { key: "all", label: "Все", hint: "Показать все сборки" },
+  { key: "catalog", label: "На сайте", icon: "Globe", hint: "Опубликованы в каталоге — их видят покупатели" },
+  { key: "client", label: "Для клиента", icon: "UserRound", hint: "Персональные сборки: доступны только по ссылке" },
+  { key: "draft", label: "Черновик", icon: "FileText", hint: "Не опубликованы: видны только в админке" },
+]
 
 // Продажа с НДС: +22% и округление вверх до 250 ₽ (единая формула проекта)
 const withVat = (base: number, vat?: boolean) => vat ? Math.ceil(base * 1.22 / 250) * 250 : base
@@ -114,9 +123,20 @@ export function BuildsList({ builds, loading, expandedVariants, setExpandedVaria
   isArchive: boolean
   onToggleArchive?: () => void
 }) {
+  // Фильтр по размещению. Вариации не фильтруем отдельно: они живут внутри
+  // своей главной сборки, иначе группа развалилась бы на осколки.
+  const [placement, setPlacement] = useState<string>("all")
+  const shown = placement === "all" ? builds : builds.filter(b => b.parent_id || b.status === placement)
+
+  const counts: Record<string, number> = { all: builds.filter(b => !b.parent_id).length }
+  for (const b of builds) {
+    if (b.parent_id) continue
+    counts[b.status] = (counts[b.status] || 0) + 1
+  }
+
   const variantMap = new Map<number, PCBuild[]>()
   const roots: PCBuild[] = []
-  for (const b of builds) {
+  for (const b of shown) {
     if (b.parent_id) {
       if (!variantMap.has(b.parent_id)) variantMap.set(b.parent_id, [])
       variantMap.get(b.parent_id)!.push(b)
@@ -136,7 +156,7 @@ export function BuildsList({ builds, loading, expandedVariants, setExpandedVaria
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-light text-foreground">
-          {isArchive ? "Архив ПК" : "Наши ПК"} <span className="text-sm text-foreground/40 ml-1">({builds.length})</span>
+          {isArchive ? "Архив ПК" : "Наши ПК"} <span className="text-sm text-foreground/40 ml-1">({groups.length})</span>
         </h2>
         <div className="flex items-center gap-2">
           {onToggleArchive && (
@@ -153,10 +173,42 @@ export function BuildsList({ builds, loading, expandedVariants, setExpandedVaria
           )}
         </div>
       </div>
+
+      {/* Фильтр по размещению: где сборка видна покупателю */}
+      {!isArchive && (
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {PLACEMENT_FILTERS.map(f => {
+            const active = placement === f.key
+            const n = counts[f.key] || 0
+            return (
+              <button key={f.key} onClick={() => setPlacement(f.key)}
+                title={f.hint}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  active ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-foreground/60 hover:border-primary/50 hover:text-foreground"}`}
+                style={{ cursor: "pointer" }}>
+                {f.icon && <Icon name={f.icon} size={13} />}
+                {f.label}
+                <span className={active ? "text-primary/70" : "text-foreground/35"}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
       {loading
         ? <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-card animate-pulse" />)}</div>
         : groups.length === 0
-          ? <div className="py-16 text-center text-foreground/40"><Icon name="Monitor" size={40} className="mx-auto mb-3 opacity-30" /><p>{isArchive ? "Архив пуст" : "Сборок нет."}</p></div>
+          ? <div className="py-16 text-center text-foreground/40">
+              <Icon name="Monitor" size={40} className="mx-auto mb-3 opacity-30" />
+              <p>{isArchive ? "Архив пуст"
+                : placement !== "all" ? `В разделе «${PLACEMENT_FILTERS.find(f => f.key === placement)?.label}» сборок нет.`
+                : "Сборок нет."}</p>
+              {!isArchive && placement !== "all" && (
+                <button onClick={() => setPlacement("all")} className="mt-3 text-sm text-primary hover:underline" style={{ cursor: "pointer" }}>
+                  Показать все
+                </button>
+              )}
+            </div>
           : <div className="space-y-2">
             {groups.map(({ main, variants }) => {
               const isOpen = expandedVariants === main.id
