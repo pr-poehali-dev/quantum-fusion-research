@@ -164,6 +164,69 @@ READY_TO_SELL_STAGES = {
 }
 
 
+def _resolve_build_link(cur, base, link):
+    """Находит сборку по ссылке для клиента.
+
+    Менеджер копирует ссылку кнопкой «Ссылка» и вставляет в заказ. Она может
+    быть любого вида, поэтому пробуем все известные формы по очереди:
+      https://сайт/b/aB3xY9      — короткий код
+      https://сайт/build?token=… — токен клиента
+      https://сайт/build/крутой-пк — читаемый адрес (slug)
+      https://сайт/builds/42 или просто 42 — номер сборки
+    Возвращает строку БД или None.
+    """
+    s = (link or "").strip()
+    if not s:
+        return None
+
+    # Токен может лежать в query-параметре
+    token = None
+    if "token=" in s:
+        token = s.split("token=", 1)[1].split("&")[0].split("#")[0].strip()
+
+    # Отрезаем протокол/домен и хвосты, оставляя путь
+    path = s
+    if "://" in path:
+        path = path.split("://", 1)[1]
+        path = path.split("/", 1)[1] if "/" in path else ""
+    path = path.split("?")[0].split("#")[0].strip("/")
+    parts = [p for p in path.split("/") if p]
+    last = parts[-1] if parts else ""
+
+    # 1. Короткий код: /b/<code>
+    if "b" in parts[:-1] or (len(parts) >= 2 and parts[-2] == "b"):
+        cur.execute(base + " WHERE short_code = %s", (last,))
+        row = cur.fetchone()
+        if row:
+            return row
+
+    # 2. Токен клиента
+    if token:
+        cur.execute(base + " WHERE client_token = %s", (token,))
+        row = cur.fetchone()
+        if row:
+            return row
+
+    if not last:
+        return None
+
+    # 3. Номер сборки
+    if last.isdigit():
+        cur.execute(base + " WHERE id = %s", (int(last),))
+        row = cur.fetchone()
+        if row:
+            return row
+
+    # 4. Читаемый адрес, короткий код или токен «голым» текстом
+    for field in ("slug", "short_code", "client_token"):
+        cur.execute(base + f" WHERE {field} = %s", (last,))
+        row = cur.fetchone()
+        if row:
+            return row
+
+    return None
+
+
 def _publish_if_card_ready(cur, build_id):
     """Дооформили карточку (добавили фото и название) — публикуем на сайте.
 
@@ -433,6 +496,18 @@ def handler(event: dict, context) -> dict:
                 reserved_ids = get_reserved_build_ids(cur, [row[0]])
                 price_map = _get_price_map(cur, [row])
                 return resp(200, fmt_build(row, tags_map.get(row[0], []), row[0] in reserved_ids, price_map))
+
+            # Поиск сборки по ссылке, которую менеджер скопировал для клиента.
+            # Формат ссылки не важен: /b/<код>, ?token=<токен>, /build/<slug>
+            # или просто номер — разбираем всё, что удалось вытащить.
+            link = params.get("resolve_link")
+            if link:
+                found = _resolve_build_link(cur, base, link)
+                if not found:
+                    return resp(404, {"error": "Сборка по ссылке не найдена"})
+                tags_map = get_tags_for_builds(cur, [found[0]])
+                price_map = _get_price_map(cur, [found])
+                return resp(200, fmt_build(found, tags_map.get(found[0], []), False, price_map))
 
             if client_token:
                 cur.execute(base + " WHERE client_token = %s", (client_token,))

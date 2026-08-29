@@ -181,6 +181,8 @@ export const api = {
     },
     getByClientToken: (token: string) => fetch(`${URLS.builds}?client_token=${token}`).then(r => r.json()),
     getByShortCode: (code: string) => fetch(`${URLS.builds}?short_code=${encodeURIComponent(code)}`).then(r => r.json()),
+    // Найти сборку по ссылке, которую менеджер отправлял клиенту
+    resolveLink: (link: string) => fetch(`${URLS.builds}?resolve_link=${encodeURIComponent(link)}`).then(r => r.json()),
     getVariants: (parentId: number) => fetch(`${URLS.builds}?parent_id=${parentId}`).then(r => r.json()),
     getByUserId: (userId: number) => fetch(`${URLS.builds}?user_id=${userId}`).then(r => r.json()),
     getById: (id: number, adminKey?: string | null) => fetch(`${URLS.builds}?id=${id}`, { headers: adminKey ? { "X-Admin-Token": adminKey } : {} }).then(r => r.json()),

@@ -97,6 +97,71 @@ export function AdminWipTab({
   const [syncingWipId, setSyncingWipId] = useState<number | null>(null)
   const [syncDoneWipId, setSyncDoneWipId] = useState<number | null>(null)
 
+  // ── Привязка конфигурации из «Наших ПК» по клиентской ссылке ──
+  const [buildLink, setBuildLink] = useState("")
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkError, setLinkError] = useState("")
+  const [linkedBuild, setLinkedBuild] = useState<{ id: number; name: string; components?: unknown[] } | null>(null)
+
+  // Раскладываем комплектующие сборки по полям WIP: менеджеру не нужно
+  // переписывать железо руками — заказ собирается из согласованной конфигурации.
+  const applyBuildToForm = (b: { id: number; name: string; components?: { slot?: string; name?: string }[] }) => {
+    const slots: Record<string, string> = {}
+    const extras: string[] = []
+    for (const c of b.components || []) {
+      const nm = (c.name || "").trim()
+      if (!nm) continue
+      const key = c.slot === "case" ? "case_name" : (c.slot || "")
+      if (["cpu", "motherboard", "ram", "gpu", "storage", "psu", "case_name", "cooling"].includes(key)) {
+        slots[key] = slots[key] ? `${slots[key]}, ${nm}` : nm
+      } else extras.push(nm)
+    }
+    setWipForm(f => f && ({
+      ...f, build_id: b.id,
+      cpu: slots.cpu || f.cpu, motherboard: slots.motherboard || f.motherboard,
+      ram: slots.ram || f.ram, gpu: slots.gpu || f.gpu, storage: slots.storage || f.storage,
+      psu: slots.psu || f.psu, case_name: slots.case_name || f.case_name,
+      cooling: slots.cooling || f.cooling,
+      extra: extras.length ? extras.join(", ") : f.extra,
+    }))
+    setLinkedBuild({ id: b.id, name: b.name, components: b.components })
+  }
+
+  // При каждом открытии формы показываем, привязана ли конфигурация:
+  // подтягиваем её название, чтобы менеджер видел, что именно закреплено.
+  useEffect(() => {
+    if (!wipFormOpen) { setLinkedBuild(null); setBuildLink(""); setLinkError(""); return }
+    const bid = wipForm?.build_id
+    if (!bid) { setLinkedBuild(null); return }
+    const known = builds.find(b => b.id === bid)
+    if (known) { setLinkedBuild({ id: known.id, name: known.name, components: known.components }); return }
+    let alive = true
+    api.builds.getById(bid).then(b => { if (alive && b?.id) setLinkedBuild({ id: b.id, name: b.name, components: b.components }) }).catch(() => {})
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wipFormOpen, wipForm?.build_id])
+
+  const attachBuildLink = async () => {
+    const link = buildLink.trim()
+    if (!link) return
+    setLinkBusy(true); setLinkError("")
+    const res = await api.builds.resolveLink(link).catch(() => null)
+    setLinkBusy(false)
+    if (!res?.id) {
+      setLinkError(res?.error || "Конфигурация по этой ссылке не найдена. Проверьте ссылку.")
+      return
+    }
+    applyBuildToForm(res)
+    setBuildLink("")
+  }
+
+  const unlinkBuild = () => {
+    setLinkedBuild(null)
+    setBuildLink("")
+    setLinkError("")
+    setWipForm(f => f && ({ ...f, build_id: null }))
+  }
+
   // Договор поставки прямо из сборки (в т.ч. на этапе «Согласование»).
   // Если заказа ещё нет — создаём его (на согласовании без резервов), затем PDF.
   const CONTRACT_URL = "https://functions.poehali.dev/7db163ee-2c8f-43e0-af32-d7c98db8f5e4"
@@ -864,6 +929,52 @@ export function AdminWipTab({
                     ))}
                   </select>
                 </div>
+                {/* Ссылка на конфигурацию: менеджер согласовал сборку с клиентом
+                    в «Наших ПК» и привязывает её к заказу — железо подтянется. */}
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs text-foreground/50">Ссылка на конфигурацию для клиента</label>
+                  {linkedBuild ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-2.5">
+                      <Icon name="CircleCheck" size={16} className="shrink-0 text-green-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{linkedBuild.name}</p>
+                        <p className="text-xs text-foreground/50">
+                          Конфигурация №{linkedBuild.id} привязана к заказу
+                          {linkedBuild.components?.length ? ` · ${linkedBuild.components.length} комплектующих` : ""}
+                        </p>
+                      </div>
+                      <button type="button" onClick={unlinkBuild}
+                        title="Отвязать конфигурацию"
+                        className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground/60 hover:border-red-400/60 hover:text-red-400 transition-colors"
+                        style={{ cursor: "pointer" }}>
+                        Отвязать
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <input value={buildLink}
+                          onChange={e => { setBuildLink(e.target.value); setLinkError("") }}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); attachBuildLink() } }}
+                          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                          placeholder="Вставьте ссылку, которую отправляли клиенту" style={{ cursor: "text" }} />
+                        <button type="button" onClick={attachBuildLink} disabled={linkBusy || !buildLink.trim()}
+                          title="Найти и привязать конфигурацию"
+                          className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+                          style={{ cursor: linkBusy || !buildLink.trim() ? "not-allowed" : "pointer" }}>
+                          <Icon name={linkBusy ? "Loader" : "Check"} size={15} className={linkBusy ? "animate-spin" : ""} />
+                          Привязать
+                        </button>
+                      </div>
+                      {linkError && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-red-400">
+                          <Icon name="TriangleAlert" size={12} />{linkError}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground hover:border-primary/50 transition-colors" style={{ cursor: "pointer" }}>
                     <input type="checkbox" checked={!!wipForm.for_sale}

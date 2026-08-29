@@ -2426,3 +2426,20 @@ src/components/admin/BuildsList.tsx: PLACEMENT_FILTERS ~6 (Все / На сай�
   Счётчики на кнопках считают только корневые сборки (parent_id IS NULL),
   число в заголовке = groups.length (после фильтра).
   В архиве фильтр скрыт: там одно размещение.
+
+[v8.86] Привязка конфигурации к заказу WIP по клиентской ссылке.
+backend/builds/index.py: _resolve_build_link() ~167 + GET ?resolve_link=<url>.
+  Разбирает ЛЮБОЙ формат ссылки по очереди: /b/<short_code>, ?token=<client_token>,
+  /build/<slug>, /builds/<id>, а также голый код/slug/номер. 404 если не нашлось.
+  Ветка стоит ПОСЛЕ id/client_token, но ДО status — иначе отдаётся весь список.
+backend/wip-builds/index.py: INSERT при создании WIP теперь принимает build_id
+  (раньше привязать сборку можно было только через PUT, т.е. после сохранения).
+src/lib/api.ts: builds.resolveLink(link).
+src/components/admin/AdminWipTab.tsx:
+  состояние buildLink/linkBusy/linkError/linkedBuild ~100;
+  applyBuildToForm() раскладывает components по слотам WIP (case → case_name,
+  всё нестандартное склеивается в extra);
+  useEffect по [wipFormOpen, wipForm.build_id] подтягивает название уже
+  привязанной конфигурации (из списка builds или запросом);
+  поле «Ссылка на конфигурацию» в форме ~867: инпут + кнопка «Привязать»,
+  после привязки — зелёная плашка с названием и кнопкой «Отвязать».

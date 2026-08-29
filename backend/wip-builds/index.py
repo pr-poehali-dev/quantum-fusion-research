@@ -578,8 +578,8 @@ def handler(event: dict, context) -> dict:
                 """INSERT INTO wip_builds (order_number, stage, contact, delivery_type, delivery_address,
                    received_at, issued_at, comment,
                    cpu, motherboard, ram, gpu, storage, psu, case_name, cooling, extra,
-                   order_id, updated_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                   order_id, build_id, updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                    RETURNING id""",
                 (
                     order_number,
@@ -590,7 +590,7 @@ def handler(event: dict, context) -> dict:
                     body.get("cpu"), body.get("motherboard"), body.get("ram"), body.get("gpu"),
                     body.get("storage"), body.get("psu"), body.get("case_name"),
                     body.get("cooling"), body.get("extra"),
-                    body.get("order_id"),
+                    body.get("order_id"), body.get("build_id") or None,
                 )
             )
             new_id = cur.fetchone()[0]
