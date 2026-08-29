@@ -164,11 +164,19 @@ export default function LiveRuns({ adminKey, auth }: Props) {
               </div>
             )}
 
+            {/* Профиль и номер теста — служебная строка, её можно обрезать.
+                А вот название идущего теста — главное, что хотят видеть, и
+                в одной строке с длинным профилем оно уезжало за край. */}
             <p className="mt-1 truncate text-xs text-foreground/50">
               {r.profile_name}
-              {r.current_test_name ? ` · ${r.current_test_name}` : ""}
               {total > 0 ? ` · тест ${Math.max(1, r.current_test_index)} из ${total}` : ""}
             </p>
+            {r.current_test_name && (
+              <p className="mt-1 flex items-start gap-1.5 text-xs text-foreground/80">
+                <Icon name="Play" size={11} className="mt-0.5 shrink-0 text-green-500" />
+                <span className="min-w-0 break-words">{r.current_test_name}</span>
+              </p>
+            )}
 
             {total > 0 && (
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background">

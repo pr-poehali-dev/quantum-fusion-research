@@ -95,6 +95,22 @@ def date_ru(dt):
     return f"«{dt.day:02d}» {MONTHS_RU[dt.month - 1]} {dt.year}г."
 
 
+def days_ru(n):
+    """«1 день», «2 дня», «5 дней» — правильное склонение для договора.
+
+    Раньше всегда печаталось «дней», и в документе выходило «21 дней».
+    """
+    n = abs(int(n or 0))
+    if n % 100 in (11, 12, 13, 14):
+        return f"{n} дней"
+    last = n % 10
+    if last == 1:
+        return f"{n} день"
+    if last in (2, 3, 4):
+        return f"{n} дня"
+    return f"{n} дней"
+
+
 # ─── Многостраничный «писатель» PDF с авто-переносом строк ─────────────────────
 class Doc:
     def __init__(self):
@@ -499,7 +515,7 @@ def build_spec(d, order, company):
     # Проценты берём фактические (order['prepay_pct']), а не зашитые 30/70 —
     # предоплату можно задать вручную в диалоге печати.
     _pp = order.get("prepay_pct", 30)
-    d.text(f"Срок поставки: {company['delivery_days']} дней.")
+    d.text(f"Срок поставки: {days_ru(company['delivery_days'])}.")
     d.text(f"Предоплата ({_pp}%): {fmt_money2(order['prepay'])} руб.")
     d.text(f"Остаток ({100 - _pp}%): {fmt_money2(order['remaining'])} руб.")
     d.text("Стороны согласны с условиями, не имеют претензий к выполненной работе. Товар поставлен полностью, "

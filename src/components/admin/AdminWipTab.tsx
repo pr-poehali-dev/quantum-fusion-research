@@ -428,13 +428,28 @@ export function AdminWipTab({
     if (!wipForm) return
     if (wipForm.id) {
       await api.wipBuilds.update(wipForm)
-      // Источник лида хранится в заказе — сохраняем через orders.setSource,
-      // если у сборки есть заказ и источник указан/изменён.
-      if (wipForm.order_id) {
-        await api.orders.setSource(wipForm.order_id, wipForm.source_id ? Number(wipForm.source_id) : null)
+      // Источник лида хранится в заказе. Если заказа ещё нет (этап
+      // «Согласование»), раньше выбор просто терялся при перезагрузке —
+      // поэтому создаём заказ и сохраняем источник в него.
+      let oid = wipForm.order_id
+      if (!oid && wipForm.source_id) {
+        const res = await api.wipBuilds.ensureOrder(wipForm.id).catch(() => null)
+        if (res?.order_id) {
+          oid = res.order_id
+          setWipBuilds(bs => bs.map(b => b.id === wipForm.id
+            ? { ...b, order_id: res.order_id, order_number: res.order_number || b.order_number } : b))
+        }
+      }
+      if (oid) {
+        await api.orders.setSource(oid, wipForm.source_id ? Number(wipForm.source_id) : null)
       }
       const src = leadSources.find(s => s.id === Number(wipForm.source_id))
-      setWipBuilds(bs => bs.map(b => b.id === wipForm.id ? { ...b, ...wipForm, source_name: src?.name ?? wipForm.source_name ?? null } : b))
+      // order_id берём свежий (oid): в форме он мог быть пустым, а заказ
+      // только что создался — иначе следующее сохранение снова его не нашло бы.
+      setWipBuilds(bs => bs.map(b => b.id === wipForm.id
+        ? { ...b, ...wipForm, order_id: oid ?? b.order_id,
+            source_name: src?.name ?? wipForm.source_name ?? null }
+        : b))
     } else {
       const res = await api.wipBuilds.create(wipForm)
       if (res.id) {
