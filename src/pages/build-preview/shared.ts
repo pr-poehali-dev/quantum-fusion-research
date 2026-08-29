@@ -57,6 +57,20 @@ export interface WipInfo {
   prepayment_amount?: number
   prepayment_confirmed_amount?: number
   remaining_amount?: number
+  order_number?: string
+}
+
+// Прогон стресс-тестов по заказу — показываем клиенту на его странице сборки
+export interface BuildTestRun {
+  public_code: string
+  profile_name: string
+  started_at?: string
+  finished_at?: string
+  total_tests: number
+  passed_tests: number
+  failed_tests: number
+  status: string
+  gpu_maintenance?: boolean
 }
 
 export interface Build {

@@ -7,7 +7,7 @@ import Icon from "@/components/ui/icon"
 import Seo, { SITE_URL } from "@/components/Seo"
 import PromoBanner from "@/components/PromoBanner"
 import {
-  Component, Build, WipInfo,
+  Component, Build, WipInfo, BuildTestRun,
   SLOT_NAMES, SLOT_TO_WIP, COMPONENT_STATUS_LABELS, DELIVERY_DESCRIPTIONS,
   WIP_STAGE_COLORS_CLIENT, TAG_COLOR_MAP,
   compPoints, withVat, fmt, enrichVariants,
@@ -48,6 +48,8 @@ export default function BuildPreview() {
   const [currentSection, setCurrentSection] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [wipInfo, setWipInfo] = useState<WipInfo | null>(null)
+  // Прогоны стресс-тестов по этому заказу — клиент видит, что ПК проверен
+  const [testRuns, setTestRuns] = useState<BuildTestRun[]>([])
   const [tagsExpanded, setTagsExpanded] = useState(false)
   // На телефоне (<640px) добавляется отдельный слайд «Состав» (список) между
   // обзором и покомпонентными секциями → индексы секций сдвигаются.
@@ -84,7 +86,8 @@ export default function BuildPreview() {
       if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
         cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
         storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status,
-        total: d.total, prepayment_amount: d.prepayment_amount, prepayment_confirmed_amount: d.prepayment_confirmed_amount, remaining_amount: d.remaining_amount })
+        total: d.total, prepayment_amount: d.prepayment_amount, prepayment_confirmed_amount: d.prepayment_confirmed_amount, remaining_amount: d.remaining_amount,
+        order_number: d.order_number })
     }).catch(() => {})
   }, [id, isTokenMode])
 
@@ -110,7 +113,8 @@ export default function BuildPreview() {
       if (d && d.stage) setWipInfo({ stage: d.stage, received_at: d.received_at, issued_at: d.issued_at, delivery_type: d.delivery_type,
         cpu_status: d.cpu_status, motherboard_status: d.motherboard_status, ram_status: d.ram_status, gpu_status: d.gpu_status,
         storage_status: d.storage_status, psu_status: d.psu_status, case_status: d.case_status, cooling_status: d.cooling_status, extra_status: d.extra_status,
-        total: d.total, prepayment_amount: d.prepayment_amount, prepayment_confirmed_amount: d.prepayment_confirmed_amount, remaining_amount: d.remaining_amount })
+        total: d.total, prepayment_amount: d.prepayment_amount, prepayment_confirmed_amount: d.prepayment_confirmed_amount, remaining_amount: d.remaining_amount,
+        order_number: d.order_number })
     }).catch(() => {})
   }, [token, isTokenMode, user])
 
@@ -164,17 +168,33 @@ export default function BuildPreview() {
   // Смещение индекса первого компонента: на ПК сразу после обзора,
   // на телефоне после обзора и слайда «Состав». Плюс витрина (introOffset).
   const compOffset = (isMobile ? 2 : 1) + introOffset
-  const totalSections = components.length + (isMobile ? 3 : 2) + introOffset
+  // Слайд «Тесты» — только если по заказу реально есть прогоны. Идёт
+  // предпоследним: после перечня комплектующих, перед экраном заказа.
+  const hasTests = testRuns.length > 0
+  const testsIndex = components.length + compOffset
+  const totalSections = components.length + (isMobile ? 3 : 2) + introOffset + (hasTests ? 1 : 0)
 
   // Метка текущего слайда — для верхней панели на телефоне (экономит место в теле).
   const sectionLabel = (() => {
     if (introOffset && currentSection === 0) return "Витрина"
     if (currentSection === introOffset) return "Обзор"
     if (currentSection === totalSections - 1) return "Заказ"
+    if (hasTests && currentSection === testsIndex) return "Тесты"
     if (isMobile && currentSection === introOffset + 1) return "Состав"
     const comp = components[currentSection - compOffset]
     return comp ? (SLOT_NAMES[comp.slot] || comp.slot) : ""
   })()
+
+  // Тесты подтягиваем, как только узнали номер заказа из карточки сборки.
+  useEffect(() => {
+    const num = (wipInfo?.order_number || "").trim()
+    if (!num) { setTestRuns([]); return }
+    let alive = true
+    api.stress.buildTests(num)
+      .then(d => { if (alive) setTestRuns(d?.runs || []) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [wipInfo?.order_number])
 
   // ── Разница цен относительно ОСНОВНОГО варианта (variants[0]) ──
   const baseVariant = variants[0] ?? null
@@ -743,6 +763,64 @@ export default function BuildPreview() {
             />
           </div>
         ))}
+
+        {/* ── СЕКЦИЯ «Тесты» — только если ПК реально прогоняли ── */}
+        {hasTests && (
+          <div ref={el => { sectionRefs.current[testsIndex] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>
+            <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 60% 50% at 50% 50%, hsl(var(--primary) / 0.06) 0%, transparent 70%)" }} />
+              <div className={`relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-8 pt-20 pb-8 transition-all duration-700 ${currentSection === testsIndex ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+                <div className="mb-6 text-center">
+                  <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">Проверка качества</p>
+                  <h2 className="mb-2 font-light text-foreground" style={{ fontSize: "clamp(1.4rem, 3.5vw, 2.2rem)" }}>
+                    Ваш компьютер прошёл стресс-тесты
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Перед выдачей мы нагружаем ПК на максимум и проверяем стабильность
+                  </p>
+                </div>
+
+                <div className="space-y-3 max-h-[52vh] overflow-y-auto">
+                  {testRuns.map(run => {
+                    const allOk = run.failed_tests === 0 && run.passed_tests > 0
+                    const when = run.finished_at || run.started_at
+                    return (
+                      <a key={run.public_code} href={`/tests/${run.public_code}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="group flex items-center gap-3 sm:gap-4 rounded-2xl border border-border bg-card px-4 sm:px-5 py-4 hover:border-primary/60 transition-all"
+                        style={{ cursor: "pointer" }}>
+                        <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full ${allOk ? "bg-green-500/15 text-green-400" : "bg-amber-500/15 text-amber-400"}`}>
+                          <Icon name={allOk ? "ShieldCheck" : "TriangleAlert"} size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {run.profile_name || "Стресс-тест"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {allOk
+                              ? `Все проверки пройдены — ${run.passed_tests} из ${run.total_tests}`
+                              : `Пройдено ${run.passed_tests} из ${run.total_tests}`}
+                            {when && ` · ${new Date(when).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}`}
+                          </p>
+                        </div>
+                        <span className="hidden sm:flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground group-hover:border-primary group-hover:text-foreground transition-colors">
+                          Открыть отчёт
+                          <Icon name="ArrowUpRight" size={13} />
+                        </span>
+                        <Icon name="ChevronRight" size={18} className="sm:hidden shrink-0 text-muted-foreground" />
+                      </a>
+                    )
+                  })}
+                </div>
+
+                <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+                  <Icon name="Info" size={12} />
+                  Нажмите на тест, чтобы посмотреть подробный отчёт с показателями
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Последняя секция: Заказ ── */}
         <div ref={el => { sectionRefs.current[totalSections - 1] = el }} className="w-screen shrink-0 relative" style={{ scrollSnapAlign: "start", height: "100dvh" }}>

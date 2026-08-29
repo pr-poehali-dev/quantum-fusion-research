@@ -2473,3 +2473,22 @@ backend/stress-releases/index.py:
 src/lib/api.ts: getUploadUrl(fileName, adminKey, version, edition).
 db_migrations/V0260 — пересобрал имена в БД: полная и Lite одной версии
   раньше имели ОДИНАКОВОЕ имя, клиент не различал файлы.
+
+[v8.90] Слайд «Тесты» на клиентской странице сборки.
+backend/stress/index.py: build_tests() ~1948 + GET ?action=build_tests&
+  order_number=<номер>. Публичный (без авторизации), отдаёт только прогоны
+  status IN ('completed','partial') с public_code — незавершённые и
+  отменённые клиенту не показываем. Номер сверяется с учётом ведущих нулей
+  («00833» = «833»), лимит 12 прогонов, свежие сверху.
+src/lib/api.ts: stress.buildTests(orderNumber).
+src/pages/build-preview/shared.ts: WipInfo.order_number + тип BuildTestRun.
+src/pages/BuildPreview.tsx:
+  wipInfo теперь несёт order_number (оба пути загрузки: по id и по токену);
+  useEffect по wipInfo.order_number подтягивает прогоны;
+  hasTests/testsIndex ~169 — слайд ВСТАВЛЯЕТСЯ предпоследним (после
+  покомпонентных секций, перед «Заказ») и только если прогоны есть,
+  totalSectionsit увеличивается на 1; sectionLabel знает «Тесты».
+  Карточка прогона ведёт на /tests/<public_code> в новой вкладке.
+ВАЖНО: привязка идёт по stress_runs.order_number = wip_builds.order_number.
+  Сейчас номера не пересекаются (у WIP «PC00023», «00833», у тестов «5307»),
+  поэтому слайд не показывается — это не баг, нужен общий номер заказа.

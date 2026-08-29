@@ -190,6 +190,10 @@ def handler(event, context):
         if action == "public_report" and method == "GET":
             return public_report(cur, params.get("code"))
 
+        # Тесты по номеру заказа — для страницы сборки клиента
+        if action == "build_tests" and method == "GET":
+            return build_tests(cur, params.get("order_number"))
+
         # ── Публичная проверка отчёта по QR-коду (без авторизации) ──────────
         if action == "verify" and method == "GET":
             data = bp.lookup_verify(cur, params.get("code"))
@@ -1943,6 +1947,39 @@ def public_report(cur, code):
         "samples": m[6],
     } for m in cur.fetchall()]
     return ok({"ok": True, "found": True, "run": run})
+
+
+def build_tests(cur, order_number):
+    """Тесты, пройденные по заказу клиента — для страницы конфигурации.
+
+    Клиент видит на своей странице сборки, что ПК реально прогнали через
+    стресс-тесты. Отдаём только успешно завершённые прогоны: незаконченные
+    и отменённые — наша внутренняя кухня, показывать их клиенту незачем.
+    """
+    order = str(order_number or "").strip()
+    if not order or len(order) > 64:
+        return ok({"ok": True, "runs": []})
+    # Номер может быть записан с ведущими нулями («00833») или без («833»)
+    digits = order.lstrip("0") or order
+    cur.execute(
+        f"SELECT public_code, profile_name, started_at, finished_at, "
+        f"total_tests, passed_tests, failed_tests, status, "
+        f"COALESCE(gpu_maintenance, FALSE) "
+        f"FROM {SCHEMA}.stress_runs "
+        f"WHERE public_code IS NOT NULL AND status IN ('completed', 'partial') "
+        f"AND (TRIM(order_number) = {esc(order)} "
+        f"     OR TRIM(order_number) = {esc(digits)} "
+        f"     OR LTRIM(TRIM(order_number), '0') = {esc(digits)}) "
+        f"ORDER BY COALESCE(finished_at, started_at) DESC LIMIT 12"
+    )
+    runs = [{
+        "public_code": x[0], "profile_name": x[1] or "",
+        "started_at": x[2], "finished_at": x[3],
+        "total_tests": x[4] or 0, "passed_tests": x[5] or 0,
+        "failed_tests": x[6] or 0, "status": x[7] or "",
+        "gpu_maintenance": bool(x[8]),
+    } for x in cur.fetchall()]
+    return ok({"ok": True, "runs": runs})
 
 
 def last_public_run(cur):

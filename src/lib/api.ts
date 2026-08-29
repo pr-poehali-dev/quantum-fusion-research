@@ -401,6 +401,9 @@ export const api = {
     // Публичная ссылка на конкретный отчёт: /tests/<код>, без авторизации.
     publicReport: (code: string) =>
       fetch(`${URLS.stress}?action=public_report&code=${encodeURIComponent(code)}`).then(r => r.json()),
+    // Тесты, пройденные по заказу клиента — для его страницы сборки
+    buildTests: (orderNumber: string) =>
+      fetch(`${URLS.stress}?action=build_tests&order_number=${encodeURIComponent(orderNumber)}`).then(r => r.json()),
     // Витрина на сайте: последний завершённый прогон, без авторизации
     // и без датчиков — только профиль, железо, итоги и список тестов.
     lastPublicRun: () =>
