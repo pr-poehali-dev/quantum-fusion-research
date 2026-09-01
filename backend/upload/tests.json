@@ -7,11 +7,25 @@
       "expectedStatus": 200
     },
     {
-      "name": "Video upload url",
+      "name": "Video upload start",
       "method": "POST",
       "path": "/",
       "body": { "action": "video_upload_url", "content_type": "video/mp4" },
       "expectedStatus": 200
+    },
+    {
+      "name": "Video chunk rejects bad key",
+      "method": "POST",
+      "path": "/",
+      "body": { "action": "video_chunk", "key": "hack/x.mp4", "index": 0, "data": "AAA=" },
+      "expectedStatus": 400
+    },
+    {
+      "name": "Video finish rejects bad key",
+      "method": "POST",
+      "path": "/",
+      "body": { "action": "video_finish", "key": "hack/x.mp4", "total": 1 },
+      "expectedStatus": 400
     },
     {
       "name": "Video rejects non-video type",

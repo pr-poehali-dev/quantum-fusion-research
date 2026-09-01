@@ -437,33 +437,61 @@ function VideoModal({ onInsert, onClose }: { onInsert: (src: string) => void; on
       setError("Нужен видеофайл: MP4, WebM или MOV")
       return
     }
-    const r = await fetch(UPLOAD_URL, {
+    const start = await fetch(UPLOAD_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "video_upload_url", content_type: file.type }),
     }).then(r => r.json()).catch(() => null)
 
-    if (!r?.upload_url) {
-      setError(r?.error || "Не удалось начать загрузку")
+    if (!start?.key) {
+      setError(start?.error || "Не удалось начать загрузку")
       return
     }
 
+    // Файл отправляем частями: за один запрос проходит ограниченный объём,
+    // поэтому режем видео и досылаем куски по очереди.
+    const chunkSize: number = start.chunk_size || 2 * 1024 * 1024
+    const total = Math.ceil(file.size / chunkSize)
     setPct(0)
-    const ok = await new Promise<boolean>(resolve => {
-      const xhr = new XMLHttpRequest()
-      xhr.open("PUT", r.upload_url)
-      xhr.setRequestHeader("Content-Type", file.type)
-      xhr.upload.onprogress = e => {
-        if (e.lengthComputable) setPct(Math.round((e.loaded / e.total) * 100))
-      }
-      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
-      xhr.onerror = () => resolve(false)
-      xhr.send(file)
+
+    const readChunk = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "")
+      reader.onerror = () => reject(new Error("read"))
+      reader.readAsDataURL(blob)
     })
-    setPct(null)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-    if (!ok) { setError("Видео не загрузилось, попробуйте ещё раз"); return }
-    setSrc(r.url)
+
+    try {
+      for (let i = 0; i < total; i++) {
+        const blob = file.slice(i * chunkSize, Math.min((i + 1) * chunkSize, file.size))
+        const data = await readChunk(blob)
+        const res = await fetch(UPLOAD_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "video_chunk", key: start.key, index: i, data }),
+        }).then(r => r.json())
+        if (!res?.ok) throw new Error(res?.error || "chunk")
+        // Последние проценты оставляем на склейку файла
+        setPct(Math.round(((i + 1) / total) * 95))
+      }
+
+      const fin = await fetch(UPLOAD_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "video_finish", key: start.key, total, content_type: file.type,
+        }),
+      }).then(r => r.json())
+      if (!fin?.ok) throw new Error(fin?.error || "finish")
+
+      setPct(100)
+      setSrc(fin.url)
+    } catch {
+      setError("Видео не загрузилось — проверьте интернет и попробуйте снова")
+    } finally {
+      setPct(null)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
   }
 
   return createPortal(

@@ -2509,3 +2509,27 @@ src/components/ui/rich-text-editor.tsx:
 src/pages/ArticlePage.tsx: ArticleContent распознаёт data-video="true" и
   рисует плеер отдельным блоком (preload="metadata", playsInline).
 ВАЖНО: backend/articles НЕ чистит HTML, тег <video> сохраняется как есть.
+
+[v8.92] ИСПРАВЛЕНО: видео не загружалось («Видео не загрузилось»).
+ОГРАНИЧЕНИЕ ПЛАТФОРМЫ (проверено в реальном браузере, скриншотами):
+  • хранилище НЕ отвечает на предзапрос браузера: OPTIONS на presigned-ссылку
+    → 403, поэтому PUT из вкладки блокируется (onerror, «Failed to fetch»);
+  • presigned POST формой — тоже блокируется;
+  • put_bucket_cors проходит без ошибки, get_bucket_cors возвращает
+    правило с AllowedOrigins ["*"], но в ответах оно НЕ применяется;
+  • домен bucket.poehali.dev по сети доступен (no-cors проходит) —
+    дело именно в CORS, а не в сети;
+  • через curl PUT работает (HTTP 200) — поэтому баг и не ловился раньше.
+  ВЫВОД: прямая загрузка в хранилище из браузера НЕВОЗМОЖНА, не пытаться
+  снова ни через PUT, ни через POST-форму, ни выставляя CORS.
+РЕШЕНИЕ — загрузка ЧЕРЕЗ функцию кусками (лимит тела запроса 3,5 МБ,
+  замерен size_probe: 3 МБ проходит, 5 МБ → 413):
+  backend/upload/index.py: video_upload_url (заводит ключ, отдаёт
+  chunk_size=2 МБ) → video_chunk (кусок base64 → articles/video/x.mp4.partNNNNN)
+  → video_finish (склейка в один объект + удаление частей).
+  Куски по 2 МБ: base64 раздувает объём на треть.
+  Ключ обязан начинаться с articles/video/ — иначе 400 (защита от записи
+  в чужие папки), есть тесты.
+src/components/ui/rich-text-editor.tsx: VideoModal режет файл через
+  file.slice, шлёт куски по очереди, проценты 0-95 на загрузку, остальное
+  на склейку.

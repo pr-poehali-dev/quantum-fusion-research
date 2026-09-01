@@ -16,15 +16,18 @@ cors = {
 MAX_SIZE = (1200, 1200)
 WEBP_QUALITY = 82
 
-# Видео в статьях. Файл НЕ проходит через функцию (ролик на сотни мегабайт
-# не влезет в тело запроса) — браузер грузит его напрямую в хранилище по
-# временной ссылке, а сюда приходит только запрос на эту ссылку.
+# Видео в статьях. Идёт через функцию КУСКАМИ — прямая загрузка в хранилище
+# из браузера невозможна (подробности в video_upload_url).
 VIDEO_TYPES = {
     "video/mp4": "mp4",
     "video/webm": "webm",
     "video/quicktime": "mov",
     "video/x-m4v": "m4v",
 }
+
+# Размер куска. Платформа принимает не больше 3,5 МБ в запросе, а base64
+# раздувает данные примерно на треть — поэтому берём 2 МБ сырых данных.
+VIDEO_CHUNK = 2 * 1024 * 1024
 
 
 def s3_client():
@@ -42,20 +45,74 @@ def cdn_url(key: str) -> str:
 
 
 def video_upload_url(body: dict) -> dict:
-    """Временная ссылка для загрузки видео прямо из браузера в хранилище."""
+    """Начало загрузки видео: заводим файл и отдаём его адрес.
+
+    ПОЧЕМУ ПО КУСКАМ, А НЕ НАПРЯМУЮ В ХРАНИЛИЩЕ (проверено в браузере):
+    хранилище не отвечает на предзапрос браузера (OPTIONS → 403), поэтому
+    любая прямая загрузка из вкладки — и PUT по временной ссылке, и POST
+    формой — блокируется, хотя через curl работает. Правило CORS на бакете
+    выставляется без ошибки, но в ответах не применяется.
+    Вывод: файл идёт ЧЕРЕЗ функцию. Целиком нельзя — платформа принимает
+    не больше 3,5 МБ за запрос, поэтому браузер режет видео на части и
+    досылает их по очереди, а мы склеиваем куски в хранилище.
+    """
     mime = (body.get("content_type") or "").strip().lower()
     if mime not in VIDEO_TYPES:
         return {"statusCode": 400, "headers": cors, "body": json.dumps(
             {"error": "Поддерживаются видео MP4, WebM и MOV"})}
 
     key = f"articles/video/{uuid.uuid4().hex}.{VIDEO_TYPES[mime]}"
-    url = s3_client().generate_presigned_url(
-        "put_object",
-        Params={"Bucket": "files", "Key": key, "ContentType": mime},
-        ExpiresIn=3 * 60 * 60,  # 3 часа: большой ролик на слабом канале
-    )
     return {"statusCode": 200, "headers": cors, "body": json.dumps(
-        {"upload_url": url, "url": cdn_url(key), "key": key})}
+        {"key": key, "url": cdn_url(key), "chunk_size": VIDEO_CHUNK})}
+
+
+def video_chunk(body: dict) -> dict:
+    """Приём одного куска видео. Куски копятся рядом и склеиваются в конце."""
+    key = (body.get("key") or "").strip()
+    index = body.get("index")
+    data = body.get("data") or ""
+    if not key.startswith("articles/video/") or not isinstance(index, int):
+        return {"statusCode": 400, "headers": cors,
+                "body": json.dumps({"error": "bad request"})}
+
+    if "," in data:
+        data = data.split(",", 1)[1]
+    chunk = base64.b64decode(data)
+    s3_client().put_object(Bucket="files", Key=f"{key}.part{index:05d}", Body=chunk)
+    return {"statusCode": 200, "headers": cors,
+            "body": json.dumps({"ok": True, "index": index, "size": len(chunk)})}
+
+
+def video_finish(body: dict) -> dict:
+    """Склейка кусков в один файл и уборка временных частей."""
+    key = (body.get("key") or "").strip()
+    total = body.get("total")
+    mime = (body.get("content_type") or "video/mp4").strip().lower()
+    if not key.startswith("articles/video/") or not isinstance(total, int) or total < 1:
+        return {"statusCode": 400, "headers": cors,
+                "body": json.dumps({"error": "bad request"})}
+
+    cli = s3_client()
+    buf = io.BytesIO()
+    part_keys = []
+    for i in range(total):
+        pk = f"{key}.part{i:05d}"
+        part_keys.append(pk)
+        buf.write(cli.get_object(Bucket="files", Key=pk)["Body"].read())
+
+    body_bytes = buf.getvalue()
+    cli.put_object(Bucket="files", Key=key, Body=body_bytes,
+                   ContentType=mime if mime in VIDEO_TYPES else "video/mp4")
+
+    # Части занимают место — убираем сразу после склейки
+    for pk in part_keys:
+        try:
+            cli.delete_object(Bucket="files", Key=pk)
+        except Exception as e:
+            print(f"[UPLOAD] не удалось убрать часть {pk}: {e}")
+
+    return {"statusCode": 200, "headers": cors, "body": json.dumps(
+        {"ok": True, "url": cdn_url(key), "size": len(body_bytes)})}
 
 
 def compress_image(image_bytes: bytes, mime: str) -> tuple[bytes, str]:
@@ -86,9 +143,18 @@ def handler(event: dict, context) -> dict:
 
     body = json.loads(event.get("body") or "{}")
 
-    # Видео: отдаём ссылку на прямую загрузку, сам файл сюда не приходит
+    # Видео: заводим файл, принимаем куски, склеиваем
     if body.get("action") == "video_upload_url":
         return video_upload_url(body)
+    if body.get("action") == "video_chunk":
+        return video_chunk(body)
+    if body.get("action") == "video_finish":
+        return video_finish(body)
+
+
+
+    # Проба: presigned POST (форма) вместо PUT — POST с multipart/form-data
+
 
     file_data = body.get("file", "")
     folder = body.get("folder", "products")
