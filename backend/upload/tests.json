@@ -5,6 +5,20 @@
       "method": "OPTIONS",
       "path": "/",
       "expectedStatus": 200
+    },
+    {
+      "name": "Video upload url",
+      "method": "POST",
+      "path": "/",
+      "body": { "action": "video_upload_url", "content_type": "video/mp4" },
+      "expectedStatus": 200
+    },
+    {
+      "name": "Video rejects non-video type",
+      "method": "POST",
+      "path": "/",
+      "body": { "action": "video_upload_url", "content_type": "application/zip" },
+      "expectedStatus": 400
     }
   ]
 }

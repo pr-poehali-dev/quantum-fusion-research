@@ -2492,3 +2492,20 @@ src/pages/BuildPreview.tsx:
 ВАЖНО: привязка идёт по stress_runs.order_number = wip_builds.order_number.
   Сейчас номера не пересекаются (у WIP «PC00023», «00833», у тестов «5307»),
   поэтому слайд не показывается — это не баг, нужен общий номер заказа.
+
+[v8.91] Видео в статьях (загрузка своего файла).
+backend/upload/index.py:
+  POST {action:"video_upload_url", content_type:"video/mp4"} → выдаёт
+  presigned PUT-ссылку (3 часа) + итоговый CDN-адрес. Файл НЕ идёт через
+  функцию: ролик на сотни МБ не влезет в тело запроса и в таймаут.
+  Разрешены video/mp4, webm, quicktime(mov), x-m4v; папка articles/video/.
+  Вынесены общие s3_client() и cdn_url() — картинки используют их же.
+src/components/ui/rich-text-editor.tsx:
+  VideoExtension — узел articleVideo, хранится как <video data-video="true"
+  src=... preload="metadata">; NodeView с плеером, ручкой drag и удалением
+  (по образцу SingleImageExtension).
+  VideoModal — загрузка прямо в хранилище через XMLHttpRequest с процентами.
+  Кнопка «Вставить видео» (Icon Video) в панели рядом с графиком.
+src/pages/ArticlePage.tsx: ArticleContent распознаёт data-video="true" и
+  рисует плеер отдельным блоком (preload="metadata", playsInline).
+ВАЖНО: backend/articles НЕ чистит HTML, тег <video> сохраняется как есть.

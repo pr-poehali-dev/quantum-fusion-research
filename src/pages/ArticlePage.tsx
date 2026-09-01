@@ -457,7 +457,7 @@ function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.Rea
       : html
     const parser = new DOMParser()
     const doc = parser.parseFromString(cleanHtml, "text/html")
-    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] } | { type: "tierlist" } | { type: "chart"; config: ChartConfig }> = []
+    const result: Array<{ type: "html"; content: string } | { type: "carousel"; images: string[] } | { type: "tierlist" } | { type: "chart"; config: ChartConfig } | { type: "video"; src: string; poster: string }> = []
     let buf = ""
     const flush = () => { if (buf) { result.push({ type: "html", content: buf }); buf = "" } }
     doc.body.childNodes.forEach(node => {
@@ -477,6 +477,12 @@ function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.Rea
           flush()
           const cfg = parseChartConfig(el.getAttribute("data-chart-config"))
           if (cfg) result.push({ type: "chart", config: cfg })
+          return
+        }
+        if (el.getAttribute("data-video") === "true") {
+          flush()
+          const src = el.getAttribute("src") || ""
+          if (src) result.push({ type: "video", src, poster: el.getAttribute("poster") || "" })
           return
         }
       }
@@ -511,6 +517,14 @@ function ArticleContent({ html, tierSlot }: { html: string; tierSlot?: React.Rea
           <div key={i}>{tierSlot}</div>
         ) : block.type === "chart" ? (
           <ArticleChart key={i} config={block.config} />
+        ) : block.type === "video" ? (
+          // preload="metadata" — тянем только первый кадр и длительность,
+          // иначе тяжёлый ролик замедлит открытие всей статьи.
+          <div key={i} className="my-4 overflow-hidden rounded-2xl border border-border bg-black">
+            <video src={block.src} poster={block.poster || undefined}
+              controls playsInline preload="metadata"
+              className="w-full" style={{ maxHeight: "70vh" }} />
+          </div>
         ) : (
           <div key={i} className="my-4">
             <ArticleCarousel images={block.images} onOpenLightbox={(images, idx) => setLightboxState({ images, idx })} />

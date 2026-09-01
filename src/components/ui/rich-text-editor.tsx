@@ -295,6 +295,59 @@ const SingleImageExtension = Node.create({
   addNodeView() { return ReactNodeViewRenderer(SingleImageNodeView) },
 })
 
+// ─── Видео как NodeView ───────────────────────────────────────────────────────
+// Свой видеофайл, загруженный в хранилище. Показываем обычный плеер — так
+// редактор сразу выглядит как готовая статья.
+function VideoNodeView({ node, deleteNode }: NodeViewProps) {
+  const src: string = node.attrs.src || ""
+  const poster: string = node.attrs.poster || ""
+
+  const handleDelete = () => {
+    if (window.confirm("Удалить видео?")) deleteNode()
+  }
+
+  return (
+    <NodeViewWrapper>
+      <div contentEditable={false} className="group relative my-2 overflow-visible">
+        <div className="absolute -top-4 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div data-drag-handle
+            className="flex h-7 w-7 cursor-grab items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-foreground hover:border-primary/40 transition-colors active:cursor-grabbing"
+            title="Перетащить">
+            <Icon name="GripVertical" size={14} />
+          </div>
+          <button type="button" onMouseDown={e => { e.preventDefault(); handleDelete() }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-background border border-border text-foreground/40 hover:text-destructive hover:border-destructive/40 transition-colors"
+            style={{ cursor: "pointer" }} title="Удалить видео">
+            <Icon name="Trash2" size={13} />
+          </button>
+        </div>
+        <video src={src} poster={poster || undefined} controls preload="metadata"
+          className="w-full rounded-lg bg-black" style={{ maxHeight: 420, display: "block" }} />
+        <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-foreground/40">
+          <Icon name="Video" size={11} />
+          Видео
+        </span>
+      </div>
+    </NodeViewWrapper>
+  )
+}
+
+const VideoExtension = Node.create({
+  name: "articleVideo",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      src: { default: "" },
+      poster: { default: "" },
+    }
+  },
+  parseHTML() { return [{ tag: "video[data-video]" }] },
+  renderHTML({ HTMLAttributes }) { return ["video", mergeAttributes({ "data-video": "true", controls: "true", preload: "metadata" }, HTMLAttributes)] },
+  addNodeView() { return ReactNodeViewRenderer(VideoNodeView) },
+})
+
 // ─── График как NodeView ──────────────────────────────────────────────────────
 function ChartNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
   const config: ChartConfig | null = parseChartConfig(
@@ -368,6 +421,109 @@ interface PhotoModalProps {
   folder: string
   onInsert: (urls: string[], mode: "image" | "carousel") => void
   onClose: () => void
+}
+
+// Окно загрузки видео. Файл идёт НАПРЯМУЮ в хранилище по временной ссылке:
+// ролик весит сотни мегабайт и в тело обычного запроса не помещается.
+function VideoModal({ onInsert, onClose }: { onInsert: (src: string) => void; onClose: () => void }) {
+  const [pct, setPct] = useState<number | null>(null)
+  const [src, setSrc] = useState("")
+  const [error, setError] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFile = async (file: File) => {
+    setError("")
+    if (!file.type.startsWith("video/")) {
+      setError("Нужен видеофайл: MP4, WebM или MOV")
+      return
+    }
+    const r = await fetch(UPLOAD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "video_upload_url", content_type: file.type }),
+    }).then(r => r.json()).catch(() => null)
+
+    if (!r?.upload_url) {
+      setError(r?.error || "Не удалось начать загрузку")
+      return
+    }
+
+    setPct(0)
+    const ok = await new Promise<boolean>(resolve => {
+      const xhr = new XMLHttpRequest()
+      xhr.open("PUT", r.upload_url)
+      xhr.setRequestHeader("Content-Type", file.type)
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) setPct(Math.round((e.loaded / e.total) * 100))
+      }
+      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+      xhr.onerror = () => resolve(false)
+      xhr.send(file)
+    })
+    setPct(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+    if (!ok) { setError("Видео не загрузилось, попробуйте ещё раз"); return }
+    setSrc(r.url)
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Icon name="Video" size={16} className="text-primary" />
+            <h3 className="text-sm font-medium text-foreground">Вставить видео</h3>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-foreground/40 hover:bg-muted hover:text-foreground transition-colors" style={{ cursor: "pointer" }}>
+            <Icon name="X" size={15} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {src ? (
+            <video src={src} controls preload="metadata" className="w-full rounded-xl bg-black" style={{ maxHeight: 260 }} />
+          ) : (
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={pct !== null}
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-10 transition-colors hover:border-primary/50 disabled:opacity-60"
+              style={{ cursor: pct === null ? "pointer" : "default" }}>
+              {pct !== null ? (
+                <>
+                  <div className="h-1.5 w-40 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-sm text-foreground/60">Загружаем... {pct}%</p>
+                </>
+              ) : (
+                <>
+                  <Icon name="Upload" size={18} className="text-foreground/40" />
+                  <p className="text-sm text-foreground/60">Нажмите, чтобы выбрать видео</p>
+                  <p className="text-xs text-foreground/35">MP4, WebM или MOV</p>
+                </>
+              )}
+            </button>
+          )}
+          <input ref={fileInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+          <button type="button" onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm text-foreground/60 hover:bg-muted transition-colors" style={{ cursor: "pointer" }}>
+            Отмена
+          </button>
+          <button type="button" onClick={() => { onInsert(src); onClose() }} disabled={!src}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
+            style={{ cursor: src ? "pointer" : "default" }}>
+            <Icon name="Check" size={14} />
+            Вставить
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
 }
 
 function PhotoModal({ mode, folder, onInsert, onClose }: PhotoModalProps) {
@@ -539,6 +695,7 @@ interface RichTextEditorProps {
 export default function RichTextEditor({ value, onChange, placeholder, className, folder = "articles" }: RichTextEditorProps) {
   const [modal, setModal] = useState<ModalMode>(null)
   const [chartModal, setChartModal] = useState(false)
+  const [videoModal, setVideoModal] = useState(false)
 
   const editor = useEditor({
     extensions: [
@@ -549,6 +706,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
       CarouselExtension,
       SingleImageExtension,
       ChartExtension,
+      VideoExtension,
     ],
     content: value,
     editorProps: {
@@ -610,6 +768,14 @@ export default function RichTextEditor({ value, onChange, placeholder, className
     }).run()
   }, [editor])
 
+  const insertVideo = useCallback((src: string) => {
+    if (!editor || !src) return
+    editor.chain().focus().insertContent({
+      type: "articleVideo",
+      attrs: { src, poster: "" },
+    }).run()
+  }, [editor])
+
   if (!editor) return null
 
   const btn = (active: boolean) =>
@@ -666,6 +832,9 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         <button type="button" onClick={() => setChartModal(true)} className={btn(chartModal)} title="Вставить график">
           <Icon name="ChartLine" size={13} />
         </button>
+        <button type="button" onClick={() => setVideoModal(true)} className={btn(videoModal)} title="Вставить видео">
+          <Icon name="Video" size={13} />
+        </button>
 
         <div className="mx-1 h-5 w-px bg-border" />
 
@@ -699,6 +868,13 @@ export default function RichTextEditor({ value, onChange, placeholder, className
         <ChartEditModal
           onSave={c => { insertChart(c); setChartModal(false) }}
           onClose={() => setChartModal(false)}
+        />
+      )}
+      {/* Модалка загрузки видео */}
+      {videoModal && (
+        <VideoModal
+          onInsert={insertVideo}
+          onClose={() => setVideoModal(false)}
         />
       )}
     </div>
