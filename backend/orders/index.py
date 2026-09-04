@@ -1268,6 +1268,17 @@ def handler(event: dict, context) -> dict:
                 pid = items[item_idx].get("id")
                 if pid:
                     wc.release_line(cur, order_id, int(pid))
+                    # Серийники этой позиции возвращаем на склад: товар
+                    # физически вернулся и снова доступен к продаже.
+                    cur.execute(
+                        f"UPDATE {schema}.sn_archive sn SET status='in_stock', "
+                        f"order_id=NULL, updated_at=NOW() "
+                        f"FROM {schema}.warehouse_supplies s "
+                        f"JOIN {schema}.warehouse_groups g ON g.id = s.group_id "
+                        f"WHERE sn.supply_id = s.id AND sn.order_id = %s "
+                        f"AND sn.status = 'sold' AND g.product_id = %s",
+                        (order_id, int(pid))
+                    )
                 items[item_idx]["item_status"] = "returned"
                 # Пересчёт суммы заказа без возвращённых позиций
                 total = sum((it.get("final_price") or it.get("price", 0)) * it.get("quantity", 1)
@@ -1896,6 +1907,17 @@ def handler(event: dict, context) -> dict:
                             (gid, sid, order_id, -write, float(s_cost), sale_price, margin,
                              f"Продажа {write} шт. по заказу #{order_id}")
                         )
+                        # Серийники проданных штук помечаем «Продан» и привязываем
+                        # к заказу. Без этого в архиве всё висело «На складе» даже
+                        # по давно выданным заказам. Берём самые старые из партии.
+                        cur.execute(
+                            f"UPDATE {schema}.sn_archive SET status = 'sold', "
+                            f"order_id = %s, updated_at = NOW() "
+                            f"WHERE id IN (SELECT id FROM {schema}.sn_archive "
+                            f"             WHERE supply_id = %s AND status = 'in_stock' "
+                            f"             ORDER BY id ASC LIMIT %s)",
+                            (order_id, sid, write)
+                        )
                         left -= write
                     # Обновить in_stock и stock_qty в products
                     cur.execute(
@@ -2126,7 +2148,11 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"UPDATE {schema}.warehouse_movements SET order_id=NULL WHERE order_id=%s", (order_id,))
             cur.execute(f"UPDATE {schema}.warehouse_stock_log SET order_id=NULL WHERE order_id=%s", (order_id,))
             cur.execute(f"UPDATE {schema}.finance_transactions SET order_id=NULL WHERE order_id=%s", (order_id,))
-            cur.execute(f"UPDATE {schema}.sn_archive SET order_id=NULL WHERE order_id=%s", (order_id,))
+            # Серийники возвращаем на склад: заказа больше нет, «Продан» без
+            # привязки повис бы в никуда и товар не нашёлся бы на остатке.
+            cur.execute(
+                f"UPDATE {schema}.sn_archive SET order_id=NULL, status='in_stock', "
+                f"updated_at=NOW() WHERE order_id=%s", (order_id,))
             cur.execute(f"UPDATE {schema}.employee_account_tx SET order_id=NULL WHERE order_id=%s", (order_id,))
 
             # 2b) Массовая сборка: группы-варианты и отдельные ПК (units).
