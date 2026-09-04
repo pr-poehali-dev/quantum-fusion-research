@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Requires admin key",
+      "method": "GET",
+      "path": "/?action=info",
+      "expectedStatus": 403
+    }
+  ]
+}
