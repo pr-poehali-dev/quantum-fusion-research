@@ -45,17 +45,25 @@ const plain = (html = "") =>
 
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
+// Общий бюджет времени на всю предгенерацию. Сборка на сервере имеет свой
+// лимит: если скрипт будет долго ждать недоступную сеть, процесс убьют и
+// готового сайта не останется вовсе. Лучше выпустить сайт без части
+// страниц, чем не выпустить совсем.
+const ДЕДЛАЙН = Date.now() + 90_000;
+const времяВышло = () => Date.now() > ДЕДЛАЙН;
+
 /** Запрос с повтором: сборочный сервер иногда ловит обрыв сети. */
-async function fetchText(url, tries = 3) {
+async function fetchText(url, tries = 2) {
   let last;
   for (let i = 0; i < tries; i++) {
+    if (времяВышло()) throw new Error("вышло время предгенерации");
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
+      const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
       if (!r.ok) throw new Error(`${r.status}`);
       return await r.text();
     } catch (e) {
       last = e;
-      await new Promise((s) => setTimeout(s, 1500 * (i + 1)));
+      if (i < tries - 1) await new Promise((s) => setTimeout(s, 1000));
     }
   }
   throw new Error(`${last?.message || "ошибка"} ${url}`);
@@ -197,6 +205,7 @@ async function main() {
     const data = await json(API.articles);
     const list = Array.isArray(data) ? data : data.articles || [];
     for (const a of list.filter((x) => x.is_published)) {
+      if (времяВышло()) { console.log("prerender: статьи — время вышло"); break; }
       const full = await json(`${API.articles}?id=${a.id}`).catch(() => null);
       const art = full?.article || full || a;
       const text = plain(art.content || "");
@@ -249,6 +258,7 @@ async function main() {
     const list = Array.isArray(data) ? data : data.products || [];
     for (const p of list) {
       if (p.is_active === false) continue;
+      if (времяВышло()) { console.log("prerender: товары — время вышло"); break; }
       const title = p.meta_title || `${p.name} — купить в BeGraphics`;
       const description =
         p.meta_description ||
