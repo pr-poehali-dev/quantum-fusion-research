@@ -45,10 +45,41 @@ const plain = (html = "") =>
 
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
+/** Запрос с повтором: сборочный сервер иногда ловит обрыв сети. */
+async function fetchText(url, tries = 3) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
+      if (!r.ok) throw new Error(`${r.status}`);
+      return await r.text();
+    } catch (e) {
+      last = e;
+      await new Promise((s) => setTimeout(s, 1500 * (i + 1)));
+    }
+  }
+  throw new Error(`${last?.message || "ошибка"} ${url}`);
+}
+
 async function json(url) {
-  const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
-  if (!r.ok) throw new Error(`${r.status} ${url}`);
-  return r.json();
+  return JSON.parse(await fetchText(url));
+}
+
+/**
+ * Карта сайта в /sitemap.xml.
+ *
+ * Раньше она отдавалась по служебному адресу облачной функции: роботы
+ * такую карту находят хуже, а Яндекс требует, чтобы карта лежала на том
+ * же домене, что и сайт. Забираем содержимое при сборке и кладём файлом.
+ */
+async function writeSitemap() {
+  const xml = await fetchText(API.sitemap);
+  if (!xml.includes("<urlset") && !xml.includes("<sitemapindex")) {
+    throw new Error("ответ не похож на карту сайта");
+  }
+  fs.writeFileSync(path.join(DIST, "sitemap.xml"), xml, "utf8");
+  const n = (xml.match(/<loc>/g) || []).length;
+  console.log(`prerender: sitemap.xml — адресов ${n}`);
 }
 
 /**
@@ -56,14 +87,14 @@ async function json(url) {
  * а внутрь #root кладём готовый текст. React при запуске перерисует
  * содержимое, так что дублирования пользователь не увидит.
  */
-function buildPage(shell, { url, title, description, image, body, jsonld }) {
+function buildPage(shell, { url, title, description, image, body, jsonld, type = "article" }) {
   let html = shell;
 
   const head = [
     `<title>${esc(title)}</title>`,
     `<meta name="description" content="${esc(description)}">`,
     `<link rel="canonical" href="${esc(url)}">`,
-    `<meta property="og:type" content="article">`,
+    `<meta property="og:type" content="${type}">`,
     `<meta property="og:url" content="${esc(url)}">`,
     `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:description" content="${esc(description)}">`,
@@ -104,6 +135,49 @@ function write(route, html) {
   fs.writeFileSync(path.join(dir, "index.html"), html, "utf8");
 }
 
+/**
+ * Разделы сайта. Заголовки заданы здесь списком, а не вытащены из кода:
+ * в компонентах атрибут title попадается и у служебных элементов (кнопок,
+ * подсказок), автоматический разбор цеплял их вместо заголовка страницы.
+ */
+const SECTIONS = [
+  ["shop", "Магазин комплектующих для ПК — BeGraphics",
+    "Видеокарты, процессоры, материнские платы, память и другие комплектующие для ПК с доставкой. Новые и б/у."],
+  ["builds", "Готовые сборки ПК — купить игровой компьютер — BeGraphics",
+    "Готовые сборки игровых и рабочих компьютеров с проверкой и гарантией. Подбор конфигурации под задачи и бюджет."],
+  ["articles", "Статьи и тесты — обзоры, гайды и бенчмарки железа — BeGraphics",
+    "Обзоры комплектующих, тесты и бенчмарки, гайды по сборке и ремонту ПК от мастерской BeGraphics."],
+  ["configurator", "Конфигуратор ПК — соберите компьютер онлайн — BeGraphics",
+    "Соберите компьютер под свои задачи: подбор комплектующих с проверкой совместимости и расчётом цены."],
+  ["tier-lists", "Тир-листы комплектующих — рейтинги железа — BeGraphics",
+    "Рейтинги видеокарт, процессоров и других комплектующих по результатам тестов мастерской."],
+  ["faq", "Вопрос-ответ — заказ, доставка и гарантия — BeGraphics",
+    "Ответы на частые вопросы: оплата, доставка, гарантия и сборка ПК на заказ."],
+  ["promo", "Акции и промокоды — скидки на сборки ПК — BeGraphics",
+    "Актуальные акции и промокоды: скидки на сборки ПК и комплектующие. Промокод вводится в корзине."],
+  ["cables", "Кастомные кабели для ПК — BeGraphics",
+    "Кастомные кабели питания для компьютера: подбор длины и цвета под вашу сборку."],
+  ["service", "Ремонт компьютеров и ноутбуков в Москве — BeGraphics",
+    "Диагностика и ремонт компьютеров, ноутбуков и видеокарт. Пайка, замена чипов, восстановление после залития."],
+  ["b2b", "Оптовые цены для партнёров — BeGraphics",
+    "Оптовый прайс на комплектующие для сервисов, интеграторов и корпоративных клиентов."],
+  ["contacts", "Контакты — как нас найти — BeGraphics",
+    "Адрес мастерской, телефон и режим работы. Приём техники в ремонт и выдача заказов."],
+  ["privacy", "Политика конфиденциальности — BeGraphics",
+    "Как мы обрабатываем и защищаем персональные данные посетителей сайта."],
+];
+
+function writeSections(shell) {
+  for (const [route, title, description] of SECTIONS) {
+    const url = `${SITE}/${route}`;
+    const body = `<section><h1>${esc(title.split(" — ")[0])}</h1><p>${esc(
+      description
+    )}</p></section>`;
+    write(route, buildPage(shell, { url, title, description, body, type: "website" }));
+  }
+  console.log(`prerender: разделов ${SECTIONS.length}`);
+}
+
 async function main() {
   const shellPath = path.join(DIST, "index.html");
   if (!fs.existsSync(shellPath)) {
@@ -112,6 +186,11 @@ async function main() {
   }
   const shell = fs.readFileSync(shellPath, "utf8");
   let count = 0;
+
+  await writeSitemap().catch((e) =>
+    console.log("prerender: sitemap пропущен —", e.message)
+  );
+  writeSections(shell);
 
   // ── Статьи ───────────────────────────────────────────────────────────
   try {
@@ -126,7 +205,10 @@ async function main() {
       const title = art.meta_title || `${art.title} — BeGraphics`;
       const description =
         art.meta_description || clip(plain(art.excerpt) || text, 300);
-      const url = `${SITE}/articles/${art.id}`;
+      // Канонический адрес должен совпадать с тем, что стоит в карте
+      // сайта (там слаг, если он задан), иначе робот получает два разных
+      // указания на одну статью и может не склеить дубли.
+      const url = `${SITE}/articles/${art.slug || art.id}`;
 
       // Текст статьи отдаём как есть: у него уже есть <p>, <h2> и списки —
       // роботу важна именно эта структура.
@@ -171,7 +253,7 @@ async function main() {
       const description =
         p.meta_description ||
         clip(plain(p.description) || `${p.name}. Наличие, цена, доставка.`, 300);
-      const url = `${SITE}/product/${p.id}`;
+      const url = `${SITE}/product/${p.slug || p.id}`;
 
       const body = `<article><h1>${esc(p.name)}</h1>${
         p.description ? `<div>${p.description}</div>` : ""
@@ -194,13 +276,61 @@ async function main() {
         },
       };
 
-      write(`product/${p.id}`, buildPage(shell, {
+      const page = buildPage(shell, {
         url, title, description, image: p.image_url, body, jsonld,
-      }));
+        type: "product",
+      });
+      write(`product/${p.id}`, page);
+      // В карте сайта товары указаны по слагу — страница нужна и там,
+      // иначе робот придёт по адресу из карты и снова получит пустой каркас.
+      if (p.slug) write(`product/${p.slug}`, page);
       count++;
     }
   } catch (e) {
     console.log("prerender: товары пропущены —", e.message);
+  }
+
+  // ── Готовые сборки ───────────────────────────────────────────────────
+  // В карту сайта попадают только сборки из каталога (status=catalog) —
+  // остальные это заказы клиентов, им публичная страница не нужна.
+  try {
+    const data = await json(API.builds);
+    const list = Array.isArray(data) ? data : data.builds || data.items || [];
+    for (const b of list) {
+      if (b.status !== "catalog") continue;
+      const title = `${b.name} — готовая сборка ПК — BeGraphics`;
+      const описание = plain(b.description) ||
+        `Готовая сборка ${b.name}: подбор комплектующих, сборка и проверка с гарантией.`;
+      const description = clip(описание, 300);
+      const url = `${SITE}/build-preview/${b.slug || b.id}`;
+      const image = (b.image_urls || [])[0];
+
+      const body = `<article><h1>${esc(b.name)}</h1>${
+        b.description ? `<div>${b.description}</div>` : ""
+      }${b.total_price ? `<p>Цена: ${esc(b.total_price)} ₽</p>` : ""}</article>`;
+
+      const jsonld = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: b.name,
+        description,
+        image: image || undefined,
+        offers: {
+          "@type": "Offer",
+          price: b.total_price,
+          priceCurrency: "RUB",
+          availability: "https://schema.org/InStock",
+          url,
+        },
+      };
+
+      write(`build-preview/${b.id}`, buildPage(shell, {
+        url, title, description, image, body, jsonld, type: "product",
+      }));
+      count++;
+    }
+  } catch (e) {
+    console.log("prerender: сборки пропущены —", e.message);
   }
 
   console.log(`prerender: готово, страниц ${count}`);

@@ -55,7 +55,7 @@ Disallow: /auth
 Disallow: /order-sheet
 
 Host: https://begraphics.ru
-Sitemap: https://functions.poehali.dev/9e4806c6-6f0d-4f6a-9874-33291a5d124f
+Sitemap: https://begraphics.ru/sitemap.xml
 
 # Выжимка о компании и статьи для ИИ-ассистентов
 LLM-Content: https://functions.poehali.dev/9e4806c6-6f0d-4f6a-9874-33291a5d124f?format=llms
