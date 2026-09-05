@@ -12,7 +12,16 @@
  * видит содержимое сразу. Живой посетитель попадает на ту же страницу,
  * приложение поднимается поверх и работает как раньше.
  *
- * Запускается автоматически в npm run build.
+ * Запускается как npm-хук postbuild — сразу после "vite build", отдельным
+ * процессом и БЕЗ аргументов сборки.
+ *
+ * Почему не через && в команде build: платформа дописывает свои аргументы
+ * (--outDir, --debug) в КОНЕЦ строки. Команда обязана заканчиваться ровно
+ * на "vite build", иначе аргументы достаются не тому процессу — из-за
+ * этого сборка падала дважды (пустой dist, затем ошибка синтаксиса bash).
+ *
+ * Папку сборки платформа задаёт через --outDir и в переменных окружения не
+ * передаёт, поэтому находим её сами: свежий каталог с index.html и assets.
  */
 
 import fs from "node:fs";
@@ -20,8 +29,50 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIST = path.join(ROOT, "dist");
 const SITE = "https://begraphics.ru";
+
+// Куда складывать страницы. Папку сборки задаёт платформа (--outDir), её
+// передаёт плагин; аргумент командной строки нужен для ручного запуска.
+/**
+ * Найти папку, куда только что собрался сайт.
+ * Обычно это dist/, но платформа задаёт свой путь вида builds/<хеш>/<id>.
+ * Признак сборки: внутри есть index.html и папка assets.
+ */
+function findDist() {
+  const явно = process.argv[2] || process.env.PRERENDER_OUT;
+  if (явно) return path.resolve(ROOT, явно);
+
+  const кандидаты = [];
+  const проверить = (dir) => {
+    if (
+      fs.existsSync(path.join(dir, "index.html")) &&
+      fs.existsSync(path.join(dir, "assets"))
+    ) {
+      кандидаты.push({ dir, t: fs.statSync(path.join(dir, "index.html")).mtimeMs });
+    }
+  };
+
+  проверить(path.join(ROOT, "dist"));
+
+  // builds/<хеш>/<id> — путь, который использует платформа
+  const builds = path.join(ROOT, "builds");
+  if (fs.existsSync(builds)) {
+    for (const a of fs.readdirSync(builds)) {
+      const p1 = path.join(builds, a);
+      if (!fs.statSync(p1).isDirectory()) continue;
+      проверить(p1);
+      for (const b of fs.readdirSync(p1)) {
+        const p2 = path.join(p1, b);
+        if (fs.statSync(p2).isDirectory()) проверить(p2);
+      }
+    }
+  }
+
+  кандидаты.sort((x, y) => y.t - x.t);
+  return кандидаты.length ? кандидаты[0].dir : path.join(ROOT, "dist");
+}
+
+let DIST = findDist();
 
 const API = JSON.parse(
   fs.readFileSync(path.join(ROOT, "backend", "func2url.json"), "utf8")
@@ -186,7 +237,8 @@ function writeSections(shell) {
   console.log(`prerender: разделов ${SECTIONS.length}`);
 }
 
-async function main() {
+async function main(outDir) {
+  if (outDir) DIST = path.resolve(ROOT, outDir);
   const shellPath = path.join(DIST, "index.html");
   if (!fs.existsSync(shellPath)) {
     console.log("prerender: нет dist/index.html — сначала сборка");
@@ -346,7 +398,17 @@ async function main() {
   console.log(`prerender: готово, страниц ${count}`);
 }
 
-main().catch((e) => {
-  // Сборку не роняем: без страниц сайт работает как раньше.
-  console.log("prerender: пропущено —", e.message);
-});
+/** Точка входа для плагина и для ручного запуска. Никогда не бросает. */
+export async function prerender(outDir) {
+  try {
+    await main(outDir);
+  } catch (e) {
+    // Сборку не роняем: без страниц сайт работает как раньше.
+    console.log("prerender: пропущено —", e.message);
+  }
+}
+
+// Прямой запуск: node scripts/prerender.mjs [папка]
+if (process.argv[1] && process.argv[1].endsWith("prerender.mjs")) {
+  prerender();
+}

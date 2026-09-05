@@ -2670,3 +2670,29 @@ react-helmet-async (v6.36) правит теги ТОЛЬКО в браузер�
   длинных путей), нехватка памяти (собирается с лимитом 2 ГБ), отсутствие
   файлов в git (scripts/ и backend/func2url.json закоммичены), версия Node
   (v20, fetch и AbortSignal.timeout есть).
+
+[v8.99] НАСТОЯЩАЯ причина обоих падений сборки (v8.97 и v8.98).
+Платформа запускает сборку так: <скрипт build> --outDir "./builds/<хеш>/<id>" --debug
+Аргументы дописываются в КОНЕЦ строки. Отсюда:
+  • v8.97 "vite build && node scripts/prerender.mjs"
+    → --outDir достался prerender.mjs, а НЕ vite;
+    → vite собрал в dist/, платформа искала в builds/... → "not found or empty".
+  • v8.98 "vite build && (node ... || true)"
+    → bash: syntax error near unexpected token `--outDir` (аргументы после `)`).
+ПРАВИЛО НА БУДУЩЕЕ: скрипт build ОБЯЗАН заканчиваться ровно на "vite build".
+  Ничего не дописывать через && / || / скобки — сломается снова.
+РЕШЕНИЕ: перенёс вызов в npm-хук "postbuild": npm запускает его сам после
+  build, ОТДЕЛЬНЫМ процессом и БЕЗ аргументов платформы (проверено: в
+  postbuild process.argv чистый).
+  "postbuild": "node scripts/prerender.mjs || true"
+ПАПКА СБОРКИ: платформа задаёт её через --outDir и в переменные окружения
+  НЕ кладёт (проверено: ни одной переменной с outDir). Поэтому
+  scripts/prerender.mjs::findDist() ищет её сам — самый свежий каталог,
+  где есть И index.html, И assets/: сначала dist/, затем builds/*/*.
+  Можно задать явно: node scripts/prerender.mjs <папка> или PRERENDER_OUT.
+vite.config.ts — READONLY, редактировать нельзя (плагином подключить не вышло).
+ПРОВЕРЕНО в точном сценарии платформы:
+  npm run build -- --outDir "./builds/fa0776.../0e120" --debug
+  → 2548 файлов в папке платформы, sitemap.xml и 455 страниц там же, код 0.
+  Обычный npm run build → dist/, 468 адресов карты, 0 без страницы.
+  Подменил prerender на throw → сборка прошла, сайт на месте (1648 файлов).
