@@ -15,6 +15,7 @@ const FinanceTab = lazy(() => import("@/components/admin/FinanceTab"))
 const AnalyticsTab = lazy(() => import("@/components/admin/AnalyticsTab"))
 const FaqTab = lazy(() => import("@/components/admin/FaqTab"))
 const SeoTab = lazy(() => import("@/components/admin/SeoTab"))
+const ExportDataTab = lazy(() => import("@/components/admin/ExportDataTab"))
 const PromoTab = lazy(() => import("@/components/admin/PromoTab"))
 const RmaTab = lazy(() => import("@/components/admin/RmaTab"))
 const QuizRequestsTab = lazy(() => import("@/components/admin/QuizRequestsTab"))
@@ -199,6 +200,7 @@ export default function Admin() {
   const toolsTabs = [
     { key: "stress", label: "Стресс-тесты", icon: "Activity" },
     { key: "telegram_bot", label: "Telegram-бот", icon: "Send" },
+    { key: "export_data", label: "Выгрузка данных", icon: "HardDriveDownload" },
   ]
   // Группа 4 — Финансы и настройки
   const financeTabs = [
@@ -408,6 +410,13 @@ export default function Admin() {
         {tab === "telegram_bot" && (
           <div style={{ padding: "32px 50px 48px" }}>
             <TelegramBotTab />
+          </div>
+        )}
+
+        {/* ВЫГРУЗКА ДАННЫХ — дамп базы, файлы хранилища, комплект переноса */}
+        {tab === "export_data" && (
+          <div style={{ padding: "32px 50px 48px" }}>
+            <ExportDataTab />
           </div>
         )}
 

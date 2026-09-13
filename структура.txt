@@ -2696,3 +2696,34 @@ vite.config.ts — READONLY, редактировать нельзя (плаги
   → 2548 файлов в папке платформы, sitemap.xml и 455 страниц там же, код 0.
   Обычный npm run build → dist/, 468 адресов карты, 0 без страницы.
   Подменил prerender на throw → сборка прошла, сайт на месте (1648 файлов).
+
+[v9.00] Выгрузка данных для переноса на свой хостинг — вкладка в админке.
+ФРОНТ: src/components/admin/ExportDataTab.tsx, вкладка "export_data"
+  («Выгрузка данных», иконка HardDriveDownload) в группе toolsTabs
+  («Обвязка»). Зарегистрирована: types.ts AdminTab, constants.ts VALID_TABS,
+  Admin.tsx (lazy-импорт + рендер). Доступ по getAdminKey() из sessionStorage.
+  Три кнопки: «Скачать базу» (dump.sql + indexes.sql), «Скачать комплект»
+  (zip: README.md, .env.example, download.sh, files.txt), «Скачать файлы»
+  (zip всех файлов средствами браузера). Пакет jszip (установлен).
+BACKEND backend/export-data/index.py — добавлены действия:
+  indexes  — индексы, FK, UNIQUE (ставить ПОСЛЕ dump.sql)
+  filelist — ссылки простым текстом для wget -i
+  script   — готовый download.sh (curl, докачка, лог неудач)
+  readme   — инструкция по развёртыванию
+  envfile  — .env.example (собран по grep os.environ во всех функциях)
+  db: умолчание изменено — теперь выгружает ВСЁ, облегчённый режим &full=0.
+ГРАБЛИ (проверено, не повторять):
+  • pg_get_constraintdef ЗАПРЕЩЁН в облаке ("is not whitelisted") — индексы
+    и FK собираются из information_schema вручную. CHECK не переносятся:
+    их 521, почти все — NOT NULL (уже в CREATE TABLE), текст без
+    pg_get_constraintdef не достать.
+  • action=readme сначала звал action_info() (COUNT(*) по 95 таблицам) и
+    падал в 504 — заменено на 2 лёгких запроса.
+  • Файлы на cdn.poehali.dev ПУБЛИЧНЫ (проверено: 200 без ключей) —
+    download.sh работает где угодно, ключи S3 нужны только для записи.
+ЗАМЕРЫ: база 6267 MB / 95 таблиц / 72 627 строк; полный дамп качается
+  за 119 с, 31,5 МБ; indexes.sql 26 КБ (115 индексов + 66 FK + 28 UNIQUE;
+  115+95 pkey+28 = 238 = ровно столько в базе, ничего не потеряно).
+  Файлы: 1368 ссылок, 1355 живых, 909 МБ; 13 битых (старые .exe, 404).
+  Дамп разобран sqlglot: 1495 инструкций, ошибок 0; indexes.sql — 210, 0.
+  download.sh проверен на живых файлах: 10/10, повторный запуск пропускает.
