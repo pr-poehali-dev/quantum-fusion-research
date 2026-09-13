@@ -7,7 +7,12 @@ export interface Product {
   image_url: string | null
   image_urls?: string[]
   specs: Record<string, string>
+  // in_stock — можно ли купить сразу. Бэкенд ставит true от 2 шт для нового
+  // товара и от 1 шт для б/у: последняя штука обычно уже обещана клиенту.
   in_stock: boolean
+  // stock_qty — свободный остаток склада (резервы уже вычтены). Нужен,
+  // чтобы отличить «есть, но продаём под заказ» от «совсем нет».
+  stock_qty?: number
   is_featured: boolean
   is_used?: boolean
   avg_cost: number

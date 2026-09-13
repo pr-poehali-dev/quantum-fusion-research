@@ -18,6 +18,9 @@ interface Product {
   image_urls?: string[]
   specs: Record<string, string>
   in_stock: boolean
+  // Свободный остаток склада: 0 — совсем нет, 1 — есть, но продаём
+  // под заказ (in_stock=false по порогу).
+  stock_qty?: number
   is_featured: boolean
   is_used?: boolean
   category: { id: number; name: string; slug: string } | null
@@ -218,8 +221,11 @@ export default function ProductPage() {
   const cartItem = items.find(i => i.id === product.id && i.type === "product")
   const cartQty = cartItem?.quantity ?? 0
 
-  const handleAddToCart = () => {
-    addItem({ id: product.id, name: product.name, price: product.price, image_url: product.image_url, description: product.description, type: "product" })
+  // preorder — товара нет в свободной продаже (совсем нет либо осталась
+  // последняя штука). Заказ оформляется, но помечается предзаказом, как и
+  // кнопка «Под заказ» в каталоге.
+  const handleAddToCart = (preorder = false) => {
+    addItem({ id: product.id, name: product.name, price: product.price, image_url: product.image_url, description: product.description, type: "product", preorder })
   }
 
   const discount = product.old_price ? Math.round((1 - product.price / product.old_price) * 100) : null
@@ -322,7 +328,7 @@ export default function ProductPage() {
                   Б/У
                 </span>
               )}
-              {!product.in_stock && (
+              {(product.stock_qty ?? 0) <= 0 && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-2xl">
                   <span className="rounded-xl border border-foreground/20 bg-background/80 px-5 py-2 text-sm font-semibold uppercase tracking-widest text-foreground/60">
                     Нет в наличии
@@ -371,8 +377,10 @@ export default function ProductPage() {
 
             {/* Наличие */}
             <div className="mb-6 flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${product.in_stock ? "bg-green-400" : "bg-foreground/30"}`} />
-              <span className="text-sm text-foreground/60">{product.in_stock ? "В наличии" : "Нет в наличии"}</span>
+              <div className={`h-2 w-2 rounded-full ${product.in_stock ? "bg-green-400" : (product.stock_qty ?? 0) > 0 ? "bg-amber-400" : "bg-foreground/30"}`} />
+              <span className="text-sm text-foreground/60">
+                {product.in_stock ? "В наличии" : (product.stock_qty ?? 0) > 0 ? "Под заказ" : "Нет в наличии"}
+              </span>
             </div>
 
             {/* Акция на этот товар (если есть публичная) */}
@@ -388,7 +396,7 @@ export default function ProductPage() {
                     <Icon name="Minus" size={13} />
                   </button>
                   <span className="min-w-[3rem] text-center font-bold text-foreground">{cartQty} шт</span>
-                  <button onClick={handleAddToCart}
+                  <button onClick={() => handleAddToCart(!product.in_stock)}
                     className="flex h-7 w-7 items-center justify-center rounded-lg border border-border hover:border-primary transition-colors"
                     style={{ cursor: "pointer" }}>
                     <Icon name="Plus" size={13} />
@@ -396,12 +404,21 @@ export default function ProductPage() {
                   <span className="ml-2 text-sm font-medium text-green-400">В корзине</span>
                 </div>
               ) : (
-                <button onClick={handleAddToCart} disabled={!product.in_stock}
-                  className="btn-tilt flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-                  style={{ cursor: product.in_stock ? "pointer" : "not-allowed" }}>
-                  <Icon name="ShoppingCart" size={16} />
-                  В корзину
-                </button>
+                product.in_stock ? (
+                  <button onClick={() => handleAddToCart()}
+                    className="btn-tilt flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="ShoppingCart" size={16} />
+                    В корзину
+                  </button>
+                ) : (
+                  <button onClick={() => handleAddToCart(true)}
+                    className="btn-tilt flex items-center gap-2 rounded-xl border border-primary/40 px-6 py-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                    style={{ cursor: "pointer" }}>
+                    <Icon name="Clock" size={16} />
+                    Под заказ
+                  </button>
+                )
               )}
               <button onClick={() => navigate("/cart")}
                 className="flex items-center gap-2 rounded-xl border border-border px-6 py-3 text-sm text-foreground/70 hover:border-primary hover:text-foreground transition-colors"

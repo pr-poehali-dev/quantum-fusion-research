@@ -5,13 +5,17 @@ import { Product, Build, BuildTag, CommunityBuild, getTagClass, SLOT_NAMES, SLOT
 import PhotoComingSoon from "./PhotoComingSoon"
 
 // ── Мини-карусель фото для карточки товара ──
-export function ProductImageCarousel({ images, name, inStock }: { images: string[]; name: string; inStock: boolean }) {
+// soldOut — на складе реально пусто. Отличается от inStock: товар с
+// остатком 1 шт продаётся «Под заказ», но он физически есть, и затемнять
+// его плашкой «Нет в наличии» нельзя — это вводит покупателя в заблуждение.
+export function ProductImageCarousel({ images, name, inStock, soldOut }: { images: string[]; name: string; inStock: boolean; soldOut?: boolean }) {
   const [idx, setIdx] = useState(0)
+  const показатьПлашку = soldOut ?? !inStock
   // Фото ещё нет — товар всё равно показываем, с заглушкой вместо картинки.
   if (!images.length) return (
     <div className="relative h-full w-full">
       <PhotoComingSoon />
-      {!inStock && (
+      {показатьПлашку && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
           <span className="rounded-xl border border-white/25 bg-black/50 px-4 py-1.5 text-sm font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
             Нет в наличии
@@ -47,7 +51,7 @@ export function ProductImageCarousel({ images, name, inStock }: { images: string
           </div>
         </>
       )}
-      {!inStock && (
+      {показатьПлашку && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
           <span className="rounded-xl border border-white/25 bg-black/50 px-4 py-1.5 text-sm font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
             Нет в наличии
@@ -76,7 +80,7 @@ export function ProductCard({
   return (
     <div className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 transition-all duration-300">
       <button onClick={onOpen} className="relative aspect-video bg-muted flex items-center justify-center overflow-hidden" style={{ cursor: "pointer" }}>
-        <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} />
+        <ProductImageCarousel images={images} name={p.name} inStock={p.in_stock} soldOut={(p.stock_qty ?? 0) <= 0} />
         {p.is_used && (
           <span className="absolute left-2 top-2 z-10 rounded bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
             Б/У

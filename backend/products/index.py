@@ -72,10 +72,34 @@ def _recalc_builds_for_product(cur, product_id: int, new_price: float) -> int:
     return updated
 
 
+# Порог наличия для витрины. Новый товар считается «в наличии» только
+# начиная с 2 шт: последняя штука обычно уже обещана клиенту либо стоит
+# витринным образцом, продавать её как свободную нельзя.
+# Б/у железо почти всегда в одном экземпляре — для него порог 1 шт,
+# иначе весь раздел б/у ушёл бы в «Под заказ».
+MIN_STOCK_NEW = 2
+MIN_STOCK_USED = 1
+
+
+def in_stock_calc(stock_qty, row=None, is_used=None) -> bool:
+    """Показывать ли товар как «в наличии».
+
+    stock_qty — свободный остаток склада (Σ warehouse_supplies.qty,
+    резервы уже вычтены). is_used можно передать явно; иначе берём из
+    строки выборки (позиция 19 — p.is_used).
+    """
+    qty = int(stock_qty or 0)
+    if is_used is None and row is not None:
+        is_used = bool(row[19]) if len(row) > 19 else False
+    порог = MIN_STOCK_USED if is_used else MIN_STOCK_NEW
+    return qty >= порог
+
+
 def handler(event: dict, context) -> dict:
     """
     Товары и компоненты конфигуратора.
-    in_stock вычисляется автоматически: stock_qty > 0.
+    in_stock вычисляется от свободного остатка склада: от 2 шт для нового
+    товара и от 1 шт для б/у (см. in_stock_calc).
 
     Товары (products):
       GET /            — список (params: category, featured, search)
@@ -124,7 +148,16 @@ def handler(event: dict, context) -> dict:
             "image_url": image_urls[0] if image_urls else row[5],
             "image_urls": image_urls,
             "specs": row[6] or {},
-            "in_stock": bool(row[7]),
+            # Наличие считаем от РЕАЛЬНОГО свободного остатка склада
+            # (stock_qty в запросе = Σ warehouse_supplies.qty, уже за вычетом
+            # резервов), а не от поля products.in_stock: оно обновляется не
+            # везде и отставало — товар в брони показывался «в наличии».
+            #
+            # Порог «в наличии» — 2 шт. При остатке 1 шт товар уходит в
+            # «Под заказ»: последняя штука обычно уже кому-то обещана или
+            # является витринным образцом. Исключение — б/у: они почти
+            # всегда в единственном экземпляре, для них порог 1 шт.
+            "in_stock": in_stock_calc(stock_qty, row),
             "stock_qty": stock_qty or 0,
             "is_featured": row[8], "sort_order": row[9],
             "created_at": row[10].isoformat() if row[10] else None,
@@ -298,7 +331,8 @@ def handler(event: dict, context) -> dict:
                                CASE WHEN COALESCE(wg.price_retail, 0) > 0 THEN wg.price_retail ELSE p.price END as price,
                                COALESCE((SELECT SUM(s.qty) FROM {schema}.warehouse_supplies s
                                          JOIN {schema}.warehouse_groups g ON g.id = s.group_id
-                                         WHERE g.product_id = p.id), 0) as stock_qty
+                                         WHERE g.product_id = p.id), 0) as stock_qty,
+                               p.is_used
                         FROM {schema}.products p
                         LEFT JOIN {schema}.categories c ON p.category_id = c.id
                         LEFT JOIN {schema}.brands b ON b.id = p.brand_id
@@ -320,7 +354,8 @@ def handler(event: dict, context) -> dict:
                         "brand": r[7],
                         "tier_rank": r[8], "tier_pos": r[9] or 0,
                         "price": float(r[10]) if r[10] else 0,
-                        "in_stock": stock_qty > 0,
+                        # Тот же порог, что и на витрине (2 шт / 1 шт для б/у)
+                        "in_stock": in_stock_calc(stock_qty, is_used=bool(r[12])),
                         "values": {},
                     })
                     pid_list.append(r[0])
