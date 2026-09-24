@@ -231,13 +231,34 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 200, "headers": cors,
                         "body": json.dumps({"ok": True, "id": new_id, "display_number": disp})}
 
-            # ─── Нормализация позиций заказа ───
-            # В items обязаны быть name / price / quantity: на них завязаны
-            # витрина админки, печать и уведомления. Клиент может прислать
-            # сокращённый формат ({product_id, qty}) или вовсе мусор — тогда
-            # добираем имя и цену из каталога, а недостающее заполняем нулями,
-            # чтобы карточка заказа не падала на undefined.
+            # ─── Нормализация позиций и ПЕРЕСЧЁТ ЦЕН ПО КАТАЛОГУ ───
+            # Цену и сумму из тела запроса НЕ принимаем: любой желающий мог
+            # прислать свой total и купить видеокарту за рубль (проверено
+            # пентестом, заказы 896/897). Для каждой позиции с известным
+            # id товара цена берётся из products/warehouse_groups, итог
+            # считается на сервере.
+            #
+            # Позиции без id (услуги, ручные строки менеджера, сборки
+            # конфигуратора) пересчитать нечем — их цену оставляем как
+            # пришла, но помечаем заказ на ручную проверку.
             SCHEMA = "t_p72635010_quantum_fusion_resea"
+            price_alerts = []   # расхождения «прислали / реальная цена»
+
+            def _catalog_price(pid):
+                """Актуальная розничная цена товара: приоритет у склада."""
+                try:
+                    cur.execute(
+                        f"SELECT p.name, "
+                        f"       CASE WHEN COALESCE(wg.price_retail, 0) > 0 "
+                        f"            THEN wg.price_retail ELSE p.price END "
+                        f"FROM {SCHEMA}.products p "
+                        f"LEFT JOIN {SCHEMA}.warehouse_groups wg "
+                        f"       ON wg.id = p.warehouse_group_id "
+                        f"WHERE p.id = %s", (pid,))
+                    r = cur.fetchone()
+                except Exception:
+                    return None
+                return (r[0], float(r[1] or 0)) if r else None
 
             def _normalize_items(raw):
                 out = []
@@ -252,37 +273,59 @@ def handler(event: dict, context) -> dict:
                         pid = None
                     if pid is not None:
                         n["id"] = pid
+
                     qty = n.get("quantity", n.get("qty", 1))
                     try:
                         qty = max(1, int(qty))
                     except Exception:
                         qty = 1
                     n["quantity"] = qty
-                    if (not n.get("name")) or n.get("price") is None:
-                        if pid is not None:
-                            try:
-                                cur.execute(
-                                    f"SELECT name, price FROM {SCHEMA}.products WHERE id = %s",
-                                    (pid,))
-                                pr = cur.fetchone()
-                            except Exception:
-                                pr = None
-                            if pr:
-                                n.setdefault("name", None)
-                                if not n.get("name"):
-                                    n["name"] = pr[0]
-                                if n.get("price") is None:
-                                    n["price"] = float(pr[1] or 0)
+
+                    # Конфигуратор шлёт синтетические id (timestamp) — такие
+                    # позиции в каталоге не ищем, у них своя калькуляция.
+                    is_catalog = (
+                        pid is not None and 0 < pid < 10**9
+                        and n.get("item_type") in (None, "product")
+                    )
+                    cat = _catalog_price(pid) if is_catalog else None
+
+                    if cat:
+                        cat_name, cat_price = cat
+                        if not n.get("name"):
+                            n["name"] = cat_name
+                        try:
+                            sent = float(n.get("price")) if n.get("price") is not None else None
+                        except Exception:
+                            sent = None
+                        # Цена всегда с сервера. Если присланная отличалась —
+                        # фиксируем попытку подмены.
+                        if sent is not None and abs(sent - cat_price) > 0.01:
+                            price_alerts.append(
+                                f"{n.get('name')}: прислано {sent:.0f} ₽, "
+                                f"в каталоге {cat_price:.0f} ₽")
+                        n["price"] = cat_price
+                        # Ручная скидка менеджера с сайта не принимается.
+                        n.pop("final_price", None)
+                    else:
+                        try:
+                            n["price"] = float(n.get("price") or 0)
+                        except Exception:
+                            n["price"] = 0.0
+
                     if not n.get("name"):
                         n["name"] = "Позиция без названия"
-                    try:
-                        n["price"] = float(n.get("price") or 0)
-                    except Exception:
-                        n["price"] = 0.0
                     out.append(n)
                 return out
 
             body["items"] = _normalize_items(body.get("items"))
+
+            def _items_sum(items_list):
+                """Сумма позиций по серверным ценам."""
+                s = 0.0
+                for it in items_list:
+                    price = float(it.get("price") or 0)
+                    s += price * int(it.get("quantity") or 1)
+                return round(s, 2)
 
             # ─── Промокод: серверная валидация и расчёт скидки ───
             # Итоговая сумма total уменьшается на скидку. Значения из тела
@@ -290,7 +333,21 @@ def handler(event: dict, context) -> dict:
             promo_code = None
             promo_id = None
             discount_amount = 0.0
-            _raw_total = float(body.get("total") or 0)
+
+            # Итог считаем САМИ по серверным ценам позиций.
+            # Присланный total используем только как ориентир для сверки:
+            # если он не сходится — заказ всё равно уйдёт с нашей суммой,
+            # а расхождение попадёт в комментарий и уведомление.
+            _client_total = float(body.get("total") or 0)
+            _server_total = _items_sum(body["items"])
+            # Заказы без распознанных позиций (сборки конфигуратора, услуги)
+            # сервер посчитать не может — тогда оставляем присланную сумму.
+            _raw_total = _server_total if body["items"] and _server_total > 0 else _client_total
+            if _client_total > 0 and abs(_client_total - _raw_total) > 0.01:
+                price_alerts.append(
+                    f"итог: прислан {_client_total:.0f} ₽, "
+                    f"пересчитан {_raw_total:.0f} ₽")
+
             _promo_input = (body.get("promo_code") or "").strip()
             if _promo_input:
                 try:
@@ -307,6 +364,13 @@ def handler(event: dict, context) -> dict:
                     pass
             final_total = max(round(_raw_total - discount_amount, 2), 0)
             body["total"] = final_total  # дальнейшая логика (уведомления и пр.) видит итог со скидкой
+
+            # Попытка прислать свои цены — дописываем в комментарий заказа,
+            # чтобы менеджер увидел это прямо в карточке, а не в логах.
+            if price_alerts:
+                _warn = "⚠️ ЦЕНЫ ИЗМЕНЕНЫ СЕРВЕРОМ (" + "; ".join(price_alerts[:5]) + ")"
+                body["comment"] = ((body.get("comment") or "").strip()
+                                   + ("\n" if body.get("comment") else "") + _warn)
 
             # Источник клиента: явный source_id или авто-подбор по utm_source.
             utm_source = (body.get("utm_source") or "").strip() or None
@@ -394,6 +458,13 @@ def handler(event: dict, context) -> dict:
                         _link_line = f"\n🔗 <a href=\"{_base}/admin/wip_builds\">Открыть в сборках</a>"
                     else:
                         _link_line = f"\n🔗 <a href=\"{_base}/admin/order/{order_id}\">Открыть заказ</a>"
+                # Подмена цен — отдельная строка в уведомлении: такой заказ
+                # нужно проверить руками до отгрузки.
+                _alert_line = ""
+                if price_alerts:
+                    _alert_line = ("\n⚠️ <b>Цены в запросе не совпали с каталогом, "
+                                   "исправлены сервером:</b>\n• "
+                                   + "\n• ".join(price_alerts[:5]))
                 notify_managers(
                     f"🛒 <b>Новый заказ {display_number}</b>\n"
                     f"Тип: {_ord_type_label}\n"
@@ -401,6 +472,7 @@ def handler(event: dict, context) -> dict:
                     f"Телефон: {body.get('customer_phone','—')}"
                     f"{_contact_line}\n"
                     f"Сумма: {_amount} ₽"
+                    f"{_alert_line}"
                     f"{_link_line}", event_key="order_new")
             except Exception as _e:
                 print(f"TG_NOTIFY order: {_e}")
