@@ -231,10 +231,62 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 200, "headers": cors,
                         "body": json.dumps({"ok": True, "id": new_id, "display_number": disp})}
 
+            # ─── Нормализация позиций заказа ───
+            # В items обязаны быть name / price / quantity: на них завязаны
+            # витрина админки, печать и уведомления. Клиент может прислать
+            # сокращённый формат ({product_id, qty}) или вовсе мусор — тогда
+            # добираем имя и цену из каталога, а недостающее заполняем нулями,
+            # чтобы карточка заказа не падала на undefined.
+            SCHEMA = "t_p72635010_quantum_fusion_resea"
+
+            def _normalize_items(raw):
+                out = []
+                for it in (raw or []):
+                    if not isinstance(it, dict):
+                        continue
+                    n = dict(it)
+                    pid = n.get("id") or n.get("product_id")
+                    try:
+                        pid = int(pid) if pid is not None else None
+                    except Exception:
+                        pid = None
+                    if pid is not None:
+                        n["id"] = pid
+                    qty = n.get("quantity", n.get("qty", 1))
+                    try:
+                        qty = max(1, int(qty))
+                    except Exception:
+                        qty = 1
+                    n["quantity"] = qty
+                    if (not n.get("name")) or n.get("price") is None:
+                        if pid is not None:
+                            try:
+                                cur.execute(
+                                    f"SELECT name, price FROM {SCHEMA}.products WHERE id = %s",
+                                    (pid,))
+                                pr = cur.fetchone()
+                            except Exception:
+                                pr = None
+                            if pr:
+                                n.setdefault("name", None)
+                                if not n.get("name"):
+                                    n["name"] = pr[0]
+                                if n.get("price") is None:
+                                    n["price"] = float(pr[1] or 0)
+                    if not n.get("name"):
+                        n["name"] = "Позиция без названия"
+                    try:
+                        n["price"] = float(n.get("price") or 0)
+                    except Exception:
+                        n["price"] = 0.0
+                    out.append(n)
+                return out
+
+            body["items"] = _normalize_items(body.get("items"))
+
             # ─── Промокод: серверная валидация и расчёт скидки ───
             # Итоговая сумма total уменьшается на скидку. Значения из тела
             # запроса НЕ доверяем — считаем заново по актуальному промокоду.
-            SCHEMA = "t_p72635010_quantum_fusion_resea"
             promo_code = None
             promo_id = None
             discount_amount = 0.0
