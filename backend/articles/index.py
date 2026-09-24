@@ -32,22 +32,37 @@ def _clean_faq(raw):
 def handler(event: dict, context) -> dict:
     """
     Статьи и тесты.
+    Чтение (GET) — публичное, статьи показываются на сайте.
+    Изменения (POST/PUT/DELETE) — ТОЛЬКО с ключом администратора.
+
     GET  /            — список (params: category, limit, offset, published)
     GET  /?id=N       — одна статья
-    POST /            — создать
-    PUT  /            — обновить (body.id обязателен)
-    DELETE /?id=N     — удалить
+    POST /            — создать          (нужен X-Admin-Key)
+    PUT  /            — обновить         (нужен X-Admin-Key, body.id обязателен)
+    DELETE /?id=N     — удалить          (нужен X-Admin-Key)
     """
     cors = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, X-Admin-Key",
     }
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": cors, "body": ""}
 
     method = event.get("httpMethod", "GET")
     params = event.get("queryStringParameters") or {}
+
+    # Запись доступна только администратору. Раньше проверки не было вовсе —
+    # любой мог создать/изменить/удалить статью обычным запросом (выявлено
+    # пентестом: на сайте появилась чужая статья).
+    if method in ("POST", "PUT", "DELETE"):
+        _h = event.get("headers") or {}
+        _admin_key = (_h.get("X-Admin-Key") or _h.get("x-admin-key")
+                      or params.get("ak") or "")
+        if not _admin_key or _admin_key != os.environ.get("ADMIN_KEY"):
+            return {"statusCode": 403, "headers": cors,
+                    "body": json.dumps({"error": "Нет доступа"})}
+
     conn = get_conn()
     cur = conn.cursor()
 

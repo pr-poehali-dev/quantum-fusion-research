@@ -53,6 +53,15 @@ function stressHeaders(adminKey: string, auth?: StressAuth): Record<string, stri
   return { "X-Admin-Token": adminKey }
 }
 
+// Заголовки админского запроса: JSON + ключ администратора из sessionStorage
+// (кладётся туда при входе в админку). Нужен там, где бэкенд разрешает
+// изменения только админу — например при работе со статьями.
+function adminHeaders(): Record<string, string> {
+  let key = ""
+  try { key = sessionStorage.getItem("begraphics_admin_key") || "" } catch { key = "" }
+  return { "Content-Type": "application/json", "X-Admin-Key": key }
+}
+
 // Доп. query: фильтр по компании (только для админа; партнёру бэкенд сам ставит).
 function stressQ(_adminKey: string, auth?: StressAuth): string {
   if (auth?.session) return ""
@@ -204,9 +213,11 @@ export const api = {
       return fetch(URLS.articles + qs).then(r => r.json())
     },
     getById: (id: number, noview?: boolean) => fetch(`${URLS.articles}?id=${id}${noview ? "&noview=1" : ""}`).then(r => r.json()),
-    create: (data: unknown) => fetch(URLS.articles, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
-    update: (data: unknown) => fetch(URLS.articles, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
-    delete: (id: number) => fetch(`${URLS.articles}?id=${id}`, { method: "DELETE" }).then(r => r.json()),
+    // Создание/правка/удаление требуют ключа администратора — он лежит
+    // в sessionStorage после входа в админку (см. adminHeaders).
+    create: (data: unknown) => fetch(URLS.articles, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
+    update: (data: unknown) => fetch(URLS.articles, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) }).then(r => r.json()),
+    delete: (id: number) => fetch(`${URLS.articles}?id=${id}`, { method: "DELETE", headers: adminHeaders() }).then(r => r.json()),
   },
   quiz: {
     getQuestions: (all?: boolean) => fetch(`${URLS.quiz}?resource=questions${all ? "&all=true" : ""}`).then(r => r.json()),
