@@ -7,6 +7,7 @@ const CDN = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a96
 
 const IMG = {
   bench: CDN + "8f14efb7-cd14-4eb7-a83f-d24d99b8b964.png",
+  benchMobile: CDN + "0e77bbc4-46de-459d-a991-513f7ea2afaf.png",
   open: CDN + "462003f5-d562-4dac-82b1-df23ea5011ce.jpg",
   gpu: CDN + "cc116cf9-1a99-4450-ad0d-4d793046d01b.jpg",
   board: CDN + "dbedf91f-be5f-4379-b798-e2badeb51446.jpg",
@@ -556,7 +557,10 @@ export default function Welcome1() {
       </nav>
 
       <section id="hero" className="relative min-h-dvh overflow-hidden">
-        <img ref={heroImg} src={IMG.bench} alt="Стенд сборки BeGraphics" className="absolute inset-0 h-full w-full scale-[1.08] object-cover will-change-transform" />
+        <picture>
+          <source media="(max-width: 639px)" srcSet={IMG.benchMobile} />
+          <img ref={heroImg} src={IMG.bench} alt="Стенд сборки BeGraphics" className="absolute inset-0 h-full w-full scale-[1.08] object-cover will-change-transform" />
+        </picture>
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/20" />
         <div
           ref={heroText}
