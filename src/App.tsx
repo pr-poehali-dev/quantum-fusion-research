@@ -40,7 +40,7 @@ const ConsentModal = lazyWithReload(() => import("@/components/ConsentModal"));
 const Toaster = lazyWithReload(() => import("@/components/ui/toaster").then(m => ({ default: m.Toaster })));
 const Sonner = lazyWithReload(() => import("@/components/ui/sonner").then(m => ({ default: m.Toaster })));
 
-const Index = lazyWithReload(() => import("./pages/Index"));
+const Welcome1 = lazyWithReload(() => import("./pages/Welcome1"));
 const Shop = lazyWithReload(() => import("./pages/Shop"));
 const Configurator = lazyWithReload(() => import("./pages/Configurator"));
 const Cart = lazyWithReload(() => import("./pages/Cart"));
@@ -110,8 +110,10 @@ const App = () => (
             </div>
           }>
             <Routes>
-              <Route path="/" element={<HomeStonks />} />
-              <Route path="/welcome" element={<Index />} />
+              <Route path="/" element={<Welcome1 />} />
+              <Route path="/welcome" element={<Welcome1 />} />
+              <Route path="/home" element={<HomeStonks />} />
+              <Route path="/welcome1" element={<Navigate to="/welcome" replace />} />
               <Route path="/shop" element={<Shop />} />
               <Route path="/configurator" element={<Configurator />} />
               <Route path="/s/:code" element={<Configurator />} />
