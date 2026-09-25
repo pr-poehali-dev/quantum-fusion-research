@@ -1,10 +1,9 @@
 # СТРУКТУРА ПРОЕКТА — backend функции
 # Обновляй этот файл при любых изменениях в backend/
 
-## Главная страница (v8.24)
+## Главная страница (v8.25: секция «Лента» убрана, 9 секций)
 - / → src/pages/Welcome1.tsx (копия главной self-host сервера,
-  восстановлена из чанка Welcome1-b8hb5T5j.js). Данные: api.builds
-  (status=catalog, лента-телефон), api.articles (published, limit 4),
+  восстановлена из чанка Welcome1-b8hb5T5j.js). Данные: api.articles (published, limit 4),
   api.tier (S/A/B с фото), api.faq.getPublic (5 вопросов). Статичные фото:
   public/welcome/*.png + CDN проекта.
 - /home → старая главная HomeStonks (на / справа сверху кнопка «Перейти на сайт» → /home). /welcome и /welcome1 → редирект на /.

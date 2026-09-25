@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type RefObject } from "react"
+import { useEffect, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type RefObject } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import Seo from "@/components/Seo"
 import { api } from "@/lib/api"
@@ -222,7 +222,6 @@ const NAV = [
   { id: "service", t: "Услуги" },
   { id: "tiers", t: "База" },
   { id: "articles", t: "Статьи" },
-  { id: "feed", t: "Лента" },
   { id: "faq", t: "FAQ" },
   { id: "contacts", t: "Контакты" },
 ]
@@ -294,17 +293,6 @@ const CONTACTS = [
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Loaded<T> = { items: T[]; done: boolean }
 const empty = <T,>(): Loaded<T> => ({ items: [], done: false })
-
-function parseTs(v: unknown) {
-  const s = String(v || "").trim()
-  if (!s) return 0
-  const t = Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + "Z")
-  return Number.isFinite(t) ? t : 0
-}
-function byNewest(a: any, b: any) {
-  const d = parseTs(b.created_at) - parseTs(a.created_at)
-  return d || (Number(b.id) || 0) - (Number(a.id) || 0)
-}
 
 function SectionHead({ n, kicker, title, lead }: { n: number; kicker: string; title: ReactNode; lead?: string }) {
   return (
@@ -399,50 +387,6 @@ function LoadBar({ k, v, delay }: { k: string; v: number; delay: number }) {
   )
 }
 
-type FeedItem = { id: number; name: string; img: string }
-
-function PhoneFeed({ items, fallback, onOpen }: { items: FeedItem[]; fallback: string; onOpen: () => void }) {
-  const { ref, seen } = useSeen<HTMLButtonElement>(0.35)
-  const [idx, setIdx] = useState(0)
-  const total = Math.max(items.length, 1)
-  useEffect(() => {
-    if (!seen || items.length < 2 || reducedMotion()) return
-    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), 3200)
-    return () => clearInterval(t)
-  }, [seen, items.length])
-  const list = items.length ? items : [{ id: 0, name: "Лента сборок", img: fallback }]
-  return (
-    <div className="relative">
-      <div className="pointer-events-none absolute -inset-10 rounded-full bg-red-600/25 blur-3xl wl-blob" />
-      <button
-        ref={ref}
-        onClick={onOpen}
-        style={{ cursor: "pointer" }}
-        className="relative aspect-[9/16] w-[min(20rem,78vw)] overflow-hidden rounded-[2.2rem] border-[5px] border-neutral-800 bg-black text-left shadow-2xl sm:w-80"
-      >
-        <div className="absolute inset-0 overflow-hidden">
-          {list.map((it, i) => (
-            <div key={it.id} className="absolute inset-0 transition-transform duration-700 ease-[cubic-bezier(.22,1,.36,1)]" style={{ transform: `translateY(${(i - idx) * 100}%)` }}>
-              <img src={it.img} alt="" loading="lazy" className="h-full w-full object-contain object-center" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/80 to-transparent" />
-              <div className="absolute inset-x-4 bottom-5">
-                <p className="line-clamp-2 text-sm font-medium">{it.name}</p>
-                <p className="mt-1 font-mono text-[10px] text-white/55">последние со стола</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="pointer-events-none absolute left-1/2 top-2 h-5 w-20 -translate-x-1/2 rounded-full bg-black" />
-        {list.length > 1 && (
-          <span className="absolute right-3 top-3 rounded-full bg-black/50 px-2 py-0.5 font-mono text-[10px] text-white/70 backdrop-blur">
-            {idx + 1} / {total}
-          </span>
-        )}
-      </button>
-    </div>
-  )
-}
-
 function RunTimer() {
   const { ref, seen } = useSeen<HTMLSpanElement>(0.4)
   const [s, setS] = useState(0)
@@ -469,24 +413,12 @@ export default function Welcome1() {
   useParallax(heroImg, heroText, progress)
   const active = useActiveSection(NAV_IDS)
 
-  const [builds, setBuilds] = useState<Loaded<any>>(empty)
   const [articles, setArticles] = useState<Loaded<any>>(empty)
   const [tiers, setTiers] = useState<Loaded<any>>(empty)
   const [faq, setFaq] = useState<any[]>([])
   const [open, setOpen] = useState<number | null>(0)
 
   useEffect(() => {
-    api.builds
-      .getAll({ status: "catalog" })
-      .then((d: any) => {
-        const list = (Array.isArray(d) ? d : d.builds || [])
-          .filter((b: any) => !b.parent_id)
-          .filter((b: any) => (b.short_video_url || "").trim() || (b.image_urls || []).some(Boolean))
-          .sort(byNewest)
-          .slice(0, 8)
-        setBuilds({ items: list, done: true })
-      })
-      .catch(() => setBuilds({ items: [], done: true }))
     api.articles
       .getAll({ published: "true", limit: "4" })
       .then((d: any) => setArticles({ items: d.articles || [], done: true }))
@@ -514,14 +446,6 @@ export default function Welcome1() {
   }, [])
 
   const faqList = faq.length ? faq : FAQ_FALLBACK.map((f, i) => ({ id: i, question: f.q, answer: f.a }))
-
-  const feed = useMemo<FeedItem[]>(
-    () =>
-      builds.items
-        .map((b: any) => ({ id: b.id, name: b.name, img: b.image_urls?.[0] ? b.image_urls[0] : "" }))
-        .filter((x: FeedItem) => x.img),
-    [builds.items],
-  )
 
   const articleCards = articles.items.length
     ? articles.items.map((a: any, i: number) => ({
@@ -966,34 +890,11 @@ export default function Welcome1() {
         </Reveal>
       </Section>
 
-      <Section id="feed" className="overflow-hidden border-t border-white/10 bg-gradient-to-br from-red-950/30 via-black to-black">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          <div>
-            <SectionHead
-              n={8}
-              kicker="лента"
-              title={
-                <>
-                  Что сейчас <span className="text-white/40">на столе</span>
-                </>
-              }
-              lead="Последние сборки. Та же лента, что в шортсах."
-            />
-            <Reveal className="mt-8">
-              <Btn to="/feed">Открыть ленту</Btn>
-            </Reveal>
-          </div>
-          <Reveal from="zoom" className="flex justify-center">
-            <PhoneFeed items={feed} fallback={IMG.work} onOpen={() => navigate("/feed")} />
-          </Reveal>
-        </div>
-      </Section>
-
       <Section id="faq" className="border-t border-white/10">
         <div className="grid gap-10 lg:grid-cols-[1fr_1.3fr]">
           <div>
             <SectionHead
-              n={9}
+              n={8}
               kicker="вопрос-ответ"
               title={
                 <>
@@ -1039,7 +940,7 @@ export default function Welcome1() {
 
       <Section id="contacts" className="border-t border-white/10 pb-32 sm:pb-28">
         <SectionHead
-          n={10}
+          n={9}
           kicker="контакты"
           title={
             <>
