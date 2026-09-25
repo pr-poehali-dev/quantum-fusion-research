@@ -809,10 +809,10 @@ export default function Welcome1() {
                 onClick={() => navigate(s.to)}
                 onPointerMove={spot}
                 style={{ cursor: "pointer" }}
-                className="wl-spot group relative block h-56 w-full overflow-hidden rounded-3xl border border-white/10 text-left sm:h-64"
+                className="wl-spot group relative block h-56 w-full overflow-hidden rounded-3xl border border-white/10 text-left [clip-path:inset(0_round_1.5rem)] transform-gpu sm:h-64"
               >
                 <img src={s.img} alt="" loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${"pos" in s ? s.pos : ""} origin-top transition duration-700 group-hover:scale-110`} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/10" />
+                <div className="absolute -inset-px bg-gradient-to-t from-black/90 via-black/35 via-45% to-transparent" />
                 <div className="absolute inset-x-0 bottom-0 z-[3] p-5">
                   <p className="font-mono text-[11px] text-red-400">0{i + 1}</p>
                   <p className="mt-1 text-xl font-medium">{s.t}</p>
@@ -1051,9 +1051,9 @@ export default function Welcome1() {
         <div className="mt-10 grid gap-3 sm:grid-cols-2 sm:gap-4">
           {CONTACTS.map((c, i) => (
             <Reveal key={c.t} delay={i * 120}>
-              <div onPointerMove={spot} className="wl-spot group relative h-60 overflow-hidden rounded-3xl border border-white/10">
-                <img src={c.img} alt="" loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${"pos" in c ? c.pos : ""} origin-top opacity-60 transition duration-700 group-hover:scale-110`} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
+              <div onPointerMove={spot} className="wl-spot group relative h-60 overflow-hidden rounded-3xl border border-white/10 [clip-path:inset(0_round_1.5rem)] transform-gpu">
+                <img src={c.img} alt="" loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${"pos" in c ? c.pos : ""} origin-top transition duration-700 group-hover:scale-110`} />
+                <div className="absolute -inset-px bg-gradient-to-t from-black/90 via-black/35 via-45% to-transparent" />
                 <div className="absolute inset-x-0 bottom-0 z-[3] p-5">
                   <p className="font-mono text-[11px] uppercase tracking-wider text-red-400">{c.k}</p>
                   <p className="mt-1 text-2xl font-medium">{c.t}</p>
