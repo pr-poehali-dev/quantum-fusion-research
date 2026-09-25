@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type RefObject } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import Seo from "@/components/Seo"
 import { api } from "@/lib/api"
 
@@ -537,6 +537,14 @@ export default function Welcome1() {
       <Seo title="BeGraphics — сборка, ремонт и комплектующие для ПК" path={pathname === "/welcome" ? "/welcome" : "/"} />
 
       <div ref={progress} className="fixed inset-x-0 top-0 z-[70] h-[2px] origin-left scale-x-0 bg-gradient-to-r from-red-600 via-orange-400 to-amber-200" />
+
+      <Link
+        to="/home"
+        className="fixed right-4 top-4 z-[60] inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/50 px-4 py-2 text-sm font-medium text-white backdrop-blur-md transition hover:border-red-500/60 hover:bg-red-600/80 sm:right-6 sm:top-5"
+      >
+        Перейти на сайт
+        <span aria-hidden className="transition group-hover:translate-x-0.5">→</span>
+      </Link>
 
       <nav className="fixed right-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-end gap-2 lg:flex">
         {NAV.map((n) => (

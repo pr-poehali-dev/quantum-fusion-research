@@ -7,7 +7,7 @@
   (status=catalog, лента-телефон), api.articles (published, limit 4),
   api.tier (S/A/B с фото), api.faq.getPublic (5 вопросов). Статичные фото:
   public/welcome/*.png + CDN проекта.
-- /home → старая главная HomeStonks. /welcome1 → редирект на /welcome.
+- /home → старая главная HomeStonks (на / справа сверху кнопка «Перейти на сайт» → /home). /welcome1 → редирект на /welcome.
 
 ## Промокоды и акции (v7.06)
 - backend/promos (URL .../b70b011e-6249-4d99-8b90-f0f695e62cae) — система скидок
