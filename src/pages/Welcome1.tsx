@@ -534,7 +534,7 @@ export default function Welcome1() {
   return (
     <div className="min-h-dvh overflow-x-clip bg-black text-white selection:bg-red-500/40">
       <style>{CSS}</style>
-      <Seo title="BeGraphics — сборка, ремонт и комплектующие для ПК" path={pathname === "/welcome" ? "/welcome" : "/"} />
+      <Seo title="BeGraphics — сборка, ремонт и комплектующие для ПК" path="/" />
 
       <div ref={progress} className="fixed inset-x-0 top-0 z-[70] h-[2px] origin-left scale-x-0 bg-gradient-to-r from-red-600 via-orange-400 to-amber-200" />
 

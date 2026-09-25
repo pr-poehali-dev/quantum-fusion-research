@@ -111,9 +111,9 @@ const App = () => (
           }>
             <Routes>
               <Route path="/" element={<Welcome1 />} />
-              <Route path="/welcome" element={<Welcome1 />} />
+              <Route path="/welcome" element={<Navigate to="/" replace />} />
               <Route path="/home" element={<HomeStonks />} />
-              <Route path="/welcome1" element={<Navigate to="/welcome" replace />} />
+              <Route path="/welcome1" element={<Navigate to="/" replace />} />
               <Route path="/shop" element={<Shop />} />
               <Route path="/configurator" element={<Configurator />} />
               <Route path="/s/:code" element={<Configurator />} />
