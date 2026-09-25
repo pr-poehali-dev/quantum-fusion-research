@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type RefObject } from "react"
+import { useEffect, useRef, useState, type MouseEvent as RMouseEvent, type ReactNode, type PointerEvent as RPointerEvent, type RefObject } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import Seo from "@/components/Seo"
 import { api } from "@/lib/api"
@@ -139,21 +139,42 @@ function useParallax(img: RefObject<HTMLImageElement>, text: RefObject<HTMLDivEl
 function useActiveSection(ids: string[]) {
   const [active, setActive] = useState(ids[0])
   useEffect(() => {
-    if (!("IntersectionObserver" in window)) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
-        if (top) setActive(top.target.id)
-      },
-      { rootMargin: "-40% 0px -50% 0px", threshold: [0, 0.25, 0.5] },
-    )
-    ids.forEach((id) => {
-      const el = document.getElementById(id)
-      if (el) io.observe(el)
-    })
-    return () => io.disconnect()
+    let raf = 0
+    const update = () => {
+      const line = window.innerHeight * 0.45
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4
+      let current = ids[0]
+      if (atBottom) {
+        current = ids[ids.length - 1]
+      } else {
+        for (const id of ids) {
+          const el = document.getElementById(id)
+          if (el && el.getBoundingClientRect().top <= line) current = id
+        }
+      }
+      setActive(current)
+    }
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(update)
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onScroll)
+    update()
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("resize", onScroll)
+      cancelAnimationFrame(raf)
+    }
   }, [ids])
   return active
+}
+
+function scrollToSection(e: RMouseEvent<HTMLAnchorElement>, id: string) {
+  const el = document.getElementById(id)
+  if (!el) return
+  e.preventDefault()
+  el.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" })
 }
 
 function spot(e: RPointerEvent<HTMLElement>) {
@@ -474,7 +495,7 @@ export default function Welcome1() {
 
       <nav className="fixed right-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-end gap-2 lg:flex">
         {NAV.map((n) => (
-          <a key={n.id} href={`#${n.id}`} className="group flex items-center gap-2">
+          <a key={n.id} href={`#${n.id}`} onClick={(e) => scrollToSection(e, n.id)} className="group flex items-center gap-2 py-0.5">
             <span className={`text-[10px] transition ${active === n.id ? "text-white" : "text-white/0 group-hover:text-white/60"}`}>{n.t}</span>
             <span className={`h-1.5 rounded-full transition-all ${active === n.id ? "w-6 bg-red-500" : "w-1.5 bg-white/30 group-hover:bg-white/60"}`} />
           </a>
