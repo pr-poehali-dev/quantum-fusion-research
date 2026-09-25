@@ -19,6 +19,7 @@ const IMG = {
   solder: CDN + "808b8b3c-9619-472f-a9a3-097decedec20.jpeg",
   pcb: CDN + "cd91f011-25b9-4aa9-9de5-5741a2511beb.jpg",
   bay: CDN + "93c263ee-3512-4c6f-b42d-86c8240c169a.jpg",
+  goldRig: CDN + "28cc1b34-7577-428c-8654-573d4d618539.png",
   shot: CDN + "1aabcdb0-f5d7-4b3a-ae8a-5995c0323881.png",
   rig: "/welcome/rig-gpu.png",
   sff: "/welcome/sff-build.png",
@@ -248,7 +249,7 @@ const CONFIG_ROWS = [
 
 const SERVICES = [
   { t: "Сборка под задачу", d: "Задача и бюджет — остальное на нас.", img: IMG.sff, to: "/quiz" },
-  { t: "Комплектующие", d: "То, что сами ставим в сборки.", img: IMG.bay, to: "/shop" },
+  { t: "Комплектующие", d: "То, что сами ставим в сборки.", img: IMG.goldRig, pos: "object-top", to: "/shop" },
   { t: "Ремонт и апгрейд", d: "Паяем и поднимаем то, что уже списали.", img: IMG.solder, to: "/service" },
   { t: "Стресс на стенде", d: "Уезжает только с отчётом.", img: IMG.hud, to: "/stresstester" },
 ]
@@ -286,7 +287,7 @@ const FAQ_FALLBACK = [
 ]
 
 const CONTACTS = [
-  { k: "сборка и продажа", t: "Новокосино", tel: "+7 910 307-04-99", img: IMG.bay },
+  { k: "сборка и продажа", t: "Новокосино", tel: "+7 910 307-04-99", img: IMG.goldRig, pos: "object-top" },
   { k: "ремонт", t: "Беляево", tel: "+7 960 029-69-98", img: IMG.solder },
 ]
 
@@ -810,7 +811,7 @@ export default function Welcome1() {
                 style={{ cursor: "pointer" }}
                 className="wl-spot group relative block h-56 w-full overflow-hidden rounded-3xl border border-white/10 text-left sm:h-64"
               >
-                <img src={s.img} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-110" />
+                <img src={s.img} alt="" loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${"pos" in s ? s.pos : ""} origin-top transition duration-700 group-hover:scale-110`} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/10" />
                 <div className="absolute inset-x-0 bottom-0 z-[3] p-5">
                   <p className="font-mono text-[11px] text-red-400">0{i + 1}</p>
@@ -1051,7 +1052,7 @@ export default function Welcome1() {
           {CONTACTS.map((c, i) => (
             <Reveal key={c.t} delay={i * 120}>
               <div onPointerMove={spot} className="wl-spot group relative h-60 overflow-hidden rounded-3xl border border-white/10">
-                <img src={c.img} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-60 transition duration-700 group-hover:scale-110" />
+                <img src={c.img} alt="" loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${"pos" in c ? c.pos : ""} origin-top opacity-60 transition duration-700 group-hover:scale-110`} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
                 <div className="absolute inset-x-0 bottom-0 z-[3] p-5">
                   <p className="font-mono text-[11px] uppercase tracking-wider text-red-400">{c.k}</p>
