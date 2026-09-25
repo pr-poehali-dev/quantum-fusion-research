@@ -354,7 +354,7 @@ function Btn({ to, children, ghost, white, href }: { to?: string; children: Reac
 
 function Rail({ children, cols = "sm:grid-cols-3" }: { children: ReactNode; cols?: string }) {
   return (
-    <div className={`wl-noscroll -mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 sm:mx-0 sm:grid sm:gap-4 sm:overflow-visible sm:px-0 ${cols}`}>{children}</div>
+    <div className={`grid grid-cols-1 gap-3 sm:gap-4 ${cols}`}>{children}</div>
   )
 }
 
@@ -633,14 +633,14 @@ export default function Welcome1() {
         <div className="mt-10">
           <Rail>
             {REPAIRS.map((r, i) => (
-              <Reveal key={r.t} delay={i * 80} className="w-[78%] shrink-0 snap-start sm:w-auto">
+              <Reveal key={r.t} delay={i * 80}>
                 <PhotoCard
                   img={r.img}
                   aspect="aspect-[4/3]"
                   onClick={() => navigate(r.to)}
                   badge={<span className="rounded-full border border-white/20 bg-black/50 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider backdrop-blur">ремонт</span>}
                 >
-                  <p className="text-lg font-medium">{r.t}</p>
+                  <p className="text-[15px] font-medium sm:text-lg">{r.t}</p>
                   <p className="mt-1 text-sm text-white/60">{r.d}</p>
                 </PhotoCard>
               </Reveal>
@@ -936,7 +936,7 @@ export default function Welcome1() {
                     href={a.href}
                     onClick={a.to ? () => navigate(a.to!) : undefined}
                     className="w-full"
-                    aspect={i === 0 ? "aspect-[4/3] sm:aspect-auto sm:h-full sm:min-h-[26rem]" : "aspect-[16/8]"}
+                    aspect={i === 0 ? "aspect-[4/3] sm:aspect-auto sm:h-full sm:min-h-[26rem]" : "aspect-[4/3] sm:aspect-[16/8]"}
                     badge={
                       <span className="rounded-full border border-white/20 bg-black/50 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider backdrop-blur">{a.href ? "пикабу" : "статья"}</span>
                     }
