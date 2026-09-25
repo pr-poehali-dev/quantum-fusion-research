@@ -6,7 +6,7 @@ import { api } from "@/lib/api"
 const CDN = "https://cdn.poehali.dev/projects/63b26282-df0d-46e2-bce8-199a865a9659/bucket/"
 
 const IMG = {
-  bench: CDN + "3475919d-6b88-451a-8a17-e6e8bfb5793c.jpg",
+  bench: CDN + "8f14efb7-cd14-4eb7-a83f-d24d99b8b964.png",
   open: CDN + "462003f5-d562-4dac-82b1-df23ea5011ce.jpg",
   gpu: CDN + "cc116cf9-1a99-4450-ad0d-4d793046d01b.jpg",
   board: CDN + "dbedf91f-be5f-4379-b798-e2badeb51446.jpg",
