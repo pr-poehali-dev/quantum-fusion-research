@@ -250,7 +250,7 @@ const CONFIG_ROWS = [
 const SERVICES = [
   { t: "Сборка под задачу", d: "Задача и бюджет — остальное на нас.", img: IMG.sff, to: "/quiz" },
   { t: "Комплектующие", d: "То, что сами ставим в сборки.", img: IMG.goldRig, pos: "object-top", to: "/shop" },
-  { t: "Ремонт и апгрейд", d: "Паяем и поднимаем то, что уже списали.", img: IMG.solder, to: "/service" },
+  { t: "Ремонт и апгрейд", d: "Паяем и поднимаем то, что уже списали.", img: IMG.open, to: "/service" },
   { t: "Стресс на стенде", d: "Уезжает только с отчётом.", img: IMG.hud, to: "/stresstester" },
 ]
 
@@ -288,7 +288,7 @@ const FAQ_FALLBACK = [
 
 const CONTACTS = [
   { k: "сборка и продажа", t: "Новокосино", tel: "+7 910 307-04-99", img: IMG.goldRig, pos: "object-top" },
-  { k: "ремонт", t: "Беляево", tel: "+7 960 029-69-98", img: IMG.solder },
+  { k: "ремонт", t: "Беляево", tel: "+7 960 029-69-98", img: IMG.desk },
 ]
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
